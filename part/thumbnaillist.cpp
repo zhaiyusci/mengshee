@@ -837,7 +837,7 @@ QRect ThumbnailWidget::pageMoveHandleRect() const
     const int pageTop = m_margin / 2;
     const int pageLeft = m_margin / 2;
     const int y = pageTop + qMax(0, (m_pixmapHeight - handleSize.height()) / 2);
-    const int x = qBound(0, pageLeft + m_pixmapWidth - handleSize.width() / 2, m_pixmapWidth + m_margin - handleSize.width());
+    const int x = qBound(0, pageLeft - handleSize.width() / 2, m_pixmapWidth + m_margin - handleSize.width());
     return QRect(x, y, handleSize.width(), handleSize.height());
 }
 
