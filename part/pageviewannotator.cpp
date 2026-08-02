@@ -1813,7 +1813,7 @@ QRect PageViewAnnotator::performRouteMouseOrTabletEvent(const AnnotatorEngine::E
             m_continuousMode = false;
         }
 
-        if (m_continuousMode && !detachAfterCreation) {
+        if (m_continuousMode && !detachAfterCreation && currentToolSupportsContinuousCreation()) {
             selectLastTool();
         } else {
             detachAnnotation();
@@ -1933,23 +1933,9 @@ void PageViewAnnotator::selectQuickTool(int toolId)
 void PageViewAnnotator::selectTool(AnnotationTools *toolsDefinition, int toolId, ShowTip showTip)
 {
     // ask for Author's name if not already set
-    if (toolId > 0 && Okular::Settings::identityAuthor().isEmpty()) {
-        // get default username from the kdelibs/kdecore/KUser
-        KUser currentUser;
-        QString userName = currentUser.property(KUser::FullName).toString();
-        // ask the user for confirmation/change
-        if (userName.isEmpty()) {
-            bool ok = false;
-            userName = QInputDialog::getText(m_pageView, i18n("Author name"), i18n("Author name for the annotation:"), QLineEdit::Normal, QString(), &ok);
-
-            if (!ok) {
-                detachAnnotation();
-                return;
-            }
-        }
-        // save the name
-        Okular::Settings::setIdentityAuthor(userName);
-        Okular::Settings::self()->save();
+    if (toolId > 0 && !ensureAnnotationAuthor()) {
+        detachAnnotation();
+        return;
     }
 
     // terminate any previous operation
@@ -2197,6 +2183,68 @@ void PageViewAnnotator::detachAnnotation()
         m_pageView->displayMessage(QString());
         setSignatureMode(false);
     }
+}
+
+bool PageViewAnnotator::applyTextMarkupAnnotationForSelection(const QString &toolType, const QString &toolName)
+{
+    const int toolId = m_builtinToolsDefinition->findToolId(toolType, toolName);
+    if (toolId == -1) {
+        return false;
+    }
+    return applyTextMarkupAnnotationForSelection(m_builtinToolsDefinition->tool(toolId));
+}
+
+bool PageViewAnnotator::applyQuickTextMarkupAnnotationForSelection(int toolId)
+{
+    return applyTextMarkupAnnotationForSelection(m_quickToolsDefinition->tool(toolId));
+}
+
+bool PageViewAnnotator::applyTextMarkupAnnotationForSelection(const QDomElement &toolElement)
+{
+    if (!m_pageView->hasTextSelection()) {
+        return false;
+    }
+
+    const QDomElement engineElement = toolElement.firstChildElement(QStringLiteral("engine"));
+    const QDomElement annotationElement = engineElement.firstChildElement(QStringLiteral("annotation"));
+    if (engineElement.isNull() || annotationElement.isNull()) {
+        return false;
+    }
+
+    const QString annotationType = annotationElement.attribute(QStringLiteral("type"));
+    if (annotationType != QLatin1String("Highlight") && annotationType != QLatin1String("Underline") && annotationType != QLatin1String("Squiggly")
+        && annotationType != QLatin1String("StrikeOut")) {
+        return false;
+    }
+
+    if (!ensureAnnotationAuthor()) {
+        return true;
+    }
+
+    const QColor engineColor = engineElement.hasAttribute(QStringLiteral("color")) ? QColor(engineElement.attribute(QStringLiteral("color"))) : QColor();
+    m_pageView->addTextMarkupAnnotationForSelection(annotationElement, engineColor);
+    return true;
+}
+
+bool PageViewAnnotator::ensureAnnotationAuthor()
+{
+    if (!Okular::Settings::identityAuthor().isEmpty()) {
+        return true;
+    }
+
+    KUser currentUser;
+    QString userName = currentUser.property(KUser::FullName).toString();
+    if (userName.isEmpty()) {
+        bool ok = false;
+        userName = QInputDialog::getText(m_pageView, i18n("Author name"), i18n("Author name for the annotation:"), QLineEdit::Normal, QString(), &ok);
+        if (!ok) {
+            return false;
+        }
+    }
+
+    Okular::Settings::setIdentityAuthor(userName);
+    Okular::Settings::self()->save();
+    return true;
 }
 
 QString PageViewAnnotator::defaultToolName(const QDomElement &toolElement)
@@ -2508,6 +2556,19 @@ QDomElement PageViewAnnotator::currentEngineElement()
 QDomElement PageViewAnnotator::currentAnnotationElement()
 {
     return currentEngineElement().firstChildElement(QStringLiteral("annotation"));
+}
+
+bool PageViewAnnotator::currentToolSupportsContinuousCreation()
+{
+    const QDomElement annotationElement = currentAnnotationElement();
+    const QString annotationType = annotationElement.attribute(QStringLiteral("type"));
+    if (annotationType == QLatin1String("FreeText") || annotationType == QLatin1String("Typewriter") || annotationType == QLatin1String("Callout") || annotationType == QLatin1String("Text")) {
+        return false;
+    }
+    if (annotationElement.attribute(QStringLiteral("okularLatex")).toInt() != 0 || annotationElement.hasAttribute(QStringLiteral("templateNoteData"))) {
+        return false;
+    }
+    return true;
 }
 
 void PageViewAnnotator::setAnnotationWidth(double width)

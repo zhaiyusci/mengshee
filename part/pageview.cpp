@@ -23,7 +23,9 @@
 #include <QApplication>
 #include <QClipboard>
 #include <QCursor>
+#include <QDateTime>
 #include <QDesktopServices>
+#include <QDomElement>
 #include <QElapsedTimer>
 #include <QEvent>
 #include <QFrame>
@@ -1722,6 +1724,129 @@ QPoint PageView::contentAreaPoint(const QPoint pos) const
 QPointF PageView::contentAreaPoint(const QPointF pos) const
 {
     return pos + contentAreaPosition();
+}
+
+static Okular::HighlightAnnotation::HighlightType textMarkupTypeFromElement(const QDomElement &annotationElement, bool *ok)
+{
+    const QString typeString = annotationElement.attribute(QStringLiteral("type"));
+    if (typeString == QLatin1String("Highlight")) {
+        *ok = true;
+        return Okular::HighlightAnnotation::Highlight;
+    }
+    if (typeString == QLatin1String("Squiggly")) {
+        *ok = true;
+        return Okular::HighlightAnnotation::Squiggly;
+    }
+    if (typeString == QLatin1String("Underline")) {
+        *ok = true;
+        return Okular::HighlightAnnotation::Underline;
+    }
+    if (typeString == QLatin1String("StrikeOut")) {
+        *ok = true;
+        return Okular::HighlightAnnotation::StrikeOut;
+    }
+
+    *ok = false;
+    return Okular::HighlightAnnotation::Highlight;
+}
+
+static Okular::HighlightAnnotation *createTextMarkupAnnotationForSelection(const Okular::RegularAreaRect &selection, const QDomElement &annotationElement, const QColor &engineColor)
+{
+    if (annotationElement.isNull() || selection.isNull()) {
+        return nullptr;
+    }
+
+    bool typeValid = false;
+    const Okular::HighlightAnnotation::HighlightType type = textMarkupTypeFromElement(annotationElement, &typeValid);
+    if (!typeValid) {
+        return nullptr;
+    }
+
+    auto *highlightAnnotation = new Okular::HighlightAnnotation();
+    highlightAnnotation->setHighlightType(type);
+
+    bool hasBoundingRect = false;
+    Okular::NormalizedRect boundingRect;
+    for (const Okular::NormalizedRect &r : selection) {
+        if (r.isNull()) {
+            continue;
+        }
+
+        if (hasBoundingRect) {
+            boundingRect |= r;
+        } else {
+            boundingRect = r;
+            hasBoundingRect = true;
+        }
+
+        Okular::HighlightAnnotation::Quad q;
+        q.setCapStart(false);
+        q.setCapEnd(false);
+        q.setFeather(1.0);
+        q.setPoint(Okular::NormalizedPoint(r.left, r.bottom), 0);
+        q.setPoint(Okular::NormalizedPoint(r.right, r.bottom), 1);
+        q.setPoint(Okular::NormalizedPoint(r.right, r.top), 2);
+        q.setPoint(Okular::NormalizedPoint(r.left, r.top), 3);
+        highlightAnnotation->highlightQuads().append(q);
+    }
+
+    if (!hasBoundingRect || highlightAnnotation->highlightQuads().isEmpty()) {
+        delete highlightAnnotation;
+        return nullptr;
+    }
+
+    highlightAnnotation->setBoundingRectangle(boundingRect);
+
+    QColor color = annotationElement.hasAttribute(QStringLiteral("color")) ? QColor(annotationElement.attribute(QStringLiteral("color"))) : engineColor;
+    if (!color.isValid()) {
+        color = Qt::yellow;
+    }
+    highlightAnnotation->style().setColor(color);
+    if (annotationElement.hasAttribute(QStringLiteral("opacity"))) {
+        highlightAnnotation->style().setOpacity(annotationElement.attribute(QStringLiteral("opacity"), QStringLiteral("1.0")).toDouble());
+    }
+
+    return highlightAnnotation;
+}
+
+bool PageView::hasTextSelection() const
+{
+    return !d->pagesWithTextSelection.isEmpty();
+}
+
+bool PageView::addTextMarkupAnnotationForSelection(const QDomElement &annotationElement, const QColor &engineColor)
+{
+    if (d->pagesWithTextSelection.isEmpty() || !d->document->isAllowed(Okular::AllowNotes)) {
+        return false;
+    }
+
+    QList<int> selectedPages = d->pagesWithTextSelection.values();
+    std::sort(selectedPages.begin(), selectedPages.end());
+
+    bool addedAnnotation = false;
+    for (const int pageNumber : std::as_const(selectedPages)) {
+        const Okular::Page *page = d->document->page(pageNumber);
+        const Okular::RegularAreaRect *selection = page ? page->textSelection() : nullptr;
+        if (!selection || selection->isNull()) {
+            continue;
+        }
+
+        Okular::HighlightAnnotation *annotation = createTextMarkupAnnotationForSelection(*selection, annotationElement, engineColor);
+        if (!annotation) {
+            continue;
+        }
+
+        annotation->setCreationDate(QDateTime::currentDateTime());
+        annotation->setModificationDate(QDateTime::currentDateTime());
+        annotation->setAuthor(Okular::Settings::identityAuthor());
+        d->document->addPageAnnotation(pageNumber, annotation);
+        addedAnnotation = true;
+    }
+
+    if (addedAnnotation) {
+        textSelectionClear();
+    }
+    return addedAnnotation;
 }
 
 QString PageViewPrivate::selectedText() const

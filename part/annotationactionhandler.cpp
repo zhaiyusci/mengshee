@@ -171,6 +171,7 @@ public:
     void updateConfigActions(const QString &annotType = QLatin1String(""));
     void populateQuickAnnotations();
     KSelectAction *colorPickerAction(AnnotationColor colorType);
+    bool applyTextMarkupToTextSelection(QAction *action);
 
     QIcon toolIcon(const QString &type, const QString &name = QString()) const;
     QIcon strokeColorIcon(const QColor &color, bool textColorIcon = false) const;
@@ -202,6 +203,7 @@ public:
     QList<QAction *> textQuickTools;
     QActionGroup *agTools;
     QHash<QAction *, BuiltinToolSpec> builtinToolForAction;
+    QHash<QAction *, int> quickToolForAction;
     QAction *agLastAction;
 
     ToggleActionMenu *aQuickTools;
@@ -260,6 +262,11 @@ const QList<QPair<KLocalizedString, QColor>> AnnotationActionHandlerPrivate::def
 const QList<double> AnnotationActionHandlerPrivate::widthStandardValues = {1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5};
 
 const QList<double> AnnotationActionHandlerPrivate::opacityStandardValues = {0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0};
+
+static bool isTextMarkupToolType(const QString &type)
+{
+    return type == QLatin1String("highlight") || type == QLatin1String("underline") || type == QLatin1String("squiggly") || type == QLatin1String("strikeout");
+}
 
 QIcon AnnotationActionHandlerPrivate::toolIcon(const QString &type, const QString &name) const
 {
@@ -600,6 +607,7 @@ void AnnotationActionHandlerPrivate::populateQuickAnnotations()
         delete action;
     }
     quickTools.clear();
+    quickToolForAction.clear();
     textQuickTools.clear();
 
     int favToolId = 1;
@@ -625,11 +633,18 @@ void AnnotationActionHandlerPrivate::populateQuickAnnotations()
             annFav->setShortcut(QKeySequence(*(shortcutNumber++)));
             annFav->setShortcutContext(Qt::WidgetWithChildrenShortcut);
         }
-        QObject::connect(annFav, &KToggleAction::toggled, q, [this, favToolId](bool checked) {
+        QObject::connect(annFav, &KToggleAction::toggled, q, [this, annFav, favToolId](bool checked) {
             if (checked) {
+                if (applyTextMarkupToTextSelection(annFav)) {
+                    agLastAction = nullptr;
+                    annFav->setChecked(false);
+                    selectTool(-1);
+                    return;
+                }
                 slotQuickToolSelected(favToolId);
             }
         });
+        quickToolForAction.insert(annFav, favToolId);
         QDomElement engineElement = favToolElement.firstChildElement(QStringLiteral("engine"));
         if (engineElement.attribute(QStringLiteral("type")) == QStringLiteral("TextSelector")) {
             textQuickTools.append(annFav);
@@ -715,9 +730,32 @@ void AnnotationActionHandlerPrivate::addBuiltinToolAction(QAction *action, const
     builtinToolForAction.insert(action, {type, name});
     QObject::connect(action, &QAction::toggled, q, [this, action](bool checked) {
         if (checked) {
+            if (applyTextMarkupToTextSelection(action)) {
+                agLastAction = nullptr;
+                action->setChecked(false);
+                selectTool(-1);
+                return;
+            }
             selectTool(builtinToolForAction.value(action));
         }
     });
+}
+
+bool AnnotationActionHandlerPrivate::applyTextMarkupToTextSelection(QAction *action)
+{
+    if (builtinToolForAction.contains(action)) {
+        const BuiltinToolSpec toolSpec = builtinToolForAction.value(action);
+        if (!isTextMarkupToolType(toolSpec.type)) {
+            return false;
+        }
+        return annotator->applyTextMarkupAnnotationForSelection(toolSpec.type, toolSpec.name);
+    }
+
+    const int quickToolId = quickToolForAction.value(action, -1);
+    if (quickToolId > 0) {
+        return annotator->applyQuickTextMarkupAnnotationForSelection(quickToolId);
+    }
+    return false;
 }
 
 void AnnotationActionHandlerPrivate::selectTool(int toolId)
@@ -1063,9 +1101,20 @@ AnnotationActionHandler::AnnotationActionHandler(PageViewAnnotator *parent, KAct
     // action group workaround: allows unchecking the currently selected annotation action.
     // Other parts of code dependent to this workaround are marked with "action group workaround".
     connect(d->agTools, &QActionGroup::triggered, this, [this](QAction *action) {
+        if (!action->isChecked() && action != d->agLastAction) {
+            return;
+        }
+        if (d->applyTextMarkupToTextSelection(action)) {
+            d->agLastAction = nullptr;
+            action->setChecked(false);
+            d->selectTool(-1);
+            return;
+        }
         if (action == d->agLastAction) {
             d->agLastAction = nullptr;
-            d->agTools->checkedAction()->setChecked(false);
+            if (QAction *checkedAction = d->agTools->checkedAction()) {
+                checkedAction->setChecked(false);
+            }
             d->selectTool(-1);
         } else {
             d->agLastAction = action;

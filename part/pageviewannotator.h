@@ -120,6 +120,9 @@ public:
     void selectLastTool();
     // deselects the tool and uncheck all the annotation actions
     void detachAnnotation();
+    // applies a text markup tool to the current text selection, if any
+    bool applyTextMarkupAnnotationForSelection(const QString &toolType, const QString &toolName);
+    bool applyQuickTextMarkupAnnotationForSelection(int toolId);
 
     // returns the builtin annotation tool with the given Id
     QDomElement builtinTool(int toolId);
@@ -163,12 +166,15 @@ private:
     void reparseQuickToolsConfig();
     // save the builtin annotation tools to Okular settings
     void saveBuiltinAnnotationTools();
+    bool ensureAnnotationAuthor();
+    bool applyTextMarkupAnnotationForSelection(const QDomElement &toolElement);
     // selects the active tool
     void selectTool(AnnotationTools *toolsDefinition, int toolId, ShowTip showTip);
     // returns the engine QDomElement of the the currently active tool
     QDomElement currentEngineElement();
     // returns the annotation QDomElement of the the currently active tool
     QDomElement currentAnnotationElement();
+    bool currentToolSupportsContinuousCreation();
 
     // global class pointers
     Okular::Document *m_document;

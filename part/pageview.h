@@ -31,6 +31,8 @@
 
 class QMenu;
 class QMimeData;
+class QColor;
+class QDomElement;
 class KActionCollection;
 class AnnotationPopup;
 
@@ -116,6 +118,8 @@ public:
 
     std::vector<std::unique_ptr<Okular::RegularAreaRect>> textSelections(const QPoint start, const QPoint end, int &firstpage);
     std::unique_ptr<Okular::RegularAreaRect> textSelectionForItem(const PageViewItem *item, const QPoint startPoint = QPoint(), const QPoint endPoint = QPoint());
+    bool hasTextSelection() const;
+    bool addTextMarkupAnnotationForSelection(const QDomElement &annotationElement, const QColor &engineColor);
 
     void reparseConfig();
 
