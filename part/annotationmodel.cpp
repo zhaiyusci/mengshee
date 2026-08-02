@@ -116,7 +116,7 @@ AnnotationModelPrivate::~AnnotationModelPrivate()
 static void updateAnnotationPointer(AnnItem *item, const QList<Okular::Page *> &pages)
 {
     if (item->annotation) {
-        item->annotation = pages[item->page]->annotation(item->annotation->uniqueName());
+        item->annotation = item->page >= 0 && item->page < pages.count() ? pages[item->page]->annotation(item->annotation->uniqueName()) : nullptr;
         if (!item->annotation) {
             qWarning() << "Lost annotation on document save, something went wrong";
         }
@@ -155,7 +155,12 @@ void AnnotationModelPrivate::notifyPageChanged(int page, int flags)
         return;
     }
 
-    const QList<Okular::Annotation *> annots = filterOutWidgetAnnotations(document->page(page)->annotations());
+    const Okular::Page *changedPage = document->page(page);
+    if (!changedPage) {
+        return;
+    }
+
+    const QList<Okular::Annotation *> annots = filterOutWidgetAnnotations(changedPage->annotations());
     int annItemIndex = -1;
     AnnItem *annItem = findItem(page, &annItemIndex);
     // case 1: the page has no more annotations

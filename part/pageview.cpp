@@ -1933,7 +1933,8 @@ void PageView::notifySetup(const QList<Okular::Page *> &pageSet, int setupFlags)
                 d->mouseAnnotation->updateAnnotationPointers();
 
                 for (AnnotWindow *aw : std::as_const(d->m_annowindows)) {
-                    Okular::Annotation *newA = d->document->page(aw->pageNumber())->annotation(aw->annotation()->uniqueName());
+                    const Okular::Page *page = d->document->page(aw->pageNumber());
+                    Okular::Annotation *newA = page && aw->annotation() ? page->annotation(aw->annotation()->uniqueName()) : nullptr;
                     aw->updateAnnotation(newA);
                 }
 
@@ -2229,7 +2230,12 @@ void PageView::notifyPageChanged(int pageNumber, int changedFlags)
     }
 
     if (changedFlags & DocumentObserver::Annotations) {
-        const QList<Okular::Annotation *> annots = d->document->page(pageNumber)->annotations();
+        const Okular::Page *page = d->document->page(pageNumber);
+        if (!page) {
+            return;
+        }
+
+        const QList<Okular::Annotation *> annots = page->annotations();
         const QList<Okular::Annotation *>::ConstIterator annItEnd = annots.end();
         QSet<AnnotWindow *>::Iterator it = d->m_annowindows.begin();
         for (; it != d->m_annowindows.end();) {
@@ -2323,7 +2329,7 @@ bool PageView::canUnloadPixmap(int pageNumber) const
 
 void PageView::notifyCurrentPageChanged(int previous, int current)
 {
-    if (previous != -1) {
+    if (previous >= 0 && previous < d->items.count()) {
         PageViewItem *item = d->items.at(previous);
         if (item) {
             const QHash<const Okular::Movie *, VideoWidget *> videoWidgetsList = item->videoWidgets();
@@ -2334,16 +2340,18 @@ void PageView::notifyCurrentPageChanged(int previous, int current)
 
         // On close, run the widget scripts, needed for running animated PDF
         const Okular::Page *page = d->document->page(previous);
-        const QList<Okular::Annotation *> annotations = page->annotations();
-        for (Okular::Annotation *annotation : annotations) {
-            if (annotation->subType() == Okular::Annotation::AWidget) {
-                Okular::WidgetAnnotation *widgetAnnotation = static_cast<Okular::WidgetAnnotation *>(annotation);
-                d->document->processAction(widgetAnnotation->additionalAction(Okular::Annotation::PageClosing));
+        if (page) {
+            const QList<Okular::Annotation *> annotations = page->annotations();
+            for (Okular::Annotation *annotation : annotations) {
+                if (annotation->subType() == Okular::Annotation::AWidget) {
+                    Okular::WidgetAnnotation *widgetAnnotation = static_cast<Okular::WidgetAnnotation *>(annotation);
+                    d->document->processAction(widgetAnnotation->additionalAction(Okular::Annotation::PageClosing));
+                }
             }
         }
     }
 
-    if (current != -1) {
+    if (current >= 0 && current < d->items.count()) {
         PageViewItem *item = d->items.at(current);
         if (item) {
             const QHash<const Okular::Movie *, VideoWidget *> videoWidgetsList = item->videoWidgets();
@@ -2359,11 +2367,13 @@ void PageView::notifyCurrentPageChanged(int previous, int current)
 
         // Opening any widget scripts, needed for running animated PDF
         const Okular::Page *page = d->document->page(current);
-        const QList<Okular::Annotation *> annotations = page->annotations();
-        for (Okular::Annotation *annotation : annotations) {
-            if (annotation->subType() == Okular::Annotation::AWidget) {
-                Okular::WidgetAnnotation *widgetAnnotation = static_cast<Okular::WidgetAnnotation *>(annotation);
-                d->document->processAction(widgetAnnotation->additionalAction(Okular::Annotation::PageOpening));
+        if (page) {
+            const QList<Okular::Annotation *> annotations = page->annotations();
+            for (Okular::Annotation *annotation : annotations) {
+                if (annotation->subType() == Okular::Annotation::AWidget) {
+                    Okular::WidgetAnnotation *widgetAnnotation = static_cast<Okular::WidgetAnnotation *>(annotation);
+                    d->document->processAction(widgetAnnotation->additionalAction(Okular::Annotation::PageOpening));
+                }
             }
         }
     }

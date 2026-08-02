@@ -168,6 +168,27 @@ constexpr int kMemCheckTime = 2000; // in msec
 // <=2 seconds old. This means that after the system is out of memory, up to 4 seconds (instead of 2) could go by before okular starts to free memory.
 constexpr int kFreeMemCacheTimeout = kMemCheckTime - 100;
 
+static bool isValidPageIndex(const QList<Page *> &pages, int page)
+{
+    return page >= 0 && page < pages.count();
+}
+
+static void clampViewportHistoryToPageCount(DocumentPrivate *d, int pageCount)
+{
+    if (!d || pageCount <= 0 || d->m_viewportHistory.empty()) {
+        return;
+    }
+
+    const int lastPage = pageCount - 1;
+    for (DocumentViewport &viewport : d->m_viewportHistory) {
+        viewport.pageNumber = qBound(0, viewport.pageNumber, lastPage);
+    }
+
+    if (d->m_nextDocumentViewport.isValid()) {
+        d->m_nextDocumentViewport.pageNumber = qBound(0, d->m_nextDocumentViewport.pageNumber, lastPage);
+    }
+}
+
 /***** Document ******/
 
 QString DocumentPrivate::pagesSizeString() const
@@ -1054,8 +1075,8 @@ void DocumentPrivate::performAddPageAnnotation(int page, Annotation *annotation)
     AnnotationProxy *proxy = iface ? iface->annotationProxy() : nullptr;
 
     // find out the page to attach annotation
-    Page *kp = m_pagesVector[page];
-    if (!m_generator || !kp) {
+    Page *kp = m_pagesVector.value(page, nullptr);
+    if (!m_generator || !kp || !annotation) {
         return;
     }
 
@@ -1088,8 +1109,8 @@ void DocumentPrivate::performRemovePageAnnotation(int page, Annotation *annotati
     bool isExternallyDrawn;
 
     // find out the page
-    Page *kp = m_pagesVector[page];
-    if (!m_generator || !kp) {
+    Page *kp = m_pagesVector.value(page, nullptr);
+    if (!m_generator || !kp || !annotation) {
         return;
     }
 
@@ -1124,8 +1145,8 @@ void DocumentPrivate::performModifyPageAnnotation(int page, Annotation *annotati
     AnnotationProxy *proxy = iface ? iface->annotationProxy() : nullptr;
 
     // find out the page
-    const Page *kp = m_pagesVector[page];
-    if (!m_generator || !kp) {
+    const Page *kp = m_pagesVector.value(page, nullptr);
+    if (!m_generator || !kp || !annotation) {
         return;
     }
 
@@ -1152,6 +1173,10 @@ void DocumentPrivate::performModifyPageAnnotation(int page, Annotation *annotati
 
 void DocumentPrivate::performSetAnnotationContents(const QString &newContents, Annotation *annot, int pageNumber)
 {
+    if (!annot) {
+        return;
+    }
+
     bool appearanceChanged = false;
 
     // Check if appearanceChanged should be true
@@ -3456,6 +3481,10 @@ void Document::recalculateForms()
 
 void Document::addPageAnnotation(int page, Annotation *annotation)
 {
+    if (!annotation || !isValidPageIndex(d->m_pagesVector, page)) {
+        return;
+    }
+
     // Transform annotation's base boundary rectangle into unrotated coordinates
     Page *p = d->m_pagesVector[page];
     QTransform t = p->d->rotationMatrix();
@@ -3498,6 +3527,10 @@ bool Document::canModifyPageAnnotation(const Annotation *annotation) const
 
 void Document::prepareToModifyAnnotationProperties(Annotation *annotation)
 {
+    if (!annotation) {
+        return;
+    }
+
     Q_ASSERT(d->m_prevPropsOfAnnotBeingModified.isNull());
     if (!d->m_prevPropsOfAnnotBeingModified.isNull()) {
         qCCritical(OkularCoreDebug) << "Error: Document::prepareToModifyAnnotationProperties has already been called since last call to Document::modifyPageAnnotationProperties";
@@ -3513,6 +3546,10 @@ void Document::modifyPageAnnotationProperties(int page, Annotation *annotation)
         qCCritical(OkularCoreDebug) << "Error: Document::prepareToModifyAnnotationProperties must be called before Annotation is modified";
         return;
     }
+    if (!annotation || !isValidPageIndex(d->m_pagesVector, page)) {
+        d->m_prevPropsOfAnnotBeingModified.clear();
+        return;
+    }
     QDomNode prevProps = d->m_prevPropsOfAnnotBeingModified;
     QUndoCommand *uc = new Okular::ModifyAnnotationPropertiesCommand(d, annotation, page, prevProps, annotation->getAnnotationPropertiesDomNode(true));
     d->m_undoStack->push(uc);
@@ -3521,6 +3558,10 @@ void Document::modifyPageAnnotationProperties(int page, Annotation *annotation)
 
 void Document::translatePageAnnotation(int page, Annotation *annotation, const NormalizedPoint &delta)
 {
+    if (!annotation || !isValidPageIndex(d->m_pagesVector, page)) {
+        return;
+    }
+
     int complete = (annotation->flags() & Okular::Annotation::BeingMoved) == 0;
     QUndoCommand *uc = new Okular::TranslateAnnotationCommand(d, annotation, page, delta, complete);
     d->m_undoStack->push(uc);
@@ -3528,6 +3569,10 @@ void Document::translatePageAnnotation(int page, Annotation *annotation, const N
 
 void Document::adjustPageAnnotation(int page, Annotation *annotation, const Okular::NormalizedPoint &delta1, const Okular::NormalizedPoint &delta2)
 {
+    if (!annotation || !isValidPageIndex(d->m_pagesVector, page)) {
+        return;
+    }
+
     const bool complete = (annotation->flags() & Okular::Annotation::BeingResized) == 0;
     QUndoCommand *uc = new Okular::AdjustAnnotationCommand(d, annotation, page, delta1, delta2, complete);
     d->m_undoStack->push(uc);
@@ -3535,6 +3580,10 @@ void Document::adjustPageAnnotation(int page, Annotation *annotation, const Okul
 
 void Document::editPageAnnotationContents(int page, Annotation *annotation, const QString &newContents, int newCursorPos, int prevCursorPos, int prevAnchorPos)
 {
+    if (!annotation || !isValidPageIndex(d->m_pagesVector, page)) {
+        return;
+    }
+
     QString prevContents = annotation->contents();
     QUndoCommand *uc = new EditAnnotationContentsCommand(d, annotation, page, newContents, newCursorPos, prevContents, prevCursorPos, prevAnchorPos);
     d->m_undoStack->push(uc);
@@ -3566,14 +3615,25 @@ bool Document::canRemovePageAnnotation(const Annotation *annotation) const
 
 void Document::removePageAnnotation(int page, Annotation *annotation)
 {
+    if (!annotation || !isValidPageIndex(d->m_pagesVector, page)) {
+        return;
+    }
+
     QUndoCommand *uc = new RemoveAnnotationCommand(this->d, annotation, page);
     d->m_undoStack->push(uc);
 }
 
 void Document::removePageAnnotations(int page, const QList<Annotation *> &annotations)
 {
+    if (!isValidPageIndex(d->m_pagesVector, page)) {
+        return;
+    }
+
     d->m_undoStack->beginMacro(i18nc("remove a collection of annotations from the page", "remove annotations"));
     for (Annotation *annotation : annotations) {
+        if (!annotation) {
+            continue;
+        }
         QUndoCommand *uc = new RemoveAnnotationCommand(this->d, annotation, page);
         d->m_undoStack->push(uc);
     }
@@ -5067,6 +5127,8 @@ bool Document::swapBackingFile(const QString &newFileName, const QUrl &url, bool
                 for (Page *page : std::as_const(d->m_pagesVector)) {
                     page->d->m_doc = d;
                 }
+
+                clampViewportHistoryToPageCount(d, d->m_pagesVector.count());
             }
         }
 

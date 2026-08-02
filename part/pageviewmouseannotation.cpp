@@ -1482,11 +1482,13 @@ void MouseAnnotation::notifyAnnotationChanged(int pageNumber)
 void MouseAnnotation::updateAnnotationPointers()
 {
     if (m_focusedAnnotation.annotation) {
-        m_focusedAnnotation.annotation = m_document->page(m_focusedAnnotation.pageNumber)->annotation(m_focusedAnnotation.annotation->uniqueName());
+        const Okular::Page *page = m_document->page(m_focusedAnnotation.pageNumber);
+        m_focusedAnnotation.annotation = page ? page->annotation(m_focusedAnnotation.annotation->uniqueName()) : nullptr;
     }
 
     if (m_mouseOverAnnotation.annotation) {
-        m_mouseOverAnnotation.annotation = m_document->page(m_mouseOverAnnotation.pageNumber)->annotation(m_mouseOverAnnotation.annotation->uniqueName());
+        const Okular::Page *page = m_document->page(m_mouseOverAnnotation.pageNumber);
+        m_mouseOverAnnotation.annotation = page ? page->annotation(m_mouseOverAnnotation.annotation->uniqueName()) : nullptr;
     }
 }
 
