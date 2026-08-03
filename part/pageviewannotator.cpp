@@ -45,6 +45,7 @@
 #include "core/annotations.h"
 #include "core/area.h"
 #include "core/document.h"
+#include "core/latexnotegeometry.h"
 #include "core/page.h"
 #include "core/signatureutils.h"
 #include "core/utils.h"
@@ -119,10 +120,13 @@ public:
             QSizeF latexSizePoints = GuiUtils::pdfPageSizeInPoints(latexAppearancePdfFileName);
             bool ok = false;
             const double layoutWidth = m_annotElement.attribute(QStringLiteral("latexLayoutWidth")).toDouble(&ok);
+            bool paddingOk = false;
+            const double configuredPadding = m_annotElement.attribute(QStringLiteral("latexPadding")).toDouble(&paddingOk);
+            const double padding = paddingOk && configuredPadding >= 0.0 ? configuredPadding : Okular::LatexNoteGeometry::defaultPaddingPoints();
             if (ok && layoutWidth > 0.0) {
-                latexSizePoints = LatexNoteUtils::visualSizeForLatexTextAnnotation(latexSizePoints, layoutWidth);
+                latexSizePoints = LatexNoteUtils::visualSizeForLatexTextAnnotation(latexSizePoints, layoutWidth, padding);
             } else {
-                latexSizePoints = LatexNoteUtils::visualSizeForLatexTextAnnotation(latexSizePoints, 0.0);
+                latexSizePoints = LatexNoteUtils::visualSizeForLatexTextAnnotation(latexSizePoints, 0.0, padding);
             }
             if (latexSizePoints.isValid() && !latexSizePoints.isEmpty()) {
                 intrinsicStampSizeInPoints = latexSizePoints;
@@ -454,22 +458,16 @@ public:
                 } else if (m_annotElement.attribute(QStringLiteral("latexDefaultLayoutWidth")) == QLatin1String("page-third") && pagewidth > 0.0) {
                     sa->setLatexLayoutWidth(pagewidth / 3.0);
                 }
-                const double scale = m_annotElement.attribute(QStringLiteral("latexScale")).toDouble(&ok);
-                if (ok && scale > 0.0) {
-                    sa->setLatexScale(scale);
+                const double padding = m_annotElement.attribute(QStringLiteral("latexPadding")).toDouble(&ok);
+                if (ok && padding >= 0.0) {
+                    sa->setLatexPadding(padding);
                 }
-                sa->style().setWidth(boxedLatexStamp ? 1.0 : 0.0);
+                const double fontSize = m_annotElement.attribute(QStringLiteral("latexFontSize")).toDouble(&ok);
+                if (ok && fontSize > 0.0) {
+                    sa->setLatexFontSize(fontSize);
+                }
+                sa->style().setWidth(boxedLatexStamp ? m_annotElement.attribute(QStringLiteral("width"), QStringLiteral("1")).toDouble() : 0.0);
                 sa->style().setColor(textColor);
-                if (!sa->contents().trimmed().isEmpty() && sa->latexLayoutWidth() > 0.0) {
-                    const LatexNoteUtils::RenderResult rendered = LatexNoteUtils::renderAppearancePdf(sa->contents(), textColor, sa->latexLayoutWidth(), latexCallout);
-                    if (rendered.ok) {
-                        latexAppearancePdfFileName = rendered.pdfFileName;
-                        sa->setLatexAppearancePdfFileName(latexAppearancePdfFileName);
-                        if (!rendered.warningMessage.isEmpty()) {
-                            LatexNoteUtils::showRenderWarning(pageView, rendered.warningMessage);
-                        }
-                    }
-                }
             }
             // set boundary
             rect.left = qMin(startpoint.x, point.x);
@@ -478,9 +476,9 @@ public:
             rect.bottom = qMax(startpoint.y, point.y);
             const QRectF rcf = rect.geometry((int)xscale, (int)yscale);
             const int ml = (rcf.bottomRight() - rcf.topLeft()).toPoint().manhattanLength();
-            if (latexStamp && !latexAppearancePdfFileName.isEmpty()) {
+            if (latexStamp && !latexAppearancePdfFileName.isEmpty() && ml <= QApplication::startDragDistance()) {
                 const QSizeF pdfSizePoints = GuiUtils::pdfPageSizeInPoints(latexAppearancePdfFileName);
-                const QSizeF visualSizePoints = LatexNoteUtils::visualSizeForLatexTextAnnotation(pdfSizePoints, sa->latexLayoutWidth());
+                const QSizeF visualSizePoints = LatexNoteUtils::visualSizeForLatexTextAnnotation(pdfSizePoints, sa->latexLayoutWidth(), LatexNoteUtils::paddingForLatexAnnotation(sa));
                 if (visualSizePoints.isValid() && !visualSizePoints.isEmpty() && pagewidth > 0.0 && pageheight > 0.0) {
                     rect.right = rect.left + visualSizePoints.width() / pagewidth;
                     rect.bottom = rect.top + visualSizePoints.height() / pageheight;
@@ -526,6 +524,19 @@ public:
                 }
                 rect.right = rect.left + stampxscale;
                 rect.bottom = rect.top + stampyscale;
+            }
+            if (latexStamp && ml > QApplication::startDragDistance() && pagewidth > 0.0 && !sa->contents().trimmed().isEmpty()) {
+                const double layoutWidth = LatexNoteUtils::layoutWidthForLatexTextVisibleWidth(rect.width() * pagewidth, LatexNoteUtils::paddingForLatexAnnotation(sa));
+                if (layoutWidth > 0.0) {
+                    sa->setLatexLayoutWidth(layoutWidth);
+                    const LatexNoteUtils::RenderResult rendered =
+                        LatexNoteUtils::renderAppearancePdf(sa->contents(), sa->latexTextColor(), layoutWidth, sa->isLatexCallout(), LatexNoteUtils::fontSizeForLatexAnnotation(sa));
+                    if (rendered.ok) {
+                        latexAppearancePdfFileName = rendered.pdfFileName;
+                        sa->setLatexAppearancePdfFileName(latexAppearancePdfFileName);
+                        LatexNoteUtils::showRenderWarning(pageView, rendered.warning);
+                    }
+                }
             }
             if (latexStamp && sa->isLatexCallout()) {
                 double boxWidth = rect.width();
@@ -645,7 +656,10 @@ private:
 
         if (m_annotElement.attribute(QStringLiteral("okularLatex")).toInt() != 0 && !latexAppearancePdfFileName.isEmpty() && pagewidth > 0.0 && pageheight > 0.0) {
             const QSizeF pdfSizePoints = GuiUtils::pdfPageSizeInPoints(latexAppearancePdfFileName);
-            const QSizeF visualSizePoints = LatexNoteUtils::visualSizeForLatexTextAnnotation(pdfSizePoints, 0.0);
+            bool ok = false;
+            const double configuredPadding = m_annotElement.attribute(QStringLiteral("latexPadding")).toDouble(&ok);
+            const double padding = ok && configuredPadding >= 0.0 ? configuredPadding : Okular::LatexNoteGeometry::defaultPaddingPoints();
+            const QSizeF visualSizePoints = LatexNoteUtils::visualSizeForLatexTextAnnotation(pdfSizePoints, 0.0, padding);
             if (visualSizePoints.isValid() && !visualSizePoints.isEmpty()) {
                 boxWidth = qBound(0.01, qMax(boxWidth, visualSizePoints.width() / pagewidth), 1.0);
                 boxHeight = qBound(0.01, qMax(boxHeight, visualSizePoints.height() / pageheight), 1.0);
@@ -2061,7 +2075,8 @@ int PageViewAnnotator::selectStampTool(const QString &stampSymbol)
     annotationElement.removeAttribute(QStringLiteral("latexBoxed"));
     annotationElement.removeAttribute(QStringLiteral("latexCallout"));
     annotationElement.removeAttribute(QStringLiteral("latexAppearancePdfFileName"));
-    annotationElement.removeAttribute(QStringLiteral("latexScale"));
+    annotationElement.removeAttribute(QStringLiteral("latexPadding"));
+    annotationElement.removeAttribute(QStringLiteral("latexFontSize"));
     annotationElement.removeAttribute(QStringLiteral("latexLayoutWidth"));
     annotationElement.removeAttribute(QStringLiteral("latexDefaultLayoutWidth"));
     annotationElement.removeAttribute(QStringLiteral("templateNoteData"));
@@ -2100,7 +2115,8 @@ int PageViewAnnotator::selectLatexStampTool(const QString &pdfAppearanceFile, co
     } else {
         annotationElement.setAttribute(QStringLiteral("latexAppearancePdfFileName"), pdfAppearanceFile);
     }
-    annotationElement.setAttribute(QStringLiteral("latexScale"), QStringLiteral("1"));
+    annotationElement.setAttribute(QStringLiteral("latexPadding"), QStringLiteral("3"));
+    annotationElement.setAttribute(QStringLiteral("latexFontSize"), QStringLiteral("0"));
     annotationElement.removeAttribute(QStringLiteral("latexLayoutWidth"));
     annotationElement.setAttribute(QStringLiteral("latexDefaultLayoutWidth"), QStringLiteral("page-third"));
     QColor targetTextColor = textColor;
@@ -2109,6 +2125,7 @@ int PageViewAnnotator::selectLatexStampTool(const QString &pdfAppearanceFile, co
     }
     annotationElement.setAttribute(QStringLiteral("textColor"), targetTextColor.name(QColor::HexArgb));
     if (boxed || callout) {
+        annotationElement.setAttribute(QStringLiteral("width"), QStringLiteral("1"));
         QColor targetFillColor = fillColor;
         if (!targetFillColor.isValid() || targetFillColor.alpha() == 0) {
             targetFillColor = callout ? Qt::white : Qt::yellow;
@@ -2120,6 +2137,7 @@ int PageViewAnnotator::selectLatexStampTool(const QString &pdfAppearanceFile, co
         annotationElement.setAttribute(QStringLiteral("color"), targetFillColor.name(QColor::HexArgb));
         annotationElement.setAttribute(QStringLiteral("borderColor"), targetBorderColor.name(QColor::HexArgb));
     } else {
+        annotationElement.setAttribute(QStringLiteral("width"), QStringLiteral("0"));
         annotationElement.setAttribute(QStringLiteral("color"), QStringLiteral("#00ffffff"));
         annotationElement.setAttribute(QStringLiteral("borderColor"), QStringLiteral("#00000000"));
     }
@@ -2161,7 +2179,8 @@ int PageViewAnnotator::selectTemplateTextTool(const QString &templateData, const
     annotationElement.removeAttribute(QStringLiteral("latexBoxed"));
     annotationElement.removeAttribute(QStringLiteral("latexCallout"));
     annotationElement.removeAttribute(QStringLiteral("latexAppearancePdfFileName"));
-    annotationElement.removeAttribute(QStringLiteral("latexScale"));
+    annotationElement.removeAttribute(QStringLiteral("latexPadding"));
+    annotationElement.removeAttribute(QStringLiteral("latexFontSize"));
     annotationElement.removeAttribute(QStringLiteral("latexLayoutWidth"));
     annotationElement.removeAttribute(QStringLiteral("latexDefaultLayoutWidth"));
 

@@ -530,6 +530,25 @@ void StampAnnotationWidget::createStyleWidget(QFormLayout *formlayout)
     addVerticalSpacer(formlayout);
 
     if (m_stampAnn->isOkularLatex()) {
+        m_latexFontSize = new QDoubleSpinBox(widget);
+        m_latexFontSize->setRange(0.0, 200.0);
+        m_latexFontSize->setDecimals(1);
+        m_latexFontSize->setSingleStep(1.0);
+        m_latexFontSize->setSuffix(i18nc("@item:intext unit points", " pt"));
+        m_latexFontSize->setSpecialValueText(i18nc("@item:intext LaTeX font size", "From LaTeX source"));
+        m_latexFontSize->setValue(m_stampAnn->latexFontSize());
+        formlayout->addRow(i18n("&Font size:"), m_latexFontSize);
+        connect(m_latexFontSize, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, &AnnotationWidget::dataChanged);
+
+        m_latexPadding = new QDoubleSpinBox(widget);
+        m_latexPadding->setRange(0.0, 100.0);
+        m_latexPadding->setDecimals(1);
+        m_latexPadding->setSingleStep(0.5);
+        m_latexPadding->setSuffix(i18nc("@item:intext unit points", " pt"));
+        m_latexPadding->setValue(m_stampAnn->latexPadding());
+        formlayout->addRow(i18n("&Padding:"), m_latexPadding);
+        connect(m_latexPadding, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, &AnnotationWidget::dataChanged);
+
         m_latexTextColorBn = new KColorButton(widget);
         QColor textColor = m_stampAnn->latexTextColor();
         if (!textColor.isValid() || textColor.alpha() == 0) {
@@ -539,7 +558,7 @@ void StampAnnotationWidget::createStyleWidget(QFormLayout *formlayout)
         formlayout->addRow(i18n("Text &color:"), m_latexTextColorBn);
         connect(m_latexTextColorBn, &KColorButton::changed, this, &AnnotationWidget::dataChanged);
 
-        if (m_stampAnn->style().width() > 0.0) {
+        if (m_stampAnn->latexNoteType() != Okular::Annotation::LatexNotePlain) {
             m_latexFillColorBn = new KColorButton(widget);
             QColor fillColor = m_stampAnn->latexFillColor();
             if (!fillColor.isValid() || fillColor.alpha() == 0) {
@@ -557,6 +576,15 @@ void StampAnnotationWidget::createStyleWidget(QFormLayout *formlayout)
             m_latexBorderColorBn->setColor(borderColor);
             formlayout->addRow(i18n("Border &color:"), m_latexBorderColorBn);
             connect(m_latexBorderColorBn, &KColorButton::changed, this, &AnnotationWidget::dataChanged);
+
+            m_latexBorderWidth = new QDoubleSpinBox(widget);
+            m_latexBorderWidth->setRange(0.0, 100.0);
+            m_latexBorderWidth->setDecimals(1);
+            m_latexBorderWidth->setSingleStep(0.5);
+            m_latexBorderWidth->setSuffix(i18nc("@item:intext unit points", " pt"));
+            m_latexBorderWidth->setValue(m_stampAnn->style().width());
+            formlayout->addRow(i18n("Border &width:"), m_latexBorderWidth);
+            connect(m_latexBorderWidth, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, &AnnotationWidget::dataChanged);
         }
         return;
     }
@@ -580,6 +608,12 @@ void StampAnnotationWidget::applyChanges()
     AnnotationWidget::applyChanges();
 
     if (m_stampAnn->isOkularLatex()) {
+        if (m_latexFontSize) {
+            m_stampAnn->setLatexFontSize(m_latexFontSize->value());
+        }
+        if (m_latexPadding) {
+            m_stampAnn->setLatexPadding(m_latexPadding->value());
+        }
         if (m_latexTextColorBn) {
             m_stampAnn->setLatexTextColor(m_latexTextColorBn->color());
             m_stampAnn->style().setColor(m_latexTextColorBn->color());
@@ -593,6 +627,9 @@ void StampAnnotationWidget::applyChanges()
             m_stampAnn->setLatexBorderColor(m_latexBorderColorBn->color());
         } else {
             m_stampAnn->setLatexBorderColor(Qt::transparent);
+        }
+        if (m_latexBorderWidth) {
+            m_stampAnn->style().setWidth(m_latexBorderWidth->value());
         }
         return;
     }

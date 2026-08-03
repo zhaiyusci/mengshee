@@ -9,6 +9,7 @@
 
 #include "../core/annotations.h"
 #include "../core/document.h"
+#include "../core/latexnotegeometry.h"
 #include "../core/page.h"
 #include "../settings_core.h"
 
@@ -31,6 +32,7 @@ private Q_SLOTS:
     void testTypewriter();
     void testLatexRuntimePathIsNotSerialized();
     void testLatexStampPropertiesRoundTrip();
+    void testLatexNoteGeometry();
     void testCalloutTranslateKeepsLeaderPoints();
     void cleanupTestCase();
 
@@ -167,14 +169,12 @@ void AnnotationTest::testLatexRuntimePathIsNotSerialized()
     textAnnotation.setContents(QStringLiteral("E=mc^2"));
     textAnnotation.setOkularLatex(true);
     textAnnotation.setLatexLayoutWidth(123.0);
-    textAnnotation.setLatexScale(1.25);
     textAnnotation.setLatexAppearancePdfFileName(QStringLiteral("/tmp/okular-latex-appearances/latex-notes/runtime.pdf"));
 
     QDomNode textNode = textAnnotation.getAnnotationPropertiesDomNode();
     const QDomElement textBase = textNode.toElement().elementsByTagName(QStringLiteral("base")).item(0).toElement();
     QVERIFY(!textBase.hasAttribute(QStringLiteral("okularLatex")));
     QVERIFY(!textBase.hasAttribute(QStringLiteral("latexLayoutWidth")));
-    QVERIFY(!textBase.hasAttribute(QStringLiteral("latexScale")));
     QVERIFY(!textBase.hasAttribute(QStringLiteral("latexAppearancePdfFileName")));
 
     QDomNode runtimeNode = textAnnotation.getAnnotationPropertiesDomNode(true);
@@ -189,7 +189,8 @@ void AnnotationTest::testLatexStampPropertiesRoundTrip()
     stampAnnotation.setContents(QStringLiteral("x^2"));
     stampAnnotation.setOkularLatex(true);
     stampAnnotation.setLatexLayoutWidth(96.0);
-    stampAnnotation.setLatexScale(1.5);
+    stampAnnotation.setLatexPadding(8.5);
+    stampAnnotation.setLatexFontSize(6.5);
     stampAnnotation.setLatexAppearancePdfFileName(QStringLiteral("/tmp/okular-latex-appearances/latex-notes/stamp.pdf"));
     stampAnnotation.setLatexTextColor(QColor(10, 20, 30));
     stampAnnotation.setLatexFillColor(QColor(40, 50, 60, 70));
@@ -201,18 +202,27 @@ void AnnotationTest::testLatexStampPropertiesRoundTrip()
     QCOMPARE(runtimeBase.attribute(QStringLiteral("latexTextColor")), QStringLiteral("#ff0a141e"));
     QCOMPARE(runtimeBase.attribute(QStringLiteral("latexFillColor")), QStringLiteral("#4628323c"));
     QCOMPARE(runtimeBase.attribute(QStringLiteral("latexBorderColor")), QStringLiteral("#ff505a64"));
+    QCOMPARE(runtimeBase.attribute(QStringLiteral("latexFontSize")), QStringLiteral("6.500"));
     Okular::StampAnnotation restoredStamp(runtimeNode);
 
     QCOMPARE(restoredStamp.stampIconName(), QStringLiteral("latex-notes"));
     QCOMPARE(restoredStamp.contents(), QStringLiteral("x^2"));
     QVERIFY(restoredStamp.isOkularLatex());
     QCOMPARE(restoredStamp.latexLayoutWidth(), 96.0);
-    QCOMPARE(restoredStamp.latexScale(), 1.5);
+    QCOMPARE(restoredStamp.latexPadding(), 8.5);
+    QCOMPARE(restoredStamp.latexFontSize(), 6.5);
     QCOMPARE(restoredStamp.latexAppearancePdfFileName(), QStringLiteral("/tmp/okular-latex-appearances/latex-notes/stamp.pdf"));
     QCOMPARE(restoredStamp.latexTextColor(), QColor(10, 20, 30));
     QCOMPARE(restoredStamp.latexFillColor(), QColor(40, 50, 60, 70));
     QCOMPARE(restoredStamp.latexBorderColor(), QColor(80, 90, 100));
     QCOMPARE(restoredStamp.style().width(), 1.0);
+}
+
+void AnnotationTest::testLatexNoteGeometry()
+{
+    QCOMPARE(Okular::LatexNoteGeometry::layoutWidthForVisibleWidth(200.0, 10.0), 180.0);
+    QCOMPARE(Okular::LatexNoteGeometry::layoutWidthForVisibleWidth(10.0, 10.0), 1.0);
+    QCOMPARE(Okular::LatexNoteGeometry::visualSizeForContent(QSizeF(80.0, 20.0), 100.0, 4.0), QSizeF(108.0, 28.0));
 }
 
 void AnnotationTest::testCalloutTranslateKeepsLeaderPoints()

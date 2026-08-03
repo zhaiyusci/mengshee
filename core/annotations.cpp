@@ -952,18 +952,6 @@ double Annotation::latexLayoutWidth() const
     return d->m_latexLayoutWidth;
 }
 
-void Annotation::setLatexScale(double scale)
-{
-    Q_D(Annotation);
-    d->m_latexScale = std::isfinite(scale) && scale > 0.0 ? scale : 1.0;
-}
-
-double Annotation::latexScale() const
-{
-    Q_D(const Annotation);
-    return d->m_latexScale;
-}
-
 void Annotation::setLatexTextColor(const QColor &color)
 {
     Q_D(Annotation);
@@ -1010,6 +998,30 @@ QString Annotation::latexAppearancePdfFileName() const
 {
     Q_D(const Annotation);
     return d->m_latexAppearancePdfFileName;
+}
+
+void Annotation::setLatexPadding(double padding)
+{
+    Q_D(Annotation);
+    d->m_latexPadding = std::isfinite(padding) && padding >= 0.0 ? padding : LatexNoteGeometry::defaultPaddingPoints();
+}
+
+double Annotation::latexPadding() const
+{
+    Q_D(const Annotation);
+    return d->m_latexPadding;
+}
+
+void Annotation::setLatexFontSize(double fontSize)
+{
+    Q_D(Annotation);
+    d->m_latexFontSize = std::isfinite(fontSize) && fontSize > 0.0 ? qBound(1.0, fontSize, 200.0) : 0.0;
+}
+
+double Annotation::latexFontSize() const
+{
+    Q_D(const Annotation);
+    return d->m_latexFontSize;
 }
 
 void Annotation::setTemplateNoteData(const QString &data)
@@ -1115,8 +1127,11 @@ void Annotation::store(QDomNode &annNode, QDomDocument &document) const
     if (storeLatexMetadata && d->m_latexLayoutWidth > 0.0) {
         e.setAttribute(QStringLiteral("latexLayoutWidth"), QString::number(d->m_latexLayoutWidth, 'f', 3));
     }
-    if (storeLatexMetadata && d->m_latexScale > 0.0 && d->m_latexScale != 1.0) {
-        e.setAttribute(QStringLiteral("latexScale"), QString::number(d->m_latexScale, 'f', 6));
+    if (storeLatexMetadata && d->m_latexPadding != LatexNoteGeometry::defaultPaddingPoints()) {
+        e.setAttribute(QStringLiteral("latexPadding"), QString::number(d->m_latexPadding, 'f', 3));
+    }
+    if (storeLatexMetadata && d->m_latexFontSize > 0.0) {
+        e.setAttribute(QStringLiteral("latexFontSize"), QString::number(d->m_latexFontSize, 'f', 3));
     }
     if (storeLatexMetadata && d->m_latexTextColor.isValid()) {
         e.setAttribute(QStringLiteral("latexTextColor"), d->m_latexTextColor.name(QColor::HexArgb));
@@ -1370,13 +1385,6 @@ void AnnotationPrivate::setAnnotationProperties(const QDomNode &node)
             m_latexLayoutWidth = width;
         }
     }
-    if (e.hasAttribute(QStringLiteral("latexScale"))) {
-        bool ok = false;
-        const double scale = e.attribute(QStringLiteral("latexScale")).toDouble(&ok);
-        if (ok && scale > 0.0) {
-            m_latexScale = scale;
-        }
-    }
     if (e.hasAttribute(QStringLiteral("latexTextColor"))) {
         m_latexTextColor = QColor(e.attribute(QStringLiteral("latexTextColor")));
     }
@@ -1388,6 +1396,20 @@ void AnnotationPrivate::setAnnotationProperties(const QDomNode &node)
     }
     if (e.hasAttribute(QStringLiteral("latexAppearancePdfFileName"))) {
         m_latexAppearancePdfFileName = e.attribute(QStringLiteral("latexAppearancePdfFileName"));
+    }
+    if (e.hasAttribute(QStringLiteral("latexPadding"))) {
+        bool ok = false;
+        const double padding = e.attribute(QStringLiteral("latexPadding")).toDouble(&ok);
+        if (ok && padding >= 0.0) {
+            m_latexPadding = padding;
+        }
+    }
+    if (e.hasAttribute(QStringLiteral("latexFontSize"))) {
+        bool ok = false;
+        const double fontSize = e.attribute(QStringLiteral("latexFontSize")).toDouble(&ok);
+        if (ok && fontSize > 0.0) {
+            m_latexFontSize = fontSize;
+        }
     }
     if (e.hasAttribute(QStringLiteral("templateNoteData"))) {
         const ParsedTemplateNoteData parsed = parseTemplateNoteData(e.attribute(QStringLiteral("templateNoteData")));

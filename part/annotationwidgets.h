@@ -172,6 +172,9 @@ private:
     KColorButton *m_latexTextColorBn {nullptr};
     KColorButton *m_latexFillColorBn {nullptr};
     KColorButton *m_latexBorderColorBn {nullptr};
+    QDoubleSpinBox *m_latexFontSize {nullptr};
+    QDoubleSpinBox *m_latexPadding {nullptr};
+    QDoubleSpinBox *m_latexBorderWidth {nullptr};
 };
 
 class LineAnnotationWidget : public AnnotationWidget

@@ -136,6 +136,7 @@ struct StemtexApi {
     using Create = void *(*)(const StemTeXConfig *, int *, char **);
     using Render = int (*)(void *, const char *, double, StemTeXRenderResult *, int *, char **);
     using RenderAsync = int (*)(void *, const char *, double, uint64_t *, RenderCallback, void *, int *, char **);
+    using RenderAsyncWithFontSize = int (*)(void *, const char *, double, double, uint64_t *, RenderCallback, void *, int *, char **);
     using EngineSnapshot = int (*)(void *, StemTeXEngineSnapshot *);
     using ProfileInfo = char *(*)(const char *, int *, char **);
     using ValidateConfig = int (*)(const StemTeXConfig *, int *, char **);
@@ -147,6 +148,7 @@ struct StemtexApi {
     Create create = nullptr;
     Render render = nullptr;
     RenderAsync renderAsync = nullptr;
+    RenderAsyncWithFontSize renderAsyncWithFontSize = nullptr;
     EngineSnapshot engineSnapshot = nullptr;
     ProfileInfo profileInfo = nullptr;
     ValidateConfig validateConfig = nullptr;
@@ -171,6 +173,7 @@ struct StemtexApi {
         create = reinterpret_cast<Create>(library.resolve("stemtex_renderer_create"));
         render = reinterpret_cast<Render>(library.resolve("stemtex_renderer_render"));
         renderAsync = reinterpret_cast<RenderAsync>(library.resolve("stemtex_renderer_render_async"));
+        renderAsyncWithFontSize = reinterpret_cast<RenderAsyncWithFontSize>(library.resolve("stemtex_renderer_render_async_with_font_size"));
         engineSnapshot = reinterpret_cast<EngineSnapshot>(library.resolve("stemtex_renderer_engine_snapshot"));
         profileInfo = reinterpret_cast<ProfileInfo>(library.resolve("stemtex_renderer_profile_info_json"));
         validateConfig = reinterpret_cast<ValidateConfig>(library.resolve("stemtex_renderer_validate_config"));
@@ -281,7 +284,7 @@ public:
         return runtimeRoot();
     }
 
-    LatexRenderer::Error render(const QString &latexSource, const QColor &textColor, double maxWidth, QString &pdfFileName, QString &latexOutput, QStringList &fileList, LatexRenderWarning *warning)
+    LatexRenderer::Error render(const QString &latexSource, const QColor &textColor, double maxWidth, double fontSize, QString &pdfFileName, QString &latexOutput, QStringList &fileList, LatexRenderWarning *warning)
     {
         if (!m_renderer) {
             latexOutput = i18n("StemTeX renderer is not initialized.");
@@ -365,7 +368,15 @@ public:
         uint64_t jobId = 0;
         int submitted = 0;
         try {
-            submitted = m_api.renderAsync(m_renderer, snippet.constData(), widthPt, &jobId, callback, state.get(), &submitErrorCode, &submitError);
+            if (std::isfinite(fontSize) && fontSize > 0.0) {
+                if (!m_api.renderAsyncWithFontSize) {
+                    latexOutput = i18n("The installed StemTeX renderer does not support configurable font sizes.");
+                    return LatexRenderer::LatexFailed;
+                }
+                submitted = m_api.renderAsyncWithFontSize(m_renderer, snippet.constData(), widthPt, fontSize, &jobId, callback, state.get(), &submitErrorCode, &submitError);
+            } else {
+                submitted = m_api.renderAsync(m_renderer, snippet.constData(), widthPt, &jobId, callback, state.get(), &submitErrorCode, &submitError);
+            }
         } catch (const std::exception &exception) {
             latexOutput = i18n("StemTeX rendering failed unexpectedly: %1", QString::fromLocal8Bit(exception.what()));
             return LatexRenderer::LatexFailed;
@@ -1095,7 +1106,7 @@ LatexRenderer::Error LatexRenderer::renderLatexToImage(const QString &latexFormu
     return LatexFailed;
 }
 
-LatexRenderer::Error LatexRenderer::renderLatexToPdf(const QString &latexFormula, const QColor &textColor, QString &pdfFileName, QString &latexOutput, double maxWidth)
+LatexRenderer::Error LatexRenderer::renderLatexToPdf(const QString &latexFormula, const QColor &textColor, QString &pdfFileName, QString &latexOutput, double maxWidth, double fontSize)
 {
     m_lastBackendName.clear();
     m_lastWarning = {};
@@ -1106,7 +1117,10 @@ LatexRenderer::Error LatexRenderer::renderLatexToPdf(const QString &latexFormula
         return LatexFailed;
     }
 #ifdef Q_OS_WIN
-    logTexInvocation("stemtex-render", QStringLiteral("stemtex"), QStringLiteral("configured-stemtex"), {QStringLiteral("max width: %1").arg(maxWidth), QStringLiteral("source length: %1").arg(formula.size())});
+    logTexInvocation("stemtex-render",
+                     QStringLiteral("stemtex"),
+                     QStringLiteral("configured-stemtex"),
+                     {QStringLiteral("max width: %1").arg(maxWidth), QStringLiteral("font size: %1").arg(fontSize), QStringLiteral("source length: %1").arg(formula.size())});
     QString stemtexError;
     const bool waitForStemTeXStartup = QCoreApplication::instance() && QThread::currentThread() != QCoreApplication::instance()->thread();
     const std::shared_ptr<StemtexRendererSession> session = StemtexRendererSession::instance(&stemtexError, waitForStemTeXStartup);
@@ -1116,7 +1130,7 @@ LatexRenderer::Error LatexRenderer::renderLatexToPdf(const QString &latexFormula
         return LatexFailed;
     }
 
-    const Error stemtexErrorCode = session->render(formula, textColor, maxWidth, pdfFileName, latexOutput, m_fileList, &m_lastWarning);
+    const Error stemtexErrorCode = session->render(formula, textColor, maxWidth, fontSize, pdfFileName, latexOutput, m_fileList, &m_lastWarning);
     if (stemtexErrorCode == NoError) {
         m_lastBackendName = QStringLiteral("stemtex");
     }

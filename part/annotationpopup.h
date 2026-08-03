@@ -87,9 +87,6 @@ private:
     void addLatexAnnotationActions(QMenu *menu, AnnotPagePair pair);
     void addTemplateAnnotationActions(QMenu *menu, AnnotPagePair pair);
     void doEditTemplateAnnotation(AnnotPagePair pair);
-    void doSetLatexAnnotationWidth(AnnotPagePair pair);
-    void doFitLatexAnnotationToContent(AnnotPagePair pair);
-    void doResetLatexAnnotationScale(AnnotPagePair pair);
     void doToggleLatexAnnotationFrame(AnnotPagePair pair);
     void doRemovePageAnnotation(AnnotPagePair pair);
     void doOpenAnnotationWindow(AnnotPagePair pair);

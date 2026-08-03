@@ -22,6 +22,7 @@
 #include "annotationwidgets.h"
 #include "core/annotations.h"
 #include "core/document.h"
+#include "core/latexnotegeometry.h"
 #include "core/page.h"
 #include "latexnoteutils.h"
 
@@ -34,6 +35,8 @@ struct LatexStampRenderState {
     QColor fillColor;
     QColor borderColor;
     double borderWidth = 0.0;
+    double padding = Okular::LatexNoteGeometry::defaultPaddingPoints();
+    double fontSize = 0.0;
 };
 
 QColor validLatexStampTextColor(const Okular::StampAnnotation *annotation)
@@ -68,18 +71,19 @@ LatexStampRenderState latexStampRenderState(const Okular::StampAnnotation *annot
     }
 
     state.latex = true;
-    state.boxed = annotation->style().width() > 0.0;
+    state.boxed = annotation->latexNoteType() != Okular::Annotation::LatexNotePlain;
     state.textColor = validLatexStampTextColor(annotation);
     state.fillColor = validLatexStampFillColor(annotation, state.boxed);
     state.borderColor = validLatexStampBorderColor(annotation, state.boxed);
-    state.borderWidth = state.boxed ? qMax(1.0, annotation->style().width()) : 0.0;
+    state.borderWidth = state.boxed ? qMax(0.0, annotation->style().width()) : 0.0;
+    state.padding = LatexNoteUtils::paddingForLatexAnnotation(annotation);
+    state.fontSize = LatexNoteUtils::fontSizeForLatexAnnotation(annotation);
     return state;
 }
 
 bool latexStampRenderStateChanged(const LatexStampRenderState &before, const LatexStampRenderState &after)
 {
-    return before.latex != after.latex || before.boxed != after.boxed || before.textColor != after.textColor || before.fillColor != after.fillColor || before.borderColor != after.borderColor
-        || qAbs(before.borderWidth - after.borderWidth) > 1e-6;
+    return before.latex != after.latex || before.boxed != after.boxed || before.textColor != after.textColor || qAbs(before.padding - after.padding) > 1e-6 || qAbs(before.fontSize - after.fontSize) > 1e-6;
 }
 }
 
@@ -236,6 +240,9 @@ void AnnotsPropertiesDialog::slotapply()
         const LatexStampRenderState latexRenderStateAfter = latexStampRenderState(stampAnnotation);
         bool appearanceUpdated = false;
         if (latexStampRenderStateChanged(latexRenderStateBefore, latexRenderStateAfter)) {
+            const Okular::Page *page = m_document->page(m_page);
+            const double layoutWidth = LatexNoteUtils::layoutWidthForLatexFrame(stampAnnotation->boundingRectangle(), page, latexRenderStateAfter.padding);
+            stampAnnotation->setLatexLayoutWidth(layoutWidth);
             appearanceUpdated = LatexNoteUtils::updateLatexStampAnnotationAppearance(this,
                                                                                     m_document,
                                                                                     m_page,
@@ -243,9 +250,8 @@ void AnnotsPropertiesDialog::slotapply()
                                                                                     latexRenderStateAfter.textColor,
                                                                                     latexRenderStateAfter.fillColor,
                                                                                     latexRenderStateAfter.borderColor,
-                                                                                    stampAnnotation->latexLayoutWidth(),
+                                                                                    layoutWidth,
                                                                                     latexRenderStateAfter.boxed,
-                                                                                    stampAnnotation->latexScale(),
                                                                                     false);
         }
         if (!appearanceUpdated) {

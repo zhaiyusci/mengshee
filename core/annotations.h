@@ -792,14 +792,26 @@ public:
     double latexLayoutWidth() const;
 
     /**
-     * Sets the visual scale applied to the rendered LaTeX appearance.
+     * Sets the padding between the LaTeX content and its annotation frame, in PDF points.
      */
-    void setLatexScale(double scale);
+    void setLatexPadding(double padding);
 
     /**
-     * Returns the visual scale applied to the rendered LaTeX appearance.
+     * Returns the padding between the LaTeX content and its annotation frame, in PDF points.
      */
-    double latexScale() const;
+    double latexPadding() const;
+
+    /**
+     * Sets the base LaTeX font size in PDF points.
+     *
+     * A value less than or equal to 0 leaves the font size to the LaTeX source.
+     */
+    void setLatexFontSize(double fontSize);
+
+    /**
+     * Returns the base LaTeX font size in PDF points.
+     */
+    double latexFontSize() const;
 
     /**
      * Sets the LaTeX text color.

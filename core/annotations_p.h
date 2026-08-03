@@ -8,6 +8,7 @@
 #define OKULAR_ANNOTATIONS_P_H
 
 #include "annotations.h"
+#include "latexnotegeometry.h"
 #include "area.h"
 
 // qt/kde includes
@@ -71,7 +72,8 @@ public:
     NormalizedPoint m_latexCalloutPoints[3];
     NormalizedPoint m_transformedLatexCalloutPoints[3];
     double m_latexLayoutWidth = 0.0;
-    double m_latexScale = 1.0;
+    double m_latexPadding = LatexNoteGeometry::defaultPaddingPoints();
+    double m_latexFontSize = 0.0;
     QColor m_latexTextColor;
     QColor m_latexFillColor;
     QColor m_latexBorderColor;

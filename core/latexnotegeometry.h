@@ -14,31 +14,26 @@ namespace Okular
 {
 namespace LatexNoteGeometry
 {
-constexpr double paddingPoints()
+constexpr double defaultPaddingPoints()
 {
-    return 6.0;
+    return 3.0;
 }
 
-constexpr double contentInsetPoints()
+inline double layoutWidthForVisibleWidth(double visibleWidthPoints, double padding)
 {
-    return paddingPoints() / 2.0;
-}
-
-inline double layoutWidthForVisibleWidth(double visibleWidthPoints, double scale)
-{
-    if (!std::isfinite(visibleWidthPoints) || visibleWidthPoints <= 0.0 || !std::isfinite(scale) || scale <= 0.0) {
+    if (!std::isfinite(visibleWidthPoints) || visibleWidthPoints <= 0.0 || !std::isfinite(padding) || padding < 0.0) {
         return 0.0;
     }
-    return std::max(1.0, visibleWidthPoints / scale - paddingPoints());
+    return std::max(1.0, visibleWidthPoints - 2.0 * padding);
 }
 
-inline QSizeF visualSizeForContent(const QSizeF &contentSizePoints, double layoutWidthPoints)
+inline QSizeF visualSizeForContent(const QSizeF &contentSizePoints, double layoutWidthPoints, double padding = defaultPaddingPoints())
 {
-    if (!contentSizePoints.isValid() || contentSizePoints.isEmpty()) {
+    if (!contentSizePoints.isValid() || contentSizePoints.isEmpty() || !std::isfinite(padding) || padding < 0.0) {
         return contentSizePoints;
     }
 
-    return QSizeF(std::max(layoutWidthPoints, contentSizePoints.width() + paddingPoints()), contentSizePoints.height() + paddingPoints());
+    return QSizeF(std::max(layoutWidthPoints, contentSizePoints.width()) + 2.0 * padding, contentSizePoints.height() + 2.0 * padding);
 }
 }
 }

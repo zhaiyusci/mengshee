@@ -1931,6 +1931,28 @@ msgstr "右对齐"
 msgid "Border &width:"
 msgstr "边框宽度(&W)："
 
+#: part/annotationwidgets.cpp
+#, kde-format
+msgid "&Padding:"
+msgstr "内边距(&P)："
+
+#: part/annotationwidgets.cpp
+#, kde-format
+msgid "&Font size:"
+msgstr "字号(&F)："
+
+#: part/annotationwidgets.cpp
+#, kde-format
+msgctxt "@item:intext LaTeX font size"
+msgid "From LaTeX source"
+msgstr "由 LaTeX 源码决定"
+
+#: part/annotationwidgets.cpp
+#, kde-format
+msgctxt "@item:intext unit points"
+msgid " pt"
+msgstr " 点"
+
 #: part/annotationwidgets.cpp:414
 #, kde-format
 msgid "Approved"
@@ -6095,41 +6117,11 @@ msgctxt "@action:inmenu"
 msgid "Use Inline Note Frame"
 msgstr "使用内联批注边框"
 
-#: part/annotationpopup.cpp:600
-#, kde-format
-msgctxt "@action:inmenu"
-msgid "Set LaTeX Note Width…"
-msgstr "设置 LaTeX 批注宽度..."
-
-#: part/annotationpopup.cpp:604
-#, kde-format
-msgctxt "@action:inmenu"
-msgid "Fit LaTeX Note to Content"
-msgstr "使 LaTeX 批注适应内容"
-
-#: part/annotationpopup.cpp:608
-#, kde-format
-msgctxt "@action:inmenu"
-msgid "Reset LaTeX Note Scale"
-msgstr "重置 LaTeX 批注缩放"
-
 #: part/annotationpopup.cpp:612
 #, kde-format
 msgctxt "@action:inmenu"
 msgid "Convert LaTeX Note to Plain Text"
 msgstr "将 LaTeX 批注转换为纯文本"
-
-#: part/annotationpopup.cpp:699
-#, kde-format
-msgctxt "@title:window"
-msgid "Set LaTeX Note Width"
-msgstr "设置 LaTeX 批注宽度"
-
-#: part/annotationpopup.cpp:700
-#, kde-format
-msgctxt "@label:spinbox"
-msgid "Width (% of page):"
-msgstr "宽度（占页面百分比）："
 
 #: part/annotationpopup.cpp:871 part/editannottooldialog.cpp:90
 #: part/pageviewannotator.cpp:369 part/pageviewannotator.cpp:2025
@@ -6435,6 +6427,10 @@ msgstr "StemTeX 渲染器正在启动。"
 #: part/latexrenderer.cpp
 msgid "StemTeX renderer has not started yet."
 msgstr "StemTeX 渲染器尚未启动。"
+
+#: part/latexrenderer.cpp
+msgid "The installed StemTeX renderer does not support configurable font sizes."
+msgstr "已安装的 StemTeX 渲染器不支持配置字号。"
 
 #: part/latexrenderer.cpp
 #, kde-format

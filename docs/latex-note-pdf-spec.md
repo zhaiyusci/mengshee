@@ -79,10 +79,11 @@ Minimal schema:
   "type": "plain",
   "layout": {
     "widthPt": 0,
-    "scale": 1
+    "paddingPt": 3
   },
   "style": {
-    "textColor": "#ff000000"
+    "textColor": "#ff000000",
+    "fontSizePt": 0
   }
 }
 ```
@@ -99,11 +100,23 @@ Fields:
 : Optional number in PDF points. `0` or absence means natural width. A positive
 value is the TeX paragraph width used for reflow.
 
-`layout.scale`
-: Optional positive number. Defaults to `1`.
+`layout.paddingPt`
+: Optional non-negative number in PDF points. Defaults to `3`. It is applied
+independently on every side between the annotation frame and LaTeX content.
 
 `style.textColor`
 : Optional CSS-style ARGB hex string, `#aarrggbb`. Defaults to opaque black.
+
+`style.fontSizePt`
+: Optional number in PDF points in the range `1` through `200`. `0` or absence
+leaves the base font size to the LaTeX source and StemTeX profile. A positive
+value is passed unchanged to StemTeX's per-request font-size API; StemTeX uses
+`\fontsize` with a baseline skip of `1.2 * fontSizePt` before evaluating
+`/Contents`. Font-size commands inside `/Contents` may still override it
+locally.
+
+`style.fontSizePt` is a TeX layout input, not an appearance zoom. Scholia must
+render glyphs at the requested size and must not scale the completed `/AP`.
 
 `style.fillColor`
 : Optional ARGB hex string. Used by boxed and callout notes. Transparent means
@@ -134,7 +147,7 @@ A plain note is unboxed rendered LaTeX content.
   /Subtype /Stamp
   /Rect [100 500 220 530]
   /Contents (E = mc^2)
-  /LatexNoteData ({"version":20260610,"type":"plain","layout":{"widthPt":0,"scale":1},"style":{"textColor":"#ff000000"}})
+  /LatexNoteData ({"version":20260610,"type":"plain","layout":{"widthPt":0,"paddingPt":3},"style":{"textColor":"#ff000000","fontSizePt":0}})
   /AP << /N 21 0 R >>
 >>
 ```
@@ -147,10 +160,11 @@ Plain-note JSON:
   "type": "plain",
   "layout": {
     "widthPt": 0,
-    "scale": 1
+    "paddingPt": 3
   },
   "style": {
-    "textColor": "#ff000000"
+    "textColor": "#ff000000",
+    "fontSizePt": 0
   }
 }
 ```
@@ -167,7 +181,7 @@ style is stored in JSON.
   /Subtype /Stamp
   /Rect [100 500 260 550]
   /Contents (\int_a^b f(x)\,dx)
-  /LatexNoteData ({"version":20260610,"type":"boxed","layout":{"widthPt":140,"scale":1},"style":{"textColor":"#ff000000","fillColor":"#ffffff00","borderColor":"#ff000000","borderWidthPt":1}})
+  /LatexNoteData ({"version":20260610,"type":"boxed","layout":{"widthPt":140,"paddingPt":3},"style":{"textColor":"#ff000000","fontSizePt":0,"fillColor":"#ffffff00","borderColor":"#ff000000","borderWidthPt":1}})
   /AP << /N 31 0 R >>
 >>
 ```
@@ -180,10 +194,11 @@ Boxed-note JSON:
   "type": "boxed",
   "layout": {
     "widthPt": 140,
-    "scale": 1
+    "paddingPt": 3
   },
   "style": {
     "textColor": "#ff000000",
+    "fontSizePt": 0,
     "fillColor": "#ffffff00",
     "borderColor": "#ff000000",
     "borderWidthPt": 1
@@ -210,10 +225,11 @@ Callout JSON:
   "type": "callout",
   "layout": {
     "widthPt": 100,
-    "scale": 1
+    "paddingPt": 3
   },
   "style": {
     "textColor": "#ff000000",
+    "fontSizePt": 0,
     "fillColor": "#ffffffff",
     "borderColor": "#ff000000",
     "borderWidthPt": 1
@@ -260,14 +276,21 @@ building `/AP`.
 
 ## Layout And Resize Rules
 
-LaTeX notes separate layout from visual scale:
+The annotation rectangle is the authoritative outer frame. A render result
+must never replace or enlarge a rectangle chosen by the user.
 
-- `layout.widthPt` controls TeX paragraph reflow;
-- `layout.scale` controls visual size;
-- changing `layout.widthPt` may require re-rendering;
-- changing only `layout.scale` should reuse the existing appearance whenever
-  possible;
-- vertical-only resizing should not invoke TeX or StemTeX.
+- dragging any resize handle changes the outer frame exactly as indicated by
+  the pointer, without preserving the rendered content's aspect ratio;
+- `layout.widthPt` is the last TeX paragraph width used for reflow and is
+  derived from the frame's inner width and padding;
+- `layout.paddingPt` and `style.borderWidthPt` remain physical PDF-point
+  measurements;
+- content outside the inner frame is clipped rather than expanding the
+  annotation rectangle;
+- horizontal resizing may re-render for paragraph reflow, but the asynchronous
+  result must keep the exact frame selected by the user;
+- vertical-only resizing changes only the clipping frame and does not invoke
+  TeX or StemTeX.
 
 All dimensions ending in `Pt` are PDF points. Values ending in `Norm` are
 normalized page coordinates.
@@ -279,8 +302,8 @@ can change:
 
 - when creating a new LaTeX note with non-empty source;
 - after editing the LaTeX source;
-- after changing render-affecting style such as text color, fill color, border
-  color, boxed/plain state, or paragraph layout width;
+- after changing render-affecting style such as text color, base font size,
+  boxed/plain state, padding, or paragraph layout width;
 - after horizontal resize when the resize changes `layout.widthPt`;
 - when a resize operation needs the appearance but the runtime appearance PDF
   path or page size is unavailable.
@@ -294,7 +317,7 @@ the existing appearance:
 - changing annotation opacity or other PDF annotation state that does not alter
   the rendered LaTeX page;
 - opening a document that already has a valid self-contained normal appearance;
-- vertical-only resize that only updates `layout.scale`.
+- vertical-only resize that only changes the clipping frame.
 
 Changing StemTeX configuration, such as the selected profile or TeX tree, should
 restart the renderer for future work. It should not automatically re-render all

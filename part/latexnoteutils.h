@@ -50,15 +50,16 @@ double pageHeightInPoints(const Okular::Page *page);
 double rectWidthInPoints(const Okular::NormalizedRect &rect, const Okular::Page *page);
 double rectHeightInPoints(const Okular::NormalizedRect &rect, const Okular::Page *page);
 double annotationWidthInPoints(const Okular::Annotation *annotation, const Okular::Page *page);
-double latexTextAnnotationPaddingPoints();
-double layoutWidthForLatexTextVisibleWidth(double visibleWidthPoints, double scale);
+double layoutWidthForLatexTextVisibleWidth(double visibleWidthPoints, double padding);
+double layoutWidthForLatexFrame(const Okular::NormalizedRect &frame, const Okular::Page *page, double padding);
+double paddingForLatexAnnotation(const Okular::Annotation *annotation);
+double fontSizeForLatexAnnotation(const Okular::Annotation *annotation);
 double layoutWidthForLatexTextAnnotation(const Okular::TextAnnotation *annotation, const Okular::Page *page);
-double scaleForLatexTextAnnotation(const Okular::TextAnnotation *annotation);
-QSizeF visualSizeForLatexTextAnnotation(const QSizeF &contentPdfSizePoints, double layoutWidthPoints);
-Okular::NormalizedRect boundingRectForPdf(const Okular::NormalizedRect &sourceRect, const Okular::Page *page, const QSizeF &pdfSizePoints, double scale = 1.0);
+QSizeF visualSizeForLatexTextAnnotation(const QSizeF &contentPdfSizePoints, double layoutWidthPoints, double padding);
 
 RenderResult renderAppearancePdf(const QString &latexInput, const QColor &textColor, double layoutWidthPoints);
 RenderResult renderAppearancePdf(const QString &latexInput, const QColor &textColor, double layoutWidthPoints, bool callout);
+RenderResult renderAppearancePdf(const QString &latexInput, const QColor &textColor, double layoutWidthPoints, bool callout, double fontSizePoints);
 bool updateLatexTextAnnotationAppearance(QWidget *parent,
                                          Okular::Document *document,
                                          int pageNumber,
@@ -68,7 +69,7 @@ bool updateLatexTextAnnotationAppearance(QWidget *parent,
                                          const QColor &borderColor,
                                          double layoutWidthPoints,
                                          bool boxed,
-                                         double visualScale);
+                                         bool prepareModification = true);
 bool updateLatexStampAnnotationAppearance(QWidget *parent,
                                           Okular::Document *document,
                                           int pageNumber,
@@ -78,7 +79,6 @@ bool updateLatexStampAnnotationAppearance(QWidget *parent,
                                           const QColor &borderColor,
                                           double layoutWidthPoints,
                                           bool boxed,
-                                          double visualScale,
                                           bool prepareModification = true);
 void updateLatexTextAnnotationAppearanceAsync(QWidget *parent,
                                               Okular::Document *document,
@@ -89,8 +89,7 @@ void updateLatexTextAnnotationAppearanceAsync(QWidget *parent,
                                               const QColor &fillColor,
                                               const QColor &borderColor,
                                               double layoutWidthPoints,
-                                              bool boxed,
-                                              double visualScale);
+                                              bool boxed);
 void updateLatexStampAnnotationAppearanceAsync(QWidget *parent,
                                                Okular::Document *document,
                                                int pageNumber,
@@ -100,8 +99,7 @@ void updateLatexStampAnnotationAppearanceAsync(QWidget *parent,
                                                const QColor &fillColor,
                                                const QColor &borderColor,
                                                double layoutWidthPoints,
-                                               bool boxed,
-                                               double visualScale);
+                                               bool boxed);
 QString warningText(const GuiUtils::LatexRenderWarning &warning);
 void showRenderWarning(QWidget *parent, const QString &warningMessage);
 void showRenderWarning(QWidget *parent, const GuiUtils::LatexRenderWarning &warning);
