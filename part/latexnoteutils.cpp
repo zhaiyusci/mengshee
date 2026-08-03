@@ -5,11 +5,14 @@
 #include "latexnoteutils.h"
 
 #include <cmath>
+#include <exception>
 #include <memory>
 #include <thread>
+#include <utility>
 
 #include <KLocalizedString>
 #include <KMessageBox>
+#include <QCoreApplication>
 #include <QCryptographicHash>
 #include <QCursor>
 #include <QDateTime>
@@ -33,6 +36,40 @@
 
 namespace
 {
+LatexNoteUtils::RenderResult renderAppearancePdfNoThrow(const QString &latexInput, const QColor &textColor, double layoutWidthPoints, bool callout) noexcept
+{
+    try {
+        return LatexNoteUtils::renderAppearancePdf(latexInput, textColor, layoutWidthPoints, callout);
+    } catch (const std::exception &exception) {
+        LatexNoteUtils::RenderResult result;
+        try {
+            result.errorMessage = i18n("LaTeX rendering failed unexpectedly: %1", QString::fromLocal8Bit(exception.what()));
+            qCCritical(OkularUiDebug) << result.errorMessage;
+        } catch (...) {
+        }
+        return result;
+    } catch (...) {
+        LatexNoteUtils::RenderResult result;
+        try {
+            result.errorMessage = i18n("LaTeX rendering failed because of an unknown internal error.");
+            qCCritical(OkularUiDebug) << result.errorMessage;
+        } catch (...) {
+        }
+        return result;
+    }
+}
+
+template<typename Worker> void startDetachedRenderWorker(QWidget *parent, Worker &&worker)
+{
+    try {
+        std::thread(std::forward<Worker>(worker)).detach();
+    } catch (const std::exception &exception) {
+        KMessageBox::error(parent, i18n("Could not start the LaTeX rendering worker: %1", QString::fromLocal8Bit(exception.what())));
+    } catch (...) {
+        KMessageBox::error(parent, i18n("Could not start the LaTeX rendering worker because of an unknown internal error."));
+    }
+}
+
 bool isFiniteUsableRect(const Okular::NormalizedRect &rect)
 {
     return std::isfinite(rect.left) && std::isfinite(rect.top) && std::isfinite(rect.right) && std::isfinite(rect.bottom) && rect.width() > 0.0 && rect.height() > 0.0;
@@ -374,9 +411,9 @@ bool applyRenderedLatexTextAnnotationAppearance(QWidget *parent,
     const bool sameLayoutWidth = qAbs(textAnnotation->latexLayoutWidth() - layoutWidthPoints) < 1e-3;
     const bool sameScale = qAbs(textAnnotation->latexScale() - visualScale) < 1e-6;
     showRenderWarning(parent, rendered.warning);
-    if (rendered.pdfFileName == textAnnotation->latexAppearancePdfFileName() && updatedRect == textAnnotation->boundingRectangle() && textAnnotation->textColor() == textColor
-        && textAnnotation->style().color() == fillColor && textAnnotation->inplaceBorderColor() == borderColor && textAnnotation->inplaceIntent() == targetIntent
-        && qAbs(textAnnotation->style().width() - targetBorderWidth) < 1e-6 && sameLayoutWidth && sameScale && textAnnotation->isOkularLatex()) {
+    if (rendered.pdfFileName == textAnnotation->latexAppearancePdfFileName() && updatedRect == textAnnotation->boundingRectangle() && textAnnotation->textColor() == textColor && textAnnotation->style().color() == fillColor &&
+        textAnnotation->inplaceBorderColor() == borderColor && textAnnotation->inplaceIntent() == targetIntent && qAbs(textAnnotation->style().width() - targetBorderWidth) < 1e-6 && sameLayoutWidth && sameScale &&
+        textAnnotation->isOkularLatex()) {
         return true;
     }
 
@@ -392,9 +429,8 @@ bool applyRenderedLatexTextAnnotationAppearance(QWidget *parent,
     textAnnotation->style().setWidth(targetBorderWidth);
     textAnnotation->setBoundingRectangle(updatedRect);
     textAnnotation->setModificationDate(QDateTime::currentDateTime());
-    qCDebug(OkularUiDebug) << "Updating LaTeX note appearance; source path:" << rendered.pdfFileName << "layout width:" << layoutWidthPoints << "scale:" << visualScale
-                           << "pdf size:" << rendered.pdfSizePoints << "visual size:" << visualSizePoints << "rect:" << updatedRect.left << updatedRect.top << updatedRect.right
-                           << updatedRect.bottom;
+    qCDebug(OkularUiDebug) << "Updating LaTeX note appearance; source path:" << rendered.pdfFileName << "layout width:" << layoutWidthPoints << "scale:" << visualScale << "pdf size:" << rendered.pdfSizePoints
+                           << "visual size:" << visualSizePoints << "rect:" << updatedRect.left << updatedRect.top << updatedRect.right << updatedRect.bottom;
     document->modifyPageAnnotationProperties(pageNumber, textAnnotation);
     return true;
 }
@@ -444,9 +480,9 @@ bool applyRenderedLatexStampAnnotationAppearance(QWidget *parent,
     const Okular::NormalizedRect updatedRect = boundingRectForPdf(stampAnnotation->boundingRectangle(), page, visualSizePoints, visualScale);
     const double targetBorderWidth = boxed ? qMax(1.0, stampAnnotation->style().width()) : 0.0;
     showRenderWarning(parent, rendered.warning);
-    if (rendered.pdfFileName == stampAnnotation->latexAppearancePdfFileName() && updatedRect == stampAnnotation->boundingRectangle() && qAbs(stampAnnotation->latexLayoutWidth() - layoutWidthPoints) < 1e-3
-        && qAbs(stampAnnotation->latexScale() - visualScale) < 1e-6 && stampAnnotation->isOkularLatex() && stampAnnotation->latexTextColor() == textColor
-        && stampAnnotation->latexFillColor() == fillColor && stampAnnotation->latexBorderColor() == borderColor && qAbs(stampAnnotation->style().width() - targetBorderWidth) < 1e-6) {
+    if (rendered.pdfFileName == stampAnnotation->latexAppearancePdfFileName() && updatedRect == stampAnnotation->boundingRectangle() && qAbs(stampAnnotation->latexLayoutWidth() - layoutWidthPoints) < 1e-3 &&
+        qAbs(stampAnnotation->latexScale() - visualScale) < 1e-6 && stampAnnotation->isOkularLatex() && stampAnnotation->latexTextColor() == textColor && stampAnnotation->latexFillColor() == fillColor &&
+        stampAnnotation->latexBorderColor() == borderColor && qAbs(stampAnnotation->style().width() - targetBorderWidth) < 1e-6) {
         if (prepareModification) {
             return true;
         }
@@ -468,9 +504,8 @@ bool applyRenderedLatexStampAnnotationAppearance(QWidget *parent,
     stampAnnotation->style().setWidth(targetBorderWidth);
     stampAnnotation->setBoundingRectangle(updatedRect);
     stampAnnotation->setModificationDate(QDateTime::currentDateTime());
-    qCDebug(OkularUiDebug) << "Updating LaTeX stamp appearance; source path:" << rendered.pdfFileName << "layout width:" << layoutWidthPoints << "scale:" << visualScale
-                           << "pdf size:" << rendered.pdfSizePoints << "visual size:" << visualSizePoints << "rect:" << updatedRect.left << updatedRect.top << updatedRect.right
-                           << updatedRect.bottom;
+    qCDebug(OkularUiDebug) << "Updating LaTeX stamp appearance; source path:" << rendered.pdfFileName << "layout width:" << layoutWidthPoints << "scale:" << visualScale << "pdf size:" << rendered.pdfSizePoints
+                           << "visual size:" << visualSizePoints << "rect:" << updatedRect.left << updatedRect.top << updatedRect.right << updatedRect.bottom;
     document->modifyPageAnnotationProperties(pageNumber, stampAnnotation);
     return true;
 }
@@ -494,15 +529,14 @@ RenderResult renderAppearancePdf(const QString &latexInput, const QColor &textCo
     QString temporaryPdfFile;
     const GuiUtils::LatexRenderer::Error errorCode = renderer.renderLatexToPdf(latexInput, textColor, temporaryPdfFile, latexOutput, layoutWidthPoints);
     if (errorCode != GuiUtils::LatexRenderer::NoError) {
-        qCWarning(OkularUiDebug) << "LaTeX note PDF render failed; backend:" << renderer.lastBackendName() << "layout width:" << layoutWidthPoints << "error:" << errorCode
-                                 << "message:" << latexErrorMessage(errorCode, latexOutput);
+        qCWarning(OkularUiDebug) << "LaTeX note PDF render failed; backend:" << renderer.lastBackendName() << "layout width:" << layoutWidthPoints << "error:" << errorCode << "message:" << latexErrorMessage(errorCode, latexOutput);
         result.errorMessage = latexErrorMessage(errorCode, latexOutput);
         return result;
     }
 
     const QFileInfo temporaryPdfInfo(temporaryPdfFile);
-    qCDebug(OkularUiDebug) << "LaTeX note PDF render finished; backend:" << renderer.lastBackendName() << "layout width:" << layoutWidthPoints << "temporary PDF:" << temporaryPdfFile
-                           << "exists:" << temporaryPdfInfo.exists() << "bytes:" << temporaryPdfInfo.size();
+    qCDebug(OkularUiDebug) << "LaTeX note PDF render finished; backend:" << renderer.lastBackendName() << "layout width:" << layoutWidthPoints << "temporary PDF:" << temporaryPdfFile << "exists:" << temporaryPdfInfo.exists()
+                           << "bytes:" << temporaryPdfInfo.size();
 
     result.pdfSizePoints = GuiUtils::pdfPageSizeInPoints(temporaryPdfFile);
     if (!result.pdfSizePoints.isValid() || result.pdfSizePoints.isEmpty()) {
@@ -540,8 +574,8 @@ RenderResult renderAppearancePdf(const QString &latexInput, const QColor &textCo
     result.warning = renderer.lastWarning();
     result.warningMessage = warningText(result.warning);
     const QFileInfo appearancePdfInfo(appearancePdfFileName);
-    qCDebug(OkularUiDebug) << "LaTeX note appearance PDF ready; path:" << result.pdfFileName << "exists:" << appearancePdfInfo.exists() << "bytes:" << appearancePdfInfo.size()
-                           << "page size:" << result.pdfSizePoints << "warning:" << result.warningMessage;
+    qCDebug(OkularUiDebug) << "LaTeX note appearance PDF ready; path:" << result.pdfFileName << "exists:" << appearancePdfInfo.exists() << "bytes:" << appearancePdfInfo.size() << "page size:" << result.pdfSizePoints
+                           << "warning:" << result.warningMessage;
     return result;
 }
 
@@ -607,19 +641,7 @@ bool updateLatexStampAnnotationAppearance(QWidget *parent,
     }
 
     const RenderResult rendered = renderAppearancePdf(stampAnnotation->contents(), textColor, layoutWidthPoints, stampAnnotation->isLatexCallout());
-    return applyRenderedLatexStampAnnotationAppearance(parent,
-                                                       document,
-                                                       pageNumber,
-                                                       stampAnnotation,
-                                                       textColor,
-                                                       fillColor,
-                                                       borderColor,
-                                                       layoutWidthPoints,
-                                                       boxed,
-                                                       visualScale,
-                                                       prepareModification,
-                                                       rendered,
-                                                       true);
+    return applyRenderedLatexStampAnnotationAppearance(parent, document, pageNumber, stampAnnotation, textColor, fillColor, borderColor, layoutWidthPoints, boxed, visualScale, prepareModification, rendered, true);
 }
 
 void updateLatexTextAnnotationAppearanceAsync(QWidget *parent,
@@ -640,37 +662,40 @@ void updateLatexTextAnnotationAppearanceAsync(QWidget *parent,
 
     QPointer<QWidget> parentGuard(parent);
     QPointer<Okular::Document> documentGuard(document);
-    std::thread([parentGuard, documentGuard, pageNumber, annotationUniqueName, latexInput, textColor, fillColor, borderColor, layoutWidthPoints, boxed, visualScale]() mutable {
-        RenderResult rendered = renderAppearancePdf(latexInput, textColor, layoutWidthPoints);
-        if (!documentGuard) {
-            return;
+    QPointer<QCoreApplication> applicationGuard(QCoreApplication::instance());
+    if (!applicationGuard) {
+        return;
+    }
+    startDetachedRenderWorker(parent, [applicationGuard, parentGuard, documentGuard, pageNumber, annotationUniqueName, latexInput, textColor, fillColor, borderColor, layoutWidthPoints, boxed, visualScale]() mutable noexcept {
+        try {
+            RenderResult rendered = renderAppearancePdfNoThrow(latexInput, textColor, layoutWidthPoints, false);
+            if (!applicationGuard) {
+                return;
+            }
+            const bool queued = QMetaObject::invokeMethod(
+                applicationGuard.data(),
+                [parentGuard, documentGuard, pageNumber, annotationUniqueName, latexInput, textColor, fillColor, borderColor, layoutWidthPoints, boxed, visualScale, rendered]() mutable {
+                    if (!documentGuard) {
+                        return;
+                    }
+                    const Okular::Page *page = documentGuard->page(pageNumber);
+                    Okular::Annotation *annotation = page ? page->annotation(annotationUniqueName) : nullptr;
+                    auto *textAnnotation = annotationAsLatexTextAnnotation(annotation);
+                    if (!textAnnotation || textAnnotation->contents() != latexInput) {
+                        return;
+                    }
+                    applyRenderedLatexTextAnnotationAppearance(parentGuard.data(), documentGuard.data(), pageNumber, textAnnotation, textColor, fillColor, borderColor, layoutWidthPoints, boxed, visualScale, rendered, false);
+                },
+                Qt::QueuedConnection);
+            if (!queued) {
+                qCWarning(OkularUiDebug) << "Could not queue the LaTeX text annotation update";
+            }
+        } catch (const std::exception &exception) {
+            qCCritical(OkularUiDebug) << "Unhandled exception in LaTeX text annotation worker:" << exception.what();
+        } catch (...) {
+            qCCritical(OkularUiDebug) << "Unknown exception in LaTeX text annotation worker";
         }
-        QMetaObject::invokeMethod(documentGuard.data(),
-                                  [parentGuard, documentGuard, pageNumber, annotationUniqueName, latexInput, textColor, fillColor, borderColor, layoutWidthPoints, boxed, visualScale, rendered]() mutable {
-                                      if (!documentGuard) {
-                                          return;
-                                      }
-                                      const Okular::Page *page = documentGuard->page(pageNumber);
-                                      Okular::Annotation *annotation = page ? page->annotation(annotationUniqueName) : nullptr;
-                                      auto *textAnnotation = annotationAsLatexTextAnnotation(annotation);
-                                      if (!textAnnotation || textAnnotation->contents() != latexInput) {
-                                          return;
-                                      }
-                                      applyRenderedLatexTextAnnotationAppearance(parentGuard.data(),
-                                                                                 documentGuard.data(),
-                                                                                 pageNumber,
-                                                                                 textAnnotation,
-                                                                                 textColor,
-                                                                                 fillColor,
-                                                                                 borderColor,
-                                                                                 layoutWidthPoints,
-                                                                                 boxed,
-                                                                                 visualScale,
-                                                                                 rendered,
-                                                                                 false);
-                                  },
-                                  Qt::QueuedConnection);
-    }).detach();
+    });
 }
 
 void updateLatexStampAnnotationAppearanceAsync(QWidget *parent,
@@ -691,38 +716,40 @@ void updateLatexStampAnnotationAppearanceAsync(QWidget *parent,
 
     QPointer<QWidget> parentGuard(parent);
     QPointer<Okular::Document> documentGuard(document);
-    std::thread([parentGuard, documentGuard, pageNumber, annotationUniqueName, latexInput, textColor, fillColor, borderColor, layoutWidthPoints, boxed, visualScale]() mutable {
-        RenderResult rendered = renderAppearancePdf(latexInput, textColor, layoutWidthPoints, true);
-        if (!documentGuard) {
-            return;
+    QPointer<QCoreApplication> applicationGuard(QCoreApplication::instance());
+    if (!applicationGuard) {
+        return;
+    }
+    startDetachedRenderWorker(parent, [applicationGuard, parentGuard, documentGuard, pageNumber, annotationUniqueName, latexInput, textColor, fillColor, borderColor, layoutWidthPoints, boxed, visualScale]() mutable noexcept {
+        try {
+            RenderResult rendered = renderAppearancePdfNoThrow(latexInput, textColor, layoutWidthPoints, true);
+            if (!applicationGuard) {
+                return;
+            }
+            const bool queued = QMetaObject::invokeMethod(
+                applicationGuard.data(),
+                [parentGuard, documentGuard, pageNumber, annotationUniqueName, latexInput, textColor, fillColor, borderColor, layoutWidthPoints, boxed, visualScale, rendered]() mutable {
+                    if (!documentGuard) {
+                        return;
+                    }
+                    const Okular::Page *page = documentGuard->page(pageNumber);
+                    Okular::Annotation *annotation = page ? page->annotation(annotationUniqueName) : nullptr;
+                    auto *stampAnnotation = annotationAsLatexStampAnnotation(annotation);
+                    if (!stampAnnotation || stampAnnotation->contents() != latexInput) {
+                        return;
+                    }
+                    applyRenderedLatexStampAnnotationAppearance(parentGuard.data(), documentGuard.data(), pageNumber, stampAnnotation, textColor, fillColor, borderColor, layoutWidthPoints, boxed, visualScale, true, rendered, false);
+                },
+                Qt::QueuedConnection);
+            if (!queued) {
+                qCWarning(OkularUiDebug) << "Could not queue the LaTeX stamp annotation update";
+            }
+        } catch (const std::exception &exception) {
+            qCCritical(OkularUiDebug) << "Unhandled exception in LaTeX stamp annotation worker:" << exception.what();
+        } catch (...) {
+            qCCritical(OkularUiDebug) << "Unknown exception in LaTeX stamp annotation worker";
         }
-        QMetaObject::invokeMethod(documentGuard.data(),
-                                  [parentGuard, documentGuard, pageNumber, annotationUniqueName, latexInput, textColor, fillColor, borderColor, layoutWidthPoints, boxed, visualScale, rendered]() mutable {
-                                      if (!documentGuard) {
-                                          return;
-                                      }
-                                      const Okular::Page *page = documentGuard->page(pageNumber);
-                                      Okular::Annotation *annotation = page ? page->annotation(annotationUniqueName) : nullptr;
-                                      auto *stampAnnotation = annotationAsLatexStampAnnotation(annotation);
-                                      if (!stampAnnotation || stampAnnotation->contents() != latexInput) {
-                                          return;
-                                      }
-                                      applyRenderedLatexStampAnnotationAppearance(parentGuard.data(),
-                                                                                  documentGuard.data(),
-                                                                                  pageNumber,
-                                                                                  stampAnnotation,
-                                                                                  textColor,
-                                                                                  fillColor,
-                                                                                  borderColor,
-                                                                                  layoutWidthPoints,
-                                                                                  boxed,
-                                                                                  visualScale,
-                                                                                  true,
-                                                                                  rendered,
-                                                                                  false);
-                                  },
-                                  Qt::QueuedConnection);
-    }).detach();
+    });
 }
 
 QString warningText(const GuiUtils::LatexRenderWarning &warning)

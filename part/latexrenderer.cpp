@@ -9,9 +9,10 @@
 
 #include "latexrenderer.h"
 
-#include <condition_variable>
 #include <cmath>
+#include <condition_variable>
 #include <cstdint>
+#include <exception>
 #include <memory>
 #include <mutex>
 #include <thread>
@@ -21,8 +22,8 @@
 
 #include <KLocalizedString>
 
-#include <QColor>
 #include <QByteArray>
+#include <QColor>
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QDir>
@@ -31,9 +32,8 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonParseError>
-#include <QList>
 #include <QLibrary>
-#include <QRegularExpression>
+#include <QList>
 #include <QStandardPaths>
 #include <QTextStream>
 #include <QThread>
@@ -191,7 +191,13 @@ public:
     ~StemtexRendererSession()
     {
         if (m_renderer && m_api.destroy) {
-            m_api.destroy(m_renderer);
+            try {
+                m_api.destroy(m_renderer);
+            } catch (const std::exception &exception) {
+                qCCritical(OkularUiDebug) << "StemTeX renderer destruction failed:" << exception.what();
+            } catch (...) {
+                qCCritical(OkularUiDebug) << "StemTeX renderer destruction failed with an unknown exception";
+            }
         }
     }
 
@@ -202,7 +208,7 @@ public:
 
     static void reset()
     {
-        std::unique_ptr<StemtexRendererSession> oldSession;
+        std::shared_ptr<StemtexRendererSession> oldSession;
         SharedState &state = sharedState();
         {
             std::lock_guard<std::mutex> guard(state.mutex);
@@ -215,7 +221,7 @@ public:
         state.condition.notify_all();
     }
 
-    static StemtexRendererSession *instance(QString *error, bool waitForInitialization = false)
+    static std::shared_ptr<StemtexRendererSession> instance(QString *error, bool waitForInitialization = false)
     {
         return sharedSession(true, waitForInitialization, error);
     }
@@ -225,18 +231,22 @@ public:
         StemTeXStatus status;
         status.supported = true;
         SharedState &state = sharedState();
-        std::lock_guard<std::mutex> guard(state.mutex);
-        if (state.session) {
-            return state.session->status();
+        std::shared_ptr<StemtexRendererSession> session;
+        {
+            std::lock_guard<std::mutex> guard(state.mutex);
+            session = state.session;
+            status.initializing = state.initializing;
+            if (!state.lastError.isEmpty()) {
+                status.note = state.lastError;
+            } else if (state.initializing) {
+                status.note = i18n("StemTeX renderer is starting.");
+            } else if (!state.attempted) {
+                status.note = i18n("StemTeX renderer has not started yet.");
+            }
         }
 
-        status.initializing = state.initializing;
-        if (!state.lastError.isEmpty()) {
-            status.note = state.lastError;
-        } else if (state.initializing) {
-            status.note = i18n("StemTeX renderer is starting.");
-        } else if (!state.attempted) {
-            status.note = i18n("StemTeX renderer has not started yet.");
+        if (session) {
+            return session->status();
         }
         return status;
     }
@@ -271,13 +281,7 @@ public:
         return runtimeRoot();
     }
 
-    LatexRenderer::Error render(const QString &latexSource,
-                                const QColor &textColor,
-                                double maxWidth,
-                                QString &pdfFileName,
-                                QString &latexOutput,
-                                QStringList &fileList,
-                                LatexRenderWarning *warning)
+    LatexRenderer::Error render(const QString &latexSource, const QColor &textColor, double maxWidth, QString &pdfFileName, QString &latexOutput, QStringList &fileList, LatexRenderWarning *warning)
     {
         if (!m_renderer) {
             latexOutput = i18n("StemTeX renderer is not initialized.");
@@ -286,11 +290,7 @@ public:
 
         const double widthPt = std::isfinite(maxWidth) && maxWidth > 0.0 ? maxWidth : 360.0;
         const QColor effectiveColor = textColor.isValid() ? textColor : QColor(Qt::black);
-        const QString coloredSource = QStringLiteral("{\\color[rgb]{%1,%2,%3}\n%4\n\\par}")
-                                          .arg(effectiveColor.redF(), 0, 'f', 6)
-                                          .arg(effectiveColor.greenF(), 0, 'f', 6)
-                                          .arg(effectiveColor.blueF(), 0, 'f', 6)
-                                          .arg(latexSource);
+        const QString coloredSource = QStringLiteral("{\\color[rgb]{%1,%2,%3}\n%4\n\\par}").arg(effectiveColor.redF(), 0, 'f', 6).arg(effectiveColor.greenF(), 0, 'f', 6).arg(effectiveColor.blueF(), 0, 'f', 6).arg(latexSource);
         const QByteArray snippet = coloredSource.toUtf8();
 
         struct RenderState {
@@ -309,25 +309,70 @@ public:
         };
         auto state = std::make_shared<RenderState>();
 
-        const auto callback = [](uint64_t jobId, int ok, const StemTeXRenderResult *result, int errorCode, const char *error, void *userData) {
+        const auto callback = [](uint64_t jobId, int ok, const StemTeXRenderResult *result, int errorCode, const char *error, void *userData) noexcept {
             auto *state = static_cast<RenderState *>(userData);
-            std::lock_guard<std::mutex> guard(state->mutex);
-            state->callbackJobId = jobId;
-            state->ok = ok;
-            state->errorCode = errorCode;
-            state->errorText = error ? QString::fromUtf8(error) : QString();
-            state->sourcePdfFile = result && result->pdf_path_utf8 ? QString::fromUtf8(result->pdf_path_utf8) : QString();
-            state->summary = result && result->summary_json_utf8 ? QString::fromUtf8(result->summary_json_utf8) : QString();
-            state->outcomeCode = result ? result->outcome_code : errorCode;
-            state->outcomeMessage = result && result->outcome_message_utf8 ? QString::fromUtf8(result->outcome_message_utf8) : QString();
-            state->done = true;
-            state->condition.notify_all();
+            if (!state) {
+                return;
+            }
+
+            try {
+                QString errorText = error ? QString::fromUtf8(error) : QString();
+                QString sourcePdfFile = result && result->pdf_path_utf8 ? QString::fromUtf8(result->pdf_path_utf8) : QString();
+                QString summary = result && result->summary_json_utf8 ? QString::fromUtf8(result->summary_json_utf8) : QString();
+                QString outcomeMessage = result && result->outcome_message_utf8 ? QString::fromUtf8(result->outcome_message_utf8) : QString();
+
+                std::lock_guard<std::mutex> guard(state->mutex);
+                state->callbackJobId = jobId;
+                state->ok = ok;
+                state->errorCode = errorCode;
+                state->errorText = std::move(errorText);
+                state->sourcePdfFile = std::move(sourcePdfFile);
+                state->summary = std::move(summary);
+                state->outcomeCode = result ? result->outcome_code : errorCode;
+                state->outcomeMessage = std::move(outcomeMessage);
+                state->done = true;
+                state->condition.notify_all();
+            } catch (const std::exception &exception) {
+                try {
+                    std::lock_guard<std::mutex> guard(state->mutex);
+                    state->callbackJobId = jobId;
+                    state->ok = 0;
+                    state->errorCode = errorCode;
+                    state->errorText = QStringLiteral("StemTeX callback failed while receiving the render result.");
+                    state->done = true;
+                    state->condition.notify_all();
+                    qCCritical(OkularUiDebug) << "StemTeX render callback failed:" << exception.what();
+                } catch (...) {
+                    qCCritical(OkularUiDebug) << "StemTeX render callback could not report its failure";
+                }
+            } catch (...) {
+                try {
+                    std::lock_guard<std::mutex> guard(state->mutex);
+                    state->callbackJobId = jobId;
+                    state->ok = 0;
+                    state->errorCode = errorCode;
+                    state->errorText = QStringLiteral("StemTeX callback failed with an unknown exception.");
+                    state->done = true;
+                    state->condition.notify_all();
+                } catch (...) {
+                    qCCritical(OkularUiDebug) << "StemTeX render callback could not report an unknown failure";
+                }
+            }
         };
 
         int submitErrorCode = 0;
         char *submitError = nullptr;
         uint64_t jobId = 0;
-        const int submitted = m_api.renderAsync(m_renderer, snippet.constData(), widthPt, &jobId, callback, state.get(), &submitErrorCode, &submitError);
+        int submitted = 0;
+        try {
+            submitted = m_api.renderAsync(m_renderer, snippet.constData(), widthPt, &jobId, callback, state.get(), &submitErrorCode, &submitError);
+        } catch (const std::exception &exception) {
+            latexOutput = i18n("StemTeX rendering failed unexpectedly: %1", QString::fromLocal8Bit(exception.what()));
+            return LatexRenderer::LatexFailed;
+        } catch (...) {
+            latexOutput = i18n("StemTeX rendering failed because of an unknown internal error.");
+            return LatexRenderer::LatexFailed;
+        }
         {
             std::lock_guard<std::mutex> guard(state->mutex);
             state->jobId = jobId;
@@ -346,9 +391,7 @@ public:
 
         {
             std::unique_lock<std::mutex> guard(state->mutex);
-            state->condition.wait(guard, [&state]() {
-                return state->done;
-            });
+            state->condition.wait(guard, [&state]() { return state->done; });
         }
 
         int ok = 0;
@@ -399,7 +442,7 @@ private:
     struct SharedState {
         std::mutex mutex;
         std::condition_variable condition;
-        std::unique_ptr<StemtexRendererSession> session;
+        std::shared_ptr<StemtexRendererSession> session;
         uint64_t generation = 0;
         bool initializing = false;
         bool attempted = false;
@@ -413,7 +456,7 @@ private:
     {
     }
 
-    static StemtexRendererSession *sharedSession(bool reportStarting, bool waitForInitialization, QString *error)
+    static std::shared_ptr<StemtexRendererSession> sharedSession(bool reportStarting, bool waitForInitialization, QString *error)
     {
         SharedState &state = sharedState();
         bool startInitialization = false;
@@ -422,7 +465,7 @@ private:
         {
             std::unique_lock<std::mutex> guard(state.mutex);
             if (state.session) {
-                return state.session.get();
+                return state.session;
             }
             if (!state.initializing && !state.attempted) {
                 state.initializing = true;
@@ -442,37 +485,91 @@ private:
         }
 
         if (startInitialization) {
-            std::thread([generation]() {
-                QString initError;
-                const QString runtime = runtimeRoot();
-                std::unique_ptr<StemtexRendererSession> created(new StemtexRendererSession(runtime, rendererDllPath(runtime)));
-                const bool ok = created->initialize(&initError);
-
-                SharedState &state = sharedState();
-                {
-                    std::lock_guard<std::mutex> guard(state.mutex);
-                    if (generation == state.generation) {
-                        if (ok) {
-                            state.session = std::move(created);
-                            state.lastError.clear();
-                        } else {
-                            state.lastError = initError;
+            try {
+                std::thread([generation]() noexcept {
+                    try {
+                        QString initError;
+                        std::shared_ptr<StemtexRendererSession> created;
+                        bool ok = false;
+                        try {
+                            const QString runtime = runtimeRoot();
+                            created = std::shared_ptr<StemtexRendererSession>(new StemtexRendererSession(runtime, rendererDllPath(runtime)));
+                            ok = created->initialize(&initError);
+                        } catch (const std::exception &exception) {
+                            initError = i18n("StemTeX renderer initialization failed unexpectedly: %1", QString::fromLocal8Bit(exception.what()));
+                            qCCritical(OkularUiDebug) << initError;
+                        } catch (...) {
+                            initError = i18n("StemTeX renderer initialization failed because of an unknown internal error.");
+                            qCCritical(OkularUiDebug) << initError;
                         }
-                        state.initializing = false;
-                        state.attempted = true;
+
+                        SharedState &state = sharedState();
+                        {
+                            std::lock_guard<std::mutex> guard(state.mutex);
+                            if (generation == state.generation) {
+                                if (ok) {
+                                    state.session = std::move(created);
+                                    state.lastError.clear();
+                                } else {
+                                    state.lastError = initError;
+                                }
+                                state.initializing = false;
+                                state.attempted = true;
+                            }
+                        }
+                        state.condition.notify_all();
+                    } catch (const std::exception &exception) {
+                        qCCritical(OkularUiDebug) << "StemTeX initialization worker failed:" << exception.what();
+                        try {
+                            SharedState &state = sharedState();
+                            {
+                                std::lock_guard<std::mutex> guard(state.mutex);
+                                if (generation == state.generation) {
+                                    state.initializing = false;
+                                    state.attempted = true;
+                                    state.lastError = QStringLiteral("StemTeX renderer initialization failed unexpectedly.");
+                                }
+                            }
+                            state.condition.notify_all();
+                        } catch (...) {
+                        }
+                    } catch (...) {
+                        qCCritical(OkularUiDebug) << "StemTeX initialization worker failed with an unknown exception";
+                        try {
+                            SharedState &state = sharedState();
+                            {
+                                std::lock_guard<std::mutex> guard(state.mutex);
+                                if (generation == state.generation) {
+                                    state.initializing = false;
+                                    state.attempted = true;
+                                    state.lastError = QStringLiteral("StemTeX renderer initialization failed with an unknown error.");
+                                }
+                            }
+                            state.condition.notify_all();
+                        } catch (...) {
+                        }
                     }
-                }
+                }).detach();
+            } catch (const std::exception &exception) {
+                std::lock_guard<std::mutex> guard(state.mutex);
+                state.initializing = false;
+                state.attempted = true;
+                state.lastError = i18n("Could not start the StemTeX initialization worker: %1", QString::fromLocal8Bit(exception.what()));
                 state.condition.notify_all();
-            }).detach();
+            } catch (...) {
+                std::lock_guard<std::mutex> guard(state.mutex);
+                state.initializing = false;
+                state.attempted = true;
+                state.lastError = i18n("Could not start the StemTeX initialization worker because of an unknown internal error.");
+                state.condition.notify_all();
+            }
         }
 
         if (waitForInitialization) {
             std::unique_lock<std::mutex> guard(state.mutex);
-            state.condition.wait(guard, [&state]() {
-                return !state.initializing;
-            });
+            state.condition.wait(guard, [&state]() { return !state.initializing; });
             if (state.session) {
-                return state.session.get();
+                return state.session;
             }
             if (error) {
                 *error = state.lastError;
@@ -488,8 +585,10 @@ private:
 
     static SharedState &sharedState()
     {
-        static SharedState state;
-        return state;
+        // Initialization runs on a detached worker. Keep its synchronization
+        // state alive until process termination to avoid static-destruction races.
+        static SharedState *const state = new SharedState;
+        return *state;
     }
 
     static QString environmentPath(const char *name)
@@ -598,7 +697,7 @@ private:
             return false;
         }
 
-        QJsonParseError parseError{};
+        QJsonParseError parseError {};
         const QJsonDocument document = QJsonDocument::fromJson(jsonBytes, &parseError);
         if (parseError.error != QJsonParseError::NoError || !document.isObject()) {
             if (error) {
@@ -666,8 +765,8 @@ private:
         } else if (!configuredProfileName.isEmpty()) {
             preferredNames << configuredProfileName;
         }
-        preferredNames << QStringLiteral("unicodemath_cjk") << QStringLiteral("physics_cjk") << QStringLiteral("cjk_math_light") << QStringLiteral("math_light") << QStringLiteral("stem_units")
-                       << QStringLiteral("chemistry") << QStringLiteral("unicodemath");
+        preferredNames << QStringLiteral("unicodemath_cjk") << QStringLiteral("physics_cjk") << QStringLiteral("cjk_math_light") << QStringLiteral("math_light") << QStringLiteral("stem_units") << QStringLiteral("chemistry")
+                       << QStringLiteral("unicodemath");
         preferredNames.removeDuplicates();
 
         QString lastError;
@@ -746,7 +845,7 @@ private:
         const QString tempRoot = writableStemTeXTempRoot();
         const QByteArray stateRoot = QDir(tempRoot).filePath(QStringLiteral("state")).toUtf8();
         const QByteArray rendersRoot = QDir(tempRoot).filePath(QStringLiteral("renders")).toUtf8();
-        StemTeXConfig config{};
+        StemTeXConfig config {};
         config.repo_root_utf8 = runtime.constData();
         config.runtime_root_utf8 = runtime.constData();
         config.texmf_root_utf8 = texmf.constData();
@@ -800,8 +899,20 @@ private:
             return status;
         }
 
-        StemTeXEngineSnapshot snapshot{};
-        if (!m_api.engineSnapshot(m_renderer, &snapshot)) {
+        StemTeXEngineSnapshot snapshot {};
+        int snapshotAvailable = 0;
+        try {
+            snapshotAvailable = m_api.engineSnapshot(m_renderer, &snapshot);
+        } catch (const std::exception &exception) {
+            status.note = i18n("StemTeX renderer status failed unexpectedly: %1", QString::fromLocal8Bit(exception.what()));
+            qCCritical(OkularUiDebug) << status.note;
+            return status;
+        } catch (...) {
+            status.note = i18n("StemTeX renderer status failed because of an unknown internal error.");
+            qCCritical(OkularUiDebug) << status.note;
+            return status;
+        }
+        if (!snapshotAvailable) {
             status.ready = true;
             status.note = i18n("StemTeX renderer status is unavailable.");
             return status;
@@ -994,21 +1105,11 @@ LatexRenderer::Error LatexRenderer::renderLatexToPdf(const QString &latexFormula
         pdfFileName.clear();
         return LatexFailed;
     }
-    if (!securityCheck(formula)) {
-        pdfFileName.clear();
-        latexOutput = i18n("The formula contains unsupported LaTeX commands.");
-        return LatexFailed;
-    }
-
 #ifdef Q_OS_WIN
-    logTexInvocation("stemtex-render",
-                     QStringLiteral("stemtex"),
-                     QStringLiteral("configured-stemtex"),
-                     {QStringLiteral("max width: %1").arg(maxWidth),
-                      QStringLiteral("source length: %1").arg(formula.size())});
+    logTexInvocation("stemtex-render", QStringLiteral("stemtex"), QStringLiteral("configured-stemtex"), {QStringLiteral("max width: %1").arg(maxWidth), QStringLiteral("source length: %1").arg(formula.size())});
     QString stemtexError;
     const bool waitForStemTeXStartup = QCoreApplication::instance() && QThread::currentThread() != QCoreApplication::instance()->thread();
-    StemtexRendererSession *session = StemtexRendererSession::instance(&stemtexError, waitForStemTeXStartup);
+    const std::shared_ptr<StemtexRendererSession> session = StemtexRendererSession::instance(&stemtexError, waitForStemTeXStartup);
     if (!session) {
         pdfFileName.clear();
         latexOutput = stemtexError.isEmpty() ? i18n("StemTeX renderer is not available.") : stemtexError;
@@ -1025,16 +1126,6 @@ LatexRenderer::Error LatexRenderer::renderLatexToPdf(const QString &latexFormula
     latexOutput = i18n("StemTeX rendering is only available on Windows.");
     return LatexFailed;
 #endif
-}
-
-bool LatexRenderer::securityCheck(const QString &latexFormula)
-{
-    static const auto formulaRegex =
-        QRegularExpression(QString::fromLatin1("\\\\(def|let|futurelet|newcommand|renewcommand|else|fi|write|input|include"
-                                               "|chardef|catcode|makeatletter|noexpand|toksdef|every|errhelp|errorstopmode|scrollmode|nonstopmode|batchmode"
-                                               "|read|csname|newhelp|relax|afterground|afterassignment|expandafter|noexpand|special|command|loop|repeat|toks"
-                                               "|output|line|mathcode|name|item|section|mbox|DeclareRobustCommand)[^a-zA-Z]"));
-    return !latexFormula.contains(formulaRegex);
 }
 
 }

@@ -31,8 +31,8 @@
 #include <QComboBox>
 #include <QContextMenuEvent>
 #include <QCursor>
-#include <QDomDocument>
 #include <QDir>
+#include <QDomDocument>
 #if HAVE_DBUS
 #include <QDBusConnection>
 #endif // HAVE_DBUS
@@ -54,10 +54,10 @@
 #include <QMimeData>
 #include <QMimeDatabase>
 #include <QPainter>
-#include <QPushButton>
 #include <QPrintDialog>
 #include <QPrintPreviewDialog>
 #include <QPrinter>
+#include <QPushButton>
 #include <QRadioButton>
 #include <QScopedValueRollback>
 #include <QScrollBar>
@@ -70,6 +70,7 @@
 #include <QVBoxLayout>
 #include <QWidgetAction>
 
+#include <exception>
 #include <memory>
 
 #include <KAboutPluginDialog>
@@ -93,8 +94,8 @@
 #include <KParts/GUIActivateEvent>
 #include <KPasswordDialog>
 #include <KPluginMetaData>
-#include <KSharedDataCache>
 #include <KSharedConfig>
+#include <KSharedDataCache>
 #include <KStandardShortcut>
 #include <KToggleAction>
 #include <KToggleFullScreenAction>
@@ -1931,8 +1932,14 @@ bool Part::openUrl(const QUrl &_url, bool swapInsteadOfOpening)
         } else {
             resetStartArguments();
             /* TRANSLATORS: Adding the reason (%2) why the opening failed (if any). */
-            QString errorMessageString = i18n("Could not open %1. %2", url.toDisplayString(), QStringLiteral("\n%1").arg(m_document->openError()));
-            KMessageBox::error(widget(), errorMessageString);
+            const QString errorMessageString = i18n("Could not open %1. %2", url.toDisplayString(), QStringLiteral("\n%1").arg(m_document->openError()));
+            if (swapInsteadOfOpening) {
+                // A modal dialog here would re-enter the event loop while a save
+                // is still unwinding its backing-file transition.
+                errorMessage(errorMessageString);
+            } else {
+                KMessageBox::error(widget(), errorMessageString);
+            }
         }
     }
 
@@ -2854,14 +2861,26 @@ public:
     void undo() override
     {
         if (m_part) {
-            m_part->applyPageEditBackingFile(m_beforeFileName, m_beforePage, m_forcePageTopologyChanged);
+            try {
+                m_part->applyPageEditBackingFile(m_beforeFileName, m_beforePage, m_forcePageTopologyChanged);
+            } catch (const std::exception &exception) {
+                qCritical() << "Page edit undo failed:" << exception.what();
+            } catch (...) {
+                qCritical() << "Page edit undo failed with an unknown exception";
+            }
         }
     }
 
     void redo() override
     {
         if (m_part) {
-            m_part->applyPageEditBackingFile(m_afterFileName, m_afterPage, m_forcePageTopologyChanged);
+            try {
+                m_part->applyPageEditBackingFile(m_afterFileName, m_afterPage, m_forcePageTopologyChanged);
+            } catch (const std::exception &exception) {
+                qCritical() << "Page edit redo failed:" << exception.what();
+            } catch (...) {
+                qCritical() << "Page edit redo failed with an unknown exception";
+            }
         }
     }
 
@@ -2890,14 +2909,26 @@ public:
     void undo() override
     {
         if (m_part) {
-            m_part->applyLivePageMove(m_destinationPage, m_sourcePage);
+            try {
+                m_part->applyLivePageMove(m_destinationPage, m_sourcePage);
+            } catch (const std::exception &exception) {
+                qCritical() << "Page move undo failed:" << exception.what();
+            } catch (...) {
+                qCritical() << "Page move undo failed with an unknown exception";
+            }
         }
     }
 
     void redo() override
     {
         if (m_part) {
-            m_part->applyLivePageMove(m_sourcePage, m_destinationPage);
+            try {
+                m_part->applyLivePageMove(m_sourcePage, m_destinationPage);
+            } catch (const std::exception &exception) {
+                qCritical() << "Page move redo failed:" << exception.what();
+            } catch (...) {
+                qCritical() << "Page move redo failed with an unknown exception";
+            }
         }
     }
 
@@ -3591,9 +3622,7 @@ void Part::insertPageFromTemplateWithDialog(int pageNumber)
     auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
     layout->addWidget(buttons);
 
-    auto updateDialogState = [=]() {
-        afterPageSpin->setEnabled(positionCombo->currentData().toInt() == -2);
-    };
+    auto updateDialogState = [=]() { afterPageSpin->setEnabled(positionCombo->currentData().toInt() == -2); };
     connect(positionCombo, qOverload<int>(&QComboBox::currentIndexChanged), &dialog, updateDialogState);
     connect(changeTemplateButton, &QPushButton::clicked, &dialog, [=, &dialog, &templateFileName]() {
         const QString fileName = QFileDialog::getOpenFileName(&dialog, i18n("Select Page Template PDF"), QFileInfo(templateFileName).absolutePath(), i18n("PDF Documents (*.pdf)"));
@@ -3783,12 +3812,14 @@ void Part::insertBlankPage(int insertAfterPageNumber, const QSizeF &pageSize)
     setArguments(args);
 
     const QString editedFileName = editedFile->fileName();
-    auto command = std::make_unique<PageBackingFileCommand>(this, i18nc("Undo action", "Insert Blank Page"), std::move(savedSourceFile), sourceFileName, std::move(editedFile), editedFileName, qMax(0, insertAfterPageNumber), insertAfterPageNumber + 1);
+    auto command =
+        std::make_unique<PageBackingFileCommand>(this, i18nc("Undo action", "Insert Blank Page"), std::move(savedSourceFile), sourceFileName, std::move(editedFile), editedFileName, qMax(0, insertAfterPageNumber), insertAfterPageNumber + 1);
     m_document->pushUndoCommand(command.release());
     refreshTemplateNotes();
 
     if (m_pageView) {
-        m_pageView->displayMessage(insertAfterPageNumber < 0 ? i18n("Inserted a blank page before the first page. Save the document to keep this change.") : i18n("Inserted a blank page after page %1. Save the document to keep this change.", pageNumberOneBased));
+        m_pageView->displayMessage(insertAfterPageNumber < 0 ? i18n("Inserted a blank page before the first page. Save the document to keep this change.")
+                                                             : i18n("Inserted a blank page after page %1. Save the document to keep this change.", pageNumberOneBased));
     }
 }
 
@@ -3864,12 +3895,14 @@ void Part::insertPdfPage(int insertAfterPageNumber, const QString &insertedFileN
     setArguments(args);
 
     const QString editedFileName = editedFile->fileName();
-    auto command = std::make_unique<PageBackingFileCommand>(this, i18nc("Undo action", "Insert PDF Page"), std::move(savedSourceFile), sourceFileName, std::move(editedFile), editedFileName, qMax(0, insertAfterPageNumber), insertAfterPageNumber + 1);
+    auto command =
+        std::make_unique<PageBackingFileCommand>(this, i18nc("Undo action", "Insert PDF Page"), std::move(savedSourceFile), sourceFileName, std::move(editedFile), editedFileName, qMax(0, insertAfterPageNumber), insertAfterPageNumber + 1);
     m_document->pushUndoCommand(command.release());
     refreshTemplateNotes();
 
     if (m_pageView) {
-        m_pageView->displayMessage(insertAfterPageNumber < 0 ? i18n("Inserted a PDF page before the first page. Save the document to keep this change.") : i18n("Inserted a PDF page after page %1. Save the document to keep this change.", pageNumberOneBased));
+        m_pageView->displayMessage(insertAfterPageNumber < 0 ? i18n("Inserted a PDF page before the first page. Save the document to keep this change.")
+                                                             : i18n("Inserted a PDF page after page %1. Save the document to keep this change.", pageNumberOneBased));
     }
 }
 

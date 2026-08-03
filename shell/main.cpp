@@ -22,16 +22,21 @@
 #include <QApplication>
 #include <QCommandLineOption>
 #include <QCommandLineParser>
-#include <QFileOpenEvent>
-#include <QDir>
 #include <QDebug>
+#include <QDir>
+#include <QFileOpenEvent>
 #include <QLibraryInfo>
 #include <QLocale>
 #include <QObject>
 #include <QStringList>
 #include <QTextStream>
+#include <QTimer>
 #include <QTranslator>
 #include <QtGlobal>
+
+#include <cstdio>
+#include <cstdlib>
+#include <exception>
 
 #define HAVE_STYLE_MANAGER __has_include(<KStyleManager>)
 #if HAVE_STYLE_MANAGER
@@ -42,6 +47,51 @@
  * Event handler for macOS file opening via QFileOpenEvent.
  * Should not do anything on Windows/Linux as QFileOpenEvent is never fired there.
  */
+
+class ScholiaApplication final : public QApplication
+{
+public:
+    using QApplication::QApplication;
+
+protected:
+    bool notify(QObject *receiver, QEvent *event) override
+    {
+        try {
+            return QApplication::notify(receiver, event);
+        } catch (const std::exception &exception) {
+            reportUnhandledException(exception.what());
+        } catch (...) {
+            reportUnhandledException(nullptr);
+        }
+        return false;
+    }
+
+private:
+    void reportUnhandledException(const char *what) noexcept
+    {
+        try {
+            const QString details = what && *what ? QString::fromLocal8Bit(what) : i18n("Unknown C++ exception");
+            qCritical().noquote() << "Scholia caught an unhandled exception in a Qt event:" << details;
+            if (m_exceptionDialogPending || m_exceptionDialogVisible) {
+                return;
+            }
+
+            m_exceptionDialogPending = true;
+            QTimer::singleShot(0, this, [this, details] {
+                m_exceptionDialogPending = false;
+                m_exceptionDialogVisible = true;
+                KMessageBox::error(QApplication::activeWindow(),
+                                   i18n("Scholia stopped an operation after an unexpected internal error. The application is still running, but you should save your work to a new file before continuing.\n\n%1", details));
+                m_exceptionDialogVisible = false;
+            });
+        } catch (...) {
+            std::fputs("Scholia caught an unhandled exception while reporting another exception.\n", stderr);
+        }
+    }
+
+    bool m_exceptionDialogPending = false;
+    bool m_exceptionDialogVisible = false;
+};
 
 class FileOpenEventHandler : public QObject
 {
@@ -68,7 +118,7 @@ protected:
     }
 };
 
-int main(int argc, char **argv)
+static int runScholiaApplication(int argc, char **argv)
 {
     /**
      * trigger initialisation of proper icon theme
@@ -79,7 +129,7 @@ int main(int argc, char **argv)
 
     QCoreApplication::setAttribute(Qt::AA_CompressTabletEvents);
 
-    QApplication app(argc, argv);
+    ScholiaApplication app(argc, argv);
 
     QTranslator qtTranslator;
     if (qtTranslator.load(QLocale(), QStringLiteral("qt"), QStringLiteral("_"), QLibraryInfo::path(QLibraryInfo::TranslationsPath))) {
@@ -203,6 +253,18 @@ int main(int argc, char **argv)
     }
 
     return app.exec();
+}
+
+int main(int argc, char **argv)
+{
+    try {
+        return runScholiaApplication(argc, argv);
+    } catch (const std::exception &exception) {
+        std::fprintf(stderr, "Scholia stopped after an unhandled startup exception: %s\n", exception.what());
+    } catch (...) {
+        std::fputs("Scholia stopped after an unknown startup exception.\n", stderr);
+    }
+    return EXIT_FAILURE;
 }
 #include "main.moc"
 /* kate: replace-tabs on; indent-width 4; */

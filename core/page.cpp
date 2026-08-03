@@ -43,6 +43,7 @@
 #include "utils_p.h"
 
 #include <limits>
+#include <utility>
 
 #ifdef PAGE_PROFILE
 #include <QTime>
@@ -1071,10 +1072,10 @@ void PagePrivate::adoptGeneratedContents(PagePrivate *oldPage)
 {
     rotateAt(oldPage->m_rotation);
 
-    m_pixmaps = oldPage->m_pixmaps;
+    m_pixmaps = std::move(oldPage->m_pixmaps);
     oldPage->m_pixmaps.clear();
 
-    m_tilesManagers = oldPage->m_tilesManagers;
+    m_tilesManagers = std::move(oldPage->m_tilesManagers);
     oldPage->m_tilesManagers.clear();
 
     m_boundingBox = oldPage->m_boundingBox;
@@ -1085,8 +1086,8 @@ void PagePrivate::adoptGeneratedContents(PagePrivate *oldPage)
     m_textSelections = oldPage->m_textSelections;
     oldPage->m_textSelections = nullptr;
 
-    restoredLocalAnnotationList = oldPage->restoredLocalAnnotationList;
-    restoredFormFieldList = oldPage->restoredFormFieldList;
+    restoredLocalAnnotationList = std::move(oldPage->restoredLocalAnnotationList);
+    restoredFormFieldList = std::move(oldPage->restoredFormFieldList);
 }
 
 FormField *PagePrivate::findEquivalentForm(const Page *p, FormField *oldField)

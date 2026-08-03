@@ -1615,7 +1615,7 @@ void PageView::openAnnotationWindow(Okular::Annotation *annotation, int pageNumb
         d->m_annowindows << existWindow;
     } else {
         existWindow->raise();
-        existWindow->findChild<KTextEdit *>()->setFocus();
+        existWindow->setFocus();
     }
 
     existWindow->show();

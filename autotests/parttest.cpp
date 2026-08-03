@@ -81,6 +81,7 @@ private Q_SLOTS:
     void test388288();
     void testSaveAs();
     void testSaveAs_data();
+    void testFailedBackingFileSwapKeepsDocumentUsable();
     void testSaveAsToNonExistingPath();
     void testSaveAsToSymlink();
     void testSaveIsSymlink();
@@ -1286,6 +1287,37 @@ void PartTest::testSaveAs()
     }
 }
 
+void PartTest::testFailedBackingFileSwapKeepsDocumentUsable()
+{
+    Part part(nullptr, {});
+    const QString sourceFile = QStringLiteral(KDESRCDIR "data/file1.pdf");
+    QVERIFY(openDocument(&part, sourceFile));
+
+    const QUrl originalUrl = part.m_document->currentDocument();
+    const int originalPageCount = part.m_document->pages();
+    const Page *const originalFirstPage = part.m_document->page(0);
+    QVERIFY(originalFirstPage);
+
+    QTemporaryFile invalidReplacement(QStringLiteral("%1/okrXXXXXX.okular").arg(QDir::tempPath()));
+    QVERIFY(invalidReplacement.open());
+    invalidReplacement.write("%PDF-1.4\n"
+                             "1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n"
+                             "2 0 obj << /Type /Pages /Count 1 /Kids [3 0 R] >> endobj\n"
+                             "trailer << /Root 1 0 R >>\n"
+                             "%%EOF\n");
+    invalidReplacement.close();
+
+    QVERIFY(!part.m_document->swapBackingFile(invalidReplacement.fileName(), QUrl::fromLocalFile(invalidReplacement.fileName())));
+    QVERIFY(part.m_document->isOpened());
+    QCOMPARE(part.m_document->currentDocument(), originalUrl);
+    QCOMPARE(part.m_document->pages(), originalPageCount);
+    QCOMPARE(part.m_document->page(0), originalFirstPage);
+    QVERIFY(part.m_document->page(0)->width() > 0.0);
+    QVERIFY(part.m_document->page(0)->height() > 0.0);
+
+    part.closeUrl();
+}
+
 void PartTest::testSaveAs_data()
 {
     QTest::addColumn<QString>("file");
@@ -1837,6 +1869,7 @@ void PartTest::testAnnotWindow()
     QVERIFY(QMetaObject::invokeMethod(part.m_pageView, "slotSetMouseNormal"));
 
     QCOMPARE(part.m_document->currentPage(), 0u);
+    const int initialAnnotationCount = part.m_document->page(0)->annotations().size();
 
     // Create two distinct text annotations
     Okular::Annotation *annot1 = new Okular::TextAnnotation();
@@ -1846,11 +1879,12 @@ void PartTest::testAnnotWindow()
     Okular::Annotation *annot2 = new Okular::TextAnnotation();
     annot2->setBoundingRectangle(Okular::NormalizedRect(0.8, 0.3, 0.85, 0.35));
     annot2->setContents(QStringLiteral("Annot contents 222222"));
+    annot2->style().setColor(QColor(32, 32, 32));
 
     // Add annot1 and annot2 to document
     part.m_document->addPageAnnotation(0, annot1);
     part.m_document->addPageAnnotation(0, annot2);
-    QCOMPARE(part.m_document->page(0)->annotations().size(), 2);
+    QCOMPARE(part.m_document->page(0)->annotations().size(), initialAnnotationCount + 2);
 
     QTimer *delayResizeEventTimer = part.m_pageView->findChildren<QTimer *>(QStringLiteral("delayResizeEventTimer")).at(0);
     QVERIFY(delayResizeEventTimer->isActive());
@@ -1908,6 +1942,87 @@ void PartTest::testAnnotWindow()
     QCOMPARE(win1->visibleRegion().boundingRect().size().height(), 50);
     QCOMPARE(win2->visibleRegion().boundingRect().size().width(), 300);
     QCOMPARE(win2->visibleRegion().boundingRect().size().height(), 300);
+
+    // Resizing must survive the resulting resize event instead of snapping back
+    // to the default annotation window size.
+    win2->resize(350, 350);
+    QTRY_COMPARE(win2->size(), QSize(350, 350));
+
+    auto *textEdit = win2->findChild<QTextEdit *>();
+    QVERIFY(textEdit);
+    QCOMPARE(textEdit->cursorWidth(), 3);
+    const QColor background = textEdit->palette().color(QPalette::Base);
+    const QColor foreground = textEdit->palette().color(QPalette::Text);
+    QVERIFY(qAbs(qGray(background.rgb()) - qGray(foreground.rgb())) >= 100);
+
+    textEdit->setFocus();
+    QTRY_VERIFY(textEdit->hasFocus());
+    const int oldCursorFlashTime = QApplication::cursorFlashTime();
+    QApplication::setCursorFlashTime(1000);
+    QTest::keyClick(textEdit, Qt::Key_End);
+    QTest::qWait(50);
+    const QImage caretOnFrame = textEdit->grab().toImage();
+    QTest::qWait(550);
+    const QImage caretOffFrame = textEdit->grab().toImage();
+    QApplication::setCursorFlashTime(oldCursorFlashTime);
+    QCOMPARE(caretOnFrame, caretOffFrame);
+
+    const QRect caretRect = textEdit->cursorRect();
+    QVERIFY(caretRect.isValid());
+    const QImage caretPixels = textEdit->viewport()->grab(caretRect).toImage();
+    bool hasVisibleCaretPixel = false;
+    for (int y = 0; y < caretPixels.height() && !hasVisibleCaretPixel; ++y) {
+        for (int x = 0; x < caretPixels.width(); ++x) {
+            if (qAbs(qGray(caretPixels.pixel(x, y)) - qGray(background.rgb())) >= 100) {
+                hasVisibleCaretPixel = true;
+                break;
+            }
+        }
+    }
+    QVERIFY(hasVisibleCaretPixel);
+
+    const QList<QFrame *> existingWindows = part.m_pageView->findChildren<QFrame *>(QStringLiteral("AnnotWindow"));
+    auto *latexAnnot = new Okular::StampAnnotation();
+    latexAnnot->setBoundingRectangle(Okular::NormalizedRect(0.6, 0.5, 0.75, 0.6));
+    latexAnnot->setContents(QStringLiteral("\\LaTeX{}"));
+    latexAnnot->setOkularLatex(true);
+    part.m_document->addPageAnnotation(0, latexAnnot);
+    QVERIFY(QMetaObject::invokeMethod(part.m_pageView,
+                                      "openAnnotationWindow",
+                                      Qt::DirectConnection,
+                                      Q_ARG(Okular::Annotation *, latexAnnot),
+                                      Q_ARG(int, 0)));
+
+    QTRY_COMPARE(part.m_pageView->findChildren<QFrame *>(QStringLiteral("AnnotWindow")).size(), existingWindows.size() + 1);
+    QFrame *latexWindow = nullptr;
+    for (QFrame *window : part.m_pageView->findChildren<QFrame *>(QStringLiteral("AnnotWindow"))) {
+        if (!existingWindows.contains(window)) {
+            latexWindow = window;
+            break;
+        }
+    }
+    QVERIFY(latexWindow);
+
+    QWidget *latexEditor = nullptr;
+    for (QWidget *widget : latexWindow->findChildren<QWidget *>()) {
+        if (QLatin1String(widget->metaObject()->className()) == QLatin1String("QsciScintilla")) {
+            latexEditor = widget;
+            break;
+        }
+    }
+    if (latexEditor) {
+        latexEditor->setFocus();
+        QTRY_VERIFY(latexEditor->hasFocus());
+        QTest::keyClick(latexEditor, Qt::Key_End);
+        QTest::qWait(50);
+        const QImage latexCaretFirstFrame = latexEditor->grab().toImage();
+        QTest::qWait(550);
+        const QImage latexCaretSecondFrame = latexEditor->grab().toImage();
+        QCOMPARE(latexCaretFirstFrame, latexCaretSecondFrame);
+    }
+    QSignalSpy latexWindowDestroyed(latexWindow, &QObject::destroyed);
+    latexWindow->close();
+    QTRY_COMPARE(latexWindowDestroyed.count(), 1);
 }
 
 // Helper for testAdditionalActionTriggers

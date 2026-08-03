@@ -377,8 +377,8 @@ QString latexNoteDataForStampAnnotation(const Okular::StampAnnotation *annotatio
         return QString();
     }
 
-    const QString type = annotation->latexNoteType() == Okular::Annotation::LatexNoteCallout ? QStringLiteral("callout")
-        : (annotation->latexNoteType() == Okular::Annotation::LatexNoteBoxed ? QStringLiteral("boxed") : QStringLiteral("plain"));
+    const QString type =
+        annotation->latexNoteType() == Okular::Annotation::LatexNoteCallout ? QStringLiteral("callout") : (annotation->latexNoteType() == Okular::Annotation::LatexNoteBoxed ? QStringLiteral("boxed") : QStringLiteral("plain"));
 
     QJsonObject layout;
     layout.insert(QStringLiteral("widthPt"), annotation->latexLayoutWidth());
@@ -437,10 +437,8 @@ Poppler::StampAnnotation::CustomPdfAppearanceOptions latexStampAppearanceOptions
         const QPointF pointB = normPointToPagePointF(annotation->latexCalloutPoint(1), page);
         const QPointF pointC = normPointToPagePointF(annotation->latexCalloutPoint(2), page);
         const double linePadding = qMax(8.0, qMax(1.0, borderWidth) * 5.0);
-        appearanceRectPoints = QRectF(QPointF(std::min({ boxRectPoints.left(), pointA.x(), pointB.x(), pointC.x() }) - linePadding,
-                                              std::min({ boxRectPoints.top(), pointA.y(), pointB.y(), pointC.y() }) - linePadding),
-                                      QPointF(std::max({ boxRectPoints.right(), pointA.x(), pointB.x(), pointC.x() }) + linePadding,
-                                              std::max({ boxRectPoints.bottom(), pointA.y(), pointB.y(), pointC.y() }) + linePadding))
+        appearanceRectPoints = QRectF(QPointF(std::min({boxRectPoints.left(), pointA.x(), pointB.x(), pointC.x()}) - linePadding, std::min({boxRectPoints.top(), pointA.y(), pointB.y(), pointC.y()}) - linePadding),
+                                      QPointF(std::max({boxRectPoints.right(), pointA.x(), pointB.x(), pointC.x()}) + linePadding, std::max({boxRectPoints.bottom(), pointA.y(), pointB.y(), pointC.y()}) + linePadding))
                                    .normalized();
         if (expandedBoundary) {
             *expandedBoundary = normRectToRectF(pageRectToNormRect(appearanceRectPoints, page->pageSizeF()));
@@ -466,12 +464,10 @@ Poppler::StampAnnotation::CustomPdfAppearanceOptions latexStampAppearanceOptions
     }
     if (annotation->latexNoteType() == Okular::Annotation::LatexNoteCallout) {
         QVector<QPointF> leaderLine;
-        leaderLine << QPointF((normPointToPagePointF(annotation->latexCalloutPoint(0), page).x() - appearanceRectPoints.left()) / scale,
-                              (normPointToPagePointF(annotation->latexCalloutPoint(0), page).y() - appearanceRectPoints.top()) / scale)
-                   << QPointF((normPointToPagePointF(annotation->latexCalloutPoint(1), page).x() - appearanceRectPoints.left()) / scale,
-                              (normPointToPagePointF(annotation->latexCalloutPoint(1), page).y() - appearanceRectPoints.top()) / scale)
-                   << QPointF((normPointToPagePointF(annotation->latexCalloutPoint(2), page).x() - appearanceRectPoints.left()) / scale,
-                              (normPointToPagePointF(annotation->latexCalloutPoint(2), page).y() - appearanceRectPoints.top()) / scale);
+        leaderLine
+            << QPointF((normPointToPagePointF(annotation->latexCalloutPoint(0), page).x() - appearanceRectPoints.left()) / scale, (normPointToPagePointF(annotation->latexCalloutPoint(0), page).y() - appearanceRectPoints.top()) / scale)
+            << QPointF((normPointToPagePointF(annotation->latexCalloutPoint(1), page).x() - appearanceRectPoints.left()) / scale, (normPointToPagePointF(annotation->latexCalloutPoint(1), page).y() - appearanceRectPoints.top()) / scale)
+            << QPointF((normPointToPagePointF(annotation->latexCalloutPoint(2), page).x() - appearanceRectPoints.left()) / scale, (normPointToPagePointF(annotation->latexCalloutPoint(2), page).y() - appearanceRectPoints.top()) / scale);
         options.leaderLine = leaderLine;
     }
 
@@ -879,10 +875,7 @@ static void updatePopplerAnnotationFromOkularAnnotation(const Okular::HighlightA
     pHighlightAnnotation->setHighlightQuads(pQuads);
 }
 
-static bool updatePopplerAnnotationFromOkularAnnotation(const Okular::StampAnnotation *oStampAnnotation,
-                                                        Poppler::StampAnnotation *pStampAnnotation,
-                                                        const Poppler::Page *page,
-                                                        const Poppler::AnnotationAppearance *sourceAppearance = nullptr)
+static bool updatePopplerAnnotationFromOkularAnnotation(const Okular::StampAnnotation *oStampAnnotation, Poppler::StampAnnotation *pStampAnnotation, const Poppler::Page *page, const Poppler::AnnotationAppearance *sourceAppearance = nullptr)
 {
     pStampAnnotation->setStampIconName(oStampAnnotation->stampIconName());
 #ifdef POPPLER_QT6_HAS_ANNOTATION_CUSTOM_SCALAR_PROPERTIES
@@ -892,9 +885,8 @@ static bool updatePopplerAnnotationFromOkularAnnotation(const Okular::StampAnnot
 
         const QString pdfAppearanceFile = oStampAnnotation->latexAppearancePdfFileName();
         const QFileInfo pdfAppearanceInfo(pdfAppearanceFile);
-        qCDebug(OkularPdfDebug) << "Embedding LaTeX Stamp appearance; path:" << pdfAppearanceFile << "exists:" << pdfAppearanceInfo.exists() << "bytes:" << pdfAppearanceInfo.size()
-                                << "layout width:" << oStampAnnotation->latexLayoutWidth() << "scale:" << oStampAnnotation->latexScale()
-                                << "contents length:" << oStampAnnotation->contents().size();
+        qCDebug(OkularPdfDebug) << "Embedding LaTeX Stamp appearance; path:" << pdfAppearanceFile << "exists:" << pdfAppearanceInfo.exists() << "bytes:" << pdfAppearanceInfo.size() << "layout width:" << oStampAnnotation->latexLayoutWidth()
+                                << "scale:" << oStampAnnotation->latexScale() << "contents length:" << oStampAnnotation->contents().size();
         if (!pdfAppearanceFile.isEmpty() && pdfAppearanceInfo.exists()) {
             QRectF expandedBoundary;
             const Poppler::StampAnnotation::CustomPdfAppearanceOptions appearanceOptions = latexStampAppearanceOptions(oStampAnnotation, page, &expandedBoundary);
@@ -1133,9 +1125,18 @@ static Poppler::Annotation *createPopplerAnnotationFromOkularAnnotation(const Ok
 }
 void PopplerAnnotationProxy::notifyAddition(Okular::Annotation *okl_ann, int page)
 {
+    if (!okl_ann || !ppl_doc) {
+        qCWarning(OkularPdfDebug) << "Cannot add an annotation without a live PDF document and annotation";
+        return;
+    }
+
     QMutexLocker ml(mutex);
 
     std::unique_ptr<Poppler::Page> ppl_page = ppl_doc->page(nativePageForLogicalPage(page));
+    if (!ppl_page) {
+        qCWarning(OkularPdfDebug) << "Cannot add an annotation to invalid logical page" << page;
+        return;
+    }
 
     // Create poppler annotation
     Poppler::Annotation *ppl_ann = nullptr;
@@ -1217,6 +1218,11 @@ void PopplerAnnotationProxy::notifyModification(const Okular::Annotation *okl_an
     Q_UNUSED(page);
     Q_UNUSED(appearanceChanged);
 
+    if (!okl_ann || !ppl_doc) {
+        qCWarning(OkularPdfDebug) << "Cannot modify an annotation without a live PDF document and annotation";
+        return;
+    }
+
     Poppler::Annotation *ppl_ann = qvariant_cast<Poppler::Annotation *>(okl_ann->nativeId());
 
     if (!ppl_ann) { // Ignore non-native annotations
@@ -1279,6 +1285,10 @@ void PopplerAnnotationProxy::notifyModification(const Okular::Annotation *okl_an
         const Okular::StampAnnotation *okl_stampann = static_cast<const Okular::StampAnnotation *>(okl_ann);
         Poppler::StampAnnotation *ppl_stampann = static_cast<Poppler::StampAnnotation *>(ppl_ann);
         std::unique_ptr<Poppler::Page> ppl_page = ppl_doc->page(nativePageForLogicalPage(page));
+        if (!ppl_page) {
+            qCWarning(OkularPdfDebug) << "Cannot update a stamp annotation on invalid logical page" << page;
+            break;
+        }
         const bool appearanceUpdated = updatePopplerAnnotationFromOkularAnnotation(okl_stampann, ppl_stampann, ppl_page.get(), preservedAppearance.get());
         if (!appearanceUpdated && preservedAppearance) {
             if (okl_stampann->isOkularLatex() && okl_stampann->isLatexCallout() && preservedBoundary.isValid()) {
@@ -1326,6 +1336,11 @@ void PopplerAnnotationProxy::notifyModification(const Okular::Annotation *okl_an
 
 void PopplerAnnotationProxy::notifyRemoval(Okular::Annotation *okl_ann, int page)
 {
+    if (!okl_ann || !ppl_doc) {
+        qCWarning(OkularPdfDebug) << "Cannot remove an annotation without a live PDF document and annotation";
+        return;
+    }
+
     Poppler::Annotation *ppl_ann = qvariant_cast<Poppler::Annotation *>(okl_ann->nativeId());
 
     if (!ppl_ann) { // Ignore non-native annotations
@@ -1335,6 +1350,10 @@ void PopplerAnnotationProxy::notifyRemoval(Okular::Annotation *okl_ann, int page
     QMutexLocker ml(mutex);
 
     std::unique_ptr<Poppler::Page> ppl_page = ppl_doc->page(nativePageForLogicalPage(page));
+    if (!ppl_page) {
+        qCWarning(OkularPdfDebug) << "Cannot remove an annotation from invalid logical page" << page;
+        return;
+    }
     annotationsOnOpenHash->remove(okl_ann);
     if (okl_ann->subType() == Okular::Annotation::AStamp) {
         deletedStampsAnnotationAppearance[static_cast<Okular::StampAnnotation *>(okl_ann)] = ppl_ann->annotationAppearance();
@@ -1687,7 +1706,7 @@ static Okular::Annotation *createAnnotationFromPopplerAnnotation(const Poppler::
     if (latexNoteData.valid) {
         oStampAnn->setStampIconName(QStringLiteral("latex-notes"));
         oStampAnn->setLatexNoteType(latexNoteData.type == QLatin1String("callout") ? Okular::Annotation::LatexNoteCallout
-                                 : (latexNoteData.type == QLatin1String("boxed") ? Okular::Annotation::LatexNoteBoxed : Okular::Annotation::LatexNotePlain));
+                                                                                   : (latexNoteData.type == QLatin1String("boxed") ? Okular::Annotation::LatexNoteBoxed : Okular::Annotation::LatexNotePlain));
         oStampAnn->setLatexScale(latexNoteData.scale);
         oStampAnn->setLatexLayoutWidth(latexNoteData.layoutWidthPoints);
         oStampAnn->setLatexTextColor(latexNoteData.textColor);
@@ -1852,8 +1871,8 @@ Okular::Annotation *createAnnotationFromPopplerAnnotation(Poppler::Annotation *p
                 if (latexNoteData.hasBoxRectPoints && pageSize.width() > 0.0 && pageSize.height() > 0.0) {
                     oStampAnn->setBoundingRectangle(pageRectToNormRect(latexNoteData.boxRectPoints, pageSize));
                 }
-                const bool hasNormalizedCalloutPoints = (oStampAnn->latexCalloutPoint(0).x != 0.0 || oStampAnn->latexCalloutPoint(0).y != 0.0 || oStampAnn->latexCalloutPoint(1).x != 0.0
-                                                         || oStampAnn->latexCalloutPoint(1).y != 0.0 || oStampAnn->latexCalloutPoint(2).x != 0.0 || oStampAnn->latexCalloutPoint(2).y != 0.0);
+                const bool hasNormalizedCalloutPoints = (oStampAnn->latexCalloutPoint(0).x != 0.0 || oStampAnn->latexCalloutPoint(0).y != 0.0 || oStampAnn->latexCalloutPoint(1).x != 0.0 || oStampAnn->latexCalloutPoint(1).y != 0.0 ||
+                                                         oStampAnn->latexCalloutPoint(2).x != 0.0 || oStampAnn->latexCalloutPoint(2).y != 0.0);
                 if (!hasNormalizedCalloutPoints && latexNoteData.hasPageCalloutPoints && pageSize.width() > 0.0 && pageSize.height() > 0.0) {
                     for (int i = 0; i < 3; ++i) {
                         oStampAnn->setLatexCalloutPoint(pagePointToNormPoint(latexNoteData.pageCalloutPoints[i], pageSize), i);
@@ -1892,7 +1911,7 @@ Okular::Annotation *createAnnotationFromPopplerAnnotation(Poppler::Annotation *p
             const ParsedLatexNoteData latexNoteData = parseLatexNoteData(pStampAnn->customStringProperty(LatexNoteDataKey));
             if (latexNoteData.valid) {
                 oStampAnn->setLatexNoteType(latexNoteData.type == QLatin1String("callout") ? Okular::Annotation::LatexNoteCallout
-                                         : (latexNoteData.type == QLatin1String("boxed") ? Okular::Annotation::LatexNoteBoxed : Okular::Annotation::LatexNotePlain));
+                                                                                           : (latexNoteData.type == QLatin1String("boxed") ? Okular::Annotation::LatexNoteBoxed : Okular::Annotation::LatexNotePlain));
                 oStampAnn->setLatexFillColor(latexNoteData.fillColor);
                 oStampAnn->setLatexBorderColor(latexNoteData.borderColor);
                 oStampAnn->style().setWidth(latexNoteData.type == QLatin1String("plain") ? 0.0 : latexNoteData.borderWidthPoints);

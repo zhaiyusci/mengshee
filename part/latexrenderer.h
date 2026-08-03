@@ -73,8 +73,6 @@ public:
     static StemTeXStatus stemTeXStatus();
 
 private:
-    static bool securityCheck(const QString &latexFormula);
-
     QStringList m_fileList;
     QString m_lastBackendName;
     LatexRenderWarning m_lastWarning;

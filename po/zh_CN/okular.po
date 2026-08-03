@@ -6375,3 +6375,114 @@ msgstr "目录项标题："
 #, kde-format
 msgid "Delete the contents entry '%1' and its child entries?"
 msgstr "删除目录项“%1”及其子项吗？"
+
+#: core/document.cpp
+msgid "Could not safely update page references after reordering the document."
+msgstr "页面重排后无法安全更新页面引用。"
+
+#: core/document.cpp
+#, kde-format
+msgid "Could not reorder pages because of an unexpected internal error: %1"
+msgstr "由于意外的内部错误，无法重新排序页面：%1"
+
+#: core/document.cpp
+msgid "Could not reorder pages because of an unknown internal error."
+msgstr "由于未知的内部错误，无法重新排序页面。"
+
+#: generators/poppler/generator_pdf.cpp
+#, kde-format
+msgid "PDF page editing failed unexpectedly: %1"
+msgstr "PDF 页面编辑意外失败：%1"
+
+#: generators/poppler/generator_pdf.cpp
+msgid "PDF page editing failed because of an unknown internal error."
+msgstr "PDF 页面编辑因未知的内部错误而失败。"
+
+#: generators/poppler/generator_pdf.cpp
+msgid "The PDF document is no longer available."
+msgstr "PDF 文档已不可用。"
+
+#: generators/poppler/generator_pdf.cpp
+msgid "The signature page is outside the document page range."
+msgstr "签名页面超出了文档的页面范围。"
+
+#: generators/poppler/generator_pdf.cpp
+msgid "The signature page could not be loaded."
+msgstr "无法加载签名页面。"
+
+#: part/latexnoteutils.cpp part/pageviewmouseannotation.cpp
+#, kde-format
+msgid "LaTeX rendering failed unexpectedly: %1"
+msgstr "LaTeX 渲染意外失败：%1"
+
+#: part/latexnoteutils.cpp part/pageviewmouseannotation.cpp
+msgid "LaTeX rendering failed because of an unknown internal error."
+msgstr "LaTeX 渲染因未知的内部错误而失败。"
+
+#: part/latexnoteutils.cpp part/pageviewmouseannotation.cpp
+#, kde-format
+msgid "Could not start the LaTeX rendering worker: %1"
+msgstr "无法启动 LaTeX 渲染工作线程：%1"
+
+#: part/latexnoteutils.cpp part/pageviewmouseannotation.cpp
+msgid "Could not start the LaTeX rendering worker because of an unknown internal error."
+msgstr "由于未知的内部错误，无法启动 LaTeX 渲染工作线程。"
+
+#: part/latexrenderer.cpp
+msgid "StemTeX renderer is starting."
+msgstr "StemTeX 渲染器正在启动。"
+
+#: part/latexrenderer.cpp
+msgid "StemTeX renderer has not started yet."
+msgstr "StemTeX 渲染器尚未启动。"
+
+#: part/latexrenderer.cpp
+#, kde-format
+msgid "StemTeX rendering failed unexpectedly: %1"
+msgstr "StemTeX 渲染意外失败：%1"
+
+#: part/latexrenderer.cpp
+msgid "StemTeX rendering failed because of an unknown internal error."
+msgstr "StemTeX 渲染因未知的内部错误而失败。"
+
+#: part/latexrenderer.cpp
+#, kde-format
+msgid "StemTeX renderer initialization failed unexpectedly: %1"
+msgstr "StemTeX 渲染器初始化意外失败：%1"
+
+#: part/latexrenderer.cpp
+msgid "StemTeX renderer initialization failed because of an unknown internal error."
+msgstr "StemTeX 渲染器初始化因未知的内部错误而失败。"
+
+#: part/latexrenderer.cpp
+#, kde-format
+msgid "Could not start the StemTeX initialization worker: %1"
+msgstr "无法启动 StemTeX 初始化工作线程：%1"
+
+#: part/latexrenderer.cpp
+msgid "Could not start the StemTeX initialization worker because of an unknown internal error."
+msgstr "由于未知的内部错误，无法启动 StemTeX 初始化工作线程。"
+
+#: part/latexrenderer.cpp
+#, kde-format
+msgid "StemTeX renderer status failed unexpectedly: %1"
+msgstr "获取 StemTeX 渲染器状态时意外失败：%1"
+
+#: part/latexrenderer.cpp
+msgid "StemTeX renderer status failed because of an unknown internal error."
+msgstr "获取 StemTeX 渲染器状态时发生未知的内部错误。"
+
+#: shell/main.cpp
+msgid "Unknown C++ exception"
+msgstr "未知的 C++ 异常"
+
+#: shell/main.cpp
+#, kde-format
+msgid ""
+"Scholia stopped an operation after an unexpected internal error. The application is still running, but you should save your work to a new file before continuing.\n"
+"\n"
+"%1"
+msgstr ""
+"Scholia 因意外的内部错误停止了当前操作。应用程序仍在运行，但建议先将当前工作保存到新文件，再继续操作。\n"
+"\n"
+"%1"

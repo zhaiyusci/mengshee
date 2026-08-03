@@ -20,8 +20,10 @@
 #include "pageviewmouseannotation.h"
 
 #include <cmath>
+#include <exception>
 #include <thread>
 
+#include <QCoreApplication>
 #include <QDateTime>
 #include <QDebug>
 #include <QDir>
@@ -29,8 +31,8 @@
 #include <QFileInfo>
 #include <QImageReader>
 #include <QMetaObject>
-#include <QPolygon>
 #include <QPointer>
+#include <QPolygon>
 #include <QStandardPaths>
 #include <QTextStream>
 #include <qevent.h>
@@ -697,15 +699,12 @@ static GuiUtils::LatexRenderWarning compileErrorWarningForLatexNote(const LatexN
     return warning;
 }
 
-static Okular::NormalizedRect latexAnnotationRectFromControlRect(const Okular::NormalizedRect &controlRect,
-                                                                 const Okular::Page *page,
-                                                                 const QSizeF &visualSizePoints,
-                                                                 double visualScale)
+static Okular::NormalizedRect latexAnnotationRectFromControlRect(const Okular::NormalizedRect &controlRect, const Okular::Page *page, const QSizeF &visualSizePoints, double visualScale)
 {
     const double pageWidthPoints = LatexNoteUtils::pageWidthInPoints(page);
     const double pageHeightPoints = LatexNoteUtils::pageHeightInPoints(page);
-    if (!page || !std::isfinite(pageWidthPoints) || !std::isfinite(pageHeightPoints) || pageWidthPoints <= 0.0 || pageHeightPoints <= 0.0 || !visualSizePoints.isValid()
-        || visualSizePoints.isEmpty() || !std::isfinite(visualScale) || visualScale <= 0.0) {
+    if (!page || !std::isfinite(pageWidthPoints) || !std::isfinite(pageHeightPoints) || pageWidthPoints <= 0.0 || pageHeightPoints <= 0.0 || !visualSizePoints.isValid() || visualSizePoints.isEmpty() || !std::isfinite(visualScale) ||
+        visualScale <= 0.0) {
         return {};
     }
 
@@ -768,13 +767,8 @@ struct LatexResizeUpdate {
     QSizeF pdfSize;
 };
 
-static bool prepareLatexResizeUpdate(Okular::Document *document,
-                                     int pageNumber,
-                                     Okular::Annotation *annotation,
-                                     const Okular::NormalizedRect &resizedRect,
-                                     MouseAnnotation::ResizeHandle handle,
-                                     Okular::Rotation rotation,
-                                     LatexResizeUpdate *update)
+static bool
+prepareLatexResizeUpdate(Okular::Document *document, int pageNumber, Okular::Annotation *annotation, const Okular::NormalizedRect &resizedRect, MouseAnnotation::ResizeHandle handle, Okular::Rotation rotation, LatexResizeUpdate *update)
 {
     if (!document || !update || !LatexNoteUtils::annotationIsLatex(annotation) || annotation->contents().trimmed().isEmpty()) {
         return false;
@@ -833,9 +827,8 @@ static bool prepareLatexResizeUpdate(Okular::Document *document,
         }
     }
 
-    qCDebug(OkularUiDebug) << "Finalizing LaTeX note resize; handle:" << int(update->handle) << "rotated handle:" << int(update->rotatedHandle)
-                           << "adjusts layout width:" << update->adjustsLayoutWidth << "adjusts scale:" << update->adjustsVertically
-                           << "visible width:" << update->visibleWidthPoints << "visible height:" << update->visibleHeightPoints << "async render:" << update->needsRender;
+    qCDebug(OkularUiDebug) << "Finalizing LaTeX note resize; handle:" << int(update->handle) << "rotated handle:" << int(update->rotatedHandle) << "adjusts layout width:" << update->adjustsLayoutWidth
+                           << "adjusts scale:" << update->adjustsVertically << "visible width:" << update->visibleWidthPoints << "visible height:" << update->visibleHeightPoints << "async render:" << update->needsRender;
     return true;
 }
 
@@ -925,11 +918,10 @@ static bool applyLatexResizeUpdate(Okular::Document *document, const LatexResize
     annotation->setLatexScale(visualScale);
     annotation->setBoundingRectangle(updatedRect);
     annotation->setModificationDate(QDateTime::currentDateTime());
-    qCDebug(OkularUiDebug) << "Writing LaTeX note resize result to annotation; appearance PDF:" << pdfFileName << "layout width:" << update.layoutWidthPoints << "scale:" << visualScale
-                           << "pdf size:" << pdfSize << "visual size:" << visualSizePoints;
+    qCDebug(OkularUiDebug) << "Writing LaTeX note resize result to annotation; appearance PDF:" << pdfFileName << "layout width:" << update.layoutWidthPoints << "scale:" << visualScale << "pdf size:" << pdfSize
+                           << "visual size:" << visualSizePoints;
     document->modifyPageAnnotationProperties(update.pageNumber, annotation);
-    qCDebug(OkularUiDebug) << "Updated LaTeX note geometry; layout width:" << update.layoutWidthPoints << "scale:" << visualScale << "rect:" << updatedRect.left << updatedRect.top << updatedRect.right
-                            << updatedRect.bottom;
+    qCDebug(OkularUiDebug) << "Updated LaTeX note geometry; layout width:" << update.layoutWidthPoints << "scale:" << visualScale << "rect:" << updatedRect.left << updatedRect.top << updatedRect.right << updatedRect.bottom;
     return true;
 }
 
@@ -947,8 +939,8 @@ bool MouseAnnotation::updateLatexNoteAfterResizeAsync(const AnnotationDescriptio
         }
 
         const bool clearingPendingPreview = m_hasPendingLatexResizePreview && m_pendingLatexResizeAnnotationUniqueName == resizeUpdate.annotationUniqueName;
-        if (clearingPendingPreview && m_focusedAnnotation.isValid() && m_focusedAnnotation.pageNumber == resizeUpdate.pageNumber && m_focusedAnnotation.annotation
-            && m_focusedAnnotation.annotation->uniqueName() == resizeUpdate.annotationUniqueName) {
+        if (clearingPendingPreview && m_focusedAnnotation.isValid() && m_focusedAnnotation.pageNumber == resizeUpdate.pageNumber && m_focusedAnnotation.annotation &&
+            m_focusedAnnotation.annotation->uniqueName() == resizeUpdate.annotationUniqueName) {
             updateViewport(m_focusedAnnotation);
         }
         if (clearingPendingPreview) {
@@ -958,8 +950,7 @@ bool MouseAnnotation::updateLatexNoteAfterResizeAsync(const AnnotationDescriptio
 
         GuiUtils::LatexRenderWarning warning;
         const bool ok = applyLatexResizeUpdate(m_document, resizeUpdate, rendered, &warning);
-        if (m_focusedAnnotation.isValid() && m_focusedAnnotation.pageNumber == resizeUpdate.pageNumber && m_focusedAnnotation.annotation
-            && m_focusedAnnotation.annotation->uniqueName() == resizeUpdate.annotationUniqueName) {
+        if (m_focusedAnnotation.isValid() && m_focusedAnnotation.pageNumber == resizeUpdate.pageNumber && m_focusedAnnotation.annotation && m_focusedAnnotation.annotation->uniqueName() == resizeUpdate.annotationUniqueName) {
             if (const Okular::Page *page = m_document->page(resizeUpdate.pageNumber)) {
                 if (Okular::Annotation *currentAnnotation = page->annotation(resizeUpdate.annotationUniqueName)) {
                     m_focusedAnnotation.annotation = currentAnnotation;
@@ -996,20 +987,66 @@ bool MouseAnnotation::updateLatexNoteAfterResizeAsync(const AnnotationDescriptio
     updateViewport(ad);
 
     QPointer<MouseAnnotation> self(this);
-    std::thread([self, requestId, update, finishResize]() mutable {
-        const LatexNoteUtils::RenderResult rendered = LatexNoteUtils::renderAppearancePdf(update.contents, update.textColor, update.layoutWidthPoints, update.callout);
-        if (!self) {
-            return;
-        }
-        QMetaObject::invokeMethod(self.data(),
-                                  [self, requestId, update, rendered, finishResize]() mutable {
-                                      if (!self || requestId != self->m_latexResizeRequestId) {
-                                          return;
-                                      }
-                                      finishResize(update, &rendered);
-                                  },
-                                  Qt::QueuedConnection);
-    }).detach();
+    QPointer<QCoreApplication> applicationGuard(QCoreApplication::instance());
+    if (!applicationGuard) {
+        m_hasPendingLatexResizePreview = false;
+        m_pendingLatexResizeAnnotationUniqueName.clear();
+        return false;
+    }
+    try {
+        std::thread([applicationGuard, self, requestId, update, finishResize]() mutable noexcept {
+            try {
+                LatexNoteUtils::RenderResult rendered;
+                try {
+                    rendered = LatexNoteUtils::renderAppearancePdf(update.contents, update.textColor, update.layoutWidthPoints, update.callout);
+                } catch (const std::exception &exception) {
+                    rendered.errorMessage = i18n("LaTeX rendering failed unexpectedly: %1", QString::fromLocal8Bit(exception.what()));
+                    qCCritical(OkularUiDebug) << rendered.errorMessage;
+                } catch (...) {
+                    rendered.errorMessage = i18n("LaTeX rendering failed because of an unknown internal error.");
+                    qCCritical(OkularUiDebug) << rendered.errorMessage;
+                }
+
+                if (!applicationGuard) {
+                    return;
+                }
+                const bool queued = QMetaObject::invokeMethod(
+                    applicationGuard.data(),
+                    [self, requestId, update, rendered, finishResize]() mutable {
+                        if (!self || requestId != self->m_latexResizeRequestId) {
+                            return;
+                        }
+                        finishResize(update, &rendered);
+                    },
+                    Qt::QueuedConnection);
+                if (!queued) {
+                    qCWarning(OkularUiDebug) << "Could not queue the LaTeX resize result";
+                }
+            } catch (const std::exception &exception) {
+                qCCritical(OkularUiDebug) << "Unhandled exception in LaTeX resize worker:" << exception.what();
+            } catch (...) {
+                qCCritical(OkularUiDebug) << "Unknown exception in LaTeX resize worker";
+            }
+        }).detach();
+    } catch (const std::exception &exception) {
+        m_hasPendingLatexResizePreview = false;
+        m_pendingLatexResizeAnnotationUniqueName.clear();
+        GuiUtils::LatexRenderWarning warning;
+        warning.type = GuiUtils::LatexRenderWarningType::CompileError;
+        warning.message = i18n("Could not start the LaTeX rendering worker: %1", QString::fromLocal8Bit(exception.what()));
+        warning.severity = 1.0;
+        setLatexRenderWarning(ad, warning);
+        return false;
+    } catch (...) {
+        m_hasPendingLatexResizePreview = false;
+        m_pendingLatexResizeAnnotationUniqueName.clear();
+        GuiUtils::LatexRenderWarning warning;
+        warning.type = GuiUtils::LatexRenderWarningType::CompileError;
+        warning.message = i18n("Could not start the LaTeX rendering worker because of an unknown internal error.");
+        warning.severity = 1.0;
+        setLatexRenderWarning(ad, warning);
+        return false;
+    }
     return true;
 }
 
@@ -1284,7 +1321,7 @@ void MouseAnnotation::routePaint(QPainter *painter, const QRect paintRect)
      * that boundingRect would enlarge the QRect to a minimum size of 14 x 14.
      * This is useful for getting focus an a very small annotation,
      * but for drawing and modification we want the real size.
-    */
+     */
     const bool isLatexNote = LatexNoteUtils::annotationIsLatex(m_focusedAnnotation.annotation);
     QRect selectionRect = controlGeometryForInteraction(m_focusedAnnotation);
     const bool drawingMovePreview = isMoved();
@@ -1570,8 +1607,7 @@ void MouseAnnotation::setState(MouseAnnotationState state, const AnnotationDescr
             m_previewBoundingRect = m_originalBoundingRect;
             m_hasPreviewBoundingRect = m_hasOriginalBoundingRect;
         }
-        if (LatexNoteUtils::annotationIsLatex(m_focusedAnnotation.annotation) && m_hasPendingLatexResizePreview
-            && m_focusedAnnotation.annotation->uniqueName() == m_pendingLatexResizeAnnotationUniqueName) {
+        if (LatexNoteUtils::annotationIsLatex(m_focusedAnnotation.annotation) && m_hasPendingLatexResizePreview && m_focusedAnnotation.annotation->uniqueName() == m_pendingLatexResizeAnnotationUniqueName) {
             m_latexResizeLayoutRect = m_pendingLatexResizePreviewRect;
             m_hasLatexResizeLayoutRect = true;
             m_previewBoundingRect = m_pendingLatexResizePreviewRect;
@@ -1678,9 +1714,10 @@ void MouseAnnotation::performCommand(const QPoint newPos)
         if (isUsableRect(normalizedRect)) {
             m_previewBoundingRect = normalizedRect;
             m_hasPreviewBoundingRect = true;
-            logLatexCalloutInteraction("move-preview", m_focusedAnnotation.annotation,
-                                       {QStringLiteral("delta: %1,%2").arg(delta.x).arg(delta.y),
-                                        QStringLiteral("preview: %1,%2,%3,%4").arg(normalizedRect.left).arg(normalizedRect.top).arg(normalizedRect.right).arg(normalizedRect.bottom)});
+            logLatexCalloutInteraction(
+                "move-preview",
+                m_focusedAnnotation.annotation,
+                {QStringLiteral("delta: %1,%2").arg(delta.x).arg(delta.y), QStringLiteral("preview: %1,%2,%3,%4").arg(normalizedRect.left).arg(normalizedRect.top).arg(normalizedRect.right).arg(normalizedRect.bottom)});
         }
         return;
 
@@ -1712,7 +1749,8 @@ void MouseAnnotation::performCommand(const QPoint newPos)
                     point = boundToCalloutBoxEdge(point, latexCalloutBoxRectangle(calloutAnn));
                 }
                 setCalloutPoint(calloutAnn, point, pointIndex);
-                logLatexCalloutInteraction("callout-point-preview", calloutAnn,
+                logLatexCalloutInteraction("callout-point-preview",
+                                           calloutAnn,
                                            {QStringLiteral("handle: %1").arg(int(m_handle)),
                                             QStringLiteral("index: %1").arg(pointIndex),
                                             QStringLiteral("delta: %1,%2").arg(normalizedRotatedMouseDelta.x()).arg(normalizedRotatedMouseDelta.y()),
@@ -1817,9 +1855,7 @@ void MouseAnnotation::finishCommand()
                 moved = moved || pointMoved(finalCalloutPoints[i], m_originalCalloutPoints[i]);
             }
         }
-        logLatexCalloutInteraction("finish-callout-before-restore", calloutAnn,
-                                   {QStringLiteral("was resized: %1").arg(wasResized),
-                                    QStringLiteral("moved: %1").arg(moved)});
+        logLatexCalloutInteraction("finish-callout-before-restore", calloutAnn, {QStringLiteral("was resized: %1").arg(wasResized), QStringLiteral("moved: %1").arg(moved)});
 
         restoreOriginalCalloutGeometry(m_focusedAnnotation);
         m_focusedAnnotation.annotation->setFlags(m_focusedAnnotation.annotation->flags() & ~Okular::Annotation::BeingResized);
@@ -1887,13 +1923,10 @@ void MouseAnnotation::finishCommand()
             if (wasMoved) {
                 const Okular::NormalizedPoint delta(finalBoundingRect.left - m_originalBoundingRect.left, finalBoundingRect.top - m_originalBoundingRect.top);
                 if (!isZeroDelta(delta)) {
-                    logLatexCalloutInteraction("finish-move-before-translate", m_focusedAnnotation.annotation,
+                    logLatexCalloutInteraction("finish-move-before-translate",
+                                               m_focusedAnnotation.annotation,
                                                {QStringLiteral("delta: %1,%2").arg(delta.x).arg(delta.y),
-                                                QStringLiteral("final rect: %1,%2,%3,%4")
-                                                    .arg(finalBoundingRect.left)
-                                                    .arg(finalBoundingRect.top)
-                                                    .arg(finalBoundingRect.right)
-                                                    .arg(finalBoundingRect.bottom)});
+                                                QStringLiteral("final rect: %1,%2,%3,%4").arg(finalBoundingRect.left).arg(finalBoundingRect.top).arg(finalBoundingRect.right).arg(finalBoundingRect.bottom)});
                     m_document->translatePageAnnotation(m_focusedAnnotation.pageNumber, m_focusedAnnotation.annotation, delta);
                     logLatexCalloutInteraction("finish-move-after-translate", m_focusedAnnotation.annotation);
                 }

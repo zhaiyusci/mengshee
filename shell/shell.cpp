@@ -1092,11 +1092,12 @@ void Shell::print()
 
 void Shell::insertBlankPageAfterCurrentPage()
 {
-    if (m_tabs.isEmpty()) {
+    const int tabIndex = m_tabWidget ? m_tabWidget->currentIndex() : -1;
+    if (tabIndex < 0 || tabIndex >= m_tabs.size()) {
         return;
     }
 
-    KParts::ReadWritePart *const part = m_tabs[m_tabWidget->currentIndex()].part;
+    KParts::ReadWritePart *const part = m_tabs.at(tabIndex).part;
     const bool invoked = part && QMetaObject::invokeMethod(part, "slotInsertBlankPageAfterCurrentPage", Qt::DirectConnection);
     if (!invoked) {
         KMessageBox::information(this, i18n("Blank page insertion is not available in the current viewer."));
@@ -1106,11 +1107,12 @@ void Shell::insertBlankPageAfterCurrentPage()
 
 void Shell::insertPage()
 {
-    if (m_tabs.isEmpty()) {
+    const int tabIndex = m_tabWidget ? m_tabWidget->currentIndex() : -1;
+    if (tabIndex < 0 || tabIndex >= m_tabs.size()) {
         return;
     }
 
-    KParts::ReadWritePart *const part = m_tabs[m_tabWidget->currentIndex()].part;
+    KParts::ReadWritePart *const part = m_tabs.at(tabIndex).part;
     const bool invoked = part && QMetaObject::invokeMethod(part, "slotInsertPage", Qt::DirectConnection);
     if (!invoked) {
         KMessageBox::information(this, i18n("Page insertion is not available in the current viewer."));
@@ -1120,11 +1122,12 @@ void Shell::insertPage()
 
 void Shell::deleteCurrentPage()
 {
-    if (m_tabs.isEmpty()) {
+    const int tabIndex = m_tabWidget ? m_tabWidget->currentIndex() : -1;
+    if (tabIndex < 0 || tabIndex >= m_tabs.size()) {
         return;
     }
 
-    KParts::ReadWritePart *const part = m_tabs[m_tabWidget->currentIndex()].part;
+    KParts::ReadWritePart *const part = m_tabs.at(tabIndex).part;
     const bool invoked = part && QMetaObject::invokeMethod(part, "slotDeleteCurrentPage", Qt::DirectConnection);
     if (!invoked) {
         KMessageBox::information(this, i18n("Page deletion is not available in the current viewer."));

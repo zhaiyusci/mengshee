@@ -26,6 +26,8 @@
 #include <QLabel>
 #include <QLayout>
 #include <QList>
+#include <QPainter>
+#include <QPaintEvent>
 #include <QPushButton>
 #include <QScrollArea>
 #include <QScrollBar>
@@ -64,6 +66,55 @@
 
 namespace
 {
+constexpr int popupCaretWidth = 3;
+
+QColor readableForeground(const QColor &background)
+{
+    const int luminance = 299 * background.red() + 587 * background.green() + 114 * background.blue();
+    return luminance < 128000 ? QColor(Qt::white) : QColor(Qt::black);
+}
+
+class PopupTextEdit final : public KTextEdit
+{
+public:
+    explicit PopupTextEdit(QWidget *parent)
+        : KTextEdit(parent)
+    {
+        setCursorWidth(popupCaretWidth);
+    }
+
+    void setCaretColor(const QColor &color)
+    {
+        m_caretColor = color;
+        viewport()->update();
+    }
+
+protected:
+    void paintEvent(QPaintEvent *event) override
+    {
+        KTextEdit::paintEvent(event);
+        if (isReadOnly() || !hasFocus()) {
+            return;
+        }
+
+        QRect caret = cursorRect();
+        caret.setWidth(popupCaretWidth);
+        QPainter painter(viewport());
+        painter.fillRect(caret, m_caretColor);
+    }
+
+private:
+    QColor m_caretColor = Qt::black;
+};
+
+#if HAVE_QSCINTILLA
+void keepCaretVisible(QsciScintilla *editor)
+{
+    // Scintilla documents a zero caret period as "steady on".
+    editor->SendScintilla(SCI_SETCARETPERIOD, 0);
+}
+#endif
+
 bool latexAnnotation(Okular::Annotation *annotation)
 {
     return LatexNoteUtils::annotationIsLatex(annotation);
@@ -81,6 +132,8 @@ QsciScintilla *createLatexSourceEditor(QWidget *parent, const QString &contents)
     editor->setBraceMatching(QsciScintilla::SloppyBraceMatch);
     editor->setCaretLineVisible(true);
     editor->setCaretLineBackgroundColor(QColor(245, 248, 255));
+    editor->setCaretWidth(popupCaretWidth);
+    keepCaretVisible(editor);
     editor->setAutoIndent(true);
     editor->setIndentationsUseTabs(false);
     editor->setIndentationWidth(2);
@@ -203,7 +256,7 @@ public:
         // Third zone: authorAndDateLabel (author name with date)
         authorAndDateLabel = new QLabel(this);
         authorAndDateLabel->setContentsMargins(0, 10, 0, 0);
-        authorAndDateLabel->setStyleSheet(QStringLiteral("font-weight: bold; color: black"));
+        authorAndDateLabel->setStyleSheet(QStringLiteral("font-weight: bold"));
         authorAndDateLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
         authorAndDateLabel->setCursor(Qt::SizeAllCursor);
 
@@ -405,11 +458,12 @@ AnnotWindow::AnnotWindow(QWidget *parent, QRect initialViewportBounds, Okular::A
     }
 #endif
     if (!m_editorWidget) {
-        textEdit = new KTextEdit(this);
+        textEdit = new PopupTextEdit(this);
         textEdit->setAcceptRichText(false);
         textEdit->setPlainText(m_annot->contents());
         m_editorWidget = textEdit;
     }
+    setFocusProxy(m_editorWidget);
     m_lastLatexNoteCompileSource = m_annot->contents();
     m_editorWidget->installEventFilter(this);
 
@@ -509,13 +563,15 @@ void AnnotWindow::reloadInfo()
     }
     if (newcolor != m_color) {
         m_color = newcolor;
-        setPalette(QPalette(m_color));
+        const QColor foreground = readableForeground(m_color);
+        QPalette windowPalette(m_color);
+        windowPalette.setColor(QPalette::WindowText, foreground);
+        windowPalette.setColor(QPalette::Text, foreground);
+        setPalette(windowPalette);
         QPalette pl = editorPalette();
         pl.setColor(QPalette::Base, m_color);
-        if (isLatexNote) {
-            pl.setColor(QPalette::Text, QColor(32, 28, 20));
-            pl.setColor(QPalette::WindowText, QColor(32, 28, 20));
-        }
+        pl.setColor(QPalette::Text, foreground);
+        pl.setColor(QPalette::WindowText, foreground);
         setEditorPalette(pl);
     }
 
@@ -552,20 +608,22 @@ void AnnotWindow::updateViewportBounds(QRect bounds)
 
 void AnnotWindow::fixupGeometry()
 {
-    // Try to maintain the default size, but squeeze if not does not fit.
-    // Use viewport bounds to exclude scrollbars.
     const auto bounds = m_viewportBounds;
+    if (bounds.isEmpty()) {
+        return;
+    }
 
-    const QSize size( //
-        std::min(bounds.width(), defaultSize.width()),
-        std::min(bounds.height(), defaultSize.height()));
+    // Preserve user resizing and only constrain the popup to the visible viewport.
+    const QSize constrainedSize(std::min(bounds.width(), width()), std::min(bounds.height(), height()));
 
     const QPoint position( //
-        bounds.x() + std::max(0, std::min(bounds.width() - size.width(), x() - bounds.x())),
-        bounds.y() + std::max(0, std::min(bounds.height() - size.height(), y() - bounds.y())));
+        bounds.x() + std::max(0, std::min(bounds.width() - constrainedSize.width(), x() - bounds.x())),
+        bounds.y() + std::max(0, std::min(bounds.height() - constrainedSize.height(), y() - bounds.y())));
 
-    // hopefully no infinite event recursion, because we only need to fix up once, after which it should be idempotent
-    setGeometry(QRect(position, size));
+    const QRect constrainedGeometry(position, constrainedSize);
+    if (geometry() != constrainedGeometry) {
+        setGeometry(constrainedGeometry);
+    }
 }
 
 QString AnnotWindow::editorPlainText() const
@@ -690,7 +748,10 @@ void AnnotWindow::setEditorPalette(const QPalette &palette)
     if (m_latexSourceEdit) {
         m_latexSourceEdit->setPalette(palette);
         const QColor base = palette.color(QPalette::Base);
+        const QColor foreground = palette.color(QPalette::Text);
         m_latexSourceEdit->setPaper(base);
+        m_latexSourceEdit->setCaretForegroundColor(foreground);
+        m_latexSourceEdit->setCaretLineBackgroundColor(base.lightness() < 128 ? base.lighter(135) : base.darker(105));
         if (auto *lexer = m_latexSourceEdit->lexer()) {
             lexer->setPaper(base);
         }
@@ -699,6 +760,7 @@ void AnnotWindow::setEditorPalette(const QPalette &palette)
 #endif
     if (textEdit) {
         textEdit->setPalette(palette);
+        static_cast<PopupTextEdit *>(textEdit)->setCaretColor(palette.color(QPalette::Text));
     }
 }
 

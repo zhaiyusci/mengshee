@@ -14,6 +14,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <exception>
 #include <limits.h>
 #include <memory>
 #ifdef Q_OS_WIN
@@ -35,6 +36,7 @@
 #include <QFileInfo>
 #include <QLabel>
 #include <QMap>
+#include <QMetaObject>
 #include <QMimeDatabase>
 #include <QPageSize>
 #include <QPrintDialog>
@@ -5052,6 +5054,16 @@ bool Document::swapBackingFile(const QString &newFileName, const QUrl &url, bool
         return false;
     }
 
+    const auto clearUnsafeUndoHistoryLater = [this] {
+        QMetaObject::invokeMethod(
+            this,
+            [this] {
+                qCritical() << "Document::swapBackingFile: clearing unsafe undo history";
+                d->m_undoStack->clear();
+            },
+            Qt::QueuedConnection);
+    };
+
     // Save metadata about the file we're about to close
     d->saveDocumentInfo();
 
@@ -5059,11 +5071,34 @@ bool Document::swapBackingFile(const QString &newFileName, const QUrl &url, bool
 
     qCDebug(OkularCoreDebug) << "Swapping backing file to" << newFileName;
     QList<Page *> newPagesVector;
-    Generator::SwapBackingFileResult result = d->m_generator->swapBackingFile(newFileName, newPagesVector);
+    QList<ObjectRect *> rectsToDelete;
+    QList<Annotation *> annotationsToDelete;
+    QSet<PagePrivate *> pagePrivatesToDelete;
+    int oldAnnotationCount = 0;
+    int oldObjectRectCount = 0;
+    for (const Page *page : std::as_const(d->m_pagesVector)) {
+        if (page) {
+            oldAnnotationCount += page->m_annotations.count();
+            oldObjectRectCount += page->m_rects.count();
+        }
+    }
+    annotationsToDelete.reserve(oldAnnotationCount);
+    rectsToDelete.reserve(oldObjectRectCount);
+    pagePrivatesToDelete.reserve(d->m_pagesVector.count());
+
+    Generator::SwapBackingFileResult result;
+    try {
+        result = d->m_generator->swapBackingFile(newFileName, newPagesVector);
+    } catch (const std::exception &exception) {
+        qCritical() << "Document::swapBackingFile: generator failed:" << exception.what();
+        qDeleteAll(newPagesVector);
+        return false;
+    } catch (...) {
+        qCritical() << "Document::swapBackingFile: generator failed with an unknown exception";
+        qDeleteAll(newPagesVector);
+        return false;
+    }
     if (result != Generator::SwapBackingFileError) {
-        QList<ObjectRect *> rectsToDelete;
-        QList<Annotation *> annotationsToDelete;
-        QSet<PagePrivate *> pagePrivatesToDelete;
         bool pageTopologyChanged = forcePageTopologyChanged;
 
         if (result == Generator::SwapBackingFileReloadInternalData) {
@@ -5075,19 +5110,47 @@ bool Document::swapBackingFile(const QString &newFileName, const QUrl &url, bool
             // Page-sequence edits may temporarily remove a page that an older command
             // refers to; those commands keep stable object identifiers and will bind
             // back when the page-edit command is undone.
+            bool undoReferencesValid = true;
             for (int i = 0; i < d->m_undoStack->count(); ++i) {
                 // Trust me on the const_cast ^_^
                 QUndoCommand *uc = const_cast<QUndoCommand *>(d->m_undoStack->command(i));
                 if (OkularUndoCommand *ouc = dynamic_cast<OkularUndoCommand *>(uc)) {
-                    const bool success = ouc->refreshInternalPageReferences(newPagesVector);
-                    if (!success) {
-                        qWarning() << "Document::swapBackingFile: refreshInternalPageReferences failed" << ouc;
-                        return false;
+                    try {
+                        if (!ouc->refreshInternalPageReferences(newPagesVector)) {
+                            qWarning() << "Document::swapBackingFile: refreshInternalPageReferences failed" << ouc;
+                            undoReferencesValid = false;
+                        }
+                    } catch (const std::exception &exception) {
+                        qCritical() << "Document::swapBackingFile: refreshing undo references failed:" << exception.what();
+                        undoReferencesValid = false;
+                    } catch (...) {
+                        qCritical() << "Document::swapBackingFile: refreshing undo references failed with an unknown exception";
+                        undoReferencesValid = false;
+                    }
+                }
+            }
+            if (!undoReferencesValid) {
+                clearUnsafeUndoHistoryLater();
+            }
+
+            bool canAdoptReplacementData = newPagesVector.count() == d->m_pagesVector.count() && !pageTopologyChanged;
+            if (!canAdoptReplacementData) {
+                pageTopologyChanged = true;
+            }
+            if (canAdoptReplacementData) {
+                for (int i = 0; i < d->m_pagesVector.count(); ++i) {
+                    const Page *oldPage = d->m_pagesVector.value(i, nullptr);
+                    const Page *newPage = newPagesVector.value(i, nullptr);
+                    if (!oldPage || !newPage || !oldPage->d || !newPage->d) {
+                        qCritical() << "Document::swapBackingFile: replacement page data is incomplete at page" << i;
+                        canAdoptReplacementData = false;
+                        pageTopologyChanged = true;
+                        break;
                     }
                 }
             }
 
-            if (newPagesVector.count() == d->m_pagesVector.count() && !pageTopologyChanged) {
+            if (canAdoptReplacementData) {
                 for (int i = 0; i < d->m_pagesVector.count(); ++i) {
                     // switch the PagePrivate* from newPage to oldPage
                     // this way everyone still holding Page* doesn't get
@@ -5096,7 +5159,7 @@ bool Document::swapBackingFile(const QString &newFileName, const QUrl &url, bool
                     Page *newPage = newPagesVector[i];
                     newPage->d->adoptGeneratedContents(oldPage->d);
 
-                    pagePrivatesToDelete << oldPage->d;
+                    pagePrivatesToDelete.insert(oldPage->d);
                     oldPage->d = newPage->d;
                     oldPage->d->m_page = oldPage;
                     oldPage->d->m_doc = d;
@@ -5104,14 +5167,22 @@ bool Document::swapBackingFile(const QString &newFileName, const QUrl &url, bool
 
                     annotationsToDelete << oldPage->m_annotations;
                     rectsToDelete << oldPage->m_rects;
-                    oldPage->m_annotations = newPage->m_annotations;
-                    oldPage->m_rects = newPage->m_rects;
+                    oldPage->m_annotations = std::move(newPage->m_annotations);
+                    oldPage->m_rects = std::move(newPage->m_rects);
                 }
                 qDeleteAll(newPagesVector);
                 newPagesVector.clear();
-            } else {
-                pageTopologyChanged = true;
-                foreachObserver(notifySetup({}, DocumentObserver::DocumentChanged));
+            }
+            if (pageTopologyChanged) {
+                for (DocumentObserver *observer : std::as_const(d->m_observers)) {
+                    try {
+                        observer->notifySetup({}, DocumentObserver::DocumentChanged);
+                    } catch (const std::exception &exception) {
+                        qCritical() << "Document::swapBackingFile: an observer failed while releasing old pages:" << exception.what();
+                    } catch (...) {
+                        qCritical() << "Document::swapBackingFile: an observer failed while releasing old pages with an unknown exception";
+                    }
+                }
 
                 qDeleteAll(d->m_allocatedPixmaps);
                 d->m_allocatedPixmaps.clear();
@@ -5121,8 +5192,7 @@ bool Document::swapBackingFile(const QString &newFileName, const QUrl &url, bool
                 d->m_searches.clear();
 
                 qDeleteAll(d->m_pagesVector);
-                d->m_pagesVector = newPagesVector;
-                newPagesVector.clear();
+                d->m_pagesVector = std::move(newPagesVector);
 
                 for (Page *page : std::as_const(d->m_pagesVector)) {
                     page->d->m_doc = d;
@@ -5148,7 +5218,15 @@ bool Document::swapBackingFile(const QString &newFileName, const QUrl &url, bool
         }
 
         const int setupFlags = DocumentObserver::UrlChanged | (pageTopologyChanged ? DocumentObserver::DocumentChanged : 0);
-        foreachObserver(notifySetup(d->m_pagesVector, setupFlags));
+        for (DocumentObserver *observer : std::as_const(d->m_observers)) {
+            try {
+                observer->notifySetup(d->m_pagesVector, setupFlags);
+            } catch (const std::exception &exception) {
+                qCritical() << "Document::swapBackingFile: an observer failed while loading replacement pages:" << exception.what();
+            } catch (...) {
+                qCritical() << "Document::swapBackingFile: an observer failed while loading replacement pages with an unknown exception";
+            }
+        }
 
         qDeleteAll(annotationsToDelete);
         qDeleteAll(rectsToDelete);
@@ -5156,6 +5234,7 @@ bool Document::swapBackingFile(const QString &newFileName, const QUrl &url, bool
 
         return true;
     } else {
+        qDeleteAll(newPagesVector);
         return false;
     }
 }
@@ -5274,33 +5353,132 @@ bool Document::movePage(int sourcePageNumber, int destinationPageNumber, QString
         return true;
     }
 
-    d->clearAndWaitForRequests();
+    bool backendMoved = false;
+    bool modelMoved = false;
 
-    if (!pageInsertion->movePageInDocument(sourcePageNumber, destinationPageNumber, errorText)) {
+    const auto clearUnsafeUndoHistoryLater = [this] {
+        QMetaObject::invokeMethod(
+            this,
+            [this] {
+                qCritical() << "Document::movePage: clearing unsafe undo history";
+                d->m_undoStack->clear();
+            },
+            Qt::QueuedConnection);
+    };
+
+    const auto renumberPages = [this] {
+        for (int pageIndex = 0; pageIndex < d->m_pagesVector.count(); ++pageIndex) {
+            Page *page = d->m_pagesVector.value(pageIndex, nullptr);
+            if (page) {
+                page->d->m_number = pageIndex;
+                page->d->m_doc = d;
+            }
+        }
+    };
+
+    const auto refreshUndoReferences = [this]() -> bool {
+        bool success = true;
+        for (int i = 0; i < d->m_undoStack->count(); ++i) {
+            QUndoCommand *uc = const_cast<QUndoCommand *>(d->m_undoStack->command(i));
+            if (OkularUndoCommand *ouc = dynamic_cast<OkularUndoCommand *>(uc)) {
+                if (!ouc->refreshInternalPageReferences(d->m_pagesVector)) {
+                    qWarning() << "Document::movePage: refreshInternalPageReferences failed" << ouc;
+                    success = false;
+                }
+            }
+        }
+        return success;
+    };
+
+    const auto restoreOriginalOrder = [&]() noexcept {
+        bool restored = true;
+        try {
+            if (backendMoved) {
+                QString rollbackError;
+                if (!pageInsertion->movePageInDocument(destinationPageNumber, sourcePageNumber, &rollbackError)) {
+                    qCritical() << "Document::movePage: backend rollback failed:" << rollbackError;
+                    return false;
+                } else {
+                    backendMoved = false;
+                }
+            }
+            if (modelMoved) {
+                Page *movedPage = d->m_pagesVector.takeAt(destinationPageNumber);
+                d->m_pagesVector.insert(sourcePageNumber, movedPage);
+                renumberPages();
+                modelMoved = false;
+            }
+            if (!refreshUndoReferences()) {
+                qCritical() << "Document::movePage: undo reference rollback failed";
+                restored = false;
+            }
+        } catch (const std::exception &exception) {
+            qCritical() << "Document::movePage: rollback threw an exception:" << exception.what();
+            restored = false;
+        } catch (...) {
+            qCritical() << "Document::movePage: rollback threw an unknown exception";
+            restored = false;
+        }
+        return restored;
+    };
+
+    try {
+        d->clearAndWaitForRequests();
+
+        if (!pageInsertion->movePageInDocument(sourcePageNumber, destinationPageNumber, errorText)) {
+            return false;
+        }
+        backendMoved = true;
+
+        Page *movedPage = d->m_pagesVector.takeAt(sourcePageNumber);
+        d->m_pagesVector.insert(destinationPageNumber, movedPage);
+        modelMoved = true;
+        renumberPages();
+
+        if (!refreshUndoReferences()) {
+            if (!restoreOriginalOrder()) {
+                clearUnsafeUndoHistoryLater();
+            }
+            if (errorText) {
+                *errorText = i18n("Could not safely update page references after reordering the document.");
+            }
+            return false;
+        }
+
+        d->m_documentInfo = DocumentInfo();
+        d->m_documentInfoAskedKeys.clear();
+    } catch (const std::exception &exception) {
+        if (!restoreOriginalOrder()) {
+            clearUnsafeUndoHistoryLater();
+        }
+        if (errorText) {
+            *errorText = i18n("Could not reorder pages because of an unexpected internal error: %1", QString::fromLocal8Bit(exception.what()));
+        }
+        qCritical() << "Document::movePage failed:" << exception.what();
+        return false;
+    } catch (...) {
+        if (!restoreOriginalOrder()) {
+            clearUnsafeUndoHistoryLater();
+        }
+        if (errorText) {
+            *errorText = i18n("Could not reorder pages because of an unknown internal error.");
+        }
+        qCritical() << "Document::movePage failed with an unknown exception";
         return false;
     }
 
-    Page *movedPage = d->m_pagesVector.takeAt(sourcePageNumber);
-    d->m_pagesVector.insert(destinationPageNumber, movedPage);
-
-    for (int pageIndex = 0; pageIndex < d->m_pagesVector.count(); ++pageIndex) {
-        d->m_pagesVector[pageIndex]->d->m_number = pageIndex;
-        d->m_pagesVector[pageIndex]->d->m_doc = d;
-    }
-
-    for (int i = 0; i < d->m_undoStack->count(); ++i) {
-        QUndoCommand *uc = const_cast<QUndoCommand *>(d->m_undoStack->command(i));
-        if (OkularUndoCommand *ouc = dynamic_cast<OkularUndoCommand *>(uc)) {
-            const bool success = ouc->refreshInternalPageReferences(d->m_pagesVector);
-            if (!success) {
-                qWarning() << "Document::movePage: refreshInternalPageReferences failed" << ouc;
-            }
+    for (DocumentObserver *observer : std::as_const(d->m_observers)) {
+        try {
+            observer->notifySetup(d->m_pagesVector, DocumentObserver::DocumentChanged);
+        } catch (const std::exception &exception) {
+            qCritical() << "Document::movePage: an observer failed after the page move:" << exception.what();
+        } catch (...) {
+            qCritical() << "Document::movePage: an observer failed after the page move with an unknown exception";
         }
     }
-
-    d->m_documentInfo = DocumentInfo();
-    d->m_documentInfoAskedKeys.clear();
-    foreachObserver(notifySetup(d->m_pagesVector, DocumentObserver::DocumentChanged));
+    if (errorText) {
+        errorText->clear();
+    }
     return true;
 }
 
