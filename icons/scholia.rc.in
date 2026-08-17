@@ -3,8 +3,8 @@
 IDI_ICON1 ICON "@SCHOLIA_ICON_RC_PATH@"
 
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION @SCHOLIA_VERSION_MAJOR@,@SCHOLIA_VERSION_MINOR@,@SCHOLIA_VERSION_MICRO@,0
- PRODUCTVERSION @SCHOLIA_VERSION_MAJOR@,@SCHOLIA_VERSION_MINOR@,@SCHOLIA_VERSION_MICRO@,0
+ FILEVERSION @SCHOLIA_VERSION_MAJOR@,@SCHOLIA_VERSION_MINOR@,@SCHOLIA_VERSION_MICRO@,@SCHOLIA_VERSION_HOTFIX@
+ PRODUCTVERSION @SCHOLIA_VERSION_MAJOR@,@SCHOLIA_VERSION_MINOR@,@SCHOLIA_VERSION_MICRO@,@SCHOLIA_VERSION_HOTFIX@
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
  FILEFLAGS 0x1L
@@ -21,12 +21,12 @@ BEGIN
         BEGIN
             VALUE "CompanyName", "Scholia Contributors\0"
             VALUE "FileDescription", "Scholia PDF Application\0"
-            VALUE "FileVersion", "@SCHOLIA_VERSION@.0\0"
+            VALUE "FileVersion", "@SCHOLIA_VERSION@\0"
             VALUE "InternalName", "scholia\0"
             VALUE "LegalCopyright", "2026 The Scholia Contributors; 2002-2026 The Okular Developers\0"
             VALUE "OriginalFilename", "scholia.exe\0"
             VALUE "ProductName", "Scholia\0"
-            VALUE "ProductVersion", "@SCHOLIA_VERSION@.0\0"
+            VALUE "ProductVersion", "@SCHOLIA_VERSION@\0"
         END
     END
     BLOCK "VarFileInfo"

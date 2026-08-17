@@ -10,7 +10,7 @@
 #endif
 #define FileVersion GetEnv("SCHOLIA_FILE_VERSION")
 #if FileVersion == ""
-#define FileVersion ScholiaVersionFromFile + ".0"
+#define FileVersion ScholiaVersionFromFile
 #endif
 #define SourceDir GetEnv("SCHOLIA_STAGE")
 #if SourceDir == ""

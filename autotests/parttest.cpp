@@ -19,6 +19,7 @@
 #include "../core/misc.h"
 #include "../core/page.h"
 #include "../part/documentworkspace.h"
+#include "../part/findbar.h"
 #include "../part/pageview.h"
 #include "../part/part.h"
 #include "../part/presentationwidget.h"
@@ -36,6 +37,7 @@
 #include <QApplication>
 #include <QClipboard>
 #include <QDesktopServices>
+#include <QLayout>
 #include <QLineEdit>
 #include <QMenu>
 #include <QMessageBox>
@@ -79,6 +81,7 @@ private Q_SLOTS:
     void testRemoveLineBreaks();
     void testClickInternalLink();
     void testAuxiliaryDocumentWorkspace();
+    void testFindBarDoesNotConsumeWorkspaceHeight();
     void testScrollBarAndMouseWheel();
     void testOpenUrlArguments();
     void test388288();
@@ -866,6 +869,57 @@ void PartTest::testAuxiliaryDocumentWorkspace()
     QCOMPARE(workspace->mainView(), reloadedMainView.data());
     QCOMPARE(workspace->activeView(), reloadedMainView.data());
     QCOMPARE(part.workspaceActivePageView(), reloadedMainView.data());
+}
+
+void PartTest::testFindBarDoesNotConsumeWorkspaceHeight()
+{
+    Okular::Part part(nullptr, {});
+    QVERIFY(openDocument(&part, QStringLiteral(KDESRCDIR "data/file1.pdf")));
+    part.widget()->resize(900, 700);
+    part.widget()->show();
+    if (qgetenv("KDECI_CANNOT_CREATE_WINDOWS") == "1") {
+        QSKIP("KDE CI can't create a window on this platform, skipping some gui tests");
+    }
+    QVERIFY(QTest::qWaitForWindowExposed(part.widget()));
+
+    DocumentWorkspace *workspace = part.m_documentWorkspace;
+    FindBar *findBar = part.m_findBar;
+    QVERIFY(workspace);
+    QVERIFY(findBar);
+    QWidget *rightContainer = workspace->parentWidget();
+    QVERIFY(rightContainer);
+    QVERIFY(!findBar->isVisible());
+
+    part.slotShowFindBar();
+    QTRY_VERIFY(findBar->isVisible());
+
+    // A visible find bar must retain its natural, single-row height.  If the
+    // document workspace has no stretch in the surrounding QVBoxLayout, Qt
+    // distributes the unused vertical space to the find bar as well.
+    QTRY_VERIFY(findBar->height() <= findBar->sizeHint().height() + 1);
+
+    // The workspace must receive all space not occupied by visible sibling
+    // widgets.  Compute this from actual geometry so the assertion remains
+    // independent of style, font metrics, and optional message widgets.
+    QLayout *rightLayout = rightContainer->layout();
+    QVERIFY(rightLayout);
+    const auto expectedWorkspaceHeight = [rightLayout, workspace]() {
+        int reservedHeight = 0;
+        int visibleWidgetCount = 0;
+        for (int i = 0; i < rightLayout->count(); ++i) {
+            QWidget *widget = rightLayout->itemAt(i)->widget();
+            if (!widget || widget->isHidden()) {
+                continue;
+            }
+            ++visibleWidgetCount;
+            if (widget != workspace) {
+                reservedHeight += widget->height();
+            }
+        }
+        const int spacingHeight = qMax(0, visibleWidgetCount - 1) * rightLayout->spacing();
+        return rightLayout->contentsRect().height() - reservedHeight - spacingHeight;
+    };
+    QTRY_COMPARE(workspace->height(), expectedWorkspaceHeight());
 }
 
 // Test for bug 421159, which is: When scrolling down with the scroll bar

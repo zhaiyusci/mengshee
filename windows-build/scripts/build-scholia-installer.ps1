@@ -189,8 +189,8 @@ function Read-ScholiaVersion([string] $Root) {
         throw "Cannot find Scholia version file: $versionFile"
     }
     $value = (Get-Content -LiteralPath $versionFile -Raw).Trim()
-    if ($value -notmatch '^\d+\.\d+\.\d+$') {
-        throw "VERSION.txt must contain MAJOR.MINOR.PATCH, got '$value'"
+    if ($value -notmatch '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$') {
+        throw "VERSION.txt must contain MAJOR.MINOR.PATCH.HOTFIX, got '$value'"
     }
     return $value
 }
@@ -199,8 +199,14 @@ $repoVersion = Read-ScholiaVersion $repoRoot
 if (!$Version) {
     $Version = $repoVersion
 }
+if ($Version -notmatch '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$') {
+    throw "Version must contain MAJOR.MINOR.PATCH.HOTFIX, got '$Version'"
+}
 if (!$FileVersion) {
-    $FileVersion = "$repoVersion.0"
+    $FileVersion = $Version
+}
+if ($FileVersion -notmatch '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$') {
+    throw "FileVersion must contain four numeric components, got '$FileVersion'"
 }
 
 if (!$SkipStage) {

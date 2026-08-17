@@ -3,12 +3,13 @@ cmake_minimum_required(VERSION 3.22)
 # Scholia application version
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/VERSION.txt" SCHOLIA_VERSION)
 string(STRIP "${SCHOLIA_VERSION}" SCHOLIA_VERSION)
-if (NOT SCHOLIA_VERSION MATCHES "^([0-9]+)\\.([0-9]+)\\.([0-9]+)$")
-    message(FATAL_ERROR "VERSION.txt must contain MAJOR.MINOR.PATCH, got '${SCHOLIA_VERSION}'")
+if (NOT SCHOLIA_VERSION MATCHES "^([0-9]+)\\.([0-9]+)\\.([0-9]+)\\.([0-9]+)$")
+    message(FATAL_ERROR "VERSION.txt must contain MAJOR.MINOR.PATCH.HOTFIX, got '${SCHOLIA_VERSION}'")
 endif()
 set(SCHOLIA_VERSION_MAJOR "${CMAKE_MATCH_1}")
 set(SCHOLIA_VERSION_MINOR "${CMAKE_MATCH_2}")
 set(SCHOLIA_VERSION_MICRO "${CMAKE_MATCH_3}")
+set(SCHOLIA_VERSION_HOTFIX "${CMAKE_MATCH_4}")
 
 project(scholia VERSION ${SCHOLIA_VERSION})
 

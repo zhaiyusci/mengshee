@@ -542,7 +542,7 @@ Part::Part(QObject *parent, const QVariantList &args)
     connect(m_document, &Document::sourceReferenceActivated, this, &Part::slotHandleActivatedSourceReference);
     connect(m_pageView.data(), &PageView::fitWindowToPage, this, &Part::fitWindowToPage);
     m_documentWorkspace = new DocumentWorkspace(m_pageView, i18nc("@title:frame", "Document"), rightContainer);
-    rightLayout->addWidget(m_documentWorkspace);
+    rightLayout->addWidget(m_documentWorkspace, 1);
     m_layers->setPageView(m_pageView);
     m_toc->setPageView(m_pageView);
     m_thumbnailList->setPageView(m_pageView);
