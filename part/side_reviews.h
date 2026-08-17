@@ -9,6 +9,8 @@
 
 #include <QList>
 #include <QModelIndexList>
+#include <QMetaObject>
+#include <QPointer>
 #include <QWidget>
 
 #include "core/observer.h"
@@ -27,6 +29,7 @@ class PageFilterProxyModel;
 class PageGroupProxyModel;
 class KTreeViewSearchLine;
 class TreeView;
+class PageView;
 
 /**
  * @short ...
@@ -42,6 +45,7 @@ public:
     void notifyCurrentPageChanged(int previous, int current) override;
 
     void reparseConfig();
+    void setPageView(PageView *pageView);
 
     QAbstractItemModel *annotationsModel() const;
 
@@ -64,6 +68,7 @@ private Q_SLOTS:
 
 private:
     QModelIndexList retrieveAnnotations(const QModelIndex &idx) const;
+    void refreshCurrentPage();
 
     // data fields (GUI)
     KTreeViewSearchLine *m_searchLine;
@@ -71,6 +76,8 @@ private:
     QStringList m_expansionKeys;
     // internal storage
     Okular::Document *m_document;
+    QPointer<PageView> m_pageView;
+    QMetaObject::Connection m_pageViewViewportConnection;
     AnnotationModel *m_model;
     AuthorGroupProxyModel *m_authorProxy;
     PageFilterProxyModel *m_filterProxy;

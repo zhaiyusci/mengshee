@@ -10,6 +10,7 @@
 #include <qwidget.h>
 
 class QAction;
+class PageView;
 class SearchLineWidget;
 
 namespace Okular
@@ -31,6 +32,7 @@ public:
     void focusAndSetCursor();
     bool maybeHide();
     void startSearch(const QString &findText);
+    void setSearchView(PageView *view);
 
 Q_SIGNALS:
     void forwardKeyPressEvent(QKeyEvent *);

@@ -8,6 +8,7 @@
 #define BOOKMARKLIST_H
 
 #include <qwidget.h>
+#include <QPointer>
 
 #include "core/observer.h"
 
@@ -20,6 +21,7 @@ class KTreeViewSearchLine;
 class QUrl;
 class BookmarkItem;
 class FileItem;
+class PageView;
 
 namespace Okular
 {
@@ -38,6 +40,7 @@ public:
     void notifySetup(const QList<Okular::Page *> &pages, int setupFlags) override;
 
     void setAddBookmarkAction(QAction *addBookmarkAction);
+    void setPageView(PageView *pageView);
 
 private Q_SLOTS:
     void slotShowAllBookmarks(bool);
@@ -56,6 +59,7 @@ private:
     void contextMenuForFileItem(const QPoint p, FileItem *fItem);
 
     Okular::Document *m_document;
+    QPointer<PageView> m_pageView;
     QTreeWidget *m_tree;
     KTreeViewSearchLine *m_searchLine;
     QCheckBox *m_showForAllDocumentsCheckbox;

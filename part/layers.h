@@ -8,6 +8,9 @@
 #define _OKULAR_LAYERS_H_
 
 #include "core/observer.h"
+#include <QMetaObject>
+#include <QPointer>
+#include <QList>
 #include <qwidget.h>
 
 #include "okularpart_export.h"
@@ -35,6 +38,7 @@ public:
     void notifySetup(const QList<Okular::Page *> &pages, int setupFlags) override;
 
     void setPageView(PageView *pageView);
+    void setPageViews(const QList<PageView *> &pageViews);
 
 Q_SIGNALS:
     void hasLayers(bool has);
@@ -46,7 +50,12 @@ private:
     Okular::Document *m_document;
     QTreeView *m_treeView;
     KTreeViewSearchLine *m_searchLine;
-    PageView *m_pageView;
+    QPointer<PageView> m_pageView;
+    QList<QPointer<PageView>> m_pageViews;
+    QMetaObject::Connection m_modelReloadConnection;
+    QList<QMetaObject::Connection> m_viewReloadConnections;
+
+    void reconnectModelSignals();
 };
 
 #endif

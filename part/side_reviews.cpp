@@ -33,6 +33,7 @@
 #include "core/document.h"
 #include "core/page.h"
 #include "ktreeviewsearchline.h"
+#include "pageview.h"
 #include "settings.h"
 
 class TreeView : public QTreeView
@@ -182,10 +183,38 @@ Reviews::~Reviews()
 void Reviews::notifyCurrentPageChanged(int previousPage, int currentPage)
 {
     Q_UNUSED(previousPage)
-
-    m_filterProxy->setCurrentPage(currentPage);
+    Q_UNUSED(currentPage)
+    refreshCurrentPage();
 }
 // END DocumentObserver Notifies
+
+void Reviews::setPageView(PageView *pageView)
+{
+    if (m_pageView == pageView) {
+        refreshCurrentPage();
+        return;
+    }
+
+    disconnect(m_pageViewViewportConnection);
+    m_pageView = pageView;
+    if (pageView) {
+        m_pageViewViewportConnection = connect(pageView, &PageView::viewportStateChanged, this, &Reviews::refreshCurrentPage);
+    } else {
+        m_pageViewViewportConnection = {};
+    }
+    refreshCurrentPage();
+}
+
+void Reviews::refreshCurrentPage()
+{
+    if (m_document->pages() == 0) {
+        return;
+    }
+    const int currentPage = m_pageView ? m_pageView->documentViewport().pageNumber : static_cast<int>(m_document->currentPage());
+    if (currentPage >= 0 && currentPage < static_cast<int>(m_document->pages())) {
+        m_filterProxy->setCurrentPage(currentPage);
+    }
+}
 
 void Reviews::reparseConfig()
 {
@@ -257,8 +286,12 @@ void Reviews::activated(const QModelIndex &index)
     vp.rePos.pos = Okular::DocumentViewport::Center;
     vp.rePos.normalizedX = (nr.right + nr.left) / 2.0;
     vp.rePos.normalizedY = (nr.bottom + nr.top) / 2.0;
-    // setting the viewport
-    m_document->setViewport(vp, nullptr, true);
+    // Navigate the workspace frame that owns the active annotations panel.
+    if (m_pageView) {
+        m_pageView->goToDocumentViewport(vp, true, true);
+    } else {
+        m_document->setViewport(vp, nullptr, true);
+    }
 }
 
 QModelIndexList Reviews::retrieveAnnotations(const QModelIndex &idx) const

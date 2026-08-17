@@ -63,8 +63,7 @@ void Layers::notifySetup(const QList<Okular::Page *> & /*pages*/, int /*setupFla
         m_treeView->setModel(layersModel);
         m_searchLine->setTreeView(m_treeView);
         Q_EMIT hasLayers(true);
-        connect(layersModel, &QAbstractItemModel::dataChanged, m_document, &Okular::Document::reloadDocument);
-        connect(layersModel, &QAbstractItemModel::dataChanged, m_pageView, &PageView::reloadForms);
+        reconnectModelSignals();
     } else {
         Q_EMIT hasLayers(false);
     }
@@ -73,6 +72,43 @@ void Layers::notifySetup(const QList<Okular::Page *> & /*pages*/, int /*setupFla
 void Layers::setPageView(PageView *pageView)
 {
     m_pageView = pageView;
+    setPageViews(pageView ? QList<PageView *>{pageView} : QList<PageView *>{});
+}
+
+void Layers::setPageViews(const QList<PageView *> &pageViews)
+{
+    m_pageViews.clear();
+    for (PageView *pageView : pageViews) {
+        if (pageView && !m_pageViews.contains(pageView)) {
+            m_pageViews.append(pageView);
+        }
+    }
+    m_pageView = m_pageViews.isEmpty() ? nullptr : m_pageViews.constFirst();
+    reconnectModelSignals();
+}
+
+void Layers::reconnectModelSignals()
+{
+    if (m_modelReloadConnection) {
+        disconnect(m_modelReloadConnection);
+        m_modelReloadConnection = {};
+    }
+    for (const QMetaObject::Connection &connection : std::as_const(m_viewReloadConnections)) {
+        disconnect(connection);
+    }
+    m_viewReloadConnections.clear();
+
+    QAbstractItemModel *layersModel = m_document->layersModel();
+    if (!layersModel) {
+        return;
+    }
+
+    m_modelReloadConnection = connect(layersModel, &QAbstractItemModel::dataChanged, m_document, &Okular::Document::reloadDocument);
+    for (const QPointer<PageView> &pageView : std::as_const(m_pageViews)) {
+        if (pageView) {
+            m_viewReloadConnections.append(connect(layersModel, &QAbstractItemModel::dataChanged, pageView, &PageView::reloadForms));
+        }
+    }
 }
 
 void Layers::saveSearchOptions()

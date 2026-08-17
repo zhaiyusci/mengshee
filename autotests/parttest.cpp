@@ -12,11 +12,13 @@
 #include <QSignalSpy>
 #include <QTest>
 
+#include "../core/action.h"
 #include "../core/annotations.h"
 #include "../core/document_p.h"
 #include "../core/form.h"
 #include "../core/misc.h"
 #include "../core/page.h"
+#include "../part/documentworkspace.h"
 #include "../part/pageview.h"
 #include "../part/part.h"
 #include "../part/presentationwidget.h"
@@ -76,6 +78,7 @@ private Q_SLOTS:
     void testRemoveLineBreaks_data();
     void testRemoveLineBreaks();
     void testClickInternalLink();
+    void testAuxiliaryDocumentWorkspace();
     void testScrollBarAndMouseWheel();
     void testOpenUrlArguments();
     void test388288();
@@ -109,6 +112,7 @@ private Q_SLOTS:
     void testJumpToPage();
     void testOpenAtPage();
     void testForwardBackwardNavigation();
+    void testWorkspaceMainViewRetainsPositionWhenDemoted();
     void testTabletProximityBehavior();
     void testOpenPrintPreview();
     void testMouseModeMenu();
@@ -157,6 +161,135 @@ bool PartTest::openDocument(Okular::Part *part, const QString &filePath)
     return part->m_document->isOpened();
 }
 
+static QString linkText(const Okular::Page *page, const Okular::ObjectRect *rect)
+{
+    const QRectF bounds = rect->region().boundingRect();
+    Okular::RegularAreaRect area;
+    area.append(Okular::NormalizedRect(bounds.left(), bounds.top(), bounds.right(), bounds.bottom()));
+    QString title = page->text(&area, Okular::TextPage::AnyPixelTextAreaInclusionBehaviour).simplified();
+    constexpr int maximumTitleLength = 80;
+    if (title.size() > maximumTitleLength) {
+        title = title.left(maximumTitleLength - 1) + QChar(0x2026);
+    }
+    return title;
+}
+
+static bool findVisibleInternalGotoLink(PageView *view,
+                                        Okular::Document *document,
+                                        int sourcePageNumber,
+                                        int targetPageNumber,
+                                        const QString &preferredTitle,
+                                        QPoint *viewportPosition,
+                                        Okular::DocumentViewport *targetViewport,
+                                        QString *title)
+{
+    if (!view || !document || !viewportPosition || !targetViewport || !title) {
+        return false;
+    }
+
+    const Okular::Page *sourcePage = document->page(sourcePageNumber);
+    if (!sourcePage) {
+        return false;
+    }
+
+    const Okular::ObjectRect *selectedLink = nullptr;
+    Okular::DocumentViewport selectedTarget;
+    QString selectedTitle;
+    double selectedLeft = 2.0;
+    for (const Okular::ObjectRect *rect : sourcePage->objectRects()) {
+        if (!rect || rect->objectType() != Okular::ObjectRect::Action || !rect->object()) {
+            continue;
+        }
+        const auto *action = static_cast<const Okular::Action *>(rect->object());
+        if (action->actionType() != Okular::Action::Goto) {
+            continue;
+        }
+        const auto *gotoAction = static_cast<const Okular::GotoAction *>(action);
+        if (gotoAction->isExternal()) {
+            continue;
+        }
+
+        Okular::DocumentViewport candidateTarget = gotoAction->destViewport();
+        if (!candidateTarget.isValid() && !gotoAction->destinationName().isEmpty()) {
+            candidateTarget = Okular::DocumentViewport(document->metaData(QStringLiteral("NamedViewport"), gotoAction->destinationName()).toString());
+        }
+        if (!candidateTarget.isValid() || candidateTarget.pageNumber != targetPageNumber) {
+            continue;
+        }
+
+        const QString candidateTitle = linkText(sourcePage, rect);
+        const double candidateLeft = rect->region().boundingRect().left();
+        if (selectedLink) {
+            const bool candidateIsPreferred = candidateTitle == preferredTitle;
+            const bool selectedIsPreferred = selectedTitle == preferredTitle;
+            if ((selectedIsPreferred && !candidateIsPreferred) || (selectedIsPreferred == candidateIsPreferred && candidateLeft >= selectedLeft)) {
+                continue;
+            }
+        }
+        selectedLink = rect;
+        selectedTarget = candidateTarget;
+        selectedTitle = candidateTitle;
+        selectedLeft = candidateLeft;
+    }
+    if (!selectedLink) {
+        return false;
+    }
+
+    const QPointF normalizedCenter = selectedLink->region().boundingRect().center();
+    const QRect scanRect = view->viewport()->rect();
+    const int coarseStep = qMax(1, qMin(scanRect.width(), scanRect.height()) / 80);
+    QPoint closestPosition;
+    double closestDistance = 3.0;
+    bool foundPagePoint = false;
+    auto considerPosition = [&](const QPoint &position) {
+        int mappedPage = -1;
+        Okular::NormalizedPoint mappedPoint;
+        if (!view->mapGlobalPosToPagePoint(view->viewport()->mapToGlobal(position), &mappedPage, &mappedPoint) || mappedPage != sourcePageNumber) {
+            return;
+        }
+        const double dx = mappedPoint.x - normalizedCenter.x();
+        const double dy = mappedPoint.y - normalizedCenter.y();
+        const double distance = dx * dx + dy * dy;
+        if (!foundPagePoint || distance < closestDistance) {
+            foundPagePoint = true;
+            closestDistance = distance;
+            closestPosition = position;
+        }
+    };
+
+    for (int y = scanRect.top(); y <= scanRect.bottom(); y += coarseStep) {
+        for (int x = scanRect.left(); x <= scanRect.right(); x += coarseStep) {
+            considerPosition(QPoint(x, y));
+        }
+    }
+    if (!foundPagePoint) {
+        return false;
+    }
+
+    const QRect refineRect(closestPosition.x() - coarseStep,
+                           closestPosition.y() - coarseStep,
+                           coarseStep * 2 + 1,
+                           coarseStep * 2 + 1);
+    const QRect visibleRefineRect = refineRect.intersected(scanRect);
+    for (int y = visibleRefineRect.top(); y <= visibleRefineRect.bottom(); ++y) {
+        for (int x = visibleRefineRect.left(); x <= visibleRefineRect.right(); ++x) {
+            considerPosition(QPoint(x, y));
+        }
+    }
+
+    int mappedPage = -1;
+    Okular::NormalizedPoint mappedPoint;
+    if (!view->mapGlobalPosToPagePoint(view->viewport()->mapToGlobal(closestPosition), &mappedPage, &mappedPoint) || mappedPage != sourcePageNumber ||
+        !selectedLink->contains(mappedPoint.x, mappedPoint.y, 1.0, 1.0)) {
+        return false;
+    }
+
+    *viewportPosition = closestPosition;
+    *targetViewport = selectedTarget;
+    *title = selectedTitle;
+    return true;
+}
+
 void PartTest::init()
 {
     // Default settings for every test
@@ -168,6 +301,7 @@ void PartTest::init()
                               QUrl::fromUserInput(QStringLiteral("file://" KDESRCDIR "data/simple-multipage.pdf")),
                               QUrl::fromUserInput(QStringLiteral("file://" KDESRCDIR "data/tocreload.pdf")),
                               QUrl::fromUserInput(QStringLiteral("file://" KDESRCDIR "data/pdf_with_links.pdf")),
+                              QUrl::fromUserInput(QStringLiteral("file://" KDESRCDIR "data/pdf_with_internal_links.pdf")),
                               QUrl::fromUserInput(QStringLiteral("file://" KDESRCDIR "data/RequestFullScreen.pdf"))};
 
     for (const QUrl &url : urls) {
@@ -511,7 +645,7 @@ void PartTest::testClickInternalLink()
 {
     QVariantList dummyArgs;
     Okular::Part part(nullptr, dummyArgs);
-    QVERIFY(openDocument(&part, QStringLiteral(KDESRCDIR "data/file2.pdf")));
+    QVERIFY(openDocument(&part, QStringLiteral(KDESRCDIR "data/pdf_with_internal_links.pdf")));
     part.widget()->show();
     if (qgetenv("KDECI_CANNOT_CREATE_WINDOWS") == "1") {
         QSKIP("KDE CI can't create a window on this platform, skipping some gui tests");
@@ -523,19 +657,215 @@ void PartTest::testClickInternalLink()
 
     // wait for pixmap
     QTRY_VERIFY(part.m_document->page(0)->hasPixmap(part.m_pageView));
-
-    const int width = part.m_pageView->horizontalScrollBar()->maximum() + part.m_pageView->viewport()->width();
-    const int height = part.m_pageView->verticalScrollBar()->maximum() + part.m_pageView->viewport()->height();
+    part.m_document->requestTextPage(0);
+    QTRY_VERIFY(part.m_document->page(0)->hasTextPage());
 
     QVERIFY(QMetaObject::invokeMethod(part.m_pageView, "slotSetMouseNormal"));
 
+    QPoint internalLinkPosition;
+    DocumentViewport internalLinkTarget;
+    QString internalLinkTitle;
+    const QString expectedLinkTitle = QStringLiteral("2.1 Example for list (itemize)");
+    QVERIFY(findVisibleInternalGotoLink(part.m_pageView, part.m_document, 0, 1, expectedLinkTitle, &internalLinkPosition, &internalLinkTarget, &internalLinkTitle));
+    QCOMPARE(internalLinkTitle, expectedLinkTitle);
     QCOMPARE(part.m_document->currentPage(), 0u);
-    QTest::mouseMove(part.m_pageView->viewport(), QPoint(width * 0.17, height * 0.05));
-    QTest::mouseClick(part.m_pageView->viewport(), Qt::LeftButton, Qt::NoModifier, QPoint(width * 0.17, height * 0.05));
-    QTRY_COMPARE(part.m_document->currentPage(), 1u);
+    QTest::mouseMove(part.m_pageView->viewport(), internalLinkPosition);
+    QTest::mouseClick(part.m_pageView->viewport(), Qt::LeftButton, Qt::NoModifier, internalLinkPosition);
+    QTRY_COMPARE(part.m_document->currentPage(), static_cast<uint>(internalLinkTarget.pageNumber));
 
     // make sure cursor goes back to being an open hand again.  Bug 421437
     QTRY_COMPARE_WITH_TIMEOUT(part.m_pageView->cursor().shape(), Qt::OpenHandCursor, 1000);
+}
+
+void PartTest::testAuxiliaryDocumentWorkspace()
+{
+    Okular::Settings::setModifiedLinkClickAction(Okular::Settings::EnumModifiedLinkClickAction::AuxiliaryFrame);
+
+    Okular::Part part(nullptr, {});
+    QVERIFY(openDocument(&part, QStringLiteral(KDESRCDIR "data/pdf_with_internal_links.pdf")));
+    part.widget()->show();
+    if (qgetenv("KDECI_CANNOT_CREATE_WINDOWS") == "1") {
+        QSKIP("KDE CI can't create a window on this platform, skipping some gui tests");
+    }
+    QVERIFY(QTest::qWaitForWindowExposed(part.widget()));
+
+    DocumentWorkspace *workspace = part.m_documentWorkspace;
+    PageView *originalMainView = part.m_pageView;
+    QVERIFY(workspace);
+    QCOMPARE(workspace->mainView(), originalMainView);
+    QCOMPARE(workspace->activeView(), originalMainView);
+    QCOMPARE(workspace->auxiliaryViewCount(), 0);
+
+    part.m_document->setViewportPage(0);
+    QTRY_VERIFY(part.m_document->page(0)->hasPixmap(originalMainView));
+    part.m_document->requestTextPage(0);
+    QTRY_VERIFY(part.m_document->page(0)->hasTextPage());
+    QVERIFY(QMetaObject::invokeMethod(originalMainView, "slotSetMouseNormal"));
+
+    const int originalMainPage = originalMainView->documentViewport().pageNumber;
+    QPoint internalLinkPosition;
+    DocumentViewport modifiedClickTarget;
+    QString modifiedClickTitle;
+    const QString expectedLinkTitle = QStringLiteral("2.1 Example for list (itemize)");
+    QVERIFY(findVisibleInternalGotoLink(originalMainView, part.m_document, 0, 1, expectedLinkTitle, &internalLinkPosition, &modifiedClickTarget, &modifiedClickTitle));
+    QCOMPARE(modifiedClickTitle, expectedLinkTitle);
+    const int unsplitMainViewWidth = originalMainView->width();
+
+    // Exercise the real default gesture once. The remaining lifecycle checks
+    // use the public request signal so they do not depend on rendered geometry.
+    QTest::mouseMove(originalMainView->viewport(), internalLinkPosition);
+    QTest::mouseClick(originalMainView->viewport(), Qt::MiddleButton, Qt::NoModifier, internalLinkPosition);
+
+    QTRY_COMPARE(workspace->auxiliaryViewCount(), 1);
+    QCOMPARE(workspace->mainView(), originalMainView);
+    QCOMPARE(originalMainView->documentViewport().pageNumber, originalMainPage);
+
+    PageView *firstAuxiliaryView = workspace->auxiliaryViews().constFirst();
+    QVERIFY(firstAuxiliaryView);
+    DocumentViewport firstAuxiliaryTarget = firstAuxiliaryView->documentViewport();
+    QVERIFY(firstAuxiliaryTarget == modifiedClickTarget);
+    QCOMPARE(workspace->viewTitle(firstAuxiliaryView), modifiedClickTitle);
+    QVERIFY(!firstAuxiliaryView->viewportHistoryAtBegin());
+    QTRY_COMPARE(workspace->activeView(), firstAuxiliaryView);
+    QCOMPARE(part.workspaceActivePageView(), firstAuxiliaryView);
+    QCOMPARE(part.m_workspaceActionView.data(), firstAuxiliaryView);
+
+    // The other advertised gesture must take the same path. The splitter has
+    // resized the main view, so derive the link position again after relayout.
+    QTRY_VERIFY(originalMainView->width() < unsplitMainViewWidth);
+    QTimer *mainResizeTimer = originalMainView->findChild<QTimer *>(QStringLiteral("delayResizeEventTimer"));
+    QTimer *firstAuxiliaryResizeTimer = firstAuxiliaryView->findChild<QTimer *>(QStringLiteral("delayResizeEventTimer"));
+    QVERIFY(mainResizeTimer);
+    QVERIFY(firstAuxiliaryResizeTimer);
+    QTRY_VERIFY_WITH_TIMEOUT(!mainResizeTimer->isActive(), 5000);
+    QTRY_VERIFY_WITH_TIMEOUT(!firstAuxiliaryResizeTimer->isActive(), 5000);
+    QPoint controlClickPosition;
+    DocumentViewport controlClickTarget;
+    QString controlClickTitle;
+    QVERIFY(findVisibleInternalGotoLink(originalMainView, part.m_document, 0, 1, expectedLinkTitle, &controlClickPosition, &controlClickTarget, &controlClickTitle));
+    QVERIFY(controlClickTarget == modifiedClickTarget);
+    QCOMPARE(controlClickTitle, modifiedClickTitle);
+    QTest::mouseMove(originalMainView->viewport(), controlClickPosition);
+    QTest::mouseClick(originalMainView->viewport(), Qt::LeftButton, Qt::ControlModifier, controlClickPosition);
+    QTRY_COMPARE(workspace->auxiliaryViewCount(), 2);
+    QPointer<PageView> controlClickAuxiliaryView = workspace->auxiliaryViews().constLast();
+    QVERIFY(controlClickAuxiliaryView);
+    QVERIFY(controlClickAuxiliaryView->documentViewport() == controlClickTarget);
+    QCOMPARE(workspace->viewTitle(controlClickAuxiliaryView.data()), controlClickTitle);
+    QCOMPARE(originalMainView->documentViewport().pageNumber, originalMainPage);
+
+    const int controlClickAuxiliaryIndex = workspace->auxiliaryViews().indexOf(controlClickAuxiliaryView.data());
+    QVERIFY(controlClickAuxiliaryIndex >= 0);
+    workspace->closeAuxiliaryTab(controlClickAuxiliaryIndex);
+    QTRY_COMPARE(workspace->auxiliaryViewCount(), 1);
+    QTRY_VERIFY(controlClickAuxiliaryView.isNull());
+    QCOMPARE(workspace->activeView(), firstAuxiliaryView);
+    // A splitter relayout can change which page is nearest the center in
+    // continuous mode. Seed the next tab from the source frame's durable
+    // post-relayout viewport; Back must return here, wherever that is.
+    QCoreApplication::sendPostedEvents(firstAuxiliaryView, QEvent::MetaCall);
+    QCoreApplication::processEvents();
+    QTRY_VERIFY_WITH_TIMEOUT(!firstAuxiliaryResizeTimer->isActive(), 5000);
+    firstAuxiliaryTarget = firstAuxiliaryView->documentViewport();
+
+    const QString secondTitle = QStringLiteral("Second auxiliary link");
+    const DocumentViewport secondTarget(0);
+    QVERIFY(QMetaObject::invokeMethod(firstAuxiliaryView,
+                                      "openInternalLinkInAuxiliaryFrame",
+                                      Qt::DirectConnection,
+                                      Q_ARG(Okular::DocumentViewport, secondTarget),
+                                      Q_ARG(QString, secondTitle)));
+
+    QCOMPARE(workspace->auxiliaryViewCount(), 2);
+    PageView *secondAuxiliaryView = workspace->auxiliaryViews().constLast();
+    QVERIFY(secondAuxiliaryView);
+    QVERIFY(secondAuxiliaryView != firstAuxiliaryView);
+    QVERIFY(secondAuxiliaryView->documentViewport() == secondTarget);
+    QCOMPARE(workspace->viewTitle(secondAuxiliaryView), secondTitle);
+    QVERIFY(firstAuxiliaryView->documentViewport() == firstAuxiliaryTarget);
+    QCOMPARE(originalMainView->documentViewport().pageNumber, originalMainPage);
+    QTRY_COMPARE(workspace->activeView(), secondAuxiliaryView);
+    QCOMPARE(part.workspaceActivePageView(), secondAuxiliaryView);
+    QCOMPARE(part.m_workspaceActionView.data(), secondAuxiliaryView);
+
+    // Part-level navigation must be routed to the active auxiliary tab. Its
+    // independent Back entry is the viewport of the frame that spawned it.
+    part.slotHistoryBack();
+    QVERIFY(secondAuxiliaryView->documentViewport() == firstAuxiliaryTarget);
+    QVERIFY(firstAuxiliaryView->documentViewport() == firstAuxiliaryTarget);
+    QCOMPARE(originalMainView->documentViewport().pageNumber, originalMainPage);
+    part.slotHistoryNext();
+    QVERIFY(secondAuxiliaryView->documentViewport() == secondTarget);
+    part.slotHistoryBack();
+    QVERIFY(secondAuxiliaryView->documentViewport() == firstAuxiliaryTarget);
+
+    workspace->promoteView(secondAuxiliaryView);
+    QCOMPARE(workspace->mainView(), secondAuxiliaryView);
+    QCOMPARE(workspace->activeView(), secondAuxiliaryView);
+    QCOMPARE(part.m_pageView.data(), secondAuxiliaryView);
+    QCOMPARE(part.workspaceActivePageView(), secondAuxiliaryView);
+    QCOMPARE(part.m_workspaceActionView.data(), secondAuxiliaryView);
+    QCOMPARE(workspace->mainViewTitle(), secondTitle);
+    QWidget *mainHost = workspace->findChild<QWidget *>(QStringLiteral("documentWorkspaceMainHost"));
+    QVERIFY(mainHost);
+    QCOMPARE(secondAuxiliaryView->parentWidget(), mainHost);
+    QTRY_VERIFY(secondAuxiliaryView->isVisibleTo(workspace));
+    QTRY_COMPARE(secondAuxiliaryView->geometry().left(), mainHost->contentsRect().left());
+    QTRY_COMPARE(secondAuxiliaryView->geometry().width(), mainHost->contentsRect().width());
+    QTRY_COMPARE(secondAuxiliaryView->geometry().bottom(), mainHost->contentsRect().bottom());
+    QTRY_VERIFY(secondAuxiliaryView->height() > mainHost->height() / 2);
+
+    // The promoted view keeps its complete history and Part continues to
+    // route navigation to it through the default document channel.
+    part.slotHistoryNext();
+    QVERIFY(secondAuxiliaryView->documentViewport() == secondTarget);
+    QCOMPARE(originalMainView->documentViewport().pageNumber, originalMainPage);
+    part.slotHistoryBack();
+    QVERIFY(secondAuxiliaryView->documentViewport() == firstAuxiliaryTarget);
+
+    const QPointer<PageView> reloadedMainView = secondAuxiliaryView;
+    const QPointer<PageView> reloadedFirstAuxiliaryView = firstAuxiliaryView;
+    const QPointer<PageView> reloadedOriginalMainView = originalMainView;
+    const QString firstAuxiliaryTitle = workspace->viewTitle(firstAuxiliaryView);
+    const QString originalMainTitle = workspace->viewTitle(originalMainView);
+    const int mainPageBeforeReload = secondAuxiliaryView->documentViewport().pageNumber;
+    const int firstAuxiliaryPageBeforeReload = firstAuxiliaryView->documentViewport().pageNumber;
+    const int originalMainPageBeforeReload = originalMainView->documentViewport().pageNumber;
+
+    QVERIFY(part.slotAttemptReload(true));
+    // Opening and viewport notifications schedule relayouts for every frame.
+    // Drain their queued viewport work, then wait on each view's actual resize
+    // timer instead of assuming a particular CI machine can finish in 250 ms.
+    const QList<QPointer<PageView>> reloadedViews = {reloadedMainView, reloadedFirstAuxiliaryView, reloadedOriginalMainView};
+    for (const QPointer<PageView> &view : reloadedViews) {
+        QVERIFY(view);
+        QCoreApplication::sendPostedEvents(view.data(), QEvent::MetaCall);
+        QCoreApplication::processEvents();
+        QTimer *resizeTimer = view->findChild<QTimer *>(QStringLiteral("delayResizeEventTimer"));
+        QVERIFY(resizeTimer);
+        QTRY_VERIFY_WITH_TIMEOUT(!resizeTimer->isActive(), 5000);
+    }
+    QCOMPARE(workspace->auxiliaryViewCount(), 2);
+    QCOMPARE(workspace->mainView(), reloadedMainView.data());
+    QCOMPARE(workspace->activeView(), reloadedMainView.data());
+    QCOMPARE(part.m_pageView.data(), reloadedMainView.data());
+    QCOMPARE(part.workspaceActivePageView(), reloadedMainView.data());
+    QCOMPARE(part.m_workspaceActionView.data(), reloadedMainView.data());
+    QCOMPARE(workspace->mainViewTitle(), secondTitle);
+    QCOMPARE(workspace->viewTitle(reloadedFirstAuxiliaryView.data()), firstAuxiliaryTitle);
+    QCOMPARE(workspace->viewTitle(reloadedOriginalMainView.data()), originalMainTitle);
+    QCOMPARE(reloadedMainView->documentViewport().pageNumber, mainPageBeforeReload);
+    QCOMPARE(reloadedFirstAuxiliaryView->documentViewport().pageNumber, firstAuxiliaryPageBeforeReload);
+    QCOMPARE(reloadedOriginalMainView->documentViewport().pageNumber, originalMainPageBeforeReload);
+
+    const int firstAuxiliaryIndex = workspace->auxiliaryViews().indexOf(reloadedFirstAuxiliaryView.data());
+    QVERIFY(firstAuxiliaryIndex >= 0);
+    workspace->closeAuxiliaryTab(firstAuxiliaryIndex);
+    QCOMPARE(workspace->auxiliaryViewCount(), 1);
+    QTRY_VERIFY(reloadedFirstAuxiliaryView.isNull());
+    QCOMPARE(workspace->mainView(), reloadedMainView.data());
+    QCOMPARE(workspace->activeView(), reloadedMainView.data());
+    QCOMPARE(part.workspaceActivePageView(), reloadedMainView.data());
 }
 
 // Test for bug 421159, which is: When scrolling down with the scroll bar
@@ -2283,6 +2613,57 @@ void PartTest::testForwardBackwardNavigation()
     QCOMPARE(part.m_document->viewport().pageNumber, targetPageB);
 }
 
+void PartTest::testWorkspaceMainViewRetainsPositionWhenDemoted()
+{
+    Okular::Part part(nullptr, {});
+    QVERIFY(openDocument(&part, QStringLiteral(KDESRCDIR "data/simple-multipage.pdf")));
+    QVERIFY(part.m_document->pages() > 2);
+
+    PageView *view = part.m_pageView;
+    const int initialPage = static_cast<int>(part.m_document->currentPage());
+    const int auxiliaryPage = initialPage == 0 ? 1 : 0;
+    const int promotedPage = initialPage == 2 ? 1 : 2;
+
+    // Build a default history with both Back and Forward entries before this
+    // original main view has ever owned an independent session.
+    part.m_document->setViewportPage(auxiliaryPage);
+    part.m_document->setViewportPage(promotedPage);
+    part.m_document->setPrevViewport();
+    QCOMPARE(view->documentViewport().pageNumber, auxiliaryPage);
+    QVERIFY(!part.m_document->historyAtBegin());
+    QVERIFY(!part.m_document->historyAtEnd());
+
+    // The first demotion must copy the complete default history, not merely
+    // seed a new session at the current position.
+    view->setWorkspaceMainView(false);
+    QCOMPARE(view->documentViewport().pageNumber, auxiliaryPage);
+    QVERIFY(!view->viewportHistoryAtBegin());
+    QVERIFY(!view->viewportHistoryAtEnd());
+    view->goToPreviousViewport();
+    QCOMPARE(view->documentViewport().pageNumber, initialPage);
+    view->goToNextViewport();
+    QCOMPARE(view->documentViewport().pageNumber, auxiliaryPage);
+    view->goToNextViewport();
+    QCOMPARE(view->documentViewport().pageNumber, promotedPage);
+    view->goToPreviousViewport();
+
+    // Promotion installs this frame's own history as the Document default,
+    // including its forward stack. A later demotion copies it back again.
+    view->setWorkspaceMainView(true);
+    QCOMPARE(part.m_document->currentPage(), static_cast<uint>(auxiliaryPage));
+    QVERIFY(!part.m_document->historyAtEnd());
+    part.m_document->setNextViewport();
+    QCOMPARE(part.m_document->currentPage(), static_cast<uint>(promotedPage));
+    part.m_document->setPrevViewport();
+    part.m_document->setPrevViewport();
+    QCOMPARE(part.m_document->currentPage(), static_cast<uint>(initialPage));
+
+    view->setWorkspaceMainView(false);
+    QCOMPARE(view->documentViewport().pageNumber, initialPage);
+    QVERIFY(!view->viewportHistoryAtEnd());
+    view->setWorkspaceMainView(true);
+}
+
 void PartTest::testTabletProximityBehavior()
 {
     QVariantList dummyArgs;
@@ -2537,6 +2918,8 @@ void PartTest::testLinkWithCrop()
 
     // wait for pixmap
     QTRY_VERIFY(part.m_document->page(0)->hasPixmap(part.m_pageView));
+    part.m_document->requestTextPage(0);
+    QTRY_VERIFY(part.m_document->page(0)->hasTextPage());
 
     const int width = part.m_pageView->viewport()->width();
     const int height = part.m_pageView->viewport()->height();
@@ -2561,19 +2944,35 @@ void PartTest::testLinkWithCrop()
     // Trim the page
     simulateMouseSelection(mouseStartX, mouseStartY, mouseEndX, mouseEndY, part.m_pageView->viewport());
 
-    // We seem to have a trimmed view where we just by sheer luck ends up with mouse over a link at least sometimes
-    // So move the mouse
+    // Move away while the cropped layout settles.
     QTest::mouseMove(part.m_pageView->viewport(), QPoint(width * 0.1, width * 0.1));
+    part.m_document->setViewportPage(0);
+    QCoreApplication::sendPostedEvents(part.m_pageView, QEvent::MetaCall);
+    QCoreApplication::processEvents();
+    QTimer *resizeTimer = part.m_pageView->findChild<QTimer *>(QStringLiteral("delayResizeEventTimer"));
+    QVERIFY(resizeTimer);
+    QTRY_VERIFY_WITH_TIMEOUT(!resizeTimer->isActive(), 5000);
+    QTRY_VERIFY_WITH_TIMEOUT(part.m_document->page(0)->hasPixmap(part.m_pageView), 5000);
 
     // The cursor should be normal again
     QTRY_COMPARE(part.m_pageView->cursor().shape(), Qt::CursorShape(Qt::OpenHandCursor));
 
-    // Click a link
-    const QPoint click(width * 0.2, height * 0.2);
-    QTest::mouseMove(part.m_pageView->viewport(), click);
-    QTest::mouseClick(part.m_pageView->viewport(), Qt::LeftButton, Qt::NoModifier, click);
+    // Locate a known link through the cropped PageView mapping rather than
+    // assuming the workspace wrapper leaves it at a fixed widget coordinate.
+    QPoint clickPosition;
+    DocumentViewport linkTarget;
+    QString title;
+    const QString expectedLinkTitle = QStringLiteral("2.1 Example for list (itemize)");
+    QVERIFY(findVisibleInternalGotoLink(part.m_pageView, part.m_document, 0, 1, expectedLinkTitle, &clickPosition, &linkTarget, &title));
+    QCOMPARE(title, expectedLinkTitle);
+    QVERIFY(linkTarget.rePos.enabled);
+    QTest::mouseMove(part.m_pageView->viewport(), clickPosition);
+    QTest::mouseClick(part.m_pageView->viewport(), Qt::LeftButton, Qt::NoModifier, clickPosition);
 
-    QTRY_VERIFY2_WITH_TIMEOUT(qAbs(part.m_document->viewport().rePos.normalizedY - 0.167102333237) < 0.01, qPrintable(QStringLiteral("We are at %1").arg(part.m_document->viewport().rePos.normalizedY)), 500);
+    QTRY_COMPARE(part.m_document->currentPage(), static_cast<uint>(linkTarget.pageNumber));
+    QTRY_VERIFY2_WITH_TIMEOUT(qAbs(part.m_document->viewport().rePos.normalizedY - linkTarget.rePos.normalizedY) < 0.01,
+                              qPrintable(QStringLiteral("Expected target y %1, got %2").arg(linkTarget.rePos.normalizedY).arg(part.m_document->viewport().rePos.normalizedY)),
+                              500);
 
     // Deactivate "Trim Margins"
     cropAction->trigger();

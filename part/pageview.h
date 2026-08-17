@@ -23,6 +23,7 @@
 #include "core/document.h"
 #include "core/observer.h"
 #include "core/view.h"
+#include "okularpart_export.h"
 #include "pageviewutils.h"
 #include <QAbstractScrollArea>
 #include <QList>
@@ -35,6 +36,7 @@ class QColor;
 class QDomElement;
 class KActionCollection;
 class AnnotationPopup;
+class PageViewAnnotator;
 
 namespace Okular
 {
@@ -64,10 +66,10 @@ class PageView : public QAbstractScrollArea, public Okular::DocumentObserver, pu
     Q_OBJECT
 
 public:
-    PageView(QWidget *parent, Okular::Document *document);
+    PageView(QWidget *parent, Okular::Document *document, bool independentNavigation = false);
     ~PageView() override;
 
-    bool mapGlobalPosToPagePoint(QPoint globalPos, int *pageNumber, Okular::NormalizedPoint *point) const;
+    OKULARPART_EXPORT bool mapGlobalPosToPagePoint(QPoint globalPos, int *pageNumber, Okular::NormalizedPoint *point) const;
 
     // Zoom mode ( last 4 are internally used only! )
     enum ZoomMode { ZoomFixed = 0, ZoomFitWidth = 1, ZoomFitPage = 2, ZoomFitAuto = 3, ZoomIn, ZoomOut, ZoomRefreshCurrent, ZoomActual };
@@ -91,7 +93,7 @@ public:
     // create actions that interact with this widget
     void setupBaseActions(KActionCollection *ac);
     void setupViewerActions(KActionCollection *ac);
-    void setupActions(KActionCollection *ac);
+    void setupActions(KActionCollection *ac, PageViewAnnotator *sharedAnnotator = nullptr);
     void setupActionsPostGUIActivated();
     void updateActionState(bool docHasPages, bool docHasFormWidgets);
 
@@ -125,6 +127,9 @@ public:
 
     KActionCollection *actionCollection() const;
     QAction *toggleFormsAction() const;
+    PageViewAnnotator *annotator() const;
+    bool hasPendingSignature() const;
+    void processActionForView(const Okular::Action *action) const;
 
     int contentAreaWidth() const;
     int contentAreaHeight() const;
@@ -148,6 +153,18 @@ public:
     void showNoSigningCertificatesDialog(bool nonDateValidCerts);
 
     Okular::Document *document() const;
+    bool hasIndependentNavigation() const;
+    Okular::DocumentViewSession *navigationSession() const;
+    void setWorkspaceActiveView(bool activeView);
+    void initializeIndependentNavigation(const Okular::DocumentViewport &source, const Okular::DocumentViewport &target);
+    OKULARPART_EXPORT void setWorkspaceMainView(bool mainView);
+    bool isWorkspaceMainView() const;
+    OKULARPART_EXPORT const Okular::DocumentViewport &documentViewport() const;
+    OKULARPART_EXPORT bool viewportHistoryAtBegin() const;
+    OKULARPART_EXPORT bool viewportHistoryAtEnd() const;
+    OKULARPART_EXPORT void goToDocumentViewport(const Okular::DocumentViewport &viewport, bool smoothMove = true, bool updateHistory = true);
+    OKULARPART_EXPORT void goToPreviousViewport();
+    OKULARPART_EXPORT void goToNextViewport();
 
     void startSigning(Okular::SignatureAnnotation *signatureAnnotation);
 
@@ -167,6 +184,8 @@ public Q_SLOTS:
     void externalKeyPressEvent(QKeyEvent *e);
 #if HAVE_NEW_SIGNATURE_API
     PageView::FinishSigningResult finishSigning();
+    /** Removes an unfinished signature field and restores a clean history. */
+    void cancelSigning();
 #endif
 
 Q_SIGNALS:
@@ -184,6 +203,14 @@ Q_SIGNALS:
     void requestOpenNewlySignedFile(const QString &filePath, int pageNumber);
     void signingStarted();
     void signingFinished();
+    /** Emitted whenever this view's viewport or navigation history changes. */
+    void viewportStateChanged();
+    /**
+     * Requests opening an internal document destination in an auxiliary frame.
+     * The title is derived from the text covered by the source link when
+     * possible and otherwise falls back to the destination page number.
+     */
+    void openInternalLinkInAuxiliaryFrame(const Okular::DocumentViewport &viewport, const QString &title);
 
 protected:
     bool event(QEvent *event) override;
@@ -244,8 +271,11 @@ private:
     // updates cursor
     void updateCursor(const QPoint p);
     void updateLinkPreview(const Okular::ObjectRect *rect, const QPoint &contentPos);
+    void handleModifiedLinkClick(const Okular::ObjectRect *rect, const QPoint &contentPos);
     void hideLinkPreview();
     void showLinkPreview();
+    void setDocumentViewport(const Okular::DocumentViewport &viewport, Okular::DocumentObserver *excludeObserver = nullptr, bool smoothMove = false, bool updateHistory = true);
+    void setDocumentViewportPage(int page, Okular::DocumentObserver *excludeObserver = nullptr, bool smoothMove = false);
 
     void moveMagnifier(const QPoint p);
     void updateMagnifier(const QPoint p);

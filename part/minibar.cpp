@@ -27,6 +27,7 @@
 // local includes
 #include "core/document.h"
 #include "core/page.h"
+#include "pageview.h"
 
 // [private widget] a flat qpushbutton that enlights on hover
 class HoverButton : public QToolButton
@@ -64,7 +65,60 @@ Okular::Document *MiniBarLogic::document() const
 
 int MiniBarLogic::currentPage() const
 {
-    return m_document->currentPage();
+    return m_pageView ? m_pageView->documentViewport().pageNumber : static_cast<int>(m_document->currentPage());
+}
+
+void MiniBarLogic::setPageView(PageView *pageView)
+{
+    if (m_pageView == pageView) {
+        refreshCurrentPage();
+        return;
+    }
+
+    disconnect(m_pageViewViewportConnection);
+    m_pageView = pageView;
+
+    if (pageView) {
+        m_pageViewViewportConnection = connect(pageView, &PageView::viewportStateChanged, this, &MiniBarLogic::refreshCurrentPage);
+    } else {
+        m_pageViewViewportConnection = {};
+    }
+
+    refreshCurrentPage();
+}
+
+void MiniBarLogic::goToPage(int page)
+{
+    if (page < 0 || page >= static_cast<int>(m_document->pages())) {
+        return;
+    }
+
+    if (m_pageView) {
+        m_pageView->goToDocumentViewport(Okular::DocumentViewport(page), true, true);
+    } else {
+        m_document->setViewportPage(page);
+    }
+}
+
+void MiniBarLogic::refreshCurrentPage()
+{
+    const int pages = static_cast<int>(m_document->pages());
+    const int page = currentPage();
+    if (pages < 1 || page < 0 || page >= pages) {
+        return;
+    }
+
+    const QString pageNumber = QString::number(page + 1);
+    const Okular::Page *documentPage = m_document->page(page);
+    const QString pageLabel = documentPage ? documentPage->label() : QString();
+
+    for (MiniBar *miniBar : std::as_const(m_miniBars)) {
+        miniBar->m_prevButton->setEnabled(page > 0);
+        miniBar->m_nextButton->setEnabled(page < (pages - 1));
+        miniBar->m_pageNumberEdit->setText(pageNumber);
+        miniBar->m_pageNumberLabel->setText(pageNumber);
+        miniBar->m_pageLabelEdit->setText(pageLabel);
+    }
 }
 
 void MiniBarLogic::notifySetup(const QList<Okular::Page *> &pageVector, int setupFlags)
@@ -125,30 +179,15 @@ void MiniBarLogic::notifySetup(const QList<Okular::Page *> &pageVector, int setu
 
         miniBar->setEnabled(true);
     }
+
+    refreshCurrentPage();
 }
 
 void MiniBarLogic::notifyCurrentPageChanged(int previousPage, int currentPage)
 {
     Q_UNUSED(previousPage)
-
-    // get current page number
-    const int pages = m_document->pages();
-
-    // if the document is opened and page is changed
-    if (pages > 0) {
-        const QString pageNumber = QString::number(currentPage + 1);
-        const QString pageLabel = m_document->page(currentPage)->label();
-
-        for (MiniBar *miniBar : std::as_const(m_miniBars)) {
-            // update prev/next button state
-            miniBar->m_prevButton->setEnabled(currentPage > 0);
-            miniBar->m_nextButton->setEnabled(currentPage < (pages - 1));
-            // update text on widgets
-            miniBar->m_pageNumberEdit->setText(pageNumber);
-            miniBar->m_pageNumberLabel->setText(pageNumber);
-            miniBar->m_pageLabelEdit->setText(pageLabel);
-        }
-    }
+    Q_UNUSED(currentPage)
+    refreshCurrentPage();
 }
 
 /** MiniBar **/
@@ -270,7 +309,7 @@ void MiniBar::slotChangePageFromReturn()
 
 void MiniBar::slotChangePage(int pageNumber)
 {
-    m_miniBarLogic->document()->setViewportPage(pageNumber);
+    m_miniBarLogic->goToPage(pageNumber);
     m_pageNumberEdit->clearFocus();
     m_pageLabelEdit->clearFocus();
 }

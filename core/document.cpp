@@ -40,6 +40,7 @@
 #include <QMimeDatabase>
 #include <QPageSize>
 #include <QPrintDialog>
+#include <QPointer>
 #include <QRegularExpression>
 #include <QScreen>
 #include <QStack>
@@ -143,9 +144,78 @@ struct RunningSearch {
     Qt::CaseSensitivity cachedCaseSensitivity;
     bool cachedViewportMove : 1;
     bool isCurrentlySearching : 1;
+    bool cachedUsesViewSession : 1;
     QColor cachedColor;
+    DocumentViewSession *cachedViewSession;
+    std::weak_ptr<void> cachedViewSessionLifetime;
     int pagesDone;
+    quint64 generation;
+    quint64 documentGeneration;
 };
+
+class Okular::DocumentViewSession::Private
+{
+public:
+    Private(Document *owner, const DocumentViewport &initialViewport)
+        : document(owner)
+    {
+        viewportIterator = viewportHistory.insert(viewportHistory.end(), initialViewport);
+    }
+
+    Document *document;
+    std::list<DocumentViewport> viewportHistory;
+    std::list<DocumentViewport>::iterator viewportIterator;
+    QSet<DocumentObserver *> observers;
+    std::shared_ptr<void> lifetimeToken = std::make_shared<char>();
+    quint64 navigationGeneration = 0;
+};
+
+bool DocumentPrivate::observerUsesViewSession(DocumentObserver *observer) const
+{
+    for (const DocumentViewSession *session : std::as_const(m_viewSessions)) {
+        if (session->d->observers.contains(observer)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void DocumentPrivate::notifyDefaultViewportObservers(DocumentObserver *excludeObserver, bool smoothMove, int oldPageNumber, int currentPageNumber)
+{
+    QList<DocumentObserver *> observers;
+    for (DocumentObserver *observer : std::as_const(m_observers)) {
+        if (!observerUsesViewSession(observer)) {
+            observers.append(observer);
+        }
+    }
+
+    // A synchronous observer callback may unregister observers or destroy the
+    // Document itself. Work from a snapshot, but validate each observer against
+    // the live Document before every callback and never touch this Private
+    // object again after a callback without first checking the guard.
+    QPointer<Document> documentGuard(m_parent);
+    for (DocumentObserver *observer : std::as_const(observers)) {
+        if (!documentGuard) {
+            break;
+        }
+        Document *document = documentGuard.data();
+        if (!document->d->m_observers.contains(observer) || document->d->observerUsesViewSession(observer)) {
+            continue;
+        }
+
+        if (observer != excludeObserver) {
+            observer->notifyViewportChanged(smoothMove);
+        }
+
+        if (!documentGuard) {
+            break;
+        }
+        document = documentGuard.data();
+        if (oldPageNumber != currentPageNumber && document->d->m_observers.contains(observer) && !document->d->observerUsesViewSession(observer)) {
+            observer->notifyCurrentPageChanged(oldPageNumber, currentPageNumber);
+        }
+    }
+}
 
 #define foreachObserver(cmd)                                                                                                                                                                                                                   \
     {                                                                                                                                                                                                                                          \
@@ -849,8 +919,9 @@ bool DocumentPrivate::openRelativeFile(const QString &fileName)
 
     qCDebug(OkularCoreDebug).nospace() << "openRelativeFile: '" << newUrl << "'";
 
+    QPointer<Document> documentGuard(m_parent);
     Q_EMIT m_parent->openUrl(newUrl);
-    return m_url == newUrl;
+    return documentGuard && documentGuard->d->m_url == newUrl;
 }
 
 Generator *DocumentPrivate::loadGeneratorLibrary(const KPluginMetaData &service)
@@ -1705,19 +1776,45 @@ void DocumentPrivate::_o_configChanged()
 
 void DocumentPrivate::doContinueDirectionMatchSearch(DoContinueDirectionMatchSearchStruct *searchStruct)
 {
-    RunningSearch *search = m_searches.value(searchStruct->searchID);
+    const auto discardWorker = [searchStruct] {
+        delete searchStruct->match;
+        delete searchStruct->pagesToNotify;
+        delete searchStruct;
+    };
 
-    if ((m_searchCancelled && !searchStruct->match) || !search) {
+    RunningSearch *search = m_searches.value(searchStruct->searchID);
+    const bool staleDocument = searchStruct->documentGeneration != m_documentGeneration;
+    const bool staleGeneration = staleDocument || !search || search->generation != searchStruct->generation || search->documentGeneration != searchStruct->documentGeneration;
+
+    if (staleGeneration || (m_searchCancelled && !searchStruct->match)) {
         // if the user cancelled but he just got a match, give him the match!
         QApplication::restoreOverrideCursor();
 
-        if (search) {
+        const int searchID = searchStruct->searchID;
+        const quint64 generation = searchStruct->generation;
+        const quint64 documentGeneration = searchStruct->documentGeneration;
+        const QSet<int> pagesToNotify = *searchStruct->pagesToNotify;
+        if (!staleGeneration) {
             search->isCurrentlySearching = false;
         }
-
-        Q_EMIT m_parent->searchFinished(searchStruct->searchID, Document::SearchCancelled);
+        delete searchStruct->match;
         delete searchStruct->pagesToNotify;
         delete searchStruct;
+
+        // Observer notifications and searchFinished are synchronous and may
+        // destroy the Document. Release the worker state first, then guard the
+        // only callback sequence and never touch DocumentPrivate afterwards.
+        QPointer<Document> documentGuard(m_parent);
+        if (!staleDocument) {
+            notifySearchPagesChanged(pagesToNotify, -1, 0, documentGeneration);
+        }
+        if (documentGuard && !staleGeneration) {
+            Document *document = documentGuard.data();
+            search = document->d->m_searches.value(searchID);
+            if (search && search->generation == generation && search->documentGeneration == document->d->m_documentGeneration) {
+                Q_EMIT document->searchFinished(searchID, Document::SearchCancelled);
+            }
+        }
         return;
     }
 
@@ -1730,10 +1827,26 @@ void DocumentPrivate::doContinueDirectionMatchSearch(DoContinueDirectionMatchSea
             doContinue = true;
             if (searchStruct->currentPage >= pageCount) {
                 searchStruct->currentPage = 0;
+                QPointer<Document> documentGuard(m_parent);
                 Q_EMIT m_parent->notice(i18n("Continuing search from beginning"), 3000);
+                if (!documentGuard) {
+                    QApplication::restoreOverrideCursor();
+                    discardWorker();
+                    return;
+                }
+                documentGuard->d->doContinueDirectionMatchSearch(searchStruct);
+                return;
             } else if (searchStruct->currentPage < 0) {
                 searchStruct->currentPage = pageCount - 1;
+                QPointer<Document> documentGuard(m_parent);
                 Q_EMIT m_parent->notice(i18n("Continuing search from bottom"), 3000);
+                if (!documentGuard) {
+                    QApplication::restoreOverrideCursor();
+                    discardWorker();
+                    return;
+                }
+                documentGuard->d->doContinueDirectionMatchSearch(searchStruct);
+                return;
             }
         }
     }
@@ -1743,7 +1856,26 @@ void DocumentPrivate::doContinueDirectionMatchSearch(DoContinueDirectionMatchSea
         const Page *page = m_pagesVector[searchStruct->currentPage];
         // request search page if needed
         if (!page->hasTextPage()) {
-            m_parent->requestTextPage(page->number());
+            const int pageNumber = page->number();
+            QPointer<Document> documentGuard(m_parent);
+            m_parent->requestTextPage(pageNumber);
+            if (!documentGuard) {
+                QApplication::restoreOverrideCursor();
+                discardWorker();
+                return;
+            }
+
+            DocumentPrivate *documentPrivate = documentGuard->d;
+            search = documentPrivate->m_searches.value(searchStruct->searchID);
+            if (!search || search->generation != searchStruct->generation || search->documentGeneration != searchStruct->documentGeneration || documentPrivate->m_documentGeneration != searchStruct->documentGeneration || documentPrivate->m_searchCancelled) {
+                documentPrivate->doContinueDirectionMatchSearch(searchStruct);
+                return;
+            }
+            if (searchStruct->currentPage < 0 || searchStruct->currentPage >= documentPrivate->m_pagesVector.count()) {
+                documentPrivate->doContinueDirectionMatchSearch(searchStruct);
+                return;
+            }
+            page = documentPrivate->m_pagesVector.at(searchStruct->currentPage);
         }
 
         // if found a match on the current page, end the loop
@@ -1762,17 +1894,92 @@ void DocumentPrivate::doContinueDirectionMatchSearch(DoContinueDirectionMatchSea
         // Both of the previous if branches need to call doContinueDirectionMatchSearch
         QTimer::singleShot(0, m_parent, [this, searchStruct] { doContinueDirectionMatchSearch(searchStruct); });
     } else {
-        doProcessSearchMatch(searchStruct->match, search, searchStruct->pagesToNotify, searchStruct->currentPage, searchStruct->searchID, search->cachedViewportMove, search->cachedColor);
+        doProcessSearchMatch(searchStruct->match, searchStruct->pagesToNotify, searchStruct->currentPage, searchStruct->searchID, searchStruct->generation, searchStruct->documentGeneration, search->cachedViewportMove, search->cachedColor);
         delete searchStruct;
     }
 }
 
-void DocumentPrivate::doProcessSearchMatch(RegularAreaRect *match, RunningSearch *search, QSet<int> *pagesToNotify, int currentPage, int searchID, bool moveViewport, const QColor &color)
+void DocumentPrivate::notifySearchPagesChanged(const QSet<int> &pages, int searchID, quint64 generation, quint64 documentGeneration)
+{
+    const quint64 expectedDocumentGeneration = documentGeneration != 0 ? documentGeneration : m_documentGeneration;
+    const QList<DocumentObserver *> observers = m_observers.values();
+    QPointer<Document> documentGuard(m_parent);
+    for (int pageNumber : pages) {
+        for (DocumentObserver *observer : observers) {
+            if (!documentGuard) {
+                return;
+            }
+            Document *document = documentGuard.data();
+            if (document->d->m_documentGeneration != expectedDocumentGeneration) {
+                return;
+            }
+            if (generation != 0) {
+                const RunningSearch *search = document->d->m_searches.value(searchID);
+                if (!search || search->generation != generation || search->documentGeneration != document->d->m_documentGeneration) {
+                    return;
+                }
+            }
+            if (document->d->m_observers.contains(observer)) {
+                observer->notifyPageChanged(pageNumber, DocumentObserver::Highlights);
+                if (!documentGuard || documentGuard->d->m_documentGeneration != expectedDocumentGeneration) {
+                    return;
+                }
+            }
+        }
+    }
+}
+
+void DocumentPrivate::notifySearchSetupChanged(int searchID, quint64 generation, quint64 documentGeneration)
+{
+    const quint64 expectedDocumentGeneration = documentGeneration != 0 ? documentGeneration : m_documentGeneration;
+    const QList<DocumentObserver *> observers = m_observers.values();
+    QPointer<Document> documentGuard(m_parent);
+    for (DocumentObserver *observer : observers) {
+        if (!documentGuard) {
+            return;
+        }
+        Document *document = documentGuard.data();
+        if (document->d->m_documentGeneration != expectedDocumentGeneration) {
+            return;
+        }
+        if (generation != 0) {
+            const RunningSearch *search = document->d->m_searches.value(searchID);
+            if (!search || search->generation != generation || search->documentGeneration != document->d->m_documentGeneration) {
+                return;
+            }
+        }
+        if (document->d->m_observers.contains(observer)) {
+            observer->notifySetup(document->d->m_pagesVector, 0);
+            if (!documentGuard || documentGuard->d->m_documentGeneration != expectedDocumentGeneration) {
+                return;
+            }
+        }
+    }
+}
+
+void DocumentPrivate::doProcessSearchMatch(RegularAreaRect *match, QSet<int> *pagesToNotify, int currentPage, int searchID, quint64 generation, quint64 documentGeneration, bool moveViewport, const QColor &color)
 {
     // reset cursor to previous shape
     QApplication::restoreOverrideCursor();
 
+    RunningSearch *search = m_searches.value(searchID);
+    const bool staleDocument = documentGeneration != m_documentGeneration;
+    if (staleDocument || !search || search->generation != generation || search->documentGeneration != documentGeneration) {
+        const QSet<int> changedPages = *pagesToNotify;
+        delete match;
+        delete pagesToNotify;
+        if (!staleDocument) {
+            notifySearchPagesChanged(changedPages, -1, 0, documentGeneration);
+        }
+        return;
+    }
+
     bool foundAMatch = false;
+    bool shouldMoveViewport = false;
+    bool usesViewSession = false;
+    DocumentViewport searchViewport;
+    DocumentViewSession *viewSession = nullptr;
+    std::weak_ptr<void> viewSessionLifetime;
 
     search->isCurrentlySearching = false;
 
@@ -1792,54 +1999,97 @@ void DocumentPrivate::doProcessSearchMatch(RegularAreaRect *match, RunningSearch
         // Create a normalized rectangle around the search match that includes a 5% buffer on all sides.
         const Okular::NormalizedRect matchRectWithBuffer = Okular::NormalizedRect(match->first().left - 0.05, match->first().top - 0.05, match->first().right + 0.05, match->first().bottom + 0.05);
 
-        const bool matchRectFullyVisible = isNormalizedRectangleFullyVisible(matchRectWithBuffer, currentPage);
+        usesViewSession = search->cachedUsesViewSession;
+        if (usesViewSession && !search->cachedViewSessionLifetime.expired()) {
+            viewSession = search->cachedViewSession;
+            viewSessionLifetime = search->cachedViewSessionLifetime;
+        }
+        const bool matchRectFullyVisible = !usesViewSession && isNormalizedRectangleFullyVisible(matchRectWithBuffer, currentPage);
 
         // ..move the viewport to show the first of the searched word sequence centered
-        if (moveViewport && !matchRectFullyVisible) {
-            DocumentViewport searchViewport(currentPage);
+        shouldMoveViewport = moveViewport && ((usesViewSession && viewSession) || (!usesViewSession && !matchRectFullyVisible));
+        if (shouldMoveViewport) {
+            searchViewport = DocumentViewport(currentPage);
             searchViewport.rePos.enabled = true;
             searchViewport.rePos.normalizedX = (match->first().left + match->first().right) / 2.0;
             searchViewport.rePos.normalizedY = (match->first().top + match->first().bottom) / 2.0;
-            m_parent->setViewport(searchViewport, nullptr, true);
         }
         delete match;
     }
 
-    // notify observers about highlights changes
-    for (int pageNumber : std::as_const(*pagesToNotify)) {
-        for (DocumentObserver *observer : std::as_const(m_observers)) {
-            observer->notifyPageChanged(pageNumber, DocumentObserver::Highlights);
+    // Viewport and observer callbacks below are synchronous. Release the
+    // worker-owned state before making any of them, then only continue while
+    // both the Document and this exact search generation still exist.
+    const QSet<int> changedPages = *pagesToNotify;
+    delete pagesToNotify;
+
+    QPointer<Document> documentGuard(m_parent);
+    if (shouldMoveViewport) {
+        if (viewSession && !viewSessionLifetime.expired()) {
+            // Visible rectangles are legacy Document-global state and can
+            // have been published by any frame. Always center a
+            // session-owned match instead of consulting that shared cache.
+            viewSession->setViewport(searchViewport, nullptr, true);
+        } else if (!usesViewSession) {
+            documentGuard->setViewport(searchViewport, nullptr, true);
         }
     }
 
-    if (foundAMatch) {
-        Q_EMIT m_parent->searchFinished(searchID, Document::MatchFound);
-    } else {
-        Q_EMIT m_parent->searchFinished(searchID, Document::NoMatchFound);
+    if (!documentGuard) {
+        return;
+    }
+    Document *document = documentGuard.data();
+    search = document->d->m_searches.value(searchID);
+    if (!search || search->generation != generation || search->documentGeneration != documentGeneration || document->d->m_documentGeneration != documentGeneration) {
+        return;
     }
 
-    delete pagesToNotify;
+    document->d->notifySearchPagesChanged(changedPages, searchID, generation, documentGeneration);
+
+    if (!documentGuard) {
+        return;
+    }
+    document = documentGuard.data();
+    search = document->d->m_searches.value(searchID);
+    if (!search || search->generation != generation || search->documentGeneration != documentGeneration || document->d->m_documentGeneration != documentGeneration) {
+        return;
+    }
+
+    Q_EMIT document->searchFinished(searchID, foundAMatch ? Document::MatchFound : Document::NoMatchFound);
 }
 
-void DocumentPrivate::doContinueAllDocumentSearch(QSet<int> *pagesToNotify, QHash<Page *, QList<RegularAreaRect *>> *pageMatches, int currentPage, int searchID)
+void DocumentPrivate::doContinueAllDocumentSearch(QSet<int> *pagesToNotify, QHash<Page *, QList<RegularAreaRect *>> *pageMatches, int currentPage, int searchID, quint64 generation, quint64 documentGeneration)
 {
     RunningSearch *search = m_searches.value(searchID);
+    const bool staleDocument = documentGeneration != m_documentGeneration;
+    const bool staleGeneration = staleDocument || !search || search->generation != generation || search->documentGeneration != documentGeneration;
 
-    if (m_searchCancelled || !search) {
+    if (m_searchCancelled || staleGeneration) {
         typedef QList<RegularAreaRect *> Matches;
 
         QApplication::restoreOverrideCursor();
 
-        if (search) {
+        const QSet<int> changedPages = *pagesToNotify;
+        if (!staleGeneration) {
             search->isCurrentlySearching = false;
         }
-
-        Q_EMIT m_parent->searchFinished(searchID, Document::SearchCancelled);
         for (const Matches &mv : std::as_const(*pageMatches)) {
             qDeleteAll(mv);
         }
         delete pageMatches;
         delete pagesToNotify;
+
+        QPointer<Document> documentGuard(m_parent);
+        if (!staleDocument) {
+            notifySearchPagesChanged(changedPages, -1, 0, documentGeneration);
+        }
+        if (documentGuard && !staleGeneration) {
+            Document *document = documentGuard.data();
+            search = document->d->m_searches.value(searchID);
+            if (search && search->generation == generation && search->documentGeneration == documentGeneration && document->d->m_documentGeneration == documentGeneration) {
+                Q_EMIT document->searchFinished(searchID, Document::SearchCancelled);
+            }
+        }
         return;
     }
 
@@ -1849,8 +2099,30 @@ void DocumentPrivate::doContinueAllDocumentSearch(QSet<int> *pagesToNotify, QHas
 
         // request search page if needed
         if (!page->hasTextPage()) {
-            int pageNumber = page->number(); // redundant? is it == currentPage ?
+            const int pageNumber = page->number(); // redundant? is it == currentPage ?
+            QPointer<Document> documentGuard(m_parent);
             m_parent->requestTextPage(pageNumber);
+            if (!documentGuard) {
+                QApplication::restoreOverrideCursor();
+                for (const auto &matches : std::as_const(*pageMatches)) {
+                    qDeleteAll(matches);
+                }
+                delete pageMatches;
+                delete pagesToNotify;
+                return;
+            }
+
+            DocumentPrivate *documentPrivate = documentGuard->d;
+            search = documentPrivate->m_searches.value(searchID);
+            if (!search || search->generation != generation || search->documentGeneration != documentGeneration || documentPrivate->m_documentGeneration != documentGeneration || documentPrivate->m_searchCancelled) {
+                documentPrivate->doContinueAllDocumentSearch(pagesToNotify, pageMatches, currentPage, searchID, generation, documentGeneration);
+                return;
+            }
+            if (currentPage >= documentPrivate->m_pagesVector.count()) {
+                documentPrivate->doContinueAllDocumentSearch(pagesToNotify, pageMatches, currentPage, searchID, generation, documentGeneration);
+                return;
+            }
+            page = documentPrivate->m_pagesVector.at(currentPage);
         }
 
         // loop on a page adding highlights for all found items
@@ -1871,60 +2143,70 @@ void DocumentPrivate::doContinueAllDocumentSearch(QSet<int> *pagesToNotify, QHas
         }
         delete lastMatch;
 
-        QTimer::singleShot(0, m_parent, [this, pagesToNotify, pageMatches, currentPage, searchID] { doContinueAllDocumentSearch(pagesToNotify, pageMatches, currentPage + 1, searchID); });
+        QTimer::singleShot(0, m_parent, [this, pagesToNotify, pageMatches, currentPage, searchID, generation, documentGeneration] { doContinueAllDocumentSearch(pagesToNotify, pageMatches, currentPage + 1, searchID, generation, documentGeneration); });
     } else {
         // reset cursor to previous shape
         QApplication::restoreOverrideCursor();
 
         search->isCurrentlySearching = false;
-        bool foundAMatch = pageMatches->count() != 0;
-        for (auto [key, value] : pageMatches->asKeyValueRange()) {
-            for (RegularAreaRect *&match : value) {
-                key->d->setHighlight(*match, search->cachedColor, searchID);
+        const bool foundAMatch = !pageMatches->isEmpty();
+        for (auto it = pageMatches->begin(); it != pageMatches->end(); ++it) {
+            Page *page = it.key();
+            for (RegularAreaRect *match : std::as_const(it.value())) {
+                page->d->setHighlight(*match, search->cachedColor, searchID);
                 delete match;
-                match = nullptr;
             }
-            search->highlightedPages.insert(key->number());
-            pagesToNotify->insert(key->number());
+            search->highlightedPages.insert(page->number());
+            pagesToNotify->insert(page->number());
         }
 
-        for (DocumentObserver *observer : std::as_const(m_observers)) {
-            observer->notifySetup(m_pagesVector, 0);
-        }
-
-        // notify observers about highlights changes
-        for (int pageNumber : std::as_const(*pagesToNotify)) {
-            for (DocumentObserver *observer : std::as_const(m_observers)) {
-                observer->notifyPageChanged(pageNumber, DocumentObserver::Highlights);
-            }
-        }
-
-        if (foundAMatch) {
-            Q_EMIT m_parent->searchFinished(searchID, Document::MatchFound);
-        } else {
-            Q_EMIT m_parent->searchFinished(searchID, Document::NoMatchFound);
-        }
-
+        const QSet<int> changedPages = *pagesToNotify;
         delete pageMatches;
         delete pagesToNotify;
+
+        // Both observer kinds are synchronous and may reset/reuse this search
+        // ID or destroy the Document. Do not let this completed worker report
+        // results for a newer generation.
+        QPointer<Document> documentGuard(m_parent);
+        notifySearchSetupChanged(searchID, generation);
+        if (!documentGuard) {
+            return;
+        }
+        Document *document = documentGuard.data();
+        search = document->d->m_searches.value(searchID);
+        if (!search || search->generation != generation || search->documentGeneration != documentGeneration || document->d->m_documentGeneration != documentGeneration) {
+            return;
+        }
+
+        document->d->notifySearchPagesChanged(changedPages, searchID, generation, documentGeneration);
+        if (!documentGuard) {
+            return;
+        }
+        document = documentGuard.data();
+        search = document->d->m_searches.value(searchID);
+        if (!search || search->generation != generation || search->documentGeneration != documentGeneration || document->d->m_documentGeneration != documentGeneration) {
+            return;
+        }
+
+        Q_EMIT document->searchFinished(searchID, foundAMatch ? Document::MatchFound : Document::NoMatchFound);
     }
 }
 
-void DocumentPrivate::doContinueGooglesDocumentSearch(QSet<int> *pagesToNotify, QHash<Page *, QList<MatchColor>> *pageMatches, int currentPage, int searchID, const QStringList &words)
+void DocumentPrivate::doContinueGooglesDocumentSearch(QSet<int> *pagesToNotify, QHash<Page *, QList<MatchColor>> *pageMatches, int currentPage, int searchID, quint64 generation, quint64 documentGeneration, const QStringList &words)
 {
     RunningSearch *search = m_searches.value(searchID);
+    const bool staleDocument = documentGeneration != m_documentGeneration;
+    const bool staleGeneration = staleDocument || !search || search->generation != generation || search->documentGeneration != documentGeneration;
 
-    if (m_searchCancelled || !search) {
+    if (m_searchCancelled || staleGeneration) {
         using Matches = QList<MatchColor>;
 
         QApplication::restoreOverrideCursor();
 
-        if (search) {
+        const QSet<int> changedPages = *pagesToNotify;
+        if (!staleGeneration) {
             search->isCurrentlySearching = false;
         }
-
-        Q_EMIT m_parent->searchFinished(searchID, Document::SearchCancelled);
-
         for (Matches &mv : *pageMatches) {
             for (auto &[area, color] : mv) {
                 delete area;
@@ -1933,6 +2215,18 @@ void DocumentPrivate::doContinueGooglesDocumentSearch(QSet<int> *pagesToNotify, 
         }
         delete pageMatches;
         delete pagesToNotify;
+
+        QPointer<Document> documentGuard(m_parent);
+        if (!staleDocument) {
+            notifySearchPagesChanged(changedPages, -1, 0, documentGeneration);
+        }
+        if (documentGuard && !staleGeneration) {
+            Document *document = documentGuard.data();
+            search = document->d->m_searches.value(searchID);
+            if (search && search->generation == generation && search->documentGeneration == documentGeneration && document->d->m_documentGeneration == documentGeneration) {
+                Q_EMIT document->searchFinished(searchID, Document::SearchCancelled);
+            }
+        }
         return;
     }
 
@@ -1947,8 +2241,32 @@ void DocumentPrivate::doContinueGooglesDocumentSearch(QSet<int> *pagesToNotify, 
 
         // request search page if needed
         if (!page->hasTextPage()) {
-            int pageNumber = page->number(); // redundant? is it == currentPage ?
+            const int pageNumber = page->number(); // redundant? is it == currentPage ?
+            QPointer<Document> documentGuard(m_parent);
             m_parent->requestTextPage(pageNumber);
+            if (!documentGuard) {
+                QApplication::restoreOverrideCursor();
+                for (const auto &matches : std::as_const(*pageMatches)) {
+                    for (const MatchColor &match : matches) {
+                        delete match.first;
+                    }
+                }
+                delete pageMatches;
+                delete pagesToNotify;
+                return;
+            }
+
+            DocumentPrivate *documentPrivate = documentGuard->d;
+            search = documentPrivate->m_searches.value(searchID);
+            if (!search || search->generation != generation || search->documentGeneration != documentGeneration || documentPrivate->m_documentGeneration != documentGeneration || documentPrivate->m_searchCancelled) {
+                documentPrivate->doContinueGooglesDocumentSearch(pagesToNotify, pageMatches, currentPage, searchID, generation, documentGeneration, words);
+                return;
+            }
+            if (currentPage >= documentPrivate->m_pagesVector.count()) {
+                documentPrivate->doContinueGooglesDocumentSearch(pagesToNotify, pageMatches, currentPage, searchID, generation, documentGeneration, words);
+                return;
+            }
+            page = documentPrivate->m_pagesVector.at(currentPage);
         }
 
         // loop on a page adding highlights for all found items
@@ -1993,42 +2311,52 @@ void DocumentPrivate::doContinueGooglesDocumentSearch(QSet<int> *pagesToNotify, 
             pageMatches->remove(page);
         }
 
-        QTimer::singleShot(0, m_parent, [this, pagesToNotify, pageMatches, currentPage, searchID, words] { doContinueGooglesDocumentSearch(pagesToNotify, pageMatches, currentPage + 1, searchID, words); });
+        QTimer::singleShot(0, m_parent, [this, pagesToNotify, pageMatches, currentPage, searchID, generation, documentGeneration, words] { doContinueGooglesDocumentSearch(pagesToNotify, pageMatches, currentPage + 1, searchID, generation, documentGeneration, words); });
     } else {
         // reset cursor to previous shape
         QApplication::restoreOverrideCursor();
 
         search->isCurrentlySearching = false;
-        bool foundAMatch = pageMatches->count() != 0;
-        for (auto [page, matches] : pageMatches->asKeyValueRange()) {
-            for (auto &[area, color] : matches) {
+        const bool foundAMatch = !pageMatches->isEmpty();
+        for (auto it = pageMatches->begin(); it != pageMatches->end(); ++it) {
+            Page *page = it.key();
+            for (auto &[area, color] : it.value()) {
                 page->d->setHighlight(*area, color, searchID);
                 delete area;
+                area = nullptr;
             }
             search->highlightedPages.insert(page->number());
             pagesToNotify->insert(page->number());
         }
 
-        // send page lists to update observers (since some filter on bookmarks)
-        for (DocumentObserver *observer : std::as_const(m_observers)) {
-            observer->notifySetup(m_pagesVector, 0);
-        }
-
-        // notify observers about highlights changes
-        for (int pageNumber : std::as_const(*pagesToNotify)) {
-            for (DocumentObserver *observer : std::as_const(m_observers)) {
-                observer->notifyPageChanged(pageNumber, DocumentObserver::Highlights);
-            }
-        }
-
-        if (foundAMatch) {
-            Q_EMIT m_parent->searchFinished(searchID, Document::MatchFound);
-        } else {
-            Q_EMIT m_parent->searchFinished(searchID, Document::NoMatchFound);
-        }
-
+        const QSet<int> changedPages = *pagesToNotify;
         delete pageMatches;
         delete pagesToNotify;
+
+        // send page lists to update observers (since some filter on matches),
+        // but stop immediately if a callback replaces this search generation.
+        QPointer<Document> documentGuard(m_parent);
+        notifySearchSetupChanged(searchID, generation);
+        if (!documentGuard) {
+            return;
+        }
+        Document *document = documentGuard.data();
+        search = document->d->m_searches.value(searchID);
+        if (!search || search->generation != generation || search->documentGeneration != documentGeneration || document->d->m_documentGeneration != documentGeneration) {
+            return;
+        }
+
+        document->d->notifySearchPagesChanged(changedPages, searchID, generation, documentGeneration);
+        if (!documentGuard) {
+            return;
+        }
+        document = documentGuard.data();
+        search = document->d->m_searches.value(searchID);
+        if (!search || search->generation != generation || search->documentGeneration != documentGeneration || document->d->m_documentGeneration != documentGeneration) {
+            return;
+        }
+
+        Q_EMIT document->searchFinished(searchID, foundAMatch ? Document::MatchFound : Document::NoMatchFound);
     }
 }
 
@@ -2277,6 +2605,16 @@ Document::~Document()
     for (View *view : std::as_const(d->m_views)) {
         view->d_func()->document = nullptr;
     }
+
+    // View sessions are owned by their callers and are allowed to outlive the
+    // document.  Detach them before deleting DocumentPrivate so their
+    // destructors cannot access freed state.
+    for (DocumentViewSession *session : std::as_const(d->m_viewSessions)) {
+        session->d->document = nullptr;
+        session->d->observers.clear();
+        session->d->lifetimeToken.reset();
+    }
+    d->m_viewSessions.clear();
 
     // delete the bookmark manager
     delete d->m_bookmarkManager;
@@ -2536,6 +2874,10 @@ Document::OpenResult Document::openDocument(const QString &docFile, const QUrl &
 
     d->m_bookmarkManager->setUrl(d->m_url);
 
+    // A successful open establishes a new page topology. Queued search
+    // continuations from any previous topology must not address these pages.
+    ++d->m_documentGeneration;
+
     // 3. setup observers internal lists and data
     foreachObserver(notifySetup(d->m_pagesVector, DocumentObserver::DocumentChanged | DocumentObserver::UrlChanged));
 
@@ -2584,6 +2926,15 @@ Document::OpenResult Document::openDocument(const QString &docFile, const QUrl &
         }
     }
 
+    // Sessions that were created before the document was opened start from
+    // the final default position, including a pending explicit viewport,
+    // named destination, or document-open action, but diverge as soon as
+    // either view moves.
+    const DocumentViewport initialSessionViewport = viewport();
+    for (DocumentViewSession *session : std::as_const(d->m_viewSessions)) {
+        session->reset(initialSessionViewport);
+    }
+
     return OpenSuccess;
 }
 
@@ -2627,6 +2978,11 @@ void Document::closeDocument()
     if (!d->m_generator) {
         return;
     }
+
+    // Invalidate queued search workers before the first close callback. This
+    // prevents reentrant event processing from reporting old page numbers to
+    // observers while the topology is being torn down or replaced.
+    ++d->m_documentGeneration;
 
     if (const Okular::Action *action = d->m_generator->additionalDocumentAction(CloseDocument)) {
         processDocumentAction(action, CloseDocument);
@@ -2729,6 +3085,10 @@ void Document::closeDocument()
     d->m_fontsCache.clear();
     d->m_rotation = Rotation0;
 
+    // Also invalidate searches that a synchronous close callback may have
+    // started against the still-live old pages.
+    ++d->m_documentGeneration;
+
     // send an empty list to observers (to free their data)
     foreachObserver(notifySetup({}, DocumentObserver::DocumentChanged | DocumentObserver::UrlChanged));
 
@@ -2754,6 +3114,9 @@ void Document::closeDocument()
     d->m_viewportHistory.clear();
     d->m_viewportHistory.emplace_back();
     d->m_viewportIterator = d->m_viewportHistory.begin();
+    for (DocumentViewSession *session : std::as_const(d->m_viewSessions)) {
+        session->reset(DocumentViewport());
+    }
     d->m_allocatedPixmapsTotalMemory = 0;
     d->m_allocatedTextPagesFifo.clear();
     d->m_pageSize = PageSize();
@@ -2817,7 +3180,20 @@ void Document::removeObserver(DocumentObserver *pObserver)
 
         // remove observer entry from the set
         d->m_observers.remove(pObserver);
+        for (DocumentViewSession *session : std::as_const(d->m_viewSessions)) {
+            session->removeObserver(pObserver);
+        }
     }
+}
+
+std::unique_ptr<DocumentViewSession> Document::createViewSession(DocumentObserver *observer)
+{
+    auto session = std::unique_ptr<DocumentViewSession>(new DocumentViewSession(this));
+    if (observer) {
+        session->addObserver(observer);
+    }
+    d->m_viewSessions.insert(session.get());
+    return session;
 }
 
 void Document::reparseConfig()
@@ -3769,16 +4145,9 @@ void Document::setViewport(const DocumentViewport &viewport, DocumentObserver *e
 
     const bool currentPageChanged = (oldPageNumber != currentViewportPage);
 
-    // notify change to all other (different from id) observers
-    for (DocumentObserver *o : std::as_const(d->m_observers)) {
-        if (o != excludeObserver) {
-            o->notifyViewportChanged(smoothMove);
-        }
-
-        if (currentPageChanged) {
-            o->notifyCurrentPageChanged(oldPageNumber, currentViewportPage);
-        }
-    }
+    // Session observers receive shared content changes through Document, but
+    // navigation notifications are delivered only by their own session.
+    d->notifyDefaultViewportObservers(excludeObserver, smoothMove, oldPageNumber, currentPageChanged ? currentViewportPage : oldPageNumber);
 }
 
 void Document::setViewportPage(int page, DocumentObserver *excludeObserver, bool smoothMove)
@@ -3812,12 +4181,8 @@ void Document::setPrevViewport()
 
         // restore previous viewport and notify it to observers
         --d->m_viewportIterator;
-        foreachObserver(notifyViewportChanged(true));
-
         const int currentViewportPage = d->m_viewportIterator->pageNumber;
-        if (oldViewportPage != currentViewportPage) {
-            foreachObserver(notifyCurrentPageChanged(oldViewportPage, currentViewportPage));
-        }
+        d->notifyDefaultViewportObservers(nullptr, true, oldViewportPage, currentViewportPage);
     }
 }
 
@@ -3831,12 +4196,8 @@ void Document::setNextViewport()
 
         // restore next viewport and notify it to observers
         ++d->m_viewportIterator;
-        foreachObserver(notifyViewportChanged(true));
-
         const int currentViewportPage = d->m_viewportIterator->pageNumber;
-        if (oldViewportPage != currentViewportPage) {
-            foreachObserver(notifyCurrentPageChanged(oldViewportPage, currentViewportPage));
-        }
+        d->notifyDefaultViewportObservers(nullptr, true, oldViewportPage, currentViewportPage);
     }
 }
 
@@ -3852,10 +4213,20 @@ void Document::setNextDocumentDestination(const QString &namedDestination)
 
 void Document::searchText(int searchID, const QString &text, bool fromStart, Qt::CaseSensitivity caseSensitivity, SearchType type, bool moveViewport, const QColor &color)
 {
+    searchText(searchID, text, fromStart, caseSensitivity, type, moveViewport, color, nullptr);
+}
+
+void Document::searchText(int searchID, const QString &text, bool fromStart, Qt::CaseSensitivity caseSensitivity, SearchType type, bool moveViewport, const QColor &color, DocumentViewSession *viewSession)
+{
     d->m_searchCancelled = false;
 
     // safety checks: don't perform searches on empty or unsearchable docs
     if (!d->m_generator || !d->m_generator->hasFeature(Generator::TextExtraction) || d->m_pagesVector.isEmpty()) {
+        Q_EMIT searchFinished(searchID, NoMatchFound);
+        return;
+    }
+
+    if (viewSession && viewSession->d->document != this) {
         Q_EMIT searchFinished(searchID, NoMatchFound);
         return;
     }
@@ -3877,6 +4248,11 @@ void Document::searchText(int searchID, const QString &text, bool fromStart, Qt:
     s->cachedViewportMove = moveViewport;
     s->cachedColor = color;
     s->isCurrentlySearching = true;
+    s->cachedUsesViewSession = viewSession != nullptr;
+    s->cachedViewSession = viewSession;
+    s->cachedViewSessionLifetime = viewSession ? std::weak_ptr<void>(viewSession->d->lifetimeToken) : std::weak_ptr<void>();
+    s->generation = ++d->m_nextSearchGeneration;
+    s->documentGeneration = d->m_documentGeneration;
 
     // global data for search
     QSet<int> *pagesToNotify = new QSet<int>;
@@ -3896,14 +4272,16 @@ void Document::searchText(int searchID, const QString &text, bool fromStart, Qt:
         QHash<Page *, QList<RegularAreaRect *>> *pageMatches = new QHash<Page *, QList<RegularAreaRect *>>;
 
         // search and highlight 'text' (as a solid phrase) on all pages
-        QTimer::singleShot(0, this, [this, pagesToNotify, pageMatches, searchID] { d->doContinueAllDocumentSearch(pagesToNotify, pageMatches, 0, searchID); });
+        const quint64 generation = s->generation;
+        const quint64 documentGeneration = s->documentGeneration;
+        QTimer::singleShot(0, this, [this, pagesToNotify, pageMatches, searchID, generation, documentGeneration] { d->doContinueAllDocumentSearch(pagesToNotify, pageMatches, 0, searchID, generation, documentGeneration); });
     }
     // 2. NEXTMATCH - find next matching item (or start from top)
     // 3. PREVMATCH - find previous matching item (or start from bottom)
     else if (type == NextMatch || type == PreviousMatch) {
         // find out from where to start/resume search from
         const bool forward = type == NextMatch;
-        const int viewportPage = (*d->m_viewportIterator).pageNumber;
+        const int viewportPage = viewSession ? viewSession->viewport().pageNumber : (*d->m_viewportIterator).pageNumber;
         const int fromStartSearchPage = forward ? 0 : d->m_pagesVector.count() - 1;
         int currentPageNumber = fromStart ? fromStartSearchPage : ((s->continueOnPage != -1) ? s->continueOnPage : viewportPage);
         const Page *lastPage = fromStart ? nullptr : d->m_pagesVector[currentPageNumber];
@@ -3934,6 +4312,8 @@ void Document::searchText(int searchID, const QString &text, bool fromStart, Qt:
         searchStruct->match = match;
         searchStruct->currentPage = currentPageNumber;
         searchStruct->searchID = searchID;
+        searchStruct->generation = s->generation;
+        searchStruct->documentGeneration = s->documentGeneration;
 
         QTimer::singleShot(0, this, [this, searchStruct] { d->doContinueDirectionMatchSearch(searchStruct); });
     }
@@ -3943,7 +4323,9 @@ void Document::searchText(int searchID, const QString &text, bool fromStart, Qt:
         const QStringList words = text.split(QLatin1Char(' '), Qt::SkipEmptyParts);
 
         // search and highlight every word in 'text' on all pages
-        QTimer::singleShot(0, this, [this, pagesToNotify, pageMatches, searchID, words] { d->doContinueGooglesDocumentSearch(pagesToNotify, pageMatches, 0, searchID, words); });
+        const quint64 generation = s->generation;
+        const quint64 documentGeneration = s->documentGeneration;
+        QTimer::singleShot(0, this, [this, pagesToNotify, pageMatches, searchID, generation, documentGeneration, words] { d->doContinueGooglesDocumentSearch(pagesToNotify, pageMatches, 0, searchID, generation, documentGeneration, words); });
     }
 }
 
@@ -3959,7 +4341,11 @@ void Document::continueSearch(int searchID)
     // start search with cached parameters from last search by searchID
     RunningSearch *p = *it;
     if (!p->isCurrentlySearching) {
-        searchText(searchID, p->cachedString, false, p->cachedCaseSensitivity, p->cachedType, p->cachedViewportMove, p->cachedColor);
+        if (p->cachedUsesViewSession && p->cachedViewSessionLifetime.expired()) {
+            Q_EMIT searchFinished(searchID, SearchCancelled);
+            return;
+        }
+        searchText(searchID, p->cachedString, false, p->cachedCaseSensitivity, p->cachedType, p->cachedViewportMove, p->cachedColor, p->cachedUsesViewSession ? p->cachedViewSession : nullptr);
     }
 }
 
@@ -3975,7 +4361,11 @@ void Document::continueSearch(int searchID, SearchType type)
     // start search with cached parameters from last search by searchID
     RunningSearch *p = *it;
     if (!p->isCurrentlySearching) {
-        searchText(searchID, p->cachedString, false, p->cachedCaseSensitivity, type, p->cachedViewportMove, p->cachedColor);
+        if (p->cachedUsesViewSession && p->cachedViewSessionLifetime.expired()) {
+            Q_EMIT searchFinished(searchID, SearchCancelled);
+            return;
+        }
+        searchText(searchID, p->cachedString, false, p->cachedCaseSensitivity, type, p->cachedViewportMove, p->cachedColor, p->cachedUsesViewSession ? p->cachedViewSession : nullptr);
     }
 }
 
@@ -3992,21 +4382,29 @@ void Document::resetSearch(int searchID)
         return;
     }
 
-    // get previous parameters for search
+    // Remove the descriptor before invoking any observer. A callback can call
+    // resetSearch() again, reuse the same ID, or destroy this Document; none of
+    // those paths may see or delete this generation a second time.
     RunningSearch *s = *searchIt;
-
-    // unhighlight pages and inform observers about that
-    for (const int pageNumber : std::as_const(s->highlightedPages)) {
-        d->m_pagesVector.at(pageNumber)->d->deleteHighlights(searchID);
-        foreachObserver(notifyPageChanged(pageNumber, DocumentObserver::Highlights));
-    }
-
-    // send the setup signal too (to update views that filter on matches)
-    foreachObserver(notifySetup(d->m_pagesVector, 0));
-
-    // remove search from the runningSearches list and delete it
+    const QSet<int> highlightedPages = s->highlightedPages;
     d->m_searches.erase(searchIt);
     delete s;
+
+    // Unhighlight every page before notifying so a callback starting a new
+    // search cannot have its highlights removed by the old reset operation.
+    for (const int pageNumber : highlightedPages) {
+        d->m_pagesVector.at(pageNumber)->d->deleteHighlights(searchID);
+    }
+
+    const quint64 documentGeneration = d->m_documentGeneration;
+    QPointer<Document> documentGuard(this);
+    d->notifySearchPagesChanged(highlightedPages, -1, 0, documentGeneration);
+    if (!documentGuard || documentGuard->d->m_documentGeneration != documentGeneration) {
+        return;
+    }
+
+    // Send the setup signal too (to update views that filter on matches).
+    documentGuard->d->notifySearchSetupChanged(-1, 0, documentGeneration);
 }
 
 void Document::cancelSearch()
@@ -4156,7 +4554,9 @@ public:
 
     ~ExecuteNextActionsHelper() override
     {
-        m_doc->removeObserver(this);
+        if (m_doc) {
+            m_doc->removeObserver(this);
+        }
     }
 
     void notifySetup(const QList<Okular::Page *> & /*pages*/, int setupFlags) override
@@ -4172,22 +4572,50 @@ public:
     }
 
 private:
-    Document *const m_doc;
+    QPointer<Document> m_doc;
     bool b = true;
 };
 
 void Document::processAction(const Action *action)
 {
+    processAction(action, nullptr);
+}
+
+void Document::processAction(const Action *action, DocumentViewSession *viewSession)
+{
     if (!action) {
         return;
     }
 
+    Q_ASSERT(!viewSession || viewSession->d->document == this);
+    const std::weak_ptr<void> viewSessionLifetime = viewSession ? viewSession->d->lifetimeToken : std::weak_ptr<void>();
+    QPointer<Document> documentGuard(this);
+
+    // The action is commonly owned by a Page and can disappear when a
+    // synchronous callback closes or reloads the document. Snapshot its chain
+    // before executing anything so we never dereference the initiating action
+    // after such a callback.
+    const Action::ActionType actionType = action->actionType();
+    const QList<Action *> nextActions = action->nextActions();
+
     // Don't execute next actions if the action itself caused the closing of the document
     const ExecuteNextActionsHelper executeNextActionsHelper(this);
 
-    switch (action->actionType()) {
+    switch (actionType) {
     case Action::Goto: {
         const GotoAction *go = static_cast<const GotoAction *>(action);
+
+        if (viewSession && !go->isExternal()) {
+            DocumentViewport target = go->destViewport();
+            if (!target.isValid() && !go->destinationName().isEmpty()) {
+                target = DocumentViewport(metaData(QStringLiteral("NamedViewport"), go->destinationName()).toString());
+            }
+            if (target.isValid() && target.pageNumber >= 0 && target.pageNumber < int(d->m_pagesVector.count())) {
+                viewSession->setViewport(target, nullptr, true);
+            }
+            break;
+        }
+
         d->m_nextDocumentViewport = go->destViewport();
         d->m_nextDocumentDestination = go->destinationName();
 
@@ -4202,9 +4630,15 @@ void Document::processAction(const Action *action)
         // first open filename if link is pointing outside this document
         const QString filename = go->fileName();
         if (go->isExternal() && !d->openRelativeFile(filename)) {
+            if (!documentGuard) {
+                return;
+            }
             qCWarning(OkularCoreDebug).nospace() << "Action: Error opening '" << filename << "'.";
             break;
         } else {
+            if (!documentGuard) {
+                return;
+            }
             const DocumentViewport nextViewport = d->nextDocumentViewport();
             // skip local links that point to nowhere (broken ones)
             if (!nextViewport.isValid()) {
@@ -4212,6 +4646,9 @@ void Document::processAction(const Action *action)
             }
 
             setViewport(nextViewport, nullptr, true);
+            if (!documentGuard) {
+                return;
+            }
             d->m_nextDocumentViewport = DocumentViewport();
             d->m_nextDocumentDestination = QString();
         }
@@ -4266,26 +4703,50 @@ void Document::processAction(const Action *action)
         const DocumentAction *docaction = static_cast<const DocumentAction *>(action);
         switch (docaction->documentActionType()) {
         case DocumentAction::PageFirst:
-            setViewportPage(0);
+            if (viewSession) {
+                viewSession->setViewportPage(0);
+            } else {
+                setViewportPage(0);
+            }
             break;
         case DocumentAction::PagePrev:
-            if ((*d->m_viewportIterator).pageNumber > 0) {
+            if (viewSession) {
+                if (viewSession->viewport().pageNumber > 0) {
+                    viewSession->setViewportPage(viewSession->viewport().pageNumber - 1);
+                }
+            } else if ((*d->m_viewportIterator).pageNumber > 0) {
                 setViewportPage((*d->m_viewportIterator).pageNumber - 1);
             }
             break;
         case DocumentAction::PageNext:
-            if ((*d->m_viewportIterator).pageNumber < (int)d->m_pagesVector.count() - 1) {
+            if (viewSession) {
+                if (viewSession->viewport().pageNumber < int(d->m_pagesVector.count()) - 1) {
+                    viewSession->setViewportPage(viewSession->viewport().pageNumber + 1);
+                }
+            } else if ((*d->m_viewportIterator).pageNumber < (int)d->m_pagesVector.count() - 1) {
                 setViewportPage((*d->m_viewportIterator).pageNumber + 1);
             }
             break;
         case DocumentAction::PageLast:
-            setViewportPage(d->m_pagesVector.count() - 1);
+            if (viewSession) {
+                viewSession->setViewportPage(d->m_pagesVector.count() - 1);
+            } else {
+                setViewportPage(d->m_pagesVector.count() - 1);
+            }
             break;
         case DocumentAction::HistoryBack:
-            setPrevViewport();
+            if (viewSession) {
+                viewSession->setPrevViewport();
+            } else {
+                setPrevViewport();
+            }
             break;
         case DocumentAction::HistoryForward:
-            setNextViewport();
+            if (viewSession) {
+                viewSession->setNextViewport();
+            } else {
+                setNextViewport();
+            }
             break;
         case DocumentAction::Quit:
             Q_EMIT quit();
@@ -4363,11 +4824,16 @@ void Document::processAction(const Action *action)
         break;
     case Action::Rendition: {
         const RenditionAction *linkrendition = static_cast<const RenditionAction *>(action);
-        if (!linkrendition->script().isEmpty()) {
+        const QString script = linkrendition->script();
+        const ScriptType scriptType = linkrendition->scriptType();
+        if (!script.isEmpty()) {
             if (!d->m_scripter) {
                 d->m_scripter = new Scripter(d);
             }
-            d->m_scripter->execute(nullptr, linkrendition->scriptType(), linkrendition->script());
+            d->m_scripter->execute(nullptr, scriptType, script);
+            if (!documentGuard || !executeNextActionsHelper.shouldExecuteNextAction()) {
+                return;
+            }
         }
 
         Q_EMIT processRenditionAction(static_cast<const RenditionAction *>(action));
@@ -4375,22 +4841,36 @@ void Document::processAction(const Action *action)
     case Action::BackendOpaque: {
         const BackendOpaqueAction *backendOpaqueAction = static_cast<const BackendOpaqueAction *>(action);
         Okular::BackendOpaqueAction::OpaqueActionResult res = d->m_generator->opaqueAction(backendOpaqueAction);
+        if (!documentGuard || !executeNextActionsHelper.shouldExecuteNextAction()) {
+            return;
+        }
         if (res & Okular::BackendOpaqueAction::RefreshForms) {
             for (const Page *p : std::as_const(d->m_pagesVector)) {
                 const QList<Okular::FormField *> forms = p->formFields();
                 for (FormField *form : forms) {
                     Q_EMIT refreshFormWidget(form);
+                    if (!documentGuard || !executeNextActionsHelper.shouldExecuteNextAction()) {
+                        return;
+                    }
                 }
                 d->refreshPixmaps(p->number());
+                if (!documentGuard || !executeNextActionsHelper.shouldExecuteNextAction()) {
+                    return;
+                }
             }
         }
     } break;
     }
 
-    if (executeNextActionsHelper.shouldExecuteNextAction()) {
-        const QList<Action *> nextActions = action->nextActions();
+    // A session observer may destroy its session while handling the viewport
+    // notification generated by this action. Do not pass that stale pointer
+    // into a chained action.
+    if (documentGuard && executeNextActionsHelper.shouldExecuteNextAction() && (!viewSession || !viewSessionLifetime.expired())) {
         for (const Action *a : nextActions) {
-            processAction(a);
+            if (!documentGuard || !executeNextActionsHelper.shouldExecuteNextAction() || (viewSession && viewSessionLifetime.expired())) {
+                break;
+            }
+            documentGuard->processAction(a, viewSession);
         }
     }
 }
@@ -4766,6 +5246,8 @@ void Document::processSourceReference(const SourceReference *ref)
 void Document::processSourceReference(const SourceReference &ref)
 {
     const QUrl url = d->giveAbsoluteUrl(ref.fileName());
+    const int row = ref.row();
+    const int column = ref.column();
     if (!url.isLocalFile()) {
         qCDebug(OkularCoreDebug) << url.url() << "is not a local file.";
         return;
@@ -4778,15 +5260,16 @@ void Document::processSourceReference(const SourceReference &ref)
     }
 
     bool handled = false;
-    Q_EMIT sourceReferenceActivated(absFileName, ref.row(), ref.column(), &handled);
-    if (handled) {
+    QPointer<Document> documentGuard(this);
+    Q_EMIT sourceReferenceActivated(absFileName, row, column, &handled);
+    if (!documentGuard || handled) {
         return;
     }
 
     static const QHash<int, QString> editors = buildEditorsMap();
 
     // prefer the editor from the command line
-    QString p = d->editorCommandOverride;
+    QString p = documentGuard->d->editorCommandOverride;
     if (p.isEmpty()) {
         p = editors.value(SettingsCore::externalEditor());
     }
@@ -4806,8 +5289,8 @@ void Document::processSourceReference(const SourceReference &ref)
     // replacing the placeholders
     QHash<QChar, QString> map;
     map.insert(QLatin1Char('f'), absFileName);
-    map.insert(QLatin1Char('c'), QString::number(ref.column()));
-    map.insert(QLatin1Char('l'), QString::number(ref.row()));
+    map.insert(QLatin1Char('c'), QString::number(column));
+    map.insert(QLatin1Char('l'), QString::number(row));
     const QString cmd = KMacroExpander::expandMacrosShellQuote(p, map);
     if (cmd.isEmpty()) {
         return;
@@ -5174,6 +5657,7 @@ bool Document::swapBackingFile(const QString &newFileName, const QUrl &url, bool
                 newPagesVector.clear();
             }
             if (pageTopologyChanged) {
+                ++d->m_documentGeneration;
                 for (DocumentObserver *observer : std::as_const(d->m_observers)) {
                     try {
                         observer->notifySetup({}, DocumentObserver::DocumentChanged);
@@ -5184,6 +5668,10 @@ bool Document::swapBackingFile(const QString &newFileName, const QUrl &url, bool
                     }
                 }
 
+                // Release callbacks above may have started searches while the
+                // old pages were still present. They belong to that topology,
+                // not to the replacement adopted below.
+                ++d->m_documentGeneration;
                 qDeleteAll(d->m_allocatedPixmaps);
                 d->m_allocatedPixmaps.clear();
                 d->m_allocatedPixmapsTotalMemory = 0;
@@ -5199,6 +5687,9 @@ bool Document::swapBackingFile(const QString &newFileName, const QUrl &url, bool
                 }
 
                 clampViewportHistoryToPageCount(d, d->m_pagesVector.count());
+                for (DocumentViewSession *session : std::as_const(d->m_viewSessions)) {
+                    session->clampToPageCount(d->m_pagesVector.count());
+                }
             }
         }
 
@@ -5466,6 +5957,19 @@ bool Document::movePage(int sourcePageNumber, int destinationPageNumber, QString
         qCritical() << "Document::movePage failed with an unknown exception";
         return false;
     }
+
+    // Page numbers now refer to a different topology. Drop completed and
+    // queued searches before publishing the reordered model; queued workers
+    // carry the previous generation and will only release their private data.
+    ++d->m_documentGeneration;
+    const QList<int> searchIDs = d->m_searches.keys();
+    for (Page *page : std::as_const(d->m_pagesVector)) {
+        for (int searchID : searchIDs) {
+            page->d->deleteHighlights(searchID);
+        }
+    }
+    qDeleteAll(d->m_searches);
+    d->m_searches.clear();
 
     for (DocumentObserver *observer : std::as_const(d->m_observers)) {
         try {
@@ -6143,6 +6647,287 @@ void Document::setPageSize(const PageSize &size)
     foreachObserver(notifySetup(d->m_pagesVector, DocumentObserver::NewLayoutForPages));
     foreachObserver(notifyContentsCleared(DocumentObserver::Pixmap | DocumentObserver::Highlights));
     qCDebug(OkularCoreDebug) << "New PageSize id:" << sizeid;
+}
+
+/** DocumentViewSession **/
+
+DocumentViewSession::DocumentViewSession(Document *document)
+    : d(std::make_shared<Private>(document, document ? document->viewport() : DocumentViewport()))
+{
+}
+
+DocumentViewSession::~DocumentViewSession()
+{
+    const std::shared_ptr<Private> state = d;
+    if (state->document) {
+        state->document->d->m_viewSessions.remove(this);
+    }
+    state->document = nullptr;
+    state->lifetimeToken.reset();
+}
+
+bool DocumentViewSession::isAttached() const
+{
+    return d->document != nullptr;
+}
+
+const DocumentViewport &DocumentViewSession::viewport() const
+{
+    return *d->viewportIterator;
+}
+
+uint DocumentViewSession::currentPage() const
+{
+    return d->viewportIterator->pageNumber;
+}
+
+bool DocumentViewSession::historyAtBegin() const
+{
+    return d->viewportIterator == d->viewportHistory.begin();
+}
+
+bool DocumentViewSession::historyAtEnd() const
+{
+    return std::next(d->viewportIterator) == d->viewportHistory.end();
+}
+
+void DocumentViewSession::addObserver(DocumentObserver *observer)
+{
+    if (observer) {
+        d->observers.insert(observer);
+    }
+}
+
+void DocumentViewSession::removeObserver(DocumentObserver *observer)
+{
+    d->observers.remove(observer);
+}
+
+void DocumentViewSession::synchronizeFromDefault()
+{
+    const std::shared_ptr<Private> state = d;
+    Document *document = state->document;
+    if (!document || document->d->m_viewportHistory.empty()) {
+        return;
+    }
+
+    const auto currentIndex = std::distance(document->d->m_viewportHistory.begin(), document->d->m_viewportIterator);
+    state->viewportHistory = document->d->m_viewportHistory;
+    state->viewportIterator = state->viewportHistory.begin();
+    std::advance(state->viewportIterator, currentIndex);
+    ++state->navigationGeneration;
+}
+
+void DocumentViewSession::synchronizeToDefault()
+{
+    // An observer may destroy this session synchronously. Keep its state alive
+    // until the Document history has been copied and all notifications finish.
+    const std::shared_ptr<Private> state = d;
+    Document *document = state->document;
+    if (!document || state->viewportHistory.empty() || document->d->m_viewportHistory.empty()) {
+        return;
+    }
+
+    const auto currentIndex = std::distance(state->viewportHistory.begin(), state->viewportIterator);
+    const int oldPageNumber = document->d->m_viewportIterator->pageNumber;
+    document->d->m_viewportHistory = state->viewportHistory;
+    document->d->m_viewportIterator = document->d->m_viewportHistory.begin();
+    std::advance(document->d->m_viewportIterator, currentIndex);
+    const int currentPageNumber = document->d->m_viewportIterator->pageNumber;
+
+    QList<DocumentObserver *> defaultObservers;
+    for (DocumentObserver *observer : std::as_const(document->d->m_observers)) {
+        if (!document->d->observerUsesViewSession(observer)) {
+            defaultObservers.append(observer);
+        }
+    }
+
+    QPointer<Document> documentGuard(document);
+    for (DocumentObserver *observer : std::as_const(defaultObservers)) {
+        if (!documentGuard) {
+            break;
+        }
+        document = documentGuard.data();
+        if (!document->d->m_observers.contains(observer) || document->d->observerUsesViewSession(observer)) {
+            continue;
+        }
+
+        observer->notifyViewportChanged(false);
+        if (!documentGuard) {
+            break;
+        }
+        document = documentGuard.data();
+        if (oldPageNumber != currentPageNumber && document->d->m_observers.contains(observer) && !document->d->observerUsesViewSession(observer)) {
+            observer->notifyCurrentPageChanged(oldPageNumber, currentPageNumber);
+        }
+    }
+}
+
+void DocumentViewSession::setViewport(const DocumentViewport &viewport, DocumentObserver *excludeObserver, bool smoothMove, bool updateHistory)
+{
+    const std::shared_ptr<Private> state = d;
+    Document *const owner = state->document;
+    if (!owner) {
+        return;
+    }
+    QPointer<Document> documentGuard(owner);
+
+    DocumentViewport sanitizedViewport = viewport;
+    if (sanitizedViewport.rePos.enabled) {
+        if (!std::isfinite(sanitizedViewport.rePos.normalizedX)) {
+            sanitizedViewport.rePos.normalizedX = 0.5;
+        }
+        if (!std::isfinite(sanitizedViewport.rePos.normalizedY)) {
+            sanitizedViewport.rePos.normalizedY = 0.0;
+        }
+    }
+
+    if (!sanitizedViewport.isValid()) {
+        qCDebug(OkularCoreDebug) << "invalid session viewport:" << sanitizedViewport.toString();
+        return;
+    }
+    if (sanitizedViewport.pageNumber >= int(owner->pages())) {
+        return;
+    }
+
+    DocumentViewport &oldViewport = *state->viewportIterator;
+    const int oldPageNumber = oldViewport.pageNumber;
+
+    if (oldViewport.pageNumber == sanitizedViewport.pageNumber || !oldViewport.isValid() || !updateHistory) {
+        oldViewport = sanitizedViewport;
+    } else {
+        state->viewportHistory.erase(std::next(state->viewportIterator), state->viewportHistory.end());
+
+        if (state->viewportHistory.size() >= OKULAR_HISTORY_MAXSTEPS) {
+            state->viewportHistory.pop_front();
+        }
+
+        state->viewportIterator = state->viewportHistory.insert(state->viewportHistory.end(), sanitizedViewport);
+    }
+
+    const int currentViewportPage = state->viewportIterator->pageNumber;
+    const bool currentPageChanged = oldPageNumber != currentViewportPage;
+    const quint64 notificationGeneration = ++state->navigationGeneration;
+    // Observers may remove themselves, or even destroy this session, from a
+    // synchronous callback. Snapshot everything needed before notifying so
+    // callbacks cannot invalidate the QSet iterator or leave this method
+    // accessing a destroyed Private object.
+    const std::weak_ptr<void> lifetime = state->lifetimeToken;
+    const QList<DocumentObserver *> observers = state->observers.values();
+    for (DocumentObserver *observer : observers) {
+        if (lifetime.expired() || !documentGuard || state->document != owner || state->navigationGeneration != notificationGeneration) {
+            break;
+        }
+        if (!state->observers.contains(observer)) {
+            continue;
+        }
+        if (observer != excludeObserver) {
+            observer->notifyViewportChanged(smoothMove);
+        }
+        if (!lifetime.expired() && documentGuard && state->document == owner && state->navigationGeneration == notificationGeneration && currentPageChanged && state->observers.contains(observer)) {
+            observer->notifyCurrentPageChanged(oldPageNumber, currentViewportPage);
+        }
+    }
+}
+
+void DocumentViewSession::setViewportPage(int page, DocumentObserver *excludeObserver, bool smoothMove)
+{
+    if (!d->document || d->document->pages() == 0) {
+        return;
+    }
+
+    page = qBound(0, page, int(d->document->pages()) - 1);
+    setViewport(DocumentViewport(page), excludeObserver, smoothMove);
+}
+
+void DocumentViewSession::setPrevViewport()
+{
+    const std::shared_ptr<Private> state = d;
+    Document *const owner = state->document;
+    if (!owner || state->viewportIterator == state->viewportHistory.begin()) {
+        return;
+    }
+    QPointer<Document> documentGuard(owner);
+
+    const int oldViewportPage = state->viewportIterator->pageNumber;
+    --state->viewportIterator;
+    const int currentViewportPage = state->viewportIterator->pageNumber;
+    const bool currentPageChanged = oldViewportPage != currentViewportPage;
+    const quint64 notificationGeneration = ++state->navigationGeneration;
+    const std::weak_ptr<void> lifetime = state->lifetimeToken;
+    const QList<DocumentObserver *> observers = state->observers.values();
+    for (DocumentObserver *observer : observers) {
+        if (lifetime.expired() || !documentGuard || state->document != owner || state->navigationGeneration != notificationGeneration) {
+            break;
+        }
+        if (!state->observers.contains(observer)) {
+            continue;
+        }
+        observer->notifyViewportChanged(true);
+        if (!lifetime.expired() && documentGuard && state->document == owner && state->navigationGeneration == notificationGeneration && currentPageChanged && state->observers.contains(observer)) {
+            observer->notifyCurrentPageChanged(oldViewportPage, currentViewportPage);
+        }
+    }
+}
+
+void DocumentViewSession::setNextViewport()
+{
+    const std::shared_ptr<Private> state = d;
+    Document *const owner = state->document;
+    if (!owner || std::next(state->viewportIterator) == state->viewportHistory.end()) {
+        return;
+    }
+    QPointer<Document> documentGuard(owner);
+
+    const int oldViewportPage = state->viewportIterator->pageNumber;
+    ++state->viewportIterator;
+    const int currentViewportPage = state->viewportIterator->pageNumber;
+    const bool currentPageChanged = oldViewportPage != currentViewportPage;
+    const quint64 notificationGeneration = ++state->navigationGeneration;
+    const std::weak_ptr<void> lifetime = state->lifetimeToken;
+    const QList<DocumentObserver *> observers = state->observers.values();
+    for (DocumentObserver *observer : observers) {
+        if (lifetime.expired() || !documentGuard || state->document != owner || state->navigationGeneration != notificationGeneration) {
+            break;
+        }
+        if (!state->observers.contains(observer)) {
+            continue;
+        }
+        observer->notifyViewportChanged(true);
+        if (!lifetime.expired() && documentGuard && state->document == owner && state->navigationGeneration == notificationGeneration && currentPageChanged && state->observers.contains(observer)) {
+            observer->notifyCurrentPageChanged(oldViewportPage, currentViewportPage);
+        }
+    }
+}
+
+void DocumentViewSession::processAction(const Action *action)
+{
+    const std::shared_ptr<Private> state = d;
+    Document *document = state->document;
+    if (document) {
+        document->processAction(action, this);
+    }
+}
+
+void DocumentViewSession::reset(const DocumentViewport &viewport)
+{
+    d->viewportHistory.clear();
+    d->viewportIterator = d->viewportHistory.insert(d->viewportHistory.end(), viewport);
+    ++d->navigationGeneration;
+}
+
+void DocumentViewSession::clampToPageCount(int pageCount)
+{
+    ++d->navigationGeneration;
+    if (pageCount <= 0) {
+        reset(DocumentViewport());
+        return;
+    }
+
+    const int lastPage = pageCount - 1;
+    for (DocumentViewport &viewport : d->viewportHistory) {
+        viewport.pageNumber = qBound(0, viewport.pageNumber, lastPage);
+    }
 }
 
 /** DocumentViewport **/

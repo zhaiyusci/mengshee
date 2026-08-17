@@ -23,10 +23,12 @@
 #define Q_NOREPLY
 #endif // HAVE_DBUS
 #include <QIcon>
+#include <QHash>
 #include <QList>
 #include <QPointer>
 #include <QProcess>
 #include <QSizeF>
+#include <QStringList>
 #include <QUrl>
 
 #include <KCompressionDevice>
@@ -89,6 +91,7 @@ class Menu;
 namespace Okular
 {
 class BrowserExtension;
+class DocumentWorkspace;
 class ExportFormat;
 
 /**
@@ -298,7 +301,12 @@ public Q_SLOTS:
 
 private:
     bool aboutToShowContextMenu(QMenu *menu, QAction *action, QMenu *contextMenu);
-    void showMenu(const Okular::Page *page, const QPoint point, const QString &bookmarkTitle = QString(), const Okular::DocumentViewport &vp = DocumentViewport(), bool showTOCActions = false);
+    void showMenu(const Okular::Page *page,
+                  const QPoint point,
+                  const QString &bookmarkTitle = QString(),
+                  const Okular::DocumentViewport &vp = DocumentViewport(),
+                  bool showTOCActions = false,
+                  PageView *sourceView = nullptr);
     /**
      * Searches the actionCollections of all KXMLGUIClients that were created by the same factory()
      * as this Part for a QAction that has both the specified name and the specified class.
@@ -342,6 +350,11 @@ private:
     void movePageFromThumbnail(int sourcePage, int targetPage, bool insertAfterTarget);
     bool documentHasTemplateNotes() const;
     void refreshTemplateNotes();
+    PageView *workspaceActivePageView() const;
+    int workspaceActivePageNumber() const;
+    void registerWorkspacePageViewActions(PageView *view);
+    void routeWorkspacePageViewActions(PageView *view);
+    void updateWorkspacePageViews();
 
     enum SaveAsFlag {
         NoSaveAsFlags = 0,      ///< No options
@@ -392,9 +405,16 @@ private:
     KMessageWidget *m_signatureMessage;
 #if HAVE_NEW_SIGNATURE_API
     KMessageWidget *m_signatureInProgressMessage;
+    QPointer<PageView> m_signingPageView;
 #endif
     QPointer<ThumbnailList> m_thumbnailList;
     QPointer<PageView> m_pageView;
+    QPointer<DocumentWorkspace> m_documentWorkspace;
+    QPointer<PageView> m_workspaceActionOwner;
+    QPointer<PageView> m_workspaceActionView;
+    QHash<QString, QPointer<QAction>> m_workspaceActionOwnerActions;
+    QStringList m_workspaceRoutedActionNames;
+    QPointer<QAction> m_workspaceFormsAction;
     QPointer<TOC> m_toc;
     bool m_tocEnabled;
     QPointer<MiniBarLogic> m_miniBarLogic;
@@ -415,6 +435,12 @@ private:
     QTimer *m_dirtyHandler;
     QUrl m_oldUrl;
     Okular::DocumentViewport m_viewportDirty;
+    struct ReloadWorkspaceViewState {
+        QPointer<PageView> view;
+        Okular::DocumentViewport viewport;
+    };
+    QList<ReloadWorkspaceViewState> m_reloadWorkspaceViewStates;
+    QPointer<PageView> m_reloadWorkspaceActiveView;
     bool m_isReloading;
     bool m_wasPresentationOpen;
     QWidget *m_dirtyToolboxItem;

@@ -21,6 +21,7 @@
 SearchLineEdit::SearchLineEdit(QWidget *parent, Okular::Document *document)
     : KLineEdit(parent)
     , m_document(document)
+    , m_searchViewSession(nullptr)
     , m_minLength(0)
     , m_caseSensitivity(Qt::CaseInsensitive)
     , m_searchType(Okular::Document::AllDocument)
@@ -108,8 +109,24 @@ void SearchLineEdit::setFindAsYouType(bool findAsYouType)
     m_findAsYouType = findAsYouType;
 }
 
+void SearchLineEdit::setSearchViewSession(Okular::DocumentViewSession *viewSession, QObject *viewOwner)
+{
+    if (m_searchViewSession == viewSession && m_searchViewOwner == viewOwner) {
+        return;
+    }
+
+    // Search continuation state includes the source page and match rectangle,
+    // so it cannot be carried from one workspace frame to another.
+    resetSearch();
+    m_searchViewSession = viewSession;
+    m_searchViewOwner = viewOwner;
+    m_changed = true;
+}
+
 void SearchLineEdit::resetSearch()
 {
+    const bool wasRunning = m_searchRunning;
+
     // Stop the currently running search, if any
     stopSearch();
 
@@ -123,6 +140,14 @@ void SearchLineEdit::resetSearch()
 
     // Reset input box color
     prepareLineEditForSearch();
+
+    // resetSearch removes the descriptor immediately. Its queued worker is
+    // therefore intentionally silent when it notices that its generation is
+    // stale, so finish the local busy state synchronously here.
+    if (wasRunning) {
+        m_searchRunning = false;
+        Q_EMIT searchStopped();
+    }
 }
 
 bool SearchLineEdit::isSearchRunning() const
@@ -155,6 +180,9 @@ void SearchLineEdit::findNext()
     if (m_id == -1 || m_searchType != Okular::Document::NextMatch) {
         return;
     }
+    if (m_searchViewSession && !m_searchViewOwner) {
+        return;
+    }
 
     if (!m_changed) {
         Q_EMIT searchStarted();
@@ -168,6 +196,9 @@ void SearchLineEdit::findNext()
 void SearchLineEdit::findPrev()
 {
     if (m_id == -1 || m_searchType != Okular::Document::PreviousMatch) {
+        return;
+    }
+    if (m_searchViewSession && !m_searchViewOwner) {
         return;
     }
 
@@ -237,6 +268,9 @@ void SearchLineEdit::startSearch()
     if (m_id == -1 || !m_color.isValid()) {
         return;
     }
+    if (m_searchViewSession && !m_searchViewOwner) {
+        return;
+    }
 
     if (m_changed && (m_searchType == Okular::Document::NextMatch || m_searchType == Okular::Document::PreviousMatch)) {
         m_document->resetSearch(m_id);
@@ -247,7 +281,7 @@ void SearchLineEdit::startSearch()
     if (thistext.length() >= qMax(m_minLength, 1)) {
         Q_EMIT searchStarted();
         m_searchRunning = true;
-        m_document->searchText(m_id, thistext, m_fromStart, m_caseSensitivity, m_searchType, m_moveViewport, m_color);
+        m_document->searchText(m_id, thistext, m_fromStart, m_caseSensitivity, m_searchType, m_moveViewport, m_color, m_searchViewSession);
     } else {
         m_document->resetSearch(m_id);
     }

@@ -29,6 +29,7 @@
 #include "gui/tocmodel.h"
 #include "ktreeviewsearchline.h"
 #include "pageitemdelegate.h"
+#include "pageview.h"
 #include "settings.h"
 
 static const int BookmarkItemType = QTreeWidgetItem::UserType + 1;
@@ -211,6 +212,11 @@ void BookmarkList::setAddBookmarkAction(QAction *addBookmarkAction)
 void BookmarkList::slotShowAllBookmarks(bool showAll)
 {
     rebuildTree(showAll);
+}
+
+void BookmarkList::setPageView(PageView *pageView)
+{
+    m_pageView = pageView;
 }
 
 void BookmarkList::slotExecuted(QTreeWidgetItem *item)
@@ -410,7 +416,11 @@ void BookmarkList::rebuildTree(bool showAll)
 void BookmarkList::goTo(BookmarkItem *item)
 {
     if (item->url() == m_document->currentDocument()) {
-        m_document->setViewport(item->viewport(), nullptr, true);
+        if (m_pageView) {
+            m_pageView->goToDocumentViewport(item->viewport(), true, true);
+        } else {
+            m_document->setViewport(item->viewport(), nullptr, true);
+        }
     } else {
         Okular::GotoAction action(item->url().toDisplayString(QUrl::PreferLocalFile), item->viewport());
         m_document->processAction(&action);

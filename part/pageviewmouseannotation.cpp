@@ -2121,7 +2121,7 @@ void MouseAnnotation::processAction(const AnnotationDescription &ad)
             vw->show();
             vw->play();
         } else if (ann->subType() == Okular::Annotation::AScreen) {
-            m_document->processAction(static_cast<Okular::ScreenAnnotation *>(ann)->action());
+            m_pageView->processActionForView(static_cast<Okular::ScreenAnnotation *>(ann)->action());
         } else if (ann->subType() == Okular::Annotation::AFileAttachment) {
             const Okular::FileAttachmentAnnotation *fileAttachAnnot = static_cast<Okular::FileAttachmentAnnotation *>(ann);
             GuiUtils::saveEmbeddedFile(fileAttachAnnot->embeddedFile(), m_pageView);

@@ -125,6 +125,7 @@
 #include "core/page.h"
 #include "core/printoptionswidget.h"
 #include "drawingtoolactions.h"
+#include "documentworkspace.h"
 #include "embeddedfilesdialog.h"
 #include "extensions.h"
 #include "fileprinterpreview.h"
@@ -135,6 +136,7 @@
 #include "okmenutitle.h"
 #include "pagesizelabel.h"
 #include "pageview.h"
+#include "pageviewannotator.h"
 #include "preferencesdialog.h"
 #include "presentationwidget.h"
 #include "propertiesdialog.h"
@@ -522,11 +524,15 @@ Part::Part(QObject *parent, const QVariantList &args)
     rightLayout->addWidget(m_signatureInProgressMessage);
 #endif
     m_pageView = new PageView(rightContainer, m_document);
+    m_pageView->setWorkspaceMainView(true);
+    m_workspaceActionOwner = m_pageView;
+    m_workspaceActionView = m_pageView;
     rightContainer->setFocusProxy(m_pageView);
     QMetaObject::invokeMethod(m_pageView, "setFocus", Qt::QueuedConnection); // usability setting
     //    m_splitter->setFocusProxy(m_pageView);
     connect(m_pageView.data(), &PageView::rightClick, this, &Part::slotShowMenu);
-    connect(m_pageView, &PageView::triggerSearch, this, [this](const QString &searchText) {
+    connect(m_pageView, &PageView::triggerSearch, this, [this, view = m_pageView.data()](const QString &searchText) {
+        m_findBar->setSearchView(view);
         m_findBar->startSearch(searchText);
         slotShowFindBar();
     });
@@ -535,18 +541,26 @@ Part::Part(QObject *parent, const QVariantList &args)
     connect(m_document, &Document::notice, this, &Part::noticeMessage);
     connect(m_document, &Document::sourceReferenceActivated, this, &Part::slotHandleActivatedSourceReference);
     connect(m_pageView.data(), &PageView::fitWindowToPage, this, &Part::fitWindowToPage);
-    rightLayout->addWidget(m_pageView);
+    m_documentWorkspace = new DocumentWorkspace(m_pageView, i18nc("@title:frame", "Document"), rightContainer);
+    rightLayout->addWidget(m_documentWorkspace);
     m_layers->setPageView(m_pageView);
+    m_toc->setPageView(m_pageView);
+    m_thumbnailList->setPageView(m_pageView);
+    m_reviewsWidget->setPageView(m_pageView);
+    m_bookmarkList->setPageView(m_pageView);
     m_signaturePanel->setPageView(m_pageView);
     m_findBar = new FindBar(m_document, rightContainer);
+    m_findBar->setSearchView(m_pageView);
     rightLayout->addWidget(m_findBar);
     m_bottomBar = new QWidget(rightContainer);
     QHBoxLayout *bottomBarLayout = new QHBoxLayout(m_bottomBar);
     m_pageSizeLabel = new PageSizeLabel(m_bottomBar, m_document);
+    m_pageSizeLabel->setPageView(m_pageView);
     bottomBarLayout->setContentsMargins(0, 0, 0, 0);
     bottomBarLayout->setSpacing(0);
     bottomBarLayout->addItem(new QSpacerItem(5, 5, QSizePolicy::Expanding, QSizePolicy::Minimum));
     m_miniBarLogic = new MiniBarLogic(this, m_document);
+    m_miniBarLogic->setPageView(m_pageView);
     m_miniBar = new MiniBar(m_bottomBar, m_miniBarLogic);
     bottomBarLayout->addWidget(m_miniBar);
     bottomBarLayout->addWidget(m_pageSizeLabel);
@@ -554,17 +568,43 @@ Part::Part(QObject *parent, const QVariantList &args)
 
     m_pageNumberTool = new MiniBar(nullptr, m_miniBarLogic);
 
-    connect(m_findBar, &FindBar::forwardKeyPressEvent, m_pageView, &PageView::externalKeyPressEvent);
-    connect(m_findBar, &FindBar::onCloseButtonPressed, m_pageView, QOverload<>::of(&PageView::setFocus));
-    connect(m_miniBar, &MiniBar::forwardKeyPressEvent, m_pageView, &PageView::externalKeyPressEvent);
+    connect(m_findBar, &FindBar::forwardKeyPressEvent, this, [this](QKeyEvent *event) {
+        if (PageView *view = workspaceActivePageView()) {
+            view->externalKeyPressEvent(event);
+        }
+    });
+    connect(m_findBar, &FindBar::onCloseButtonPressed, this, [this]() {
+        if (PageView *view = workspaceActivePageView()) {
+            view->setFocus();
+        }
+    });
+    connect(m_miniBar, &MiniBar::forwardKeyPressEvent, this, [this](QKeyEvent *event) {
+        if (PageView *view = workspaceActivePageView()) {
+            view->externalKeyPressEvent(event);
+        }
+    });
     connect(m_pageView.data(), &PageView::escPressed, m_findBar, &FindBar::resetSearch);
-    connect(m_pageNumberTool, &MiniBar::forwardKeyPressEvent, m_pageView, &PageView::externalKeyPressEvent);
+    connect(m_pageNumberTool, &MiniBar::forwardKeyPressEvent, this, [this](QKeyEvent *event) {
+        if (PageView *view = workspaceActivePageView()) {
+            view->externalKeyPressEvent(event);
+        }
+    });
     connect(m_pageView.data(), &PageView::requestOpenNewlySignedFile, this, &Part::requestOpenNewlySignedFile);
 #if HAVE_NEW_SIGNATURE_API
-    connect(m_pageView.data(), &PageView::signingStarted, this, [this] { m_signatureInProgressMessage->setVisible(true); });
+    connect(m_pageView.data(), &PageView::signingStarted, this, [this, view = m_pageView.data()] {
+        if (m_signingPageView && m_signingPageView != view && m_signingPageView->hasPendingSignature()) {
+            m_signingPageView->cancelSigning();
+        }
+        m_signingPageView = view;
+        m_signatureInProgressMessage->setVisible(true);
+    });
 #endif
 
-    connect(m_reviewsWidget.data(), &Reviews::openAnnotationWindow, m_pageView.data(), &PageView::openAnnotationWindow);
+    connect(m_reviewsWidget.data(), &Reviews::openAnnotationWindow, this, [this](Okular::Annotation *annotation, int pageNumber) {
+        if (PageView *view = workspaceActivePageView()) {
+            view->openAnnotationWindow(annotation, pageNumber);
+        }
+    });
 
     // add document observers
     m_document->addObserver(this);
@@ -580,6 +620,133 @@ Part::Part(QObject *parent, const QVariantList &args)
     m_document->addObserver(m_pageSizeLabel);
     m_document->addObserver(m_bookmarkList);
     m_document->addObserver(m_signaturePanel);
+
+    connect(m_pageView, &PageView::viewportStateChanged, this, [this, view = m_pageView.data()] {
+        if (workspaceActivePageView() == view) {
+            updateViewActions();
+        }
+    });
+
+    auto connectWorkspacePageView = [this](PageView *view) {
+        connect(view, &PageView::rightClick, this, &Part::slotShowMenu);
+        connect(view, &PageView::triggerSearch, this, [this, view](const QString &searchText) {
+            m_findBar->setSearchView(view);
+            m_findBar->startSearch(searchText);
+            slotShowFindBar();
+        });
+        connect(view, &PageView::fitWindowToPage, this, &Part::fitWindowToPage);
+        connect(view, &PageView::requestOpenNewlySignedFile, this, &Part::requestOpenNewlySignedFile);
+        connect(view, &PageView::escPressed, m_findBar, &FindBar::resetSearch);
+        connect(view, &PageView::mouseBackButtonClick, this, &Part::slotHistoryBack);
+        connect(view, &PageView::mouseForwardButtonClick, this, &Part::slotHistoryNext);
+        connect(view, &PageView::viewportStateChanged, this, [this, view] {
+            if (workspaceActivePageView() == view) {
+                updateViewActions();
+            }
+        });
+#if HAVE_NEW_SIGNATURE_API
+        connect(view, &PageView::signingStarted, this, [this, view] {
+            if (m_signingPageView && m_signingPageView != view && m_signingPageView->hasPendingSignature()) {
+                m_signingPageView->cancelSigning();
+            }
+            m_signingPageView = view;
+            m_signatureInProgressMessage->setVisible(true);
+        });
+#endif
+    };
+
+    connect(m_documentWorkspace, &DocumentWorkspace::auxiliaryFrameRequested, this, [this, connectWorkspacePageView](PageView *sourceView, const DocumentViewport &target, const QString &title) {
+        auto *view = new PageView(nullptr, m_document, true);
+        auto *viewActions = new KActionCollection(view);
+        viewActions->setObjectName(QStringLiteral("auxiliaryPageViewActions"));
+        view->setupBaseActions(viewActions);
+        view->setupViewerActions(viewActions);
+        if (m_embedMode != ViewerWidgetMode && m_embedMode != PrintPreviewMode) {
+            view->setupActions(viewActions, m_pageView->annotator());
+        }
+        registerWorkspacePageViewActions(view);
+        connectWorkspacePageView(view);
+        // Seed the new tab from the frame where the link was clicked. This
+        // makes Back return to the link source instead of an unrelated main
+        // frame position when auxiliary tabs spawn further tabs.
+        view->initializeIndependentNavigation(sourceView ? sourceView->documentViewport() : DocumentViewport(), target);
+        m_document->addObserver(view);
+        m_document->registerView(view);
+        m_documentWorkspace->addAuxiliaryView(view, title);
+        updateWorkspacePageViews();
+        view->setFocus();
+    });
+
+    connect(m_documentWorkspace, &DocumentWorkspace::mainViewChanged, this, [this](PageView *oldMainView, PageView *newMainView) {
+        if (!oldMainView || !newMainView) {
+            return;
+        }
+        // Demoting the old main view first makes both frames session observers.
+        // setWorkspaceMainView(true) can then atomically install the promoted
+        // frame's complete navigation history as the default state without
+        // sending it a fabricated page-closing/page-opening transition.
+        oldMainView->setWorkspaceMainView(false);
+        newMainView->setWorkspaceMainView(true);
+        m_pageView = newMainView;
+        if (QWidget *rightContainer = m_documentWorkspace->parentWidget()) {
+            rightContainer->setFocusProxy(newMainView);
+        }
+        updateWorkspacePageViews();
+        m_toc->setPageView(newMainView);
+        m_thumbnailList->setPageView(newMainView);
+        m_reviewsWidget->setPageView(newMainView);
+        m_bookmarkList->setPageView(newMainView);
+        m_pageSizeLabel->setPageView(newMainView);
+        m_signaturePanel->setPageView(newMainView);
+        m_findBar->setSearchView(workspaceActivePageView());
+        m_miniBarLogic->setPageView(workspaceActivePageView());
+        updateViewActions();
+    });
+    connect(m_documentWorkspace, &DocumentWorkspace::activeViewChanged, this, [this](PageView *view) {
+        m_documentWorkspace->mainView()->setWorkspaceActiveView(m_documentWorkspace->mainView() == view);
+        for (PageView *workspaceView : m_documentWorkspace->auxiliaryViews()) {
+            workspaceView->setWorkspaceActiveView(workspaceView == view);
+        }
+        if (PageViewAnnotator *annotator = view ? view->annotator() : nullptr) {
+            annotator->setPageView(view);
+        }
+        m_findBar->setSearchView(view);
+        m_miniBarLogic->setPageView(view);
+        m_pageSizeLabel->setPageView(view);
+        m_toc->setPageView(view);
+        m_thumbnailList->setPageView(view);
+        m_reviewsWidget->setPageView(view);
+        m_bookmarkList->setPageView(view);
+        m_signaturePanel->setPageView(view);
+        routeWorkspacePageViewActions(view);
+        updateViewActions();
+    });
+    connect(m_documentWorkspace, &DocumentWorkspace::auxiliaryViewAboutToClose, this, [this](PageView *view) {
+        PageView *fallback = m_documentWorkspace ? m_documentWorkspace->mainView() : m_pageView.data();
+        if (workspaceActivePageView() == view) {
+            m_findBar->setSearchView(fallback);
+        }
+        if (m_workspaceActionView == view) {
+            routeWorkspacePageViewActions(fallback);
+        }
+        PageViewAnnotator *annotator = m_pageView ? m_pageView->annotator() : nullptr;
+        if (annotator && annotator->pageView() == view) {
+            annotator->detachAnnotation();
+            annotator->setPageView(fallback);
+        }
+#if HAVE_NEW_SIGNATURE_API
+        if (view->hasPendingSignature()) {
+            view->cancelSigning();
+        }
+        if (m_signingPageView == view) {
+            m_signingPageView = nullptr;
+            m_signatureInProgressMessage->setVisible(false);
+        }
+#endif
+        m_document->removeObserver(view);
+        m_document->unregisterView(view);
+        updateWorkspacePageViews();
+    });
 
     connect(m_document->bookmarkManager(), &BookmarkManager::saved, this, &Part::slotRebuildBookmarkMenu);
 
@@ -936,15 +1103,27 @@ void Part::setupActions()
     m_copyWithoutLineBreaks->setText(i18n("Copy Text (Without line breaks)"));
     ac->setDefaultShortcut(m_copyWithoutLineBreaks, QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_C));
     m_copyWithoutLineBreaks->setIcon(QIcon::fromTheme(QStringLiteral("edit-copy")));
-    connect(m_copyWithoutLineBreaks, &QAction::triggered, this, [this]() { m_pageView->copyTextSelection(PageView::TextCopyMode::WithoutLineBreaks); });
+    connect(m_copyWithoutLineBreaks, &QAction::triggered, this, [this]() {
+        if (PageView *view = workspaceActivePageView()) {
+            view->copyTextSelection(PageView::TextCopyMode::WithoutLineBreaks);
+        }
+    });
     m_copyWithoutLineBreaks->setEnabled(false);
 
-    m_selectAll = KStandardAction::selectAll(m_pageView, SLOT(selectAll()), ac);
+    m_selectAll = KStandardAction::selectAll(this, [this]() {
+        if (PageView *view = workspaceActivePageView()) {
+            view->selectAll();
+        }
+    }, ac);
 
     // Setup select all action for the current page
     m_selectCurrentPage = ac->addAction(QStringLiteral("edit_select_all_current_page"));
     m_selectCurrentPage->setText(i18n("Select All Text on Current Page"));
-    connect(m_selectCurrentPage, &QAction::triggered, m_pageView, &PageView::slotSelectPage);
+    connect(m_selectCurrentPage, &QAction::triggered, this, [this]() {
+        if (PageView *view = workspaceActivePageView()) {
+            view->slotSelectPage();
+        }
+    });
     m_selectCurrentPage->setEnabled(false);
 
     m_save = KStandardAction::save(this, [this] { saveFile(); }, ac);
@@ -1057,6 +1236,116 @@ void Part::setupActions()
     playPauseAction->setEnabled(false);
 }
 
+PageView *Part::workspaceActivePageView() const
+{
+    if (m_documentWorkspace) {
+        if (PageView *view = m_documentWorkspace->activeView()) {
+            return view;
+        }
+    }
+    return m_pageView;
+}
+
+void Part::updateWorkspacePageViews()
+{
+    if (!m_documentWorkspace || !m_layers) {
+        return;
+    }
+
+    QList<PageView *> views;
+    if (PageView *mainView = m_documentWorkspace->mainView()) {
+        views.append(mainView);
+    }
+    views.append(m_documentWorkspace->auxiliaryViews());
+    m_layers->setPageViews(views);
+}
+
+int Part::workspaceActivePageNumber() const
+{
+    if (PageView *view = workspaceActivePageView()) {
+        return view->documentViewport().pageNumber;
+    }
+
+    return static_cast<int>(m_document->currentPage());
+}
+
+void Part::registerWorkspacePageViewActions(PageView *view)
+{
+    if (!view || !view->actionCollection()) {
+        return;
+    }
+
+    KActionCollection *partActions = actionCollection();
+    bool addedActionName = false;
+    for (QAction *viewAction : view->actionCollection()->actions()) {
+        const QString name = viewAction->objectName();
+        if (name.isEmpty() || m_workspaceActionOwnerActions.contains(name)) {
+            continue;
+        }
+        QAction *ownerAction = partActions->action(name);
+        if (!ownerAction) {
+            continue;
+        }
+        m_workspaceActionOwnerActions.insert(name, ownerAction);
+        m_workspaceRoutedActionNames.append(name);
+        addedActionName = true;
+    }
+
+    if (addedActionName) {
+        PageView *currentView = workspaceActivePageView();
+        m_workspaceActionView = nullptr;
+        routeWorkspacePageViewActions(currentView);
+    }
+}
+
+void Part::routeWorkspacePageViewActions(PageView *view)
+{
+    if (!view || view == m_workspaceActionView || m_workspaceRoutedActionNames.isEmpty()) {
+        return;
+    }
+
+    KActionCollection *partActions = actionCollection();
+    KActionCollection *viewActions = view->actionCollection();
+    QHash<QString, QAction *> replacements;
+    for (const QString &name : std::as_const(m_workspaceRoutedActionNames)) {
+        QAction *target = nullptr;
+        if (view == m_workspaceActionOwner) {
+            target = m_workspaceActionOwnerActions.value(name);
+        } else if (viewActions) {
+            target = viewActions->action(name);
+        }
+        if (target && partActions->action(name) != target) {
+            replacements.insert(name, target);
+        }
+    }
+
+    m_workspaceActionView = view;
+    if (!replacements.isEmpty()) {
+        KXMLGUIFactory *xmlFactory = factory();
+        const bool clientIsPlugged = xmlFactory && xmlFactory->clients().contains(this);
+        if (clientIsPlugged) {
+            xmlFactory->removeClient(this);
+        }
+        for (auto it = replacements.constBegin(); it != replacements.constEnd(); ++it) {
+            partActions->addAction(it.key(), it.value());
+        }
+        if (clientIsPlugged) {
+            xmlFactory->addClient(this);
+        }
+    }
+
+    QAction *formsAction = view->toggleFormsAction();
+    if (m_formsMessage && formsAction != m_workspaceFormsAction) {
+        if (m_workspaceFormsAction) {
+            m_formsMessage->removeAction(m_workspaceFormsAction);
+        }
+        m_workspaceFormsAction = formsAction;
+        if (formsAction) {
+            m_formsMessage->addAction(formsAction);
+        }
+    }
+}
+
 Part::~Part()
 {
 #if HAVE_DBUS
@@ -1069,9 +1358,24 @@ Part::~Part()
         Part::closeUrl(false);
     }
 
+    // Side panels and shared controls outlive the DocumentWorkspace in the
+    // widget tree. Detach their active-view bindings before destroying the
+    // PageViews so no teardown callback can observe a half-destroyed view.
+    m_findBar->setSearchView(nullptr);
+    m_miniBarLogic->setPageView(nullptr);
+    m_pageSizeLabel->setPageView(nullptr);
+    m_toc->setPageView(nullptr);
+    m_thumbnailList->setPageView(nullptr);
+    m_reviewsWidget->setPageView(nullptr);
+    m_bookmarkList->setPageView(nullptr);
+    m_layers->setPageViews({});
+    m_signaturePanel->setPageView(nullptr);
+
     delete m_toc;
     delete m_layers;
     delete m_pageView;
+    m_pageView = nullptr;
+    delete m_documentWorkspace;
     delete m_thumbnailList;
     delete m_miniBar;
     delete m_pageNumberTool;
@@ -1267,7 +1571,11 @@ void Part::openUrlFromBookmarks(const QUrl &_url)
     url.setFragment(QString());
     if (m_document->currentDocument() == url) {
         if (vp.isValid()) {
-            m_document->setViewport(vp);
+            if (PageView *view = workspaceActivePageView()) {
+                view->goToDocumentViewport(vp, true, true);
+            } else {
+                m_document->setViewport(vp);
+            }
         }
     } else {
         openUrl(url);
@@ -1388,7 +1696,7 @@ void Part::notifyPageChanged(int page, int flags)
     }
 
     rebuildBookmarkMenu();
-    if (page == m_document->viewport().pageNumber) {
+    if (page == workspaceActivePageNumber()) {
         updateBookmarksActions();
     }
 }
@@ -2015,8 +2323,30 @@ bool Part::closeUrl(bool promptToSave)
         return true; // pretend it worked
     }
 
+#if HAVE_NEW_SIGNATURE_API
+    if (m_signingPageView) {
+        m_signingPageView->cancelSigning();
+        m_signingPageView = nullptr;
+        m_signatureInProgressMessage->setVisible(false);
+    }
+#endif
+
     if (promptToSave && !queryClose()) {
         return false;
+    }
+
+    // PageViewItems are destroyed by the upcoming document setup change.
+    // End any in-progress gesture first so the shared annotator cannot retain
+    // a locked item or engine that points into the old page layout.
+    if (m_pageView && m_pageView->annotator()) {
+        m_pageView->annotator()->detachAnnotation();
+    }
+
+    if (m_documentWorkspace && !m_isReloading) {
+        m_documentWorkspace->closeAllAuxiliaryViews();
+        m_documentWorkspace->setMainViewTitle(i18nc("@title:frame", "Document"));
+        m_reloadWorkspaceViewStates.clear();
+        m_reloadWorkspaceActiveView = nullptr;
     }
 
     m_document->setHistoryClean(true);
@@ -2220,6 +2550,24 @@ bool Part::slotAttemptReload(bool oneShot, const QUrl &newUrl)
         // store the current viewport
         m_viewportDirty = m_document->viewport();
 
+        // Keep the existing workspace alive across a reload so auxiliary tab
+        // titles, ordering, promotion state, and action wiring are preserved.
+        // Navigation history has always been reset by reload; restore only the
+        // current viewport of each frame, matching the legacy main-view rule.
+        m_reloadWorkspaceViewStates.clear();
+        m_reloadWorkspaceActiveView = m_documentWorkspace ? m_documentWorkspace->activeView() : nullptr;
+        if (m_documentWorkspace) {
+            auto rememberView = [this](PageView *view) {
+                if (view) {
+                    m_reloadWorkspaceViewStates.append({view, view->documentViewport()});
+                }
+            };
+            rememberView(m_documentWorkspace->mainView());
+            for (PageView *view : m_documentWorkspace->auxiliaryViews()) {
+                rememberView(view);
+            }
+        }
+
         // store the current toolbox pane
         m_dirtyToolboxItem = m_sidebar->currentItem();
         m_wasSidebarVisible = m_sidebar->isSidebarVisible();
@@ -2242,6 +2590,8 @@ bool Part::slotAttemptReload(bool oneShot, const QUrl &newUrl)
     // close and (try to) reopen the document
     if (!closeUrl()) {
         m_viewportDirty.pageNumber = -1;
+        m_reloadWorkspaceViewStates.clear();
+        m_reloadWorkspaceActiveView = nullptr;
 
         if (tocReloadPrepared) {
             m_toc->rollbackReload();
@@ -2264,6 +2614,22 @@ bool Part::slotAttemptReload(bool oneShot, const QUrl &newUrl)
             m_viewportDirty.pageNumber = (int)m_document->pages() - 1;
         }
         m_document->setViewport(m_viewportDirty);
+        const int lastPage = static_cast<int>(m_document->pages()) - 1;
+        if (lastPage >= 0) {
+            for (const ReloadWorkspaceViewState &state : std::as_const(m_reloadWorkspaceViewStates)) {
+                if (!state.view) {
+                    continue;
+                }
+                DocumentViewport viewport = state.viewport;
+                viewport.pageNumber = qBound(0, viewport.pageNumber, lastPage);
+                state.view->goToDocumentViewport(viewport, false, false);
+            }
+        }
+        if (m_reloadWorkspaceActiveView) {
+            m_reloadWorkspaceActiveView->setFocus(Qt::OtherFocusReason);
+        }
+        m_reloadWorkspaceViewStates.clear();
+        m_reloadWorkspaceActiveView = nullptr;
         m_oldUrl = QUrl();
         m_viewportDirty.pageNumber = -1;
         m_document->setRotation(m_dirtyPageRotation);
@@ -2291,15 +2657,17 @@ bool Part::slotAttemptReload(bool oneShot, const QUrl &newUrl)
 void Part::updateViewActions()
 {
     bool opened = m_document->pages() > 0;
+    PageView *activeView = workspaceActivePageView();
+    const int currentPage = activeView ? activeView->documentViewport().pageNumber : static_cast<int>(m_document->currentPage());
     if (opened) {
         m_gotoPage->setEnabled(m_document->pages() > 1);
 
         // Check if you are at the beginning or not
-        if (m_document->currentPage() != 0) {
+        if (currentPage != 0) {
             m_beginningOfDocument->setEnabled(true);
             m_prevPage->setEnabled(true);
         } else {
-            if (m_pageView->verticalScrollBar()->value() != 0) {
+            if (activeView && activeView->verticalScrollBar()->value() != 0) {
                 // The page isn't at the very beginning
                 m_beginningOfDocument->setEnabled(true);
             } else {
@@ -2310,10 +2678,10 @@ void Part::updateViewActions()
             m_prevPage->setEnabled(false);
         }
 
-        if (m_document->pages() == m_document->currentPage() + 1) {
+        if (m_document->pages() == currentPage + 1) {
             // If you are at the end, disable go to next page
             m_nextPage->setEnabled(false);
-            if (m_pageView->verticalScrollBar()->value() == m_pageView->verticalScrollBar()->maximum()) {
+            if (activeView && activeView->verticalScrollBar()->value() == activeView->verticalScrollBar()->maximum()) {
                 // If you are the end of the page of the last document, you can't go to the last page
                 m_endOfDocument->setEnabled(false);
             } else {
@@ -2327,10 +2695,10 @@ void Part::updateViewActions()
         }
 
         if (m_historyBack) {
-            m_historyBack->setEnabled(!m_document->historyAtBegin());
+            m_historyBack->setEnabled(activeView && !activeView->viewportHistoryAtBegin());
         }
         if (m_historyNext) {
-            m_historyNext->setEnabled(!m_document->historyAtEnd());
+            m_historyNext->setEnabled(activeView && !activeView->viewportHistoryAtEnd());
         }
         m_reload->setEnabled(true);
         if (m_copy) {
@@ -2398,8 +2766,10 @@ void Part::updateBookmarksActions()
 {
     bool opened = m_document->pages() > 0;
     if (opened) {
+        PageView *activeView = workspaceActivePageView();
+        const DocumentViewport viewport = activeView ? activeView->documentViewport() : m_document->viewport();
         m_addBookmark->setEnabled(true);
-        if (m_document->bookmarkManager()->isBookmarked(m_document->viewport())) {
+        if (m_document->bookmarkManager()->isBookmarked(viewport)) {
             m_addBookmark->setText(i18n("Remove Bookmark"));
             m_addBookmark->setIcon(QIcon::fromTheme(QStringLiteral("bookmark-remove"), QIcon::fromTheme(QStringLiteral("edit-delete-bookmark"))));
             m_renameBookmark->setEnabled(true);
@@ -2469,7 +2839,9 @@ void Part::slotShowFindBar()
 void Part::slotHideFindBar()
 {
     if (m_findBar->maybeHide()) {
-        m_pageView->setFocus();
+        if (PageView *view = workspaceActivePageView()) {
+            view->setFocus();
+        }
         m_closeFindBar->setEnabled(false);
     }
 }
@@ -2533,60 +2905,75 @@ protected:
 
 void Part::slotGoToPage()
 {
-    GotoPageDialog pageDialog(m_pageView, m_document->currentPage() + 1, m_document->pages());
+    PageView *activeView = workspaceActivePageView();
+    if (!activeView) {
+        return;
+    }
+    GotoPageDialog pageDialog(activeView, activeView->documentViewport().pageNumber + 1, m_document->pages());
     if (pageDialog.exec() == QDialog::Accepted) {
-        m_document->setViewportPage(pageDialog.getPage() - 1, nullptr, true);
+        activeView->goToDocumentViewport(DocumentViewport(pageDialog.getPage() - 1), true, true);
     }
 }
 
 void Part::slotPreviousPage()
 {
-    if (m_document->isOpened() && !(m_document->currentPage() < 1)) {
-        m_document->setViewportPage(m_document->currentPage() - 1, nullptr, true);
+    PageView *activeView = workspaceActivePageView();
+    if (m_document->isOpened() && activeView && activeView->documentViewport().pageNumber > 0) {
+        activeView->goToDocumentViewport(DocumentViewport(activeView->documentViewport().pageNumber - 1), true, true);
     }
 }
 
 void Part::slotNextPage()
 {
-    if (m_document->isOpened() && m_document->currentPage() < (m_document->pages() - 1)) {
-        m_document->setViewportPage(m_document->currentPage() + 1, nullptr, true);
+    PageView *activeView = workspaceActivePageView();
+    if (m_document->isOpened() && activeView && activeView->documentViewport().pageNumber < (static_cast<int>(m_document->pages()) - 1)) {
+        activeView->goToDocumentViewport(DocumentViewport(activeView->documentViewport().pageNumber + 1), true, true);
     }
 }
 
 void Part::slotGotoFirst()
 {
-    if (m_document->isOpened()) {
-        m_document->setViewportPage(0, nullptr, true);
+    if (PageView *activeView = workspaceActivePageView(); m_document->isOpened() && activeView) {
+        activeView->goToDocumentViewport(DocumentViewport(0), true, true);
         m_beginningOfDocument->setEnabled(false);
     }
 }
 
 void Part::slotGotoLast()
 {
-    if (m_document->isOpened()) {
+    if (PageView *activeView = workspaceActivePageView(); m_document->isOpened() && activeView) {
         DocumentViewport endPage(m_document->pages() - 1);
         endPage.rePos.enabled = true;
         endPage.rePos.normalizedX = 0;
         endPage.rePos.normalizedY = 1;
         endPage.rePos.pos = Okular::DocumentViewport::TopLeft;
-        m_document->setViewport(endPage, nullptr, true);
+        activeView->goToDocumentViewport(endPage, true, true);
         m_endOfDocument->setEnabled(false);
     }
 }
 
 void Part::slotHistoryBack()
 {
-    m_document->setPrevViewport();
+    PageView *activeView = workspaceActivePageView();
+    if (activeView) {
+        activeView->goToPreviousViewport();
+        updateViewActions();
+    }
 }
 
 void Part::slotHistoryNext()
 {
-    m_document->setNextViewport();
+    PageView *activeView = workspaceActivePageView();
+    if (activeView) {
+        activeView->goToNextViewport();
+        updateViewActions();
+    }
 }
 
 void Part::slotAddBookmark()
 {
-    DocumentViewport vp = m_document->viewport();
+    PageView *activeView = workspaceActivePageView();
+    DocumentViewport vp = activeView ? activeView->documentViewport() : m_document->viewport();
     if (m_document->bookmarkManager()->isBookmarked(vp)) {
         m_document->bookmarkManager()->removeBookmark(vp);
     } else {
@@ -2636,7 +3023,8 @@ void Part::slotRemoveBookmark(const DocumentViewport &viewport)
 
 void Part::slotRenameCurrentViewportBookmark()
 {
-    slotRenameBookmark(m_document->viewport());
+    PageView *activeView = workspaceActivePageView();
+    slotRenameBookmark(activeView ? activeView->documentViewport() : m_document->viewport());
 }
 
 bool Part::aboutToShowContextMenu(QMenu * /*menu*/, QAction *action, QMenu *contextMenu)
@@ -2657,21 +3045,33 @@ bool Part::aboutToShowContextMenu(QMenu * /*menu*/, QAction *action, QMenu *cont
 
 void Part::slotPreviousBookmark()
 {
-    const KBookmark bookmark = m_document->bookmarkManager()->previousBookmark(m_document->viewport());
+    PageView *activeView = workspaceActivePageView();
+    const DocumentViewport currentViewport = activeView ? activeView->documentViewport() : m_document->viewport();
+    const KBookmark bookmark = m_document->bookmarkManager()->previousBookmark(currentViewport);
 
     if (!bookmark.isNull()) {
         DocumentViewport vp(bookmark.url().fragment(QUrl::FullyDecoded));
-        m_document->setViewport(vp, nullptr, true);
+        if (activeView) {
+            activeView->goToDocumentViewport(vp, true, true);
+        } else {
+            m_document->setViewport(vp, nullptr, true);
+        }
     }
 }
 
 void Part::slotNextBookmark()
 {
-    const KBookmark bookmark = m_document->bookmarkManager()->nextBookmark(m_document->viewport());
+    PageView *activeView = workspaceActivePageView();
+    const DocumentViewport currentViewport = activeView ? activeView->documentViewport() : m_document->viewport();
+    const KBookmark bookmark = m_document->bookmarkManager()->nextBookmark(currentViewport);
 
     if (!bookmark.isNull()) {
         DocumentViewport vp(bookmark.url().fragment(QUrl::FullyDecoded));
-        m_document->setViewport(vp, nullptr, true);
+        if (activeView) {
+            activeView->goToDocumentViewport(vp, true, true);
+        } else {
+            m_document->setViewport(vp, nullptr, true);
+        }
     }
 }
 
@@ -3269,6 +3669,7 @@ bool Part::applyPageEditBackingFile(const QString &fileName, int pageNumber, boo
         return false;
     }
 
+    const QPointer<PageView> initiatingView = workspaceActivePageView();
     const QString previousLocalFilePath = localFilePath();
     setLocalFilePath(fileName);
     if (!m_document->swapBackingFile(fileName, url(), forcePageTopologyChanged)) {
@@ -3287,7 +3688,11 @@ bool Part::applyPageEditBackingFile(const QString &fileName, int pageNumber, boo
         targetViewport.rePos.normalizedX = 0;
         targetViewport.rePos.normalizedY = 0;
         targetViewport.rePos.pos = Okular::DocumentViewport::TopLeft;
-        m_document->setViewport(targetViewport, nullptr, true);
+        if (initiatingView) {
+            initiatingView->goToDocumentViewport(targetViewport, true, true);
+        } else {
+            m_document->setViewport(targetViewport, nullptr, true);
+        }
     }
 
     updateViewActions();
@@ -3299,6 +3704,7 @@ bool Part::applyPageEditBackingFile(const QString &fileName, int pageNumber, boo
 
 bool Part::applyLivePageMove(int sourcePage, int destinationPage)
 {
+    const QPointer<PageView> initiatingView = workspaceActivePageView();
     QString errorText;
     if (!m_document->movePage(sourcePage, destinationPage, &errorText)) {
         if (errorText.isEmpty()) {
@@ -3316,7 +3722,11 @@ bool Part::applyLivePageMove(int sourcePage, int destinationPage)
         targetViewport.rePos.normalizedX = 0;
         targetViewport.rePos.normalizedY = 0;
         targetViewport.rePos.pos = Okular::DocumentViewport::TopLeft;
-        m_document->setViewport(targetViewport, nullptr, true);
+        if (initiatingView) {
+            initiatingView->goToDocumentViewport(targetViewport, true, true);
+        } else {
+            m_document->setViewport(targetViewport, nullptr, true);
+        }
     }
 
     updateViewActions();
@@ -3409,17 +3819,17 @@ void Part::updatePageEditActions()
 
 void Part::slotInsertBlankPageAfterCurrentPage()
 {
-    insertBlankPageAfterPage(static_cast<int>(m_document->currentPage()));
+    insertBlankPageAfterPage(workspaceActivePageNumber());
 }
 
 void Part::slotDuplicateCurrentPage()
 {
-    duplicatePage(static_cast<int>(m_document->currentPage()));
+    duplicatePage(workspaceActivePageNumber());
 }
 
 void Part::slotInsertPage()
 {
-    insertPageWithDialog(static_cast<int>(m_document->currentPage()));
+    insertPageWithDialog(workspaceActivePageNumber());
 }
 
 void Part::slotSetPageTemplate()
@@ -3440,7 +3850,7 @@ void Part::slotSetPageTemplate()
 
 void Part::slotInsertPageFromTemplate()
 {
-    insertPageFromTemplateWithDialog(static_cast<int>(m_document->currentPage()));
+    insertPageFromTemplateWithDialog(workspaceActivePageNumber());
 }
 
 void Part::insertPageWithDialog(int pageNumber)
@@ -3468,7 +3878,7 @@ void Part::insertPageWithDialog(int pageNumber)
 
     auto *positionCombo = new QComboBox(&dialog);
     positionCombo->addItem(i18n("Before First Page"), -1);
-    positionCombo->addItem(i18n("After Current Page"), static_cast<int>(m_document->currentPage()));
+    positionCombo->addItem(i18n("After Current Page"), referencePage);
     positionCombo->addItem(i18n("After Page:"), -2);
     auto *afterPageSpin = new QSpinBox(&dialog);
     afterPageSpin->setRange(1, pageCount);
@@ -3601,7 +4011,7 @@ void Part::insertPageFromTemplateWithDialog(int pageNumber)
 
     auto *positionCombo = new QComboBox(&dialog);
     positionCombo->addItem(i18n("Before First Page"), -1);
-    positionCombo->addItem(i18n("After Current Page"), static_cast<int>(m_document->currentPage()));
+    positionCombo->addItem(i18n("After Current Page"), referencePage);
     positionCombo->addItem(i18n("After Page:"), -2);
     auto *afterPageSpin = new QSpinBox(&dialog);
     afterPageSpin->setRange(1, pageCount);
@@ -3908,7 +4318,7 @@ void Part::insertPdfPage(int insertAfterPageNumber, const QString &insertedFileN
 
 void Part::slotDeleteCurrentPage()
 {
-    deletePage(static_cast<int>(m_document->currentPage()));
+    deletePage(workspaceActivePageNumber());
 }
 
 void Part::deletePage(int pageNumber)
@@ -4128,8 +4538,17 @@ void Part::slotNewConfig()
     // Watch File
     setWatchFileModeEnabled(Okular::Settings::watchFile());
 
-    // Main View (pageView)
-    m_pageView->reparseConfig();
+    // Every PageView keeps layout, zoom and interaction state of its own.
+    // Reparse all of them so open auxiliary tabs respond to preference changes
+    // just like the main view.
+    if (m_documentWorkspace) {
+        m_documentWorkspace->mainView()->reparseConfig();
+        for (PageView *view : m_documentWorkspace->auxiliaryViews()) {
+            view->reparseConfig();
+        }
+    } else {
+        m_pageView->reparseConfig();
+    }
 
     // update document settings
     m_document->reparseConfig();
@@ -4206,22 +4625,24 @@ void Part::slotPrintPreview()
 
 void Part::slotShowTOCMenu(const Okular::DocumentViewport &vp, const QPoint point, const QString &title)
 {
-    showMenu(m_document->page(vp.pageNumber), point, title, vp, true);
+    showMenu(m_document->page(vp.pageNumber), point, title, vp, true, workspaceActivePageView());
 }
 
 void Part::slotShowMenu(const Okular::Page *page, const QPoint point)
 {
-    showMenu(page, point);
+    showMenu(page, point, QString(), DocumentViewport(), false, qobject_cast<PageView *>(sender()));
 }
 
-void Part::showMenu(const Okular::Page *page, const QPoint point, const QString &bookmarkTitle, const Okular::DocumentViewport &vp, bool showTOCActions)
+void Part::showMenu(const Okular::Page *page, const QPoint point, const QString &bookmarkTitle, const Okular::DocumentViewport &vp, bool showTOCActions, PageView *sourceView)
 {
     if (m_embedMode == PrintPreviewMode) {
         return;
     }
 
+    PageView *contextView = sourceView ? sourceView : workspaceActivePageView();
+    const DocumentViewport contextViewport = contextView ? contextView->documentViewport() : m_document->viewport();
     bool reallyShow = false;
-    const bool isCurrentPage = page && page->number() == m_document->viewport().pageNumber;
+    const bool isCurrentPage = page && page->number() == contextViewport.pageNumber;
 
     if (!m_showMenuBarAction) {
         m_showMenuBarAction = findActionInKPartHierarchy<KToggleAction>(KStandardAction::name(KStandardAction::ShowMenubar));
@@ -4262,12 +4683,12 @@ void Part::showMenu(const Okular::Page *page, const QPoint point, const QString 
             const QIcon &syncIcon = QIcon::fromTheme(QStringLiteral("emblem-synchronizing"), QIcon::fromTheme(QStringLiteral("view-refresh")));
             popup.addAction(syncIcon, i18n("Sync Thumbnail with Page"), m_thumbnailList.data(), &ThumbnailList::syncThumbnail);
         }
-        if ((!isCurrentPage && m_document->bookmarkManager()->isBookmarked(page->number())) || (isCurrentPage && m_document->bookmarkManager()->isBookmarked(m_document->viewport()))) {
+        if ((!isCurrentPage && m_document->bookmarkManager()->isBookmarked(page->number())) || (isCurrentPage && m_document->bookmarkManager()->isBookmarked(contextViewport))) {
             removeBookmark = popup.addAction(QIcon::fromTheme(QStringLiteral("bookmark-remove"), QIcon::fromTheme(QStringLiteral("edit-delete-bookmark"))), i18n("Remove Bookmark"));
         } else {
             addBookmark = popup.addAction(QIcon::fromTheme(QStringLiteral("bookmark-new")), i18n("Add Bookmark"));
         }
-        if (m_pageView->canFitPageWidth()) {
+        if (contextView && contextView->canFitPageWidth()) {
             fitPageWidth = popup.addAction(QIcon::fromTheme(QStringLiteral("zoom-fit-best")), i18n("Fit Width"));
         }
         const bool canEditPages = canUsePageLevelEditing();
@@ -4297,7 +4718,7 @@ void Part::showMenu(const Okular::Page *page, const QPoint point, const QString 
         }
         if (m_document->isAllowed(Okular::AllowNotes) && AnnotationPopup::clipboardHasAnnotations()) {
             int targetPageNumber = -1;
-            hasPastePoint = m_pageView->mapGlobalPosToPagePoint(point, &targetPageNumber, &pastePoint) && targetPageNumber == page->number();
+            hasPastePoint = contextView && contextView->mapGlobalPosToPagePoint(point, &targetPageNumber, &pastePoint) && targetPageNumber == page->number();
             pasteAnnotation = popup.addAction(QIcon::fromTheme(QStringLiteral("edit-paste")), i18n("Paste Annotation"));
         }
         popup.addAction(m_prevBookmark);
@@ -4326,7 +4747,7 @@ void Part::showMenu(const Okular::Page *page, const QPoint point, const QString 
         if (res) {
             if (res == addBookmark) {
                 if (isCurrentPage && bookmarkTitle.isEmpty()) {
-                    m_document->bookmarkManager()->addBookmark(m_document->viewport());
+                    m_document->bookmarkManager()->addBookmark(contextViewport);
                 } else if (!bookmarkTitle.isEmpty()) {
                     m_document->bookmarkManager()->addBookmark(m_document->currentDocument(), vp, bookmarkTitle);
                 } else {
@@ -4334,12 +4755,14 @@ void Part::showMenu(const Okular::Page *page, const QPoint point, const QString 
                 }
             } else if (res == removeBookmark) {
                 if (isCurrentPage) {
-                    m_document->bookmarkManager()->removeBookmark(m_document->viewport());
+                    m_document->bookmarkManager()->removeBookmark(contextViewport);
                 } else {
                     m_document->bookmarkManager()->removeBookmark(page->number());
                 }
             } else if (res == fitPageWidth) {
-                m_pageView->fitPageWidth(page->number());
+                if (contextView) {
+                    contextView->fitPageWidth(page->number());
+                }
             } else if (res == insertPageAction) {
                 insertPageWithDialog(pageEditTargetPage);
             } else if (res == insertPageFromTemplateAction) {
@@ -4693,7 +5116,7 @@ void Part::slotPrint()
     }
 
     // Enable the Current Page option in the dialog.
-    if (m_document->pages() > 1 && currentPage() > 0) {
+    if (m_document->pages() > 1 && workspaceActivePageNumber() >= 0) {
         printDialog.setOption(QAbstractPrintDialog::PrintCurrentPage);
     }
 
@@ -4740,7 +5163,8 @@ bool Part::doPrint(QPrinter &printer)
 
     if (printer.printRange() == QPrinter::CurrentPage) {
         printer.setPrintRange(QPrinter::PageRange);
-        printer.setFromTo(currentPage(), currentPage());
+        const int currentPrintPage = workspaceActivePageNumber() + 1;
+        printer.setFromTo(currentPrintPage, currentPrintPage);
     }
 
     const Document::PrintError printError = m_document->print(printer);
@@ -4822,7 +5246,21 @@ void Part::moveSplitter(int sideWidgetSize)
 #if HAVE_NEW_SIGNATURE_API
 void Part::finishSigning()
 {
-    if (m_pageView->finishSigning() != PageView::FinishSigningResult::Cancelled) {
+    PageView *signingView = m_signingPageView ? m_signingPageView.data() : workspaceActivePageView();
+    if (!signingView) {
+        m_signingPageView = nullptr;
+        m_signatureInProgressMessage->setVisible(false);
+        return;
+    }
+
+    const PageView::FinishSigningResult result = signingView->finishSigning();
+    if (result == PageView::FinishSigningResult::Cancelled) {
+        signingView->cancelSigning();
+        m_signingPageView = nullptr;
+        m_signatureInProgressMessage->setVisible(false);
+    } else if (result == PageView::FinishSigningResult::Success) {
+        // finishSigning() consumed the temporary annotation.
+        m_signingPageView = nullptr;
         m_signatureInProgressMessage->setVisible(false);
     }
 }
@@ -4848,7 +5286,8 @@ void Part::unsetDummyMode()
     m_pageView->setupActions(actionCollection());
 
     // attach the actions of the children widgets too
-    m_formsMessage->addAction(m_pageView->toggleFormsAction());
+    m_workspaceFormsAction = m_pageView->toggleFormsAction();
+    m_formsMessage->addAction(m_workspaceFormsAction);
 
     m_signatureMessage->addAction(m_showSignaturePanel);
 
@@ -5041,7 +5480,8 @@ void Part::slotOpenContainingFolder()
 
 void Part::slotCopyAnnotation()
 {
-    Okular::Annotation *annotation = m_pageView->focusedAnnotation();
+    PageView *activeView = workspaceActivePageView();
+    Okular::Annotation *annotation = activeView ? activeView->focusedAnnotation() : nullptr;
     if (!annotation || annotation->subType() != Okular::Annotation::AText) {
         return;
     }
@@ -5062,13 +5502,17 @@ void Part::slotCopyAnnotation()
 
 void Part::slotCopyTextSelectionOrAnnotation()
 {
-    Okular::Annotation *annotation = m_pageView->focusedAnnotation();
+    PageView *activeView = workspaceActivePageView();
+    if (!activeView) {
+        return;
+    }
+    Okular::Annotation *annotation = activeView->focusedAnnotation();
     if (annotation && annotation->subType() == Okular::Annotation::AText) {
         slotCopyAnnotation();
         return;
     }
 
-    m_pageView->copyTextSelection(PageView::TextCopyMode::AsProvided);
+    activeView->copyTextSelection(PageView::TextCopyMode::AsProvided);
 }
 
 void Part::slotPasteAnnotation()
@@ -5080,10 +5524,11 @@ void Part::slotPasteAnnotation()
     int pageNumber = -1;
     Okular::NormalizedPoint targetPoint;
     Okular::NormalizedPoint *targetPointPtr = nullptr;
-    if (m_pageView->mapGlobalPosToPagePoint(QCursor::pos(), &pageNumber, &targetPoint)) {
+    PageView *activeView = workspaceActivePageView();
+    if (activeView && activeView->mapGlobalPosToPagePoint(QCursor::pos(), &pageNumber, &targetPoint)) {
         targetPointPtr = &targetPoint;
     } else {
-        pageNumber = m_document->viewport().pageNumber;
+        pageNumber = activeView ? activeView->documentViewport().pageNumber : m_document->viewport().pageNumber;
     }
 
     if (pageNumber < 0) {

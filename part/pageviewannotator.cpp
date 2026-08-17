@@ -1636,6 +1636,39 @@ PageViewAnnotator::~PageViewAnnotator()
     delete m_transientToolsDefinition;
 }
 
+void PageViewAnnotator::setPageView(PageView *pageView)
+{
+    if (!pageView || pageView == m_pageView || annotating()) {
+        return;
+    }
+
+    AnnotationTools *activeToolsDefinition = m_lastToolsDefinition;
+    const int activeToolId = m_lastToolId;
+    const bool restartActiveTool = m_engine && !m_signatureMode && activeToolsDefinition && activeToolId >= 0;
+
+    // Signing keeps PageView-owned credentials and (with the legacy API) a
+    // raw PageView pointer in its engine.  Cancelling it before moving focus
+    // avoids routing the signing operation through a different or deleted
+    // view.  A normal annotation tool can instead be recreated below.
+    if (m_signatureMode || (m_engine && !restartActiveTool)) {
+        detachAnnotation();
+    }
+
+    m_pageView = pageView;
+    m_lastDrawnRect = QRect();
+    m_lockedItem = nullptr;
+    if (restartActiveTool) {
+        selectTool(activeToolsDefinition, activeToolId, ShowTip::No);
+    } else {
+        m_pageView->updateCursor();
+    }
+}
+
+PageView *PageViewAnnotator::pageView() const
+{
+    return m_pageView;
+}
+
 void PageViewAnnotator::setSignatureMode(bool enabled)
 {
     m_signatureMode = enabled;
@@ -2190,16 +2223,23 @@ int PageViewAnnotator::selectTemplateTextTool(const QString &templateData, const
 
 void PageViewAnnotator::detachAnnotation()
 {
-    if (m_lastToolId == -1) {
+    if (m_lastToolId == -1 && !m_engine && !signatureMode()) {
         return;
     }
+    const bool wasSigning = signatureMode();
     selectBuiltinTool(-1, ShowTip::No);
-    if (!signatureMode()) {
+    if (!wasSigning) {
         if (m_actionHandler) {
             m_actionHandler->deselectAllAnnotationActions();
         }
     } else {
         m_pageView->displayMessage(QString());
+#if HAVE_NEW_SIGNATURE_API
+        // The signature field is inserted before the user finishes signing.
+        // Esc/right-click must remove that pending field as well, otherwise
+        // it remains editable/savable although signing was cancelled.
+        m_pageView->cancelSigning();
+#endif
         setSignatureMode(false);
     }
 }

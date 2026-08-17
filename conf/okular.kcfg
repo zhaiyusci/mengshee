@@ -329,6 +329,13 @@
     <min>0</min>
     <max>50</max>
   </entry>
+  <entry key="ModifiedLinkClickAction" type="Enum" >
+   <default>AuxiliaryFrame</default>
+   <choices>
+    <choice name="FloatingPreview" />
+    <choice name="AuxiliaryFrame" />
+   </choices>
+  </entry>
   <entry key="LinkPreviewDefaultWidthPercent" type="UInt" >
    <default>100</default>
    <min>20</min>

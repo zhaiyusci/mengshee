@@ -11,6 +11,7 @@
 #include "core/document.h"
 
 #include <KLineEdit>
+#include <QPointer>
 
 #include <kwidgetsaddons_version.h>
 class KBusyIndicatorWidget;
@@ -35,6 +36,7 @@ public:
     void setSearchMoveViewport(bool move);
     void setSearchFromStart(bool fromStart);
     void setFindAsYouType(bool findAsYouType);
+    void setSearchViewSession(Okular::DocumentViewSession *viewSession, QObject *viewOwner);
     void resetSearch();
 
     bool isSearchRunning() const;
@@ -53,6 +55,8 @@ private:
     void prepareLineEditForSearch();
 
     Okular::Document *m_document;
+    Okular::DocumentViewSession *m_searchViewSession;
+    QPointer<QObject> m_searchViewOwner;
     QTimer *m_inputDelayTimer;
     int m_minLength;
     Qt::CaseSensitivity m_caseSensitivity;

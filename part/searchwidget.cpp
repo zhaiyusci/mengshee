@@ -19,6 +19,9 @@
 // local includes
 #include "searchlineedit.h"
 
+// SearchLineEdit is allocated in this translation unit; rebuilding it when
+// the line edit's private state changes keeps its allocation size in sync.
+
 SearchWidget::SearchWidget(QWidget *parent, Okular::Document *document)
     : QWidget(parent)
 {

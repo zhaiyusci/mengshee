@@ -20,6 +20,7 @@
 #include <QApplication>
 #include <QHeaderView>
 #include <QMenu>
+#include <QPointer>
 #include <QTreeView>
 #include <QVBoxLayout>
 
@@ -33,7 +34,7 @@ public:
     const Okular::FormFieldSignature *m_currentForm;
     QTreeView *m_view;
     SignatureModel *m_model;
-    PageView *m_pageView;
+    QPointer<PageView> m_pageView;
 };
 
 SignaturePanel::SignaturePanel(Okular::Document *document, QWidget *parent)
@@ -81,8 +82,12 @@ void SignaturePanel::activated(const QModelIndex &index)
     vp.rePos.pos = Okular::DocumentViewport::Center;
     vp.rePos.normalizedX = (nr.right + nr.left) / 2.0;
     vp.rePos.normalizedY = (nr.bottom + nr.top) / 2.0;
-    d->m_document->setViewport(vp, nullptr);
-    d->m_pageView->highlightSignatureFormWidget(d->m_currentForm);
+    if (d->m_pageView) {
+        d->m_pageView->goToDocumentViewport(vp, false, true);
+        d->m_pageView->highlightSignatureFormWidget(d->m_currentForm);
+    } else {
+        d->m_document->setViewport(vp, nullptr);
+    }
 }
 
 void SignaturePanel::slotShowContextMenu()
@@ -116,7 +121,9 @@ void SignaturePanel::slotViewProperties()
 void SignaturePanel::signUnsignedSignature()
 {
     Q_D(SignaturePanel);
-    SignaturePartUtils::signUnsignedSignature(d->m_currentForm, d->m_pageView, d->m_document);
+    if (d->m_pageView) {
+        SignaturePartUtils::signUnsignedSignature(d->m_currentForm, d->m_pageView, d->m_document);
+    }
 }
 
 void SignaturePanel::notifySetup(const QList<Okular::Page *> & /*pages*/, int setupFlags)

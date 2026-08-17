@@ -13,6 +13,7 @@
 
 #include <threadweaver/queue.h>
 
+#include "../core/action.h"
 #include "../core/annotations.h"
 #include "../core/document.h"
 #include "../core/document_p.h"
@@ -29,8 +30,114 @@ class DocumentTest : public QObject
 private Q_SLOTS:
     void testCloseDuringRotationJob();
     void testDocdataMigration();
+    void testPreOpenViewSessionUsesFinalViewport();
+    void testIndependentViewSession();
+    void testViewSessionHistorySynchronization();
+    void testSessionActionSurvivesDocumentDeletionFromViewportObserver();
+    void testSessionNavigationStopsAfterSynchronousClose();
     void testEvaluateKeystrokeEventChange_data();
     void testEvaluateKeystrokeEventChange();
+};
+
+class ViewSessionObserver : public Okular::DocumentObserver
+{
+public:
+    void notifyViewportChanged(bool) override
+    {
+        ++viewportChangeCount;
+    }
+
+    void notifyCurrentPageChanged(int previous, int current) override
+    {
+        ++currentPageChangeCount;
+        lastPreviousPage = previous;
+        lastCurrentPage = current;
+    }
+
+    int viewportChangeCount = 0;
+    int currentPageChangeCount = 0;
+    int lastPreviousPage = -1;
+    int lastCurrentPage = -1;
+};
+
+class SelfRemovingViewSessionObserver : public Okular::DocumentObserver
+{
+public:
+    void notifyViewportChanged(bool) override
+    {
+        ++viewportChangeCount;
+        session->removeObserver(this);
+    }
+
+    void notifyCurrentPageChanged(int, int) override
+    {
+        ++currentPageChangeCount;
+    }
+
+    Okular::DocumentViewSession *session = nullptr;
+    int viewportChangeCount = 0;
+    int currentPageChangeCount = 0;
+};
+
+class DestroyingViewSessionObserver : public Okular::DocumentObserver
+{
+public:
+    void notifyViewportChanged(bool) override
+    {
+        ++viewportChangeCount;
+        session->reset();
+    }
+
+    void notifyCurrentPageChanged(int, int) override
+    {
+        ++currentPageChangeCount;
+    }
+
+    std::unique_ptr<Okular::DocumentViewSession> *session = nullptr;
+    int viewportChangeCount = 0;
+    int currentPageChangeCount = 0;
+};
+
+class DocumentDestroyingViewSessionObserver : public Okular::DocumentObserver
+{
+public:
+    void notifyViewportChanged(bool) override
+    {
+        ++viewportChangeCount;
+        document->reset();
+    }
+
+    void notifyCurrentPageChanged(int, int) override
+    {
+        ++currentPageChangeCount;
+    }
+
+    std::unique_ptr<Okular::Document> *document = nullptr;
+    int viewportChangeCount = 0;
+    int currentPageChangeCount = 0;
+};
+
+class DocumentClosingViewSessionObserver : public Okular::DocumentObserver
+{
+public:
+    void notifyViewportChanged(bool) override
+    {
+        ++viewportChangeCount;
+        if (armed) {
+            armed = false;
+            document->closeDocument();
+        }
+    }
+
+    void notifyCurrentPageChanged(int, int) override
+    {
+        ++currentPageChangeCount;
+    }
+
+    Okular::Document *document = nullptr;
+    bool armed = false;
+    int viewportChangeCount = 0;
+    int currentPageChangeCount = 0;
 };
 
 // Test that we don't crash if the document is closed while a RotationJob
@@ -126,6 +233,283 @@ void DocumentTest::testDocdataMigration()
     m_document->closeDocument();
 
     delete m_document;
+}
+
+void DocumentTest::testIndependentViewSession()
+{
+    Okular::SettingsCore::instance(QStringLiteral("documenttest"));
+
+    const QString testFile = QStringLiteral(KDESRCDIR "data/file2.pdf");
+    const QUrl testFileUrl = QUrl::fromLocalFile(testFile);
+    QMimeDatabase db;
+
+    auto document = std::make_unique<Okular::Document>(nullptr);
+    QCOMPARE(document->openDocument(testFile, testFileUrl, db.mimeTypeForFile(testFile)), Okular::Document::OpenSuccess);
+    QVERIFY(document->pages() > 1);
+    const int initialPage = static_cast<int>(document->currentPage());
+    const int differentPage = initialPage == 0 ? 1 : 0;
+
+    ViewSessionObserver observer;
+    document->addObserver(&observer);
+    auto session = document->createViewSession(&observer);
+    QVERIFY(session->viewport() == document->viewport());
+    QVERIFY(session->historyAtBegin());
+    QVERIFY(session->historyAtEnd());
+
+    observer.viewportChangeCount = 0;
+    observer.currentPageChangeCount = 0;
+    session->setViewportPage(differentPage);
+    QCOMPARE(document->currentPage(), static_cast<uint>(initialPage));
+    QCOMPARE(session->currentPage(), static_cast<uint>(differentPage));
+    QCOMPARE(observer.viewportChangeCount, 1);
+    QCOMPARE(observer.currentPageChangeCount, 1);
+    QCOMPARE(observer.lastPreviousPage, initialPage);
+    QCOMPARE(observer.lastCurrentPage, differentPage);
+    QVERIFY(!session->historyAtBegin());
+    QVERIFY(session->historyAtEnd());
+
+    session->setPrevViewport();
+    QCOMPARE(document->currentPage(), static_cast<uint>(initialPage));
+    QCOMPARE(session->currentPage(), static_cast<uint>(initialPage));
+    QVERIFY(session->historyAtBegin());
+    QVERIFY(!session->historyAtEnd());
+
+    session->setNextViewport();
+    QCOMPARE(session->currentPage(), static_cast<uint>(differentPage));
+    QVERIFY(!session->historyAtBegin());
+    QVERIFY(session->historyAtEnd());
+
+    // A session observer still receives shared content notifications through
+    // Document, but the default Document navigation channel must not leak
+    // into its independent viewport callbacks.
+    observer.viewportChangeCount = 0;
+    observer.currentPageChangeCount = 0;
+    document->setViewportPage(differentPage);
+    QCOMPARE(observer.viewportChangeCount, 0);
+    QCOMPARE(observer.currentPageChangeCount, 0);
+    QCOMPARE(session->currentPage(), static_cast<uint>(differentPage));
+
+    // Removing the observer from its session (as PageView does when promoted
+    // to the main frame) restores default Document navigation notifications.
+    session->removeObserver(&observer);
+    document->setViewportPage(initialPage);
+    QCOMPARE(observer.viewportChangeCount, 1);
+    QCOMPARE(observer.currentPageChangeCount, 1);
+    session->addObserver(&observer);
+
+    SelfRemovingViewSessionObserver selfRemovingObserver;
+    auto selfRemovingSession = document->createViewSession(&selfRemovingObserver);
+    selfRemovingObserver.session = selfRemovingSession.get();
+    selfRemovingSession->setViewportPage(differentPage);
+    QCOMPARE(selfRemovingObserver.viewportChangeCount, 1);
+    QCOMPARE(selfRemovingObserver.currentPageChangeCount, 0);
+
+    DestroyingViewSessionObserver destroyingObserver;
+    auto destroyingSession = document->createViewSession(&destroyingObserver);
+    destroyingObserver.session = &destroyingSession;
+    destroyingSession->setViewportPage(differentPage);
+    QVERIFY(!destroyingSession);
+    QCOMPARE(destroyingObserver.viewportChangeCount, 1);
+    QCOMPARE(destroyingObserver.currentPageChangeCount, 0);
+
+    document->closeDocument();
+    QVERIFY(!session->viewport().isValid());
+    QVERIFY(session->isAttached());
+
+    document->removeObserver(&observer);
+    document.reset();
+    QVERIFY(!session->isAttached());
+    session->setViewportPage(0); // A detached session is a safe no-op.
+}
+
+void DocumentTest::testPreOpenViewSessionUsesFinalViewport()
+{
+    Okular::SettingsCore::instance(QStringLiteral("documenttest"));
+
+    const QString testFile = QStringLiteral(KDESRCDIR "data/file2.pdf");
+    const QUrl testFileUrl = QUrl::fromLocalFile(testFile);
+    QMimeDatabase db;
+
+    auto document = std::make_unique<Okular::Document>(nullptr);
+    ViewSessionObserver observer;
+    document->addObserver(&observer);
+    auto session = document->createViewSession(&observer);
+    QVERIFY(!session->viewport().isValid());
+
+    document->setNextDocumentViewport(Okular::DocumentViewport(1));
+    QCOMPARE(document->openDocument(testFile, testFileUrl, db.mimeTypeForFile(testFile)), Okular::Document::OpenSuccess);
+
+    QCOMPARE(document->currentPage(), 1u);
+    QCOMPARE(session->currentPage(), 1u);
+    QVERIFY(session->viewport() == document->viewport());
+    QVERIFY(session->historyAtBegin());
+    QVERIFY(session->historyAtEnd());
+    QCOMPARE(observer.viewportChangeCount, 0);
+    QCOMPARE(observer.currentPageChangeCount, 0);
+
+    document->closeDocument();
+    QVERIFY(!session->viewport().isValid());
+
+    const QString namedDestinationFile = QStringLiteral(KDESRCDIR "data/kjsfunctionstest.pdf");
+    const QUrl namedDestinationUrl = QUrl::fromLocalFile(namedDestinationFile);
+    document->setNextDocumentDestination(QStringLiteral("Navigation1"));
+    QCOMPARE(document->openDocument(namedDestinationFile, namedDestinationUrl, db.mimeTypeForFile(namedDestinationFile)), Okular::Document::OpenSuccess);
+
+    QVERIFY(document->viewport().rePos.enabled);
+    QVERIFY(session->viewport() == document->viewport());
+    QVERIFY(session->historyAtBegin());
+    QVERIFY(session->historyAtEnd());
+    QCOMPARE(observer.viewportChangeCount, 0);
+    QCOMPARE(observer.currentPageChangeCount, 0);
+
+    document->removeObserver(&observer);
+}
+
+void DocumentTest::testViewSessionHistorySynchronization()
+{
+    Okular::SettingsCore::instance(QStringLiteral("documenttest"));
+
+    const QString testFile = QStringLiteral(KDESRCDIR "data/file2.pdf");
+    const QUrl testFileUrl = QUrl::fromLocalFile(testFile);
+    QMimeDatabase db;
+
+    auto document = std::make_unique<Okular::Document>(nullptr);
+    QCOMPARE(document->openDocument(testFile, testFileUrl, db.mimeTypeForFile(testFile)), Okular::Document::OpenSuccess);
+    QVERIFY(document->pages() > 1);
+    const int initialPage = static_cast<int>(document->currentPage());
+    const int differentPage = initialPage == 0 ? 1 : 0;
+
+    ViewSessionObserver sessionObserver;
+    ViewSessionObserver defaultObserver;
+    document->addObserver(&sessionObserver);
+    document->addObserver(&defaultObserver);
+    auto session = document->createViewSession(&sessionObserver);
+
+    // A restored document may itself have persisted Back/Forward entries.
+    // Start this transfer test from the session's known singleton history.
+    session->synchronizeToDefault();
+
+    document->setViewportPage(differentPage);
+    document->setViewportPage(initialPage);
+    QVERIFY(!document->historyAtBegin());
+    QVERIFY(document->historyAtEnd());
+
+    session->synchronizeFromDefault();
+    QCOMPARE(session->currentPage(), static_cast<uint>(initialPage));
+    QVERIFY(!session->historyAtBegin());
+    QVERIFY(session->historyAtEnd());
+    session->setPrevViewport();
+    QCOMPARE(session->currentPage(), static_cast<uint>(differentPage));
+    QCOMPARE(document->currentPage(), static_cast<uint>(initialPage));
+    QVERIFY(!session->historyAtBegin());
+    QVERIFY(!session->historyAtEnd());
+
+    sessionObserver.viewportChangeCount = 0;
+    sessionObserver.currentPageChangeCount = 0;
+    defaultObserver.viewportChangeCount = 0;
+    defaultObserver.currentPageChangeCount = 0;
+    session->synchronizeToDefault();
+
+    QCOMPARE(document->currentPage(), static_cast<uint>(differentPage));
+    QVERIFY(!document->historyAtBegin());
+    QVERIFY(!document->historyAtEnd());
+    QCOMPARE(sessionObserver.viewportChangeCount, 0);
+    QCOMPARE(sessionObserver.currentPageChangeCount, 0);
+    QCOMPARE(defaultObserver.viewportChangeCount, 1);
+    QCOMPARE(defaultObserver.currentPageChangeCount, 1);
+    QCOMPARE(defaultObserver.lastPreviousPage, initialPage);
+    QCOMPARE(defaultObserver.lastCurrentPage, differentPage);
+
+    document->setPrevViewport();
+    QCOMPARE(document->currentPage(), static_cast<uint>(initialPage));
+    QVERIFY(document->historyAtBegin());
+    document->setNextViewport();
+    QCOMPARE(document->currentPage(), static_cast<uint>(differentPage));
+    document->setNextViewport();
+    QCOMPARE(document->currentPage(), static_cast<uint>(initialPage));
+    QVERIFY(document->historyAtEnd());
+
+    document->removeObserver(&sessionObserver);
+    document->removeObserver(&defaultObserver);
+}
+
+void DocumentTest::testSessionActionSurvivesDocumentDeletionFromViewportObserver()
+{
+    Okular::SettingsCore::instance(QStringLiteral("documenttest"));
+
+    const QString testFile = QStringLiteral(KDESRCDIR "data/simple-multipage.pdf");
+    QMimeDatabase db;
+    auto document = std::make_unique<Okular::Document>(nullptr);
+    QCOMPARE(document->openDocument(testFile, QUrl::fromLocalFile(testFile), db.mimeTypeForFile(testFile)), Okular::Document::OpenSuccess);
+    QVERIFY(document->pages() > 1);
+
+    DocumentDestroyingViewSessionObserver observer;
+    observer.document = &document;
+    auto session = document->createViewSession(&observer);
+    const int targetPage = document->currentPage() == 0 ? 1 : 0;
+    Okular::GotoAction action{QString(), Okular::DocumentViewport(targetPage)};
+
+    // The Goto viewport notification deletes the Document synchronously. The
+    // action helper must not unregister from the deleted object, and the
+    // session must stop before sending CurrentPageChanged to an observer whose
+    // owning Document has already gone away.
+    session->processAction(&action);
+
+    QVERIFY(!document);
+    QVERIFY(!session->isAttached());
+    QCOMPARE(observer.viewportChangeCount, 1);
+    QCOMPARE(observer.currentPageChangeCount, 0);
+}
+
+void DocumentTest::testSessionNavigationStopsAfterSynchronousClose()
+{
+    Okular::SettingsCore::instance(QStringLiteral("documenttest"));
+
+    const QString testFile = QStringLiteral(KDESRCDIR "data/simple-multipage.pdf");
+    QMimeDatabase db;
+    const QMimeType mime = db.mimeTypeForFile(testFile);
+
+    enum NavigationOperation { SetViewport, PreviousViewport, NextViewport };
+    const QList<NavigationOperation> operations = {SetViewport, PreviousViewport, NextViewport};
+    for (NavigationOperation operation : operations) {
+        auto document = std::make_unique<Okular::Document>(nullptr);
+        QCOMPARE(document->openDocument(testFile, QUrl::fromLocalFile(testFile), mime), Okular::Document::OpenSuccess);
+        QVERIFY(document->pages() > 1);
+
+        DocumentClosingViewSessionObserver observer;
+        observer.document = document.get();
+        auto session = document->createViewSession(&observer);
+        const int initialPage = static_cast<int>(session->currentPage());
+        const int otherPage = initialPage == 0 ? 1 : 0;
+
+        if (operation != SetViewport) {
+            session->setViewportPage(otherPage);
+            if (operation == NextViewport) {
+                session->setPrevViewport();
+            }
+            observer.viewportChangeCount = 0;
+            observer.currentPageChangeCount = 0;
+        }
+
+        observer.armed = true;
+        switch (operation) {
+        case SetViewport:
+            session->setViewportPage(otherPage);
+            break;
+        case PreviousViewport:
+            session->setPrevViewport();
+            break;
+        case NextViewport:
+            session->setNextViewport();
+            break;
+        }
+
+        QVERIFY(!document->isOpened());
+        QVERIFY(session->isAttached());
+        QVERIFY(!session->viewport().isValid());
+        QCOMPARE(observer.viewportChangeCount, 1);
+        QCOMPARE(observer.currentPageChangeCount, 0);
+    }
 }
 
 void DocumentTest::testEvaluateKeystrokeEventChange_data()

@@ -19,6 +19,7 @@
 
 // local includes
 #include "core/document.h"
+#include "pageview.h"
 #include "searchlineedit.h"
 #include "settings.h"
 
@@ -196,6 +197,11 @@ void FindBar::startSearch(const QString &findText)
 {
     m_search->lineEdit()->setText(findText);
     show();
+}
+
+void FindBar::setSearchView(PageView *view)
+{
+    m_search->lineEdit()->setSearchViewSession(view ? view->navigationSession() : nullptr, view);
 }
 
 #include "moc_findbar.cpp"

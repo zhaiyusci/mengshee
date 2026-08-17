@@ -10,7 +10,9 @@
 #include <QAction>
 #include <QApplication>
 #include <QIcon>
+#include <QMetaObject>
 #include <QPainter>
+#include <QPointer>
 #include <QResizeEvent>
 #include <QScrollBar>
 #include <QSizePolicy>
@@ -34,6 +36,7 @@
 #include "cursorwraphelper.h"
 #include "gui/pagepainter.h"
 #include "gui/priorities.h"
+#include "pageview.h"
 #include "settings.h"
 
 class ThumbnailWidget;
@@ -67,6 +70,8 @@ public:
 
     ThumbnailList *q;
     Okular::Document *m_document;
+    QPointer<PageView> m_pageView;
+    QMetaObject::Connection m_pageViewViewportConnection;
     ThumbnailWidget *m_selected;
     QTimer *m_delayTimer;
     QPixmap m_bookmarkOverlay;
@@ -103,6 +108,8 @@ public:
     ThumbnailWidget *getPageByNumber(int page) const;
     int getNewPageOffset(int n, ThumbnailListPrivate::ChangePageDirection dir) const;
     ThumbnailWidget *getThumbnailbyOffset(int current, int offset) const;
+    Okular::DocumentViewport documentViewport() const;
+    void goToDocumentViewport(const Okular::DocumentViewport &viewport, bool smoothMove = false);
 
 protected:
     void mousePressEvent(QMouseEvent *e) override;
@@ -289,6 +296,20 @@ ThumbnailWidget *ThumbnailListPrivate::pageMoveTargetFor(const QPoint &pos, bool
     return nullptr;
 }
 
+Okular::DocumentViewport ThumbnailListPrivate::documentViewport() const
+{
+    return m_pageView ? m_pageView->documentViewport() : m_document->viewport();
+}
+
+void ThumbnailListPrivate::goToDocumentViewport(const Okular::DocumentViewport &viewport, bool smoothMove)
+{
+    if (m_pageView) {
+        m_pageView->goToDocumentViewport(viewport, smoothMove, true);
+    } else {
+        m_document->setViewport(viewport, nullptr, smoothMove);
+    }
+}
+
 void ThumbnailListPrivate::paintEvent(QPaintEvent *e)
 {
     QPainter painter(this);
@@ -358,6 +379,27 @@ ThumbnailList::~ThumbnailList()
     d->m_document->removeObserver(this);
 }
 
+void ThumbnailList::setPageView(PageView *pageView)
+{
+    if (d->m_pageView == pageView) {
+        notifyCurrentPageChanged(-1, d->documentViewport().pageNumber);
+        return;
+    }
+
+    disconnect(d->m_pageViewViewportConnection);
+    d->m_pageView = pageView;
+
+    if (pageView) {
+        d->m_pageViewViewportConnection = connect(pageView, &PageView::viewportStateChanged, this, [this]() {
+            notifyCurrentPageChanged(-1, d->documentViewport().pageNumber);
+        });
+    } else {
+        d->m_pageViewViewportConnection = {};
+    }
+
+    notifyCurrentPageChanged(-1, d->documentViewport().pageNumber);
+}
+
 // BEGIN DocumentObserver inherited methods
 void ThumbnailList::notifySetup(const QList<Okular::Page *> &pages, int setupFlags)
 {
@@ -370,7 +412,7 @@ void ThumbnailList::notifySetup(const QList<Okular::Page *> &pages, int setupFla
     if (!(setupFlags & Okular::DocumentObserver::DocumentChanged) && d->m_selected) {
         prevPage = d->m_selected->page()->number();
     } else {
-        prevPage = d->m_document->viewport().pageNumber;
+        prevPage = d->documentViewport().pageNumber;
     }
 
     // delete all the Thumbnails
@@ -438,9 +480,11 @@ void ThumbnailList::notifySetup(const QList<Okular::Page *> &pages, int setupFla
     d->delayedRequestVisiblePixmaps(200);
 }
 
-void ThumbnailList::notifyCurrentPageChanged(int previousPage, int currentPage)
+void ThumbnailList::notifyCurrentPageChanged(int previousPage, int)
 {
     Q_UNUSED(previousPage)
+
+    const int currentPage = d->documentViewport().pageNumber;
 
     // skip notifies for the current page (already selected)
     if (d->m_selected && d->m_selected->pageNumber() == currentPage) {
@@ -599,7 +643,7 @@ ThumbnailWidget *ThumbnailListPrivate::getThumbnailbyOffset(int current, int off
 
 ThumbnailListPrivate::ChangePageDirection ThumbnailListPrivate::forwardTrack(const QPoint point, const QSize r)
 {
-    Okular::DocumentViewport vp = m_document->viewport();
+    Okular::DocumentViewport vp = documentViewport();
     const double deltaX = (double)point.x() / r.width(), deltaY = (double)point.y() / r.height();
     vp.rePos.normalizedX -= deltaX;
     vp.rePos.normalizedY -= deltaY;
@@ -616,7 +660,7 @@ ThumbnailListPrivate::ChangePageDirection ThumbnailListPrivate::forwardTrack(con
         return ThumbnailListPrivate::Left;
     }
     vp.rePos.enabled = true;
-    m_document->setViewport(vp);
+    goToDocumentViewport(vp);
     return ThumbnailListPrivate::Null;
 }
 
@@ -672,7 +716,7 @@ void ThumbnailList::keyPressEvent(QKeyEvent *keyEvent)
         d->m_selected->setSelected(false);
     }
     d->m_selected = nullptr;
-    d->m_document->setViewportPage(nextPage);
+    d->goToDocumentViewport(Okular::DocumentViewport(nextPage));
 }
 
 bool ThumbnailList::viewportEvent(QEvent *e)
@@ -921,7 +965,7 @@ void ThumbnailListPrivate::mouseReleaseEvent(QMouseEvent *e)
         vp.rePos.normalizedY = double(p.y()) / double(item->rect().height());
         vp.rePos.pos = Okular::DocumentViewport::Center;
         vp.rePos.enabled = true;
-        m_document->setViewport(vp, nullptr, true);
+        goToDocumentViewport(vp, true);
     }
     setCursor(Qt::OpenHandCursor);
     m_mouseGrabPos.setX(0);
@@ -1027,7 +1071,7 @@ void ThumbnailListPrivate::mouseMoveEvent(QMouseEvent *e)
             if (newPageOn == m_pageCurrentlyGrabbed || newPageOn < 0 || newPageOn >= (int)m_document->pages()) {
                 return;
             }
-            Okular::DocumentViewport vp = m_document->viewport();
+            Okular::DocumentViewport vp = documentViewport();
             const float origNormalX = vp.rePos.normalizedX;
             const float origNormalY = vp.rePos.normalizedY;
             vp = Okular::DocumentViewport(newPageOn);
@@ -1071,7 +1115,7 @@ void ThumbnailListPrivate::mouseMoveEvent(QMouseEvent *e)
             }
             vp.rePos.pos = Okular::DocumentViewport::Center;
             vp.rePos.enabled = true;
-            m_document->setViewport(vp);
+            goToDocumentViewport(vp);
             m_mouseGrabPos.setX(0);
             m_mouseGrabPos.setY(0);
             m_pageCurrentlyGrabbed = newPageOn;

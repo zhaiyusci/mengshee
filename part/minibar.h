@@ -10,6 +10,8 @@
 
 #include "core/observer.h"
 #include <KLineEdit>
+#include <QMetaObject>
+#include <QPointer>
 #include <QSet>
 #include <qwidget.h>
 
@@ -19,6 +21,7 @@ class Document;
 }
 
 class MiniBar;
+class PageView;
 class HoverButton;
 class QIntValidator;
 class QLabel;
@@ -95,6 +98,9 @@ public:
 
     Okular::Document *document() const;
     int currentPage() const;
+    void setPageView(PageView *pageView);
+    void goToPage(int page);
+    void refreshCurrentPage();
 
     // [INHERITED] from DocumentObserver
     void notifySetup(const QList<Okular::Page *> &pageVector, int setupFlags) override;
@@ -103,6 +109,8 @@ public:
 private:
     QSet<MiniBar *> m_miniBars;
     Okular::Document *m_document;
+    QPointer<PageView> m_pageView;
+    QMetaObject::Connection m_pageViewViewportConnection;
 };
 
 /**

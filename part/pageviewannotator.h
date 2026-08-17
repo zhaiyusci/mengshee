@@ -8,6 +8,7 @@
 #define _OKULAR_PAGEVIEWANNOTATOR_H_
 
 #include <QObject>
+#include <QPointer>
 #include <qdom.h>
 
 #include <KActionCollection>
@@ -65,6 +66,13 @@ public:
     bool active() const;
     // @return Are we currently annotating (using the selected tool)?
     bool annotating() const;
+
+    /**
+     * Selects the PageView that receives input and feedback for this shared
+     * annotator.  The selected tool remains active while views are switched.
+     */
+    void setPageView(PageView *pageView);
+    PageView *pageView() const;
 
     void setSignatureMode(bool enabled);
     bool signatureMode() const;
@@ -178,7 +186,7 @@ private:
 
     // global class pointers
     Okular::Document *m_document;
-    PageView *m_pageView;
+    QPointer<PageView> m_pageView;
     AnnotationActionHandler *m_actionHandler;
     AnnotatorEngine *m_engine;
     AnnotationTools *m_builtinToolsDefinition;

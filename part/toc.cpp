@@ -27,6 +27,7 @@
 #include "gui/tocmodel.h"
 #include "ktreeviewsearchline.h"
 #include "pageitemdelegate.h"
+#include "pageview.h"
 #include "settings.h"
 
 TOC::TOC(QWidget *parent, Okular::Document *document)
@@ -68,6 +69,44 @@ TOC::~TOC()
     m_document->removeObserver(this);
 }
 
+void TOC::setPageView(PageView *pageView)
+{
+    if (m_pageView == pageView) {
+        refreshCurrentViewport();
+        return;
+    }
+
+    disconnect(m_pageViewViewportConnection);
+    m_pageView = pageView;
+
+    if (pageView) {
+        m_pageViewViewportConnection = connect(pageView, &PageView::viewportStateChanged, this, &TOC::refreshCurrentViewport);
+    } else {
+        m_pageViewViewportConnection = {};
+    }
+
+    refreshCurrentViewport();
+}
+
+Okular::DocumentViewport TOC::documentViewport() const
+{
+    return m_pageView ? m_pageView->documentViewport() : m_document->viewport();
+}
+
+void TOC::goToDocumentViewport(const Okular::DocumentViewport &viewport)
+{
+    if (m_pageView) {
+        m_pageView->goToDocumentViewport(viewport, true, true);
+    } else {
+        m_document->setViewport(viewport);
+    }
+}
+
+void TOC::refreshCurrentViewport()
+{
+    m_model->setCurrentViewport(documentViewport());
+}
+
 void TOC::notifySetup(const QList<Okular::Page *> & /*pages*/, int setupFlags)
 {
     if (!(setupFlags & Okular::DocumentObserver::DocumentChanged)) {
@@ -94,7 +133,7 @@ void TOC::notifySetup(const QList<Okular::Page *> & /*pages*/, int setupFlags)
 
 void TOC::notifyCurrentPageChanged(int, int)
 {
-    m_model->setCurrentViewport(m_document->viewport());
+    refreshCurrentViewport();
 }
 
 void TOC::prepareForReload()
@@ -169,7 +208,7 @@ void TOC::slotExecuted(const QModelIndex &index)
         Okular::GotoAction action(externalFileName, viewport);
         m_document->processAction(&action);
     } else if (viewport.isValid()) {
-        m_document->setViewport(viewport);
+        goToDocumentViewport(viewport);
     }
 }
 
@@ -275,7 +314,8 @@ void TOC::addCurrentPageEntry()
         return;
     }
 
-    const int pageNumber = m_document->currentPage() + 1;
+    const Okular::DocumentViewport viewport = documentViewport();
+    const int pageNumber = viewport.pageNumber + 1;
     const QString title = QInputDialog::getText(this, i18n("Add Contents Entry"), i18n("Entry title:"), QLineEdit::Normal, i18n("Page %1", pageNumber));
     if (title.trimmed().isEmpty()) {
         return;
@@ -283,8 +323,6 @@ void TOC::addCurrentPageEntry()
 
     Okular::DocumentSynopsis synopsis = synopsisFromModel();
     QDomElement element = synopsis.createElement(title.trimmed());
-    Okular::DocumentViewport viewport = m_document->viewport();
-    viewport.pageNumber = m_document->currentPage();
     element.setAttribute(QStringLiteral("Viewport"), viewport.toString());
     synopsis.appendChild(element);
     applySynopsis(synopsis);

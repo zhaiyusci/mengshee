@@ -558,6 +558,7 @@ if(BUILD_DESKTOP)
     part/widgetannottools.cpp
     part/widgetconfigurationtoolsbase.cpp
     part/widgetdrawingtools.cpp
+    part/documentworkspace.cpp
     part/part.cpp
     part/extensions.cpp
     part/embeddedfilesdialog.cpp

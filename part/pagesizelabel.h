@@ -10,11 +10,15 @@
 #include <KSqueezedTextLabel>
 
 #include "core/observer.h"
+#include <QMetaObject>
+#include <QPointer>
 
 namespace Okular
 {
 class Document;
 }
+
+class PageView;
 
 /**
  * @short A widget to display page size.
@@ -29,9 +33,14 @@ public:
 
     // [INHERITED] from DocumentObserver
     void notifyCurrentPageChanged(int previous, int current) override;
+    void setPageView(PageView *pageView);
 
 private:
+    void refreshCurrentPage();
+
     Okular::Document *m_document;
+    QPointer<PageView> m_pageView;
+    QMetaObject::Connection m_pageViewViewportConnection;
 };
 
 #endif

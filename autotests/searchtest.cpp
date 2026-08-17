@@ -11,6 +11,7 @@
 #include <QTest>
 
 #include "../core/document.h"
+#include "../core/observer.h"
 #include "../core/page.h"
 #include "../core/textpage.h"
 #include "../settings_core.h"
@@ -41,6 +42,14 @@ private Q_SLOTS:
     void initTestCase();
     void testNextAndPrevious();
     void test311232();
+    void testViewSessionSearchNavigation();
+    void testDestroyedViewSessionSearchDoesNotMoveDefault();
+    void testReusedSearchIdKeepsLatestViewSessionGeneration();
+    void testViewportCallbackCanReplaceSearchGeneration();
+    void testCompletionCallbackCanReplaceSearchGeneration();
+    void testResetSearchIsReentrant();
+    void testStaleWorkersDoNotNotifyReplacementDocument();
+    void testCleanupNotificationStopsAfterDocumentReplacement();
     void test323262();
     void test323263();
     void test430243();
@@ -50,6 +59,123 @@ private Q_SLOTS:
     void testHyphenAtEndOfPage();
     void testOneColumn();
     void testTwoColumns();
+};
+
+class ViewportSearchReplacementObserver : public Okular::DocumentObserver
+{
+public:
+    void notifyViewportChanged(bool) override
+    {
+        if (!armed) {
+            return;
+        }
+
+        armed = false;
+        triggered = true;
+        document->resetSearch(searchID);
+        document->searchText(searchID, QStringLiteral("Page 20"), true, Qt::CaseSensitive, Okular::Document::NextMatch, false, QColor(), session);
+    }
+
+    Okular::Document *document = nullptr;
+    Okular::DocumentViewSession *session = nullptr;
+    int searchID = -1;
+    bool armed = false;
+    bool triggered = false;
+};
+
+class SetupSearchReplacementObserver : public Okular::DocumentObserver
+{
+public:
+    void notifySetup(const QList<Okular::Page *> &, int) override
+    {
+        if (!armed) {
+            return;
+        }
+
+        armed = false;
+        triggered = true;
+        document->resetSearch(searchID);
+        document->searchText(searchID, QStringLiteral("Page"), true, Qt::CaseSensitive, Okular::Document::NextMatch, false, QColor());
+    }
+
+    Okular::Document *document = nullptr;
+    int searchID = -1;
+    bool armed = false;
+    bool triggered = false;
+};
+
+class ReentrantResetSearchObserver : public Okular::DocumentObserver
+{
+public:
+    void notifyPageChanged(int, int flags) override
+    {
+        if (!armed || !(flags & Okular::DocumentObserver::Highlights)) {
+            return;
+        }
+
+        armed = false;
+        ++triggerCount;
+        document->resetSearch(searchID);
+    }
+
+    Okular::Document *document = nullptr;
+    int searchID = -1;
+    bool armed = false;
+    int triggerCount = 0;
+};
+
+class HighlightChangeObserver : public Okular::DocumentObserver
+{
+public:
+    void notifyPageChanged(int page, int flags) override
+    {
+        if (flags & Okular::DocumentObserver::Highlights) {
+            notifiedPages.append(page);
+        }
+    }
+
+    QList<int> notifiedPages;
+};
+
+class ReopeningHighlightObserver : public Okular::DocumentObserver
+{
+public:
+    void notifyPageChanged(int page, int flags) override
+    {
+        if (!(flags & Okular::DocumentObserver::Highlights)) {
+            return;
+        }
+
+        notifiedPages.append(page);
+        notificationOrder->append(this);
+        if (!replaceDocument) {
+            return;
+        }
+
+        replaceDocument = false;
+        ++replacementCount;
+        document->closeDocument();
+        reopenSucceeded = document->openDocument(testFile, QUrl::fromLocalFile(testFile), mime) == Okular::Document::OpenSuccess;
+        *replacementComplete = true;
+    }
+
+    void notifySetup(const QList<Okular::Page *> &, int) override
+    {
+        if (*replacementComplete) {
+            ++setupNotificationsAfterReplacement;
+        }
+    }
+
+    Okular::Document *document = nullptr;
+    QList<ReopeningHighlightObserver *> *notificationOrder = nullptr;
+    bool *replacementComplete = nullptr;
+    QString testFile;
+    QMimeType mime;
+    QList<int> notifiedPages;
+    bool replaceDocument = false;
+    bool reopenSucceeded = false;
+    int replacementCount = 0;
+    int setupNotificationsAfterReplacement = 0;
 };
 
 void SearchTest::initTestCase()
@@ -180,6 +306,301 @@ void SearchTest::test311232()
     QTRY_COMPARE(spy.count(), 2);
     QCOMPARE(receiver.m_id, searchId);
     QCOMPARE(receiver.m_status, Okular::Document::NoMatchFound);
+}
+
+void SearchTest::testViewSessionSearchNavigation()
+{
+    Okular::Document document(nullptr);
+    SearchFinishedReceiver receiver;
+    QSignalSpy spy(&document, &Okular::Document::searchFinished);
+    QObject::connect(&document, &Okular::Document::searchFinished, &receiver, &SearchFinishedReceiver::searchFinished);
+
+    const QString testFile = QStringLiteral(KDESRCDIR "data/simple-multipage.pdf");
+    QMimeDatabase db;
+    QCOMPARE(document.openDocument(testFile, QUrl(), db.mimeTypeForFile(testFile)), Okular::Document::OpenSuccess);
+    QVERIFY(document.pages() > 15);
+
+    document.setViewportPage(0);
+    auto session = document.createViewSession();
+    session->setViewportPage(15);
+    QCOMPARE(document.currentPage(), 0u);
+    QCOMPARE(session->currentPage(), 15u);
+
+    // "Page" occurs on every page. Starting from the session therefore
+    // distinguishes page 15 from the default Document viewport on page 0.
+    const int searchId = 100;
+    document.searchText(searchId, QStringLiteral("Page"), false, Qt::CaseSensitive, Okular::Document::NextMatch, true, QColor(), session.get());
+    QTRY_COMPARE(spy.count(), 1);
+    QCOMPARE(receiver.m_id, searchId);
+    QCOMPARE(receiver.m_status, Okular::Document::MatchFound);
+
+    QCOMPARE(document.currentPage(), 0u);
+    QCOMPARE(session->currentPage(), 15u);
+    QVERIFY(session->viewport().rePos.enabled);
+}
+
+void SearchTest::testDestroyedViewSessionSearchDoesNotMoveDefault()
+{
+    Okular::Document document(nullptr);
+    SearchFinishedReceiver receiver;
+    QSignalSpy spy(&document, &Okular::Document::searchFinished);
+    QObject::connect(&document, &Okular::Document::searchFinished, &receiver, &SearchFinishedReceiver::searchFinished);
+
+    const QString testFile = QStringLiteral(KDESRCDIR "data/simple-multipage.pdf");
+    QMimeDatabase db;
+    QCOMPARE(document.openDocument(testFile, QUrl(), db.mimeTypeForFile(testFile)), Okular::Document::OpenSuccess);
+    QVERIFY(document.pages() > 30);
+
+    document.setViewportPage(0);
+    auto survivingSession = document.createViewSession();
+    survivingSession->setViewportPage(5);
+    const Okular::DocumentViewport defaultViewport = document.viewport();
+    const Okular::DocumentViewport survivingViewport = survivingSession->viewport();
+
+    auto destroyedSession = document.createViewSession();
+    destroyedSession->setViewportPage(30);
+
+    // Directional search advances one page per queued event. Destroying the
+    // session before those events run must not make a page-40 match fall back
+    // to moving Document's default viewport (or another surviving session).
+    const int searchId = 101;
+    document.searchText(searchId, QStringLiteral("Page 40"), false, Qt::CaseSensitive, Okular::Document::NextMatch, true, QColor(), destroyedSession.get());
+    destroyedSession.reset();
+
+    QTRY_COMPARE(spy.count(), 1);
+    QCOMPARE(receiver.m_id, searchId);
+    QCOMPARE(receiver.m_status, Okular::Document::MatchFound);
+    QVERIFY(document.viewport() == defaultViewport);
+    QVERIFY(survivingSession->viewport() == survivingViewport);
+}
+
+void SearchTest::testReusedSearchIdKeepsLatestViewSessionGeneration()
+{
+    Okular::Document document(nullptr);
+    SearchFinishedReceiver receiver;
+    QSignalSpy spy(&document, &Okular::Document::searchFinished);
+    QObject::connect(&document, &Okular::Document::searchFinished, &receiver, &SearchFinishedReceiver::searchFinished);
+
+    const QString testFile = QStringLiteral(KDESRCDIR "data/simple-multipage.pdf");
+    QMimeDatabase db;
+    QCOMPARE(document.openDocument(testFile, QUrl(), db.mimeTypeForFile(testFile)), Okular::Document::OpenSuccess);
+    QVERIFY(document.pages() > 30);
+
+    document.setViewportPage(0);
+    auto sessionA = document.createViewSession();
+    sessionA->setViewportPage(10);
+    auto sessionB = document.createViewSession();
+    sessionB->setViewportPage(20);
+
+    const Okular::DocumentViewport defaultViewport = document.viewport();
+    const Okular::DocumentViewport sessionAViewport = sessionA->viewport();
+
+    const int searchId = 102;
+    // The old generation would need to advance from page 10 to page 39.
+    document.searchText(searchId, QStringLiteral("Page 40"), false, Qt::CaseSensitive, Okular::Document::NextMatch, true, QColor(), sessionA.get());
+    document.resetSearch(searchId);
+
+    // Reuse the same ID before the old queued continuation runs. "Page" is
+    // present on session B's current page, so the latest generation must
+    // terminate at page 20 without an obsolete page-10 continuation winning.
+    document.searchText(searchId, QStringLiteral("Page"), false, Qt::CaseSensitive, Okular::Document::NextMatch, true, QColor(), sessionB.get());
+
+    QTRY_COMPARE(spy.count(), 1);
+    QTest::qWait(50);
+    QCOMPARE(spy.count(), 1);
+    QCOMPARE(receiver.m_id, searchId);
+    QCOMPARE(receiver.m_status, Okular::Document::MatchFound);
+
+    QVERIFY(document.viewport() == defaultViewport);
+    QVERIFY(sessionA->viewport() == sessionAViewport);
+    QCOMPARE(sessionB->currentPage(), 20u);
+    QVERIFY(sessionB->viewport().rePos.enabled);
+}
+
+void SearchTest::testViewportCallbackCanReplaceSearchGeneration()
+{
+    Okular::Document document(nullptr);
+    QSignalSpy spy(&document, &Okular::Document::searchFinished);
+
+    const QString testFile = QStringLiteral(KDESRCDIR "data/simple-multipage.pdf");
+    QMimeDatabase db;
+    QCOMPARE(document.openDocument(testFile, QUrl(), db.mimeTypeForFile(testFile)), Okular::Document::OpenSuccess);
+    QVERIFY(document.pages() > 20);
+
+    ViewportSearchReplacementObserver observer;
+    observer.document = &document;
+    observer.searchID = 103;
+    auto session = document.createViewSession(&observer);
+    observer.session = session.get();
+    session->setViewportPage(15);
+    observer.armed = true;
+
+    // The first match moves the session and synchronously starts a replacement
+    // search from its viewport callback. Only that replacement generation may
+    // report completion after the callback returns.
+    document.searchText(observer.searchID, QStringLiteral("Page"), false, Qt::CaseSensitive, Okular::Document::NextMatch, true, QColor(), session.get());
+
+    QTRY_VERIFY(observer.triggered);
+    QTRY_COMPARE(spy.count(), 1);
+    QTest::qWait(50);
+    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.constFirst().at(0).toInt(), observer.searchID);
+    QCOMPARE(qvariant_cast<Okular::Document::SearchStatus>(spy.constFirst().at(1)), Okular::Document::MatchFound);
+}
+
+void SearchTest::testCompletionCallbackCanReplaceSearchGeneration()
+{
+    Okular::Document document(nullptr);
+    QSignalSpy spy(&document, &Okular::Document::searchFinished);
+
+    const QString testFile = QStringLiteral(KDESRCDIR "data/simple-multipage.pdf");
+    QMimeDatabase db;
+    QCOMPARE(document.openDocument(testFile, QUrl(), db.mimeTypeForFile(testFile)), Okular::Document::OpenSuccess);
+
+    SetupSearchReplacementObserver observer;
+    observer.document = &document;
+    document.addObserver(&observer);
+
+    const QList<Okular::Document::SearchType> completionTypes = {Okular::Document::AllDocument, Okular::Document::GoogleAny};
+    int searchID = 104;
+    for (Okular::Document::SearchType completionType : completionTypes) {
+        observer.searchID = searchID++;
+        observer.triggered = false;
+        observer.armed = true;
+        spy.clear();
+
+        // All-document searches synchronously notifySetup() when committing
+        // their results. Replacing the search there must prevent the old
+        // completion branch from notifying or emitting for the new ID owner.
+        document.searchText(observer.searchID, QStringLiteral("Page"), true, Qt::CaseSensitive, completionType, false, QColor());
+
+        QTRY_VERIFY(observer.triggered);
+        QTRY_COMPARE(spy.count(), 1);
+        QTest::qWait(50);
+        QCOMPARE(spy.count(), 1);
+        QCOMPARE(spy.constFirst().at(0).toInt(), observer.searchID);
+        QCOMPARE(qvariant_cast<Okular::Document::SearchStatus>(spy.constFirst().at(1)), Okular::Document::MatchFound);
+        document.resetSearch(observer.searchID);
+    }
+
+    document.removeObserver(&observer);
+}
+
+void SearchTest::testResetSearchIsReentrant()
+{
+    Okular::Document document(nullptr);
+    QSignalSpy spy(&document, &Okular::Document::searchFinished);
+
+    const QString testFile = QStringLiteral(KDESRCDIR "data/simple-multipage.pdf");
+    QMimeDatabase db;
+    QCOMPARE(document.openDocument(testFile, QUrl(), db.mimeTypeForFile(testFile)), Okular::Document::OpenSuccess);
+
+    const int searchID = 106;
+    document.searchText(searchID, QStringLiteral("Page"), true, Qt::CaseSensitive, Okular::Document::NextMatch, false, QColor());
+    QTRY_COMPARE(spy.count(), 1);
+
+    ReentrantResetSearchObserver observer;
+    observer.document = &document;
+    observer.searchID = searchID;
+    document.addObserver(&observer);
+    observer.armed = true;
+
+    // The nested reset must see the descriptor as already removed. In
+    // particular it must not delete the RunningSearch that the outer reset is
+    // still iterating or attempt to erase it twice.
+    document.resetSearch(searchID);
+    QCOMPARE(observer.triggerCount, 1);
+
+    spy.clear();
+    document.searchText(searchID, QStringLiteral("Page"), true, Qt::CaseSensitive, Okular::Document::NextMatch, false, QColor());
+    QTRY_COMPARE(spy.count(), 1);
+    QCOMPARE(qvariant_cast<Okular::Document::SearchStatus>(spy.constFirst().at(1)), Okular::Document::MatchFound);
+
+    document.removeObserver(&observer);
+}
+
+void SearchTest::testStaleWorkersDoNotNotifyReplacementDocument()
+{
+    Okular::Document document(nullptr);
+    QSignalSpy spy(&document, &Okular::Document::searchFinished);
+    HighlightChangeObserver observer;
+    document.addObserver(&observer);
+
+    const QString testFile = QStringLiteral(KDESRCDIR "data/simple-multipage.pdf");
+    QMimeDatabase db;
+    const QMimeType mime = db.mimeTypeForFile(testFile);
+    QCOMPARE(document.openDocument(testFile, QUrl::fromLocalFile(testFile), mime), Okular::Document::OpenSuccess);
+
+    const QList<Okular::Document::SearchType> pendingTypes = {Okular::Document::NextMatch, Okular::Document::AllDocument, Okular::Document::GoogleAny};
+    int searchID = 107;
+    for (Okular::Document::SearchType pendingType : pendingTypes) {
+        // Seed a highlight so the next worker owns a non-empty changed-pages
+        // set. It is precisely this deferred cleanup notification that must
+        // not escape into a subsequently opened page topology.
+        document.searchText(searchID, QStringLiteral("Page"), true, Qt::CaseSensitive, Okular::Document::NextMatch, false, QColor(Qt::yellow));
+        QTRY_COMPARE(spy.count(), 1);
+
+        spy.clear();
+        observer.notifiedPages.clear();
+        document.searchText(searchID, QStringLiteral("text that is not present"), true, Qt::CaseSensitive, pendingType, false, QColor(Qt::yellow));
+
+        document.closeDocument();
+        QCOMPARE(document.openDocument(testFile, QUrl::fromLocalFile(testFile), mime), Okular::Document::OpenSuccess);
+        QTest::qWait(50);
+
+        QVERIFY(observer.notifiedPages.isEmpty());
+        QVERIFY(spy.isEmpty());
+        ++searchID;
+    }
+
+    document.removeObserver(&observer);
+}
+
+void SearchTest::testCleanupNotificationStopsAfterDocumentReplacement()
+{
+    Okular::Document document(nullptr);
+
+    const QString testFile = QStringLiteral(KDESRCDIR "data/simple-multipage.pdf");
+    QMimeDatabase db;
+    const QMimeType mime = db.mimeTypeForFile(testFile);
+    QCOMPARE(document.openDocument(testFile, QUrl::fromLocalFile(testFile), mime), Okular::Document::OpenSuccess);
+
+    QList<ReopeningHighlightObserver *> notificationOrder;
+    bool replacementComplete = false;
+    ReopeningHighlightObserver firstObserver;
+    ReopeningHighlightObserver secondObserver;
+    for (ReopeningHighlightObserver *observer : {&firstObserver, &secondObserver}) {
+        observer->document = &document;
+        observer->notificationOrder = &notificationOrder;
+        observer->replacementComplete = &replacementComplete;
+        observer->testFile = testFile;
+        observer->mime = mime;
+        document.addObserver(observer);
+    }
+
+    const int searchID = 110;
+    document.searchText(searchID, QStringLiteral("Page"), true, Qt::CaseSensitive, Okular::Document::NextMatch, false, QColor(Qt::yellow));
+    QTRY_COMPARE(notificationOrder.size(), 2);
+
+    // Learn the QSet iteration order first, then make its first observer
+    // replace the page topology during the search cleanup notification.
+    ReopeningHighlightObserver *reopeningObserver = notificationOrder.constFirst();
+    ReopeningHighlightObserver *laterObserver = reopeningObserver == &firstObserver ? &secondObserver : &firstObserver;
+    notificationOrder.clear();
+    firstObserver.notifiedPages.clear();
+    secondObserver.notifiedPages.clear();
+    reopeningObserver->replaceDocument = true;
+    document.resetSearch(searchID);
+
+    QCOMPARE(reopeningObserver->replacementCount, 1);
+    QVERIFY(reopeningObserver->reopenSucceeded);
+    QCOMPARE(reopeningObserver->notifiedPages.size(), 1);
+    QVERIFY(laterObserver->notifiedPages.isEmpty());
+    QCOMPARE(reopeningObserver->setupNotificationsAfterReplacement, 0);
+    QCOMPARE(laterObserver->setupNotificationsAfterReplacement, 0);
+
+    document.removeObserver(&firstObserver);
+    document.removeObserver(&secondObserver);
 }
 
 void SearchTest::test323262()

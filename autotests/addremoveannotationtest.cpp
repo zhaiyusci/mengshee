@@ -24,6 +24,7 @@ private Q_SLOTS:
     void testAddAnnotations();
     void testAddAnnotationUndoWithRotate_Bug318091();
     void testRemoveAnnotations();
+    void testViewSessionsShareAnnotationAndUndoState();
 
 private:
     Okular::Document *m_document;
@@ -182,6 +183,53 @@ void AddRemoveAnnotationTest::testRemoveAnnotations()
     QVERIFY(TestingUtils::AnnotationDisposeWatcher::disposedAnnotationName().isEmpty());
     m_document->closeDocument();
     QVERIFY(TestingUtils::AnnotationDisposeWatcher::disposedAnnotationName() == annot1Name);
+}
+
+void AddRemoveAnnotationTest::testViewSessionsShareAnnotationAndUndoState()
+{
+    auto firstSession = m_document->createViewSession();
+    auto secondSession = m_document->createViewSession();
+
+    Okular::DocumentViewport firstViewport(0);
+    firstViewport.rePos.enabled = true;
+    firstViewport.rePos.normalizedX = 0.5;
+    firstViewport.rePos.normalizedY = 0.25;
+    firstViewport.rePos.pos = Okular::DocumentViewport::Center;
+    firstSession->setViewport(firstViewport);
+
+    Okular::DocumentViewport secondViewport(0);
+    secondViewport.rePos.enabled = true;
+    secondViewport.rePos.normalizedX = 0.5;
+    secondViewport.rePos.normalizedY = 0.75;
+    secondViewport.rePos.pos = Okular::DocumentViewport::Center;
+    secondSession->setViewport(secondViewport);
+
+    QVERIFY(firstSession->viewport() == firstViewport);
+    QVERIFY(secondSession->viewport() == secondViewport);
+    QVERIFY(!(firstSession->viewport() == secondSession->viewport()));
+
+    auto *annotation = new Okular::TextAnnotation();
+    annotation->setBoundingRectangle(Okular::NormalizedRect(0.1, 0.1, 0.2, 0.2));
+    annotation->setContents(QStringLiteral("shared annotation"));
+    const int initialAnnotationCount = m_document->page(0)->annotations().size();
+
+    // View sessions contain navigation state only. Edits made while either
+    // view is active therefore enter the one shared Document and undo stack.
+    m_document->addPageAnnotation(0, annotation);
+    QCOMPARE(m_document->page(0)->annotations().size(), initialAnnotationCount + 1);
+    QVERIFY(m_document->page(0)->annotations().contains(annotation));
+    QVERIFY(m_document->canUndo());
+
+    // Content changes must not collapse the views onto one viewport.
+    QVERIFY(firstSession->viewport() == firstViewport);
+    QVERIFY(secondSession->viewport() == secondViewport);
+
+    m_document->undo();
+    QCOMPARE(m_document->page(0)->annotations().size(), initialAnnotationCount);
+    QVERIFY(!m_document->page(0)->annotations().contains(annotation));
+    QVERIFY(m_document->canRedo());
+    QVERIFY(firstSession->viewport() == firstViewport);
+    QVERIFY(secondSession->viewport() == secondViewport);
 }
 
 QTEST_MAIN(AddRemoveAnnotationTest)

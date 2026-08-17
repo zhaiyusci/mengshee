@@ -91,6 +91,8 @@ struct DoContinueDirectionMatchSearchStruct {
     RegularAreaRect *match;
     int currentPage;
     int searchID;
+    quint64 generation;
+    quint64 documentGeneration;
 };
 
 enum LoadDocumentInfoFlag {
@@ -141,6 +143,8 @@ public:
     qulonglong calculateMemoryToFree();
     void cleanupPixmapMemory();
     void cleanupPixmapMemory(qulonglong memoryToFree);
+    bool observerUsesViewSession(DocumentObserver *observer) const;
+    void notifyDefaultViewportObservers(DocumentObserver *excludeObserver, bool smoothMove, int oldPageNumber, int currentPageNumber);
     AllocatedPixmap *searchLowestPriorityPixmap(bool unloadableOnly = false, bool thenRemoveIt = false, DocumentObserver *observer = nullptr /* any */);
     void calculateMaxTextPages();
     qulonglong getTotalMemory();
@@ -198,10 +202,12 @@ public:
 
     typedef std::pair<RegularAreaRect *, QColor> MatchColor;
     void doContinueDirectionMatchSearch(DoContinueDirectionMatchSearchStruct *searchStruct);
-    void doContinueAllDocumentSearch(QSet<int> *pagesToNotify, QHash<Page *, QList<RegularAreaRect *>> *pageMatches, int currentPage, int searchID);
-    void doContinueGooglesDocumentSearch(QSet<int> *pagesToNotify, QHash<Page *, QList<MatchColor>> *pageMatches, int currentPage, int searchID, const QStringList &words);
+    void doContinueAllDocumentSearch(QSet<int> *pagesToNotify, QHash<Page *, QList<RegularAreaRect *>> *pageMatches, int currentPage, int searchID, quint64 generation, quint64 documentGeneration);
+    void doContinueGooglesDocumentSearch(QSet<int> *pagesToNotify, QHash<Page *, QList<MatchColor>> *pageMatches, int currentPage, int searchID, quint64 generation, quint64 documentGeneration, const QStringList &words);
 
-    void doProcessSearchMatch(RegularAreaRect *match, RunningSearch *search, QSet<int> *pagesToNotify, int currentPage, int searchID, bool moveViewport, const QColor &color);
+    void doProcessSearchMatch(RegularAreaRect *match, QSet<int> *pagesToNotify, int currentPage, int searchID, quint64 generation, quint64 documentGeneration, bool moveViewport, const QColor &color);
+    void notifySearchPagesChanged(const QSet<int> &pages, int searchID = -1, quint64 generation = 0, quint64 documentGeneration = 0);
+    void notifySearchSetupChanged(int searchID = -1, quint64 generation = 0, quint64 documentGeneration = 0);
 
     /**
      * Executes a JavaScript script from the setInterval function.
@@ -258,6 +264,8 @@ public:
     // find descriptors, mapped by ID (we handle multiple searches)
     QMap<int, RunningSearch *> m_searches;
     bool m_searchCancelled;
+    quint64 m_nextSearchGeneration = 0;
+    quint64 m_documentGeneration = 1;
 
     // needed because for remote documents docFileName is a local file and
     // we want the remote url when the document refers to relativeNames
@@ -277,6 +285,7 @@ public:
 
     // observers / requests / allocator stuff
     QSet<DocumentObserver *> m_observers;
+    QSet<DocumentViewSession *> m_viewSessions;
     // sorted by priority from lowest priority (highest number) at the head of the list to the highest priority (zero number) toward the end
     std::list<PixmapRequest *> m_pixmapRequestsStack;
     std::list<PixmapRequest *> m_executingPixmapRequests;

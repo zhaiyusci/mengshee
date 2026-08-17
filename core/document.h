@@ -27,6 +27,8 @@
 #include <QUrl>
 #include <QVariant>
 
+#include <memory>
+
 class KConfigDialog;
 class KPluginMetaData;
 class KXMLGUIClient;
@@ -44,6 +46,7 @@ class DocumentObserver;
 class DocumentPrivate;
 class DocumentSynopsis;
 class DocumentViewport;
+class DocumentViewSession;
 class EmbeddedFile;
 class ExportFormat;
 class FontInfo;
@@ -235,6 +238,19 @@ public:
      * Unregisters the given @p observer for the document.
      */
     void removeObserver(DocumentObserver *observer);
+
+    /**
+     * Creates an independent navigation session for a view of this document.
+     *
+     * A view session shares all document contents and editing state with this
+     * Document, but owns an independent viewport and viewport history.  The
+     * optional @p observer is notified only for navigation changes made through
+     * the returned session.
+     *
+     * The returned session may outlive the Document; it becomes detached and
+     * its mutating operations become no-ops when the Document is destroyed.
+     */
+    std::unique_ptr<DocumentViewSession> createViewSession(DocumentObserver *observer = nullptr);
 
     /**
      * Reparses and applies the configuration.
@@ -648,6 +664,16 @@ public:
      * @param color The highlighting color of the matches.
      */
     void searchText(int searchID, const QString &text, bool fromStart, Qt::CaseSensitivity caseSensitivity, SearchType type, bool moveViewport, const QColor &color);
+
+    /**
+     * Searches the document while using @p viewSession as the navigation
+     * origin and viewport target.
+     *
+     * Search highlights remain shared document state.  When a match is found,
+     * only @p viewSession is moved; the default Document viewport and other
+     * view sessions are left unchanged.
+     */
+    void searchText(int searchID, const QString &text, bool fromStart, Qt::CaseSensitivity caseSensitivity, SearchType type, bool moveViewport, const QColor &color, DocumentViewSession *viewSession);
 
     /**
      * Continues the search for the given @p searchID.
@@ -1519,6 +1545,7 @@ Q_SIGNALS:
 private:
     /// @cond PRIVATE
     friend class DocumentPrivate;
+    friend class DocumentViewSession;
     friend class ::DocumentItem;
     friend class EditAnnotationContentsCommand;
     friend class EditFormTextCommand;
@@ -1527,6 +1554,7 @@ private:
     friend class EditFormButtonsCommand;
     friend class KleopatraIntegration;
     /// @endcond
+    void processAction(const Action *action, DocumentViewSession *viewSession);
     DocumentPrivate *const d;
 
     Q_DISABLE_COPY(Document)
@@ -1600,6 +1628,109 @@ public:
         bool width;
         bool height;
     } autoFit;
+};
+
+/**
+ * An independent navigation state over a shared Document.
+ *
+ * DocumentViewSession deliberately contains no document contents or editing
+ * state.  Pages, annotations, forms, the undo stack, and saving remain owned by
+ * the Document that created it.  Only the current viewport and its navigation
+ * history are session-local.
+ *
+ * Use Document::createViewSession() rather than constructing this class
+ * directly.
+ */
+class OKULARCORE_EXPORT DocumentViewSession
+{
+public:
+    ~DocumentViewSession();
+
+    DocumentViewSession(const DocumentViewSession &) = delete;
+    DocumentViewSession &operator=(const DocumentViewSession &) = delete;
+
+    /** Returns whether the creating Document still exists. */
+    bool isAttached() const;
+
+    /** Returns this session's current viewport. */
+    const DocumentViewport &viewport() const;
+
+    /** Returns this session's current page. */
+    uint currentPage() const;
+
+    /** Returns whether this session's viewport history is at its beginning. */
+    bool historyAtBegin() const;
+
+    /** Returns whether this session's viewport history is at its end. */
+    bool historyAtEnd() const;
+
+    /**
+     * Registers an observer for navigation changes in this session.
+     *
+     * Content-change notifications are still registered separately through
+     * Document::addObserver().
+     */
+    void addObserver(DocumentObserver *observer);
+
+    /** Unregisters an observer from navigation changes in this session. */
+    void removeObserver(DocumentObserver *observer);
+
+    /**
+     * Replaces this session's viewport and complete Back/Forward history with
+     * the Document's default navigation state. No observers are notified.
+     */
+    void synchronizeFromDefault();
+
+    /**
+     * Replaces the Document's default viewport and complete Back/Forward
+     * history with this session's navigation state.
+     *
+     * Default navigation observers are notified of the resulting viewport;
+     * observers owned by independent view sessions remain isolated.
+     */
+    void synchronizeToDefault();
+
+    /**
+     * Sets this session's viewport.
+     *
+     * @param viewport The new viewport.
+     * @param excludeObserver An observer that should not receive the viewport
+     *        notification.  Current-page notifications retain the legacy
+     *        Document semantics and are still delivered to it.
+     * @param smoothMove Whether the move should be animated.
+     * @param updateHistory Whether the move should update this session's
+     *        viewport history.
+     */
+    void setViewport(const DocumentViewport &viewport, DocumentObserver *excludeObserver = nullptr, bool smoothMove = false, bool updateHistory = true);
+
+    /** Sets this session's viewport to @p page. */
+    void setViewportPage(int page, DocumentObserver *excludeObserver = nullptr, bool smoothMove = false);
+
+    /** Moves to the previous viewport in this session's history. */
+    void setPrevViewport();
+
+    /** Moves to the next viewport in this session's history. */
+    void setNextViewport();
+
+    /**
+     * Processes @p action using this session for internal document navigation.
+     *
+     * Non-navigation actions still operate on the shared Document. Internal
+     * goto, page, and history actions update only this session's viewport and
+     * history, including navigation actions chained through nextActions().
+     */
+    void processAction(const Action *action);
+
+private:
+    friend class Document;
+    friend class DocumentPrivate;
+
+    explicit DocumentViewSession(Document *document);
+    void reset(const DocumentViewport &viewport);
+    void clampToPageCount(int pageCount);
+
+    class Private;
+    std::shared_ptr<Private> d;
 };
 
 /**
