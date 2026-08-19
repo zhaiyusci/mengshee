@@ -137,7 +137,7 @@ $buildRoot = Join-Path $WorkspaceRoot "build\thirdparty"
 $zlibSource = [System.IO.Path]::GetFullPath((Join-Path $sourceRoot "zlib"))
 $zlibBuild = [System.IO.Path]::GetFullPath((Join-Path $buildRoot "zlib"))
 
-Write-Host "Scholia SDK zlib build" -ForegroundColor Green
+Write-Host "Mengshee SDK zlib build" -ForegroundColor Green
 Write-Host "Git ref   : $ZlibGitRef"
 Write-Host "SdkPrefix : $SdkPrefix"
 Write-Host "QtPrefix  : $QtPrefix"

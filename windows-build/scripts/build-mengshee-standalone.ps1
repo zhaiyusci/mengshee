@@ -25,7 +25,7 @@ if (!$SdkPrefix) {
 }
 $SdkPrefix = [System.IO.Path]::GetFullPath($SdkPrefix)
 if (!$InstallPrefix) {
-    $InstallPrefix = Join-Path $WorkspaceRoot "install\scholia"
+    $InstallPrefix = Join-Path $WorkspaceRoot "install\mengshee"
 }
 $InstallPrefix = [System.IO.Path]::GetFullPath($InstallPrefix)
 
@@ -82,11 +82,11 @@ function Find-QScintillaRoot([string] $RequestedRoot) {
     if ($RequestedRoot) {
         $candidates += $RequestedRoot
     }
-    if ($env:SCHOLIA_QSCINTILLA_ROOT) {
-        $candidates += $env:SCHOLIA_QSCINTILLA_ROOT
+    if ($env:MENGSHEE_QSCINTILLA_ROOT) {
+        $candidates += $env:MENGSHEE_QSCINTILLA_ROOT
     }
-    if ($env:SCHOLIA_STEMTEX_SOURCE_ROOT) {
-        $candidates += Join-Path $env:SCHOLIA_STEMTEX_SOURCE_ROOT "third_party"
+    if ($env:MENGSHEE_STEMTEX_SOURCE_ROOT) {
+        $candidates += Join-Path $env:MENGSHEE_STEMTEX_SOURCE_ROOT "third_party"
     }
     $candidates += Join-Path $repoRoot "external\stemtex\third_party"
     $documentsRoot = Split-Path -Parent (Split-Path -Parent $repoRoot)
@@ -101,7 +101,7 @@ function Find-QScintillaRoot([string] $RequestedRoot) {
         }
     }
 
-    throw "Cannot find the StemTeX QScintilla build. Pass -QScintillaRoot or set SCHOLIA_QSCINTILLA_ROOT."
+    throw "Cannot find the StemTeX QScintilla build. Pass -QScintillaRoot or set MENGSHEE_QSCINTILLA_ROOT."
 }
 
 function Invoke-VsCmd([string] $Command) {
@@ -162,7 +162,7 @@ function Remove-FileInside([string] $Path, [string] $AllowedRoot) {
 
 function Remove-LegacyLatexRuntimeArtifacts([string] $Prefix) {
     Write-Host "Removing legacy LaTeX runtime artifacts..." -ForegroundColor Cyan
-    Remove-DirectoryInside (Join-Path $Prefix "bin\data\scholia\microtex") $Prefix
+    Remove-DirectoryInside (Join-Path $Prefix "bin\data\mengshee\microtex") $Prefix
     Remove-FileInside (Join-Path $Prefix "bin\LaTeX.dll") $Prefix
     Remove-FileInside (Join-Path $Prefix "lib\LaTeX.lib") $Prefix
 }
@@ -213,7 +213,7 @@ foreach ($required in @(
 }
 
 $buildRoot = Join-Path $WorkspaceRoot "build"
-$buildDir = [System.IO.Path]::GetFullPath((Join-Path $buildRoot "scholia-standalone"))
+$buildDir = [System.IO.Path]::GetFullPath((Join-Path $buildRoot "mengshee-standalone"))
 if ($Clean) {
     Reset-Directory $buildDir $buildRoot
 } else {
@@ -233,7 +233,7 @@ $forceNotRequired = @(
     "Discount"
 ) -join ";"
 
-Write-Host "Scholia standalone build" -ForegroundColor Green
+Write-Host "Mengshee standalone build" -ForegroundColor Green
 Write-Host "QtPrefix    : $QtPrefix"
 Write-Host "SdkPrefix   : $SdkPrefix"
 Write-Host "BuildDir    : $buildDir"
@@ -251,7 +251,7 @@ $configureArgs = @(
     "-DCMAKE_INSTALL_PREFIX=""$InstallPrefix""",
     "-DCMAKE_PREFIX_PATH=""$QtPrefix;$SdkPrefix""",
     "-DGETTEXT_MSGFMT_EXECUTABLE=""$MsgFmt""",
-    "-DSCHOLIA_QSCINTILLA_ROOT=""$QScintillaRoot""",
+    "-DMENGSHEE_QSCINTILLA_ROOT=""$QScintillaRoot""",
     "-DBUILD_TESTING=OFF",
     "-DOKULAR_PDF_ONLY=ON",
     "-DCMAKE_DISABLE_FIND_PACKAGE_KF6DocTools=ON",
@@ -270,4 +270,4 @@ Copy-Item -LiteralPath (Join-Path $QScintillaRoot "qscintilla-build\release\qsci
 Remove-LegacyLatexRuntimeArtifacts $InstallPrefix
 
 Write-Host ""
-Write-Host "Scholia standalone install complete." -ForegroundColor Green
+Write-Host "Mengshee standalone install complete." -ForegroundColor Green

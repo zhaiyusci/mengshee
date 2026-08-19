@@ -6,10 +6,10 @@ get_filename_component(_default_source_root "${_windows_build_dir}/.." ABSOLUTE)
 get_filename_component(_default_workspace_root "${_default_source_root}/../windows_build" ABSOLUTE)
 include("${_script_dir}/kf6-sdk-common.cmake")
 
-scholia_default_path(SOURCE_ROOT "${_default_source_root}")
-scholia_default_path(WORKSPACE_ROOT "${_default_workspace_root}")
-scholia_default_path(SDK_PREFIX "${WORKSPACE_ROOT}/sdk")
-scholia_find_toolchain()
+mengshee_default_path(SOURCE_ROOT "${_default_source_root}")
+mengshee_default_path(WORKSPACE_ROOT "${_default_workspace_root}")
+mengshee_default_path(SDK_PREFIX "${WORKSPACE_ROOT}/sdk")
+mengshee_find_toolchain()
 
 if(NOT DEFINED BUILD_TYPE OR "${BUILD_TYPE}" STREQUAL "")
     set(BUILD_TYPE "RelWithDebInfo")
@@ -35,15 +35,15 @@ endif()
 set(BUILD_ROOT "${WORKSPACE_ROOT}/build/thirdparty")
 set(POPPLER_BUILD "${BUILD_ROOT}/poppler-custom")
 
-message(STATUS "Scholia SDK custom Poppler build")
+message(STATUS "Mengshee SDK custom Poppler build")
 message(STATUS "  Source    : ${POPPLER_SOURCE}")
 message(STATUS "  SdkPrefix : ${SDK_PREFIX}")
 message(STATUS "  QtPrefix  : ${QT_PREFIX}")
 
 if(DEFINED CLEAN AND CLEAN)
-    scholia_remove_inside("${POPPLER_BUILD}" "${BUILD_ROOT}")
+    mengshee_remove_inside("${POPPLER_BUILD}" "${BUILD_ROOT}")
 endif()
-scholia_prepare_build_dir("${POPPLER_BUILD}" "${BUILD_ROOT}" "${POPPLER_SOURCE}")
+mengshee_prepare_build_dir("${POPPLER_BUILD}" "${BUILD_ROOT}" "${POPPLER_SOURCE}")
 
 set(_prefix_path "${QT_PREFIX}\\;${SDK_PREFIX}")
 set(_configure
@@ -82,7 +82,7 @@ set(_configure
     -DFONT_CONFIGURATION=win32
 )
 list(JOIN _configure " " _configure_command)
-scholia_run_vs("${_configure_command}")
-scholia_run_vs("\"${CMAKE_PROGRAM}\" --build \"${POPPLER_BUILD}\" --target install --parallel ${JOBS}")
+mengshee_run_vs("${_configure_command}")
+mengshee_run_vs("\"${CMAKE_PROGRAM}\" --build \"${POPPLER_BUILD}\" --target install --parallel ${JOBS}")
 
 message(STATUS "custom Poppler installed into SDK.")

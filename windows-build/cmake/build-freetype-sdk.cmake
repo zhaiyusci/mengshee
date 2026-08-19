@@ -6,10 +6,10 @@ get_filename_component(_default_source_root "${_windows_build_dir}/.." ABSOLUTE)
 get_filename_component(_default_workspace_root "${_default_source_root}/../windows_build" ABSOLUTE)
 include("${_script_dir}/kf6-sdk-common.cmake")
 
-scholia_default_path(SOURCE_ROOT "${_default_source_root}")
-scholia_default_path(WORKSPACE_ROOT "${_default_workspace_root}")
-scholia_default_path(SDK_PREFIX "${WORKSPACE_ROOT}/sdk")
-scholia_find_toolchain()
+mengshee_default_path(SOURCE_ROOT "${_default_source_root}")
+mengshee_default_path(WORKSPACE_ROOT "${_default_workspace_root}")
+mengshee_default_path(SDK_PREFIX "${WORKSPACE_ROOT}/sdk")
+mengshee_find_toolchain()
 
 if(NOT DEFINED BUILD_TYPE OR "${BUILD_TYPE}" STREQUAL "")
     set(BUILD_TYPE "RelWithDebInfo")
@@ -33,16 +33,16 @@ set(BUILD_ROOT "${WORKSPACE_ROOT}/build/thirdparty")
 set(FREETYPE_SOURCE "${SOURCE_CACHE}/freetype")
 set(FREETYPE_BUILD "${BUILD_ROOT}/freetype")
 
-message(STATUS "Scholia SDK freetype build")
+message(STATUS "Mengshee SDK freetype build")
 message(STATUS "  Git ref   : ${FREETYPE_GIT_REF}")
 message(STATUS "  SdkPrefix : ${SDK_PREFIX}")
 message(STATUS "  QtPrefix  : ${QT_PREFIX}")
 
-scholia_ensure_git_checkout("${FREETYPE_GIT_URL}" "${FREETYPE_GIT_REF}" "${FREETYPE_SOURCE}")
+mengshee_ensure_git_checkout("${FREETYPE_GIT_URL}" "${FREETYPE_GIT_REF}" "${FREETYPE_SOURCE}")
 if(DEFINED CLEAN AND CLEAN)
-    scholia_remove_inside("${FREETYPE_BUILD}" "${BUILD_ROOT}")
+    mengshee_remove_inside("${FREETYPE_BUILD}" "${BUILD_ROOT}")
 endif()
-scholia_prepare_build_dir("${FREETYPE_BUILD}" "${BUILD_ROOT}" "${FREETYPE_SOURCE}")
+mengshee_prepare_build_dir("${FREETYPE_BUILD}" "${BUILD_ROOT}" "${FREETYPE_SOURCE}")
 
 set(_prefix_path "${QT_PREFIX}\\;${SDK_PREFIX}")
 set(_configure
@@ -62,7 +62,7 @@ set(_configure
     -DFT_DISABLE_ZLIB=ON
 )
 list(JOIN _configure " " _configure_command)
-scholia_run_vs("${_configure_command}")
-scholia_run_vs("\"${CMAKE_PROGRAM}\" --build \"${FREETYPE_BUILD}\" --target install --parallel ${JOBS}")
+mengshee_run_vs("${_configure_command}")
+mengshee_run_vs("\"${CMAKE_PROGRAM}\" --build \"${FREETYPE_BUILD}\" --target install --parallel ${JOBS}")
 
 message(STATUS "freetype installed into SDK.")

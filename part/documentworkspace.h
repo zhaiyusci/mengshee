@@ -1,11 +1,11 @@
 /*
-    SPDX-FileCopyrightText: 2026 Scholia contributors
+    SPDX-FileCopyrightText: 2026 Mengshee contributors
 
     SPDX-License-Identifier: GPL-2.0-or-later
 */
 
-#ifndef SCHOLIA_DOCUMENTWORKSPACE_H
-#define SCHOLIA_DOCUMENTWORKSPACE_H
+#ifndef MENGSHEE_DOCUMENTWORKSPACE_H
+#define MENGSHEE_DOCUMENTWORKSPACE_H
 
 #include "okularpart_export.h"
 

@@ -1,0 +1,4 @@
+# Mengshee logging categories
+org.jairy.mengshee.core Mengshee (Core) DEFAULT_SEVERITY [WARNING] IDENTIFIER [OkularCoreDebug]
+org.jairy.mengshee.generators.pdf Mengshee (Generator PDF) DEFAULT_SEVERITY [WARNING] IDENTIFIER [OkularPdfDebug]
+org.jairy.mengshee.ui Mengshee (UI) DEFAULT_SEVERITY [WARNING] IDENTIFIER [OkularUiDebug]

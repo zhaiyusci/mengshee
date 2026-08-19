@@ -105,7 +105,7 @@ if (!(Test-Path -LiteralPath (Join-Path $PopplerSource "CMakeLists.txt"))) {
 $buildRoot = Join-Path $WorkspaceRoot "build\thirdparty"
 $popplerBuild = [System.IO.Path]::GetFullPath((Join-Path $buildRoot "poppler-custom"))
 
-Write-Host "Scholia SDK Poppler build" -ForegroundColor Green
+Write-Host "Mengshee SDK Poppler build" -ForegroundColor Green
 Write-Host "Source    : $PopplerSource"
 Write-Host "SdkPrefix : $SdkPrefix"
 Write-Host "QtPrefix  : $QtPrefix"

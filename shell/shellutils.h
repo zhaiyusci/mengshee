@@ -38,7 +38,7 @@ QString editorCmd(const QString &serializedOptions);
 
 #if HAVE_DBUS
 // Must be a subname of the application D-Bus service due to Flatpak not supporting wildcard D-Bus permissions.
-inline constexpr QLatin1StringView kPerProcessDbusPrefix("org.jairy.scholia.Instance_");
+inline constexpr QLatin1StringView kPerProcessDbusPrefix("org.jairy.mengshee.Instance_");
 
 QString currentProcessDbusName();
 #endif // HAVE_DBUS

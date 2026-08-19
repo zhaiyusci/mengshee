@@ -1517,7 +1517,7 @@ static QString defaultCalloutToolXml()
 static QStringList defaultBuiltinAnnotationTools()
 {
     QStringList tools;
-    QFile infoFile(QStandardPaths::locate(QStandardPaths::GenericDataLocation, QStringLiteral("scholia/tools.xml")));
+    QFile infoFile(QStandardPaths::locate(QStandardPaths::GenericDataLocation, QStringLiteral("mengshee/tools.xml")));
     if (!infoFile.exists() || !infoFile.open(QIODevice::ReadOnly)) {
         qCWarning(OkularUiDebug) << "Unable to open default annotation tools XML definition";
         return tools;

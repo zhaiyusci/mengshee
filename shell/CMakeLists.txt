@@ -4,9 +4,9 @@ include_directories(
   ${CMAKE_CURRENT_BINARY_DIR}/../
 )
 
-# scholia
+# mengshee
 
-set(scholia_SRCS
+set(mengshee_SRCS
    main.cpp
    okular_main.cpp
    shell.cpp
@@ -19,48 +19,48 @@ set(scholia_SRCS
 )
 
 if(WIN32)
-    set(SCHOLIA_ICON_RC_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../icons/scholia.ico")
+    set(MENGSHEE_ICON_RC_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../icons/mengshee.ico")
     configure_file(
-        "${CMAKE_CURRENT_SOURCE_DIR}/../icons/scholia.rc.in"
-        "${CMAKE_CURRENT_BINARY_DIR}/scholia.rc"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../icons/mengshee.rc.in"
+        "${CMAKE_CURRENT_BINARY_DIR}/mengshee.rc"
         @ONLY
     )
-    list(APPEND scholia_SRCS "${CMAKE_CURRENT_BINARY_DIR}/scholia.rc")
+    list(APPEND mengshee_SRCS "${CMAKE_CURRENT_BINARY_DIR}/mengshee.rc")
 endif()
 
-ki18n_wrap_ui(scholia_SRCS
+ki18n_wrap_ui(mengshee_SRCS
     welcomescreen.ui)
 
-file(GLOB ICONS_SRCS "${CMAKE_CURRENT_SOURCE_DIR}/../icons/*-apps-scholia.png")
-ecm_add_app_icon(scholia_SRCS ICONS ${ICONS_SRCS})
+file(GLOB ICONS_SRCS "${CMAKE_CURRENT_SOURCE_DIR}/../icons/*-apps-mengshee.png")
+ecm_add_app_icon(mengshee_SRCS ICONS ${ICONS_SRCS})
 
-add_executable(scholia ${scholia_SRCS})
-target_compile_definitions(scholia PRIVATE SCHOLIA_ABOUT_VERSION_STRING="${PROJECT_VERSION}")
+add_executable(mengshee ${mengshee_SRCS})
+target_compile_definitions(mengshee PRIVATE MENGSHEE_ABOUT_VERSION_STRING="${PROJECT_VERSION}")
 
-target_link_libraries(scholia KF6::I18n KF6::Parts KF6::WindowSystem KF6::Crash KF6::IconThemes KF6::KIOGui)
+target_link_libraries(mengshee KF6::I18n KF6::Parts KF6::WindowSystem KF6::Crash KF6::IconThemes KF6::KIOGui)
 if (TARGET Qt6::DBus)
-    target_link_libraries(scholia Qt6::DBus)
+    target_link_libraries(mengshee Qt6::DBus)
 endif()
 if (HAVE_X11)
-    target_link_libraries(scholia Qt6::GuiPrivate)
+    target_link_libraries(mengshee Qt6::GuiPrivate)
 endif()
 
-install(TARGETS scholia ${KDE_INSTALL_TARGETS_DEFAULT_ARGS})
+install(TARGETS mengshee ${KDE_INSTALL_TARGETS_DEFAULT_ARGS})
 
 if(APPLE)
-    set_target_properties(scholia PROPERTIES
-        MACOSX_BUNDLE_DISPLAY_NAME "Scholia"
-        MACOSX_BUNDLE_BUNDLE_NAME "Scholia"
-        MACOSX_BUNDLE_ICON_FILE "scholia_SRCS"
-        MACOSX_BUNDLE_LONG_VERSION_STRING "Scholia ${SCHOLIA_VERSION}"
-        MACOSX_BUNDLE_SHORT_VERSION_STRING "${SCHOLIA_VERSION_MAJOR}.${SCHOLIA_VERSION_MINOR}"
-        MACOSX_BUNDLE_BUNDLE_VERSION "${SCHOLIA_VERSION}"
+    set_target_properties(mengshee PROPERTIES
+        MACOSX_BUNDLE_DISPLAY_NAME "Mengshee"
+        MACOSX_BUNDLE_BUNDLE_NAME "Mengshee"
+        MACOSX_BUNDLE_ICON_FILE "mengshee_SRCS"
+        MACOSX_BUNDLE_LONG_VERSION_STRING "Mengshee ${MENGSHEE_VERSION}"
+        MACOSX_BUNDLE_SHORT_VERSION_STRING "${MENGSHEE_VERSION_MAJOR}.${MENGSHEE_VERSION_MINOR}"
+        MACOSX_BUNDLE_BUNDLE_VERSION "${MENGSHEE_VERSION}"
         MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/MacOSXBundleInfo.plist.in"
-        MACOSX_BUNDLE_GUI_IDENTIFIER "org.jairy.scholia"
-        MACOSX_BUNDLE_COPYRIGHT "2026 The Scholia Contributors; 2002-2026 The Okular Developers")
+        MACOSX_BUNDLE_GUI_IDENTIFIER "org.jairy.mengshee"
+        MACOSX_BUNDLE_COPYRIGHT "2026 The Mengshee Contributors; 2002-2026 The Okular Developers")
 endif()
 
-# Scholia shell data files
+# Mengshee shell data files
 
-install( PROGRAMS org.jairy.scholia.desktop  DESTINATION  ${KDE_INSTALL_APPDIR} )
-install( FILES org.jairy.scholia.appdata.xml DESTINATION  ${KDE_INSTALL_METAINFODIR} )
+install( PROGRAMS org.jairy.mengshee.desktop  DESTINATION  ${KDE_INSTALL_APPDIR} )
+install( FILES org.jairy.mengshee.appdata.xml DESTINATION  ${KDE_INSTALL_METAINFODIR} )

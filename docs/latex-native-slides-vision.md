@@ -1,13 +1,13 @@
-# Scholia as a LaTeX-Native Slide Editor
+# Mengshee as a LaTeX-Native Slide Editor
 
-Scholia is evolving from a PDF viewer with annotation tools into a
+Mengshee is evolving from a PDF viewer with annotation tools into a
 PDF-centered slide editor for research, teaching, and technical presentation.
 The defining idea is simple: a page in a PDF can be treated as a slide, and the
 objects placed on that slide can keep the typographic quality of LaTeX instead
 of falling back to office-style text boxes.
 
 This is not a plan to clone PowerPoint. PowerPoint is built around editable
-office objects: text boxes, shapes, images, and theme layouts. Scholia is built
+office objects: text boxes, shapes, images, and theme layouts. Mengshee is built
 around a different primitive:
 
 - a stable PDF page as the canvas;
@@ -28,7 +28,7 @@ often require recompiling and rethinking the source structure. PowerPoint gives
 direct manipulation, but formula-heavy content, references, spacing, and visual
 consistency often degrade quickly.
 
-Scholia can occupy the middle ground:
+Mengshee can occupy the middle ground:
 
 - It keeps the final artifact as a PDF, which is stable, portable, archivable,
   and easy to distribute.
@@ -42,7 +42,7 @@ Scholia can occupy the middle ground:
 
 ## Product Direction
 
-Scholia should become a technical slide editor whose native file is still a PDF.
+Mengshee should become a technical slide editor whose native file is still a PDF.
 The editing model should make these workflows natural:
 
 - Start from an existing paper, lecture note, or blank PDF.
@@ -56,7 +56,7 @@ The editing model should make these workflows natural:
 
 The important constraint is that the saved PDF must remain self-contained.
 Rendered LaTeX notes should be visible through normal PDF appearance streams;
-the source and Scholia-specific edit state can be stored as metadata, but the
+the source and Mengshee-specific edit state can be stored as metadata, but the
 document must not depend on temporary TeX files or user-local paths.
 
 ## Design Principles
@@ -83,7 +83,7 @@ document must not depend on temporary TeX files or user-local paths.
 
 4. The PDF must stay portable.
 
-   Scholia-specific editability is a bonus layer. Display in other PDF readers
+   Mengshee-specific editability is a bonus layer. Display in other PDF readers
    must rely on standard PDF structures and self-contained appearance streams.
 
 5. Technical content is the center.
@@ -114,16 +114,16 @@ document must not depend on temporary TeX files or user-local paths.
 
 ## Non-Goals
 
-- Scholia should not become a general office suite.
+- Mengshee should not become a general office suite.
 - It does not need to match every PowerPoint transition, theme, animation, or
   collaboration feature.
 - It should not require the user to author a whole Beamer source file when the
   task is visual slide construction.
-- It should not sacrifice PDF portability for Scholia-only rendering.
+- It should not sacrifice PDF portability for Mengshee-only rendering.
 
 ## Summary
 
-The long-term vision is a LaTeX-native slide editor built on PDF. Scholia can
+The long-term vision is a LaTeX-native slide editor built on PDF. Mengshee can
 let users read a paper, insert a blank page, write a derivation, add arrows and
 callouts, reorder the resulting pages, and present or distribute the same PDF.
 

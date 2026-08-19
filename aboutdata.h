@@ -13,16 +13,16 @@
 
 #include <KLocalizedString>
 
-#ifndef SCHOLIA_ABOUT_VERSION_STRING
-#define SCHOLIA_ABOUT_VERSION_STRING OKULAR_VERSION_STRING
+#ifndef MENGSHEE_ABOUT_VERSION_STRING
+#define MENGSHEE_ABOUT_VERSION_STRING OKULAR_VERSION_STRING
 #endif
 
 inline KAboutData okularAboutData()
 {
-    const QString brand = QStringLiteral("Scholia");
-    KAboutData about(QStringLiteral("scholia"),
+    const QString brand = QStringLiteral("Mengshee");
+    KAboutData about(QStringLiteral("mengshee"),
                      brand,
-                     QStringLiteral(SCHOLIA_ABOUT_VERSION_STRING),
+                     QStringLiteral(MENGSHEE_ABOUT_VERSION_STRING),
                      i18n("A PDF-centered document viewer and annotation tool based on Okular"),
                      KAboutLicense::GPL_V2,
                      i18n("(C) 2026 Yu Zhai and the %1 contributors\n"
@@ -33,8 +33,8 @@ inline KAboutData okularAboutData()
                           "(C) 2006-2009 Pino Toscano",
                           brand),
                      i18n("%1 is a modified distribution of KDE Okular. It is not an official KDE Okular release and is not affiliated with or endorsed by KDE.", brand),
-                     QStringLiteral("https://github.com/zhaiyusci/scholia"));
-    about.setDesktopFileName(QStringLiteral("org.jairy.scholia"));
+                     QStringLiteral("https://github.com/zhaiyusci/mengshee"));
+    about.setDesktopFileName(QStringLiteral("org.jairy.mengshee"));
 
     about.addAuthor(i18n("Yu Zhai"), i18n("%1 maintainer and PDF annotation changes", brand));
 

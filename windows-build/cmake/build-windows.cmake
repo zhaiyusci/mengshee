@@ -5,7 +5,7 @@ get_filename_component(_windows_build_dir "${_script_dir}/.." ABSOLUTE)
 get_filename_component(_default_source_root "${_windows_build_dir}/.." ABSOLUTE)
 get_filename_component(_default_workspace_root "${_default_source_root}/../windows_build" ABSOLUTE)
 
-function(scholia_default_path variable default_value)
+function(mengshee_default_path variable default_value)
     if(NOT DEFINED ${variable} OR "${${variable}}" STREQUAL "")
         set(${variable} "${default_value}" PARENT_SCOPE)
     else()
@@ -14,7 +14,7 @@ function(scholia_default_path variable default_value)
     endif()
 endfunction()
 
-function(scholia_find_qt_prefix out_var)
+function(mengshee_find_qt_prefix out_var)
     set(_candidates)
     if(DEFINED QT_PREFIX AND NOT "${QT_PREFIX}" STREQUAL "")
         list(APPEND _candidates "${QT_PREFIX}")
@@ -34,7 +34,7 @@ function(scholia_find_qt_prefix out_var)
     message(FATAL_ERROR "Cannot find a Qt MSVC prefix. Pass -DQT_PREFIX=C:/Qt/<version>/msvc2022_64.")
 endfunction()
 
-function(scholia_find_program out_var)
+function(mengshee_find_program out_var)
     foreach(_candidate IN LISTS ARGN)
         if(EXISTS "${_candidate}")
             get_filename_component(_program "${_candidate}" ABSOLUTE)
@@ -50,16 +50,16 @@ function(scholia_find_program out_var)
     message(FATAL_ERROR "Cannot find ${out_var}.")
 endfunction()
 
-function(scholia_find_qscintilla_root out_var)
+function(mengshee_find_qscintilla_root out_var)
     set(_candidates)
     if(DEFINED QSCINTILLA_ROOT AND NOT "${QSCINTILLA_ROOT}" STREQUAL "")
         list(APPEND _candidates "${QSCINTILLA_ROOT}")
     endif()
-    if(DEFINED ENV{SCHOLIA_QSCINTILLA_ROOT})
-        list(APPEND _candidates "$ENV{SCHOLIA_QSCINTILLA_ROOT}")
+    if(DEFINED ENV{MENGSHEE_QSCINTILLA_ROOT})
+        list(APPEND _candidates "$ENV{MENGSHEE_QSCINTILLA_ROOT}")
     endif()
-    if(DEFINED ENV{SCHOLIA_STEMTEX_SOURCE_ROOT})
-        list(APPEND _candidates "$ENV{SCHOLIA_STEMTEX_SOURCE_ROOT}/third_party")
+    if(DEFINED ENV{MENGSHEE_STEMTEX_SOURCE_ROOT})
+        list(APPEND _candidates "$ENV{MENGSHEE_STEMTEX_SOURCE_ROOT}/third_party")
     endif()
     list(APPEND _candidates "${SOURCE_ROOT}/external/stemtex/third_party")
     get_filename_component(_documents_root "${SOURCE_ROOT}/../.." ABSOLUTE)
@@ -77,7 +77,7 @@ function(scholia_find_qscintilla_root out_var)
     message(FATAL_ERROR "Cannot find StemTeX QScintilla build. Pass -DQSCINTILLA_ROOT=<path>.")
 endfunction()
 
-function(scholia_find_msgfmt out_var sdk_prefix)
+function(mengshee_find_msgfmt out_var sdk_prefix)
     set(_msgfmt "${sdk_prefix}/tools/gettext-native/bin/msgfmt.exe")
     if(NOT EXISTS "${_msgfmt}")
         message(FATAL_ERROR "Cannot find native Windows msgfmt at ${_msgfmt}. Run install-gettext-native-sdk first.")
@@ -89,7 +89,7 @@ function(scholia_find_msgfmt out_var sdk_prefix)
     set(${out_var} "${_msgfmt}" PARENT_SCOPE)
 endfunction()
 
-function(scholia_remove_inside path allowed_root)
+function(mengshee_remove_inside path allowed_root)
     get_filename_component(_path "${path}" ABSOLUTE)
     get_filename_component(_allowed "${allowed_root}" ABSOLUTE)
     string(FIND "${_path}" "${_allowed}" _position)
@@ -101,7 +101,7 @@ function(scholia_remove_inside path allowed_root)
     endif()
 endfunction()
 
-function(scholia_remove_empty_gettext_catalogs root)
+function(mengshee_remove_empty_gettext_catalogs root)
     if(NOT IS_DIRECTORY "${root}")
         return()
     endif()
@@ -114,11 +114,11 @@ function(scholia_remove_empty_gettext_catalogs root)
     endforeach()
 endfunction()
 
-function(scholia_run_vs command_line)
+function(mengshee_run_vs command_line)
     set(_qt_bin "${QT_PREFIX}/bin")
     set(_sdk_bin "${SDK_PREFIX}/bin")
     file(MAKE_DIRECTORY "${WORKSPACE_ROOT}/tmp")
-    set(_cmd_file "${WORKSPACE_ROOT}/tmp/scholia-cmake-vs-env.cmd")
+    set(_cmd_file "${WORKSPACE_ROOT}/tmp/mengshee-cmake-vs-env.cmd")
     file(WRITE "${_cmd_file}"
 "@echo off
 set \"PATH=${_qt_bin};${_sdk_bin};%PATH%\"
@@ -136,12 +136,12 @@ ${command_line}
     endif()
 endfunction()
 
-scholia_default_path(SOURCE_ROOT "${_default_source_root}")
-scholia_default_path(WORKSPACE_ROOT "${_default_workspace_root}")
-scholia_default_path(SDK_PREFIX "${WORKSPACE_ROOT}/sdk")
-scholia_default_path(INSTALL_PREFIX "${WORKSPACE_ROOT}/install/scholia")
-scholia_default_path(BUILD_DIR "${WORKSPACE_ROOT}/build/scholia-standalone")
-scholia_find_qt_prefix(QT_PREFIX_RESOLVED)
+mengshee_default_path(SOURCE_ROOT "${_default_source_root}")
+mengshee_default_path(WORKSPACE_ROOT "${_default_workspace_root}")
+mengshee_default_path(SDK_PREFIX "${WORKSPACE_ROOT}/sdk")
+mengshee_default_path(INSTALL_PREFIX "${WORKSPACE_ROOT}/install/mengshee")
+mengshee_default_path(BUILD_DIR "${WORKSPACE_ROOT}/build/mengshee-standalone")
+mengshee_find_qt_prefix(QT_PREFIX_RESOLVED)
 set(QT_PREFIX "${QT_PREFIX_RESOLVED}")
 
 if(NOT DEFINED BUILD_TYPE OR "${BUILD_TYPE}" STREQUAL "")
@@ -166,13 +166,13 @@ endif()
 if(DEFINED NINJA AND NOT "${NINJA}" STREQUAL "")
     set(NINJA_PROGRAM "${NINJA}")
 else()
-    scholia_find_program(NINJA_PROGRAM
+    mengshee_find_program(NINJA_PROGRAM
         "${QT_PREFIX}/../../Tools/Ninja/ninja.exe"
         "C:/Program Files/Ninja/ninja.exe"
     )
 endif()
-scholia_find_qscintilla_root(QSCINTILLA_ROOT_RESOLVED)
-scholia_find_msgfmt(MSGFMT "${SDK_PREFIX}")
+mengshee_find_qscintilla_root(QSCINTILLA_ROOT_RESOLVED)
+mengshee_find_msgfmt(MSGFMT "${SDK_PREFIX}")
 
 foreach(_required IN ITEMS
     "share/ECM/cmake/ECMConfig.cmake"
@@ -185,7 +185,7 @@ foreach(_required IN ITEMS
     endif()
 endforeach()
 
-message(STATUS "Scholia Windows CMake driver")
+message(STATUS "Mengshee Windows CMake driver")
 message(STATUS "  Source      : ${SOURCE_ROOT}")
 message(STATUS "  Workspace   : ${WORKSPACE_ROOT}")
 message(STATUS "  QtPrefix    : ${QT_PREFIX}")
@@ -197,7 +197,7 @@ message(STATUS "  QScintilla  : ${QSCINTILLA_ROOT_RESOLVED}")
 if(NOT DEFINED SKIP_BUILD OR NOT SKIP_BUILD)
     if(DEFINED CLEAN_BUILD AND CLEAN_BUILD)
         get_filename_component(_build_root "${WORKSPACE_ROOT}/build" ABSOLUTE)
-        scholia_remove_inside("${BUILD_DIR}" "${_build_root}")
+        mengshee_remove_inside("${BUILD_DIR}" "${_build_root}")
     endif()
     file(MAKE_DIRECTORY "${BUILD_DIR}")
 
@@ -213,7 +213,7 @@ if(NOT DEFINED SKIP_BUILD OR NOT SKIP_BUILD)
         "-DCMAKE_INSTALL_PREFIX=\"${INSTALL_PREFIX}\""
         "-DCMAKE_PREFIX_PATH=\"${_cmake_prefix_path}\""
         "-DGETTEXT_MSGFMT_EXECUTABLE=\"${MSGFMT}\""
-        "-DSCHOLIA_QSCINTILLA_ROOT=\"${QSCINTILLA_ROOT_RESOLVED}\""
+        "-DMENGSHEE_QSCINTILLA_ROOT=\"${QSCINTILLA_ROOT_RESOLVED}\""
         -DBUILD_TESTING=OFF
         -DOKULAR_PDF_ONLY=ON
         -DCMAKE_DISABLE_FIND_PACKAGE_KF6DocTools=ON
@@ -221,25 +221,25 @@ if(NOT DEFINED SKIP_BUILD OR NOT SKIP_BUILD)
         "-DFORCE_NOT_REQUIRED_DEPENDENCIES=\"${_force_not_required}\""
     )
     list(JOIN _configure " " _configure_command)
-    scholia_run_vs("${_configure_command}")
-    scholia_remove_empty_gettext_catalogs("${BUILD_DIR}/locale")
-    scholia_remove_empty_gettext_catalogs("${INSTALL_PREFIX}/bin/data/locale")
+    mengshee_run_vs("${_configure_command}")
+    mengshee_remove_empty_gettext_catalogs("${BUILD_DIR}/locale")
+    mengshee_remove_empty_gettext_catalogs("${INSTALL_PREFIX}/bin/data/locale")
 
     set(_build_command "\"${CMAKE_PROGRAM}\" --build \"${BUILD_DIR}\" --target install --parallel ${JOBS}")
-    scholia_run_vs("${_build_command}")
+    mengshee_run_vs("${_build_command}")
 
     if(IS_DIRECTORY "${INSTALL_PREFIX}/plugins")
         file(MAKE_DIRECTORY "${INSTALL_PREFIX}/bin/plugins")
         file(COPY "${INSTALL_PREFIX}/plugins/" DESTINATION "${INSTALL_PREFIX}/bin/plugins")
-        scholia_remove_inside("${INSTALL_PREFIX}/plugins" "${INSTALL_PREFIX}")
-        scholia_remove_inside("${INSTALL_PREFIX}/lib/plugins" "${INSTALL_PREFIX}")
+        mengshee_remove_inside("${INSTALL_PREFIX}/plugins" "${INSTALL_PREFIX}")
+        mengshee_remove_inside("${INSTALL_PREFIX}/lib/plugins" "${INSTALL_PREFIX}")
     endif()
     file(COPY_FILE
         "${QSCINTILLA_ROOT_RESOLVED}/qscintilla-build/release/qscintilla2_qt6.dll"
         "${INSTALL_PREFIX}/bin/qscintilla2_qt6.dll"
         ONLY_IF_DIFFERENT
     )
-    scholia_remove_inside("${INSTALL_PREFIX}/bin/data/scholia/microtex" "${INSTALL_PREFIX}")
+    mengshee_remove_inside("${INSTALL_PREFIX}/bin/data/mengshee/microtex" "${INSTALL_PREFIX}")
     file(REMOVE "${INSTALL_PREFIX}/bin/LaTeX.dll" "${INSTALL_PREFIX}/lib/LaTeX.lib")
 endif()
 
@@ -289,4 +289,4 @@ if(NOT DEFINED SKIP_PACKAGE OR NOT SKIP_PACKAGE)
     endif()
 endif()
 
-message(STATUS "Scholia Windows CMake driver complete.")
+message(STATUS "Mengshee Windows CMake driver complete.")

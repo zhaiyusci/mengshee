@@ -56,7 +56,7 @@ static bool attachUniqueInstance(const QStringList &paths, const QString &serial
         return false;
     }
 
-    QDBusInterface iface(QStringLiteral("org.jairy.scholia"), QStringLiteral("/okularshell"), QStringLiteral("org.jairy.scholia"));
+    QDBusInterface iface(QStringLiteral("org.jairy.mengshee"), QStringLiteral("/okularshell"), QStringLiteral("org.jairy.mengshee"));
     if (!iface.isValid()) {
         return false;
     }
@@ -64,7 +64,7 @@ static bool attachUniqueInstance(const QStringList &paths, const QString &serial
     if (!ShellUtils::editorCmd(serializedOptions).isEmpty()) {
         QString message = i18n(
             "You cannot set the editor command in an already running %1 instance. Please disable the tabs and try again. Please note, that unique is also not supported when setting the editor command at the commandline.\n",
-            QStringLiteral("Scholia"));
+            QStringLiteral("Mengshee"));
         std::cerr << message.toStdString();
         exit(1);
     }
@@ -116,7 +116,7 @@ static bool attachExistingInstance(const QStringList &paths, const QString &seri
     const QString ownDbus = ShellUtils::currentProcessDbusName();
     for (const QString &service : services) {
         if (service.startsWith(ShellUtils::kPerProcessDbusPrefix) && service != ownDbus) {
-            bestService.reset(new QDBusInterface(service, QStringLiteral("/okularshell"), QStringLiteral("org.jairy.scholia")));
+            bestService.reset(new QDBusInterface(service, QStringLiteral("/okularshell"), QStringLiteral("org.jairy.mengshee")));
 
             // Find a window that can handle our documents
             const QDBusReply<bool> reply = bestService->call(QStringLiteral("canOpenDocs"), (int)paths.count(), desktop);
@@ -170,7 +170,7 @@ static bool attachExistingInstance(const QStringList &paths, const QString &seri
     if (!ShellUtils::editorCmd(serializedOptions).isEmpty()) {
         QString message(i18n(
             "You cannot set the editor command in an already running %1 instance. Please disable the tabs and try again. Please note, that unique is also not supported when setting the editor command at the commandline.\n",
-            QStringLiteral("Scholia")));
+            QStringLiteral("Mengshee")));
         std::cerr << message.toStdString();
         exit(1);
     }

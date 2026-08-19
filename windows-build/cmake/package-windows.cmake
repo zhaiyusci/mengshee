@@ -5,7 +5,7 @@ get_filename_component(_windows_build_dir "${_script_dir}/.." ABSOLUTE)
 get_filename_component(_default_source_root "${_windows_build_dir}/.." ABSOLUTE)
 get_filename_component(_default_workspace_root "${_default_source_root}/../windows_build" ABSOLUTE)
 
-function(scholia_default_path variable default_value)
+function(mengshee_default_path variable default_value)
     if(NOT DEFINED ${variable} OR "${${variable}}" STREQUAL "")
         set(${variable} "${default_value}" PARENT_SCOPE)
     else()
@@ -14,7 +14,7 @@ function(scholia_default_path variable default_value)
     endif()
 endfunction()
 
-function(scholia_remove_inside path allowed_root)
+function(mengshee_remove_inside path allowed_root)
     get_filename_component(_path "${path}" ABSOLUTE)
     get_filename_component(_allowed "${allowed_root}" ABSOLUTE)
     string(FIND "${_path}" "${_allowed}" _position)
@@ -26,25 +26,25 @@ function(scholia_remove_inside path allowed_root)
     endif()
 endfunction()
 
-function(scholia_sync_tree source destination allowed_root)
+function(mengshee_sync_tree source destination allowed_root)
     get_filename_component(_source "${source}" ABSOLUTE)
     get_filename_component(_destination "${destination}" ABSOLUTE)
     if(NOT IS_DIRECTORY "${_source}")
         message(FATAL_ERROR "Cannot find source directory: ${_source}")
     endif()
 
-    scholia_remove_inside("${_destination}" "${allowed_root}")
+    mengshee_remove_inside("${_destination}" "${allowed_root}")
     file(MAKE_DIRECTORY "${_destination}")
     file(COPY "${_source}/" DESTINATION "${_destination}")
 endfunction()
 
-function(scholia_validate_file root relative_path)
+function(mengshee_validate_file root relative_path)
     if(NOT EXISTS "${root}/${relative_path}")
         message(FATAL_ERROR "Missing staged file: ${relative_path}")
     endif()
 endfunction()
 
-function(scholia_find_inno_setup out_var)
+function(mengshee_find_inno_setup out_var)
     set(_candidates)
     if(DEFINED ISCC AND NOT "${ISCC}" STREQUAL "")
         list(APPEND _candidates "${ISCC}")
@@ -77,12 +77,12 @@ function(scholia_find_inno_setup out_var)
     message(FATAL_ERROR "Cannot find Inno Setup compiler. Pass -DISCC=<path-to-ISCC.exe>.")
 endfunction()
 
-scholia_default_path(SOURCE_ROOT "${_default_source_root}")
-scholia_default_path(WORKSPACE_ROOT "${_default_workspace_root}")
-scholia_default_path(INSTALL_PREFIX "${WORKSPACE_ROOT}/install/scholia")
-scholia_default_path(STAGE_ROOT "${WORKSPACE_ROOT}/dist/scholia-pdf/app")
-scholia_default_path(STEMTEX_SUPPORT_STAGE_ROOT "${WORKSPACE_ROOT}/dist/scholia-stemtex-support/app")
-scholia_default_path(OUTPUT_DIR "${WORKSPACE_ROOT}/dist")
+mengshee_default_path(SOURCE_ROOT "${_default_source_root}")
+mengshee_default_path(WORKSPACE_ROOT "${_default_workspace_root}")
+mengshee_default_path(INSTALL_PREFIX "${WORKSPACE_ROOT}/install/mengshee")
+mengshee_default_path(STAGE_ROOT "${WORKSPACE_ROOT}/dist/mengshee-pdf/app")
+mengshee_default_path(STEMTEX_SUPPORT_STAGE_ROOT "${WORKSPACE_ROOT}/dist/mengshee-stemtex-support/app")
+mengshee_default_path(OUTPUT_DIR "${WORKSPACE_ROOT}/dist")
 
 if(NOT DEFINED VERSION OR "${VERSION}" STREQUAL "")
     file(READ "${SOURCE_ROOT}/VERSION.txt" VERSION)
@@ -100,10 +100,10 @@ if(NOT FILE_VERSION MATCHES "^[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+$")
 endif()
 
 if(DEFINED CLEAN_STAGE AND CLEAN_STAGE)
-    scholia_remove_inside("${STAGE_ROOT}" "${WORKSPACE_ROOT}")
+    mengshee_remove_inside("${STAGE_ROOT}" "${WORKSPACE_ROOT}")
 endif()
 
-message(STATUS "Scholia Windows package stage")
+message(STATUS "Mengshee Windows package stage")
 message(STATUS "  Source root : ${SOURCE_ROOT}")
 message(STATUS "  Install     : ${INSTALL_PREFIX}")
 message(STATUS "  Stage       : ${STAGE_ROOT}")
@@ -111,70 +111,70 @@ message(STATUS "  Support     : ${STEMTEX_SUPPORT_STAGE_ROOT}")
 message(STATUS "  Output      : ${OUTPUT_DIR}")
 message(STATUS "  Version     : ${VERSION}")
 
-scholia_validate_file("${INSTALL_PREFIX}" "bin/scholia.exe")
-scholia_sync_tree("${INSTALL_PREFIX}/bin" "${STAGE_ROOT}/bin" "${STAGE_ROOT}")
+mengshee_validate_file("${INSTALL_PREFIX}" "bin/mengshee.exe")
+mengshee_sync_tree("${INSTALL_PREFIX}/bin" "${STAGE_ROOT}/bin" "${STAGE_ROOT}")
 file(REMOVE "${STAGE_ROOT}/bin/vc_redist.x64.exe")
 
 if(IS_DIRECTORY "${INSTALL_PREFIX}/share/poppler")
-    scholia_sync_tree("${INSTALL_PREFIX}/share/poppler" "${STAGE_ROOT}/share/poppler" "${STAGE_ROOT}")
+    mengshee_sync_tree("${INSTALL_PREFIX}/share/poppler" "${STAGE_ROOT}/share/poppler" "${STAGE_ROOT}")
 else()
-    scholia_remove_inside("${STAGE_ROOT}/share/poppler" "${STAGE_ROOT}")
+    mengshee_remove_inside("${STAGE_ROOT}/share/poppler" "${STAGE_ROOT}")
     message(WARNING "Poppler CMap/CID data was not found under ${INSTALL_PREFIX}/share/poppler.")
 endif()
 
 if(IS_DIRECTORY "${INSTALL_PREFIX}/StemTeX")
-    scholia_validate_file("${INSTALL_PREFIX}" "StemTeX/runtime/bin/sdk/stemtex-renderer.dll")
-    scholia_validate_file("${INSTALL_PREFIX}" "StemTeX/runtime/bin/windows/stemtex-worker-host.exe")
-    scholia_validate_file("${INSTALL_PREFIX}" "StemTeX/runtime/bin/windows/xetexdaemon.exe")
-    scholia_validate_file("${INSTALL_PREFIX}" "StemTeX/runtime/bin/windows/xdvipdfmxdaemon.exe")
-    scholia_validate_file("${INSTALL_PREFIX}" "StemTeX/runtime/bin/windows/dvipdfmxdaemon.dll")
-    scholia_validate_file("${INSTALL_PREFIX}" "StemTeX/runtime/bin/windows/dvisvgmdaemon.exe")
-    scholia_validate_file("${INSTALL_PREFIX}" "StemTeX/runtime/bin/windows/dvisvgmdaemon.dll")
-    scholia_validate_file("${INSTALL_PREFIX}" "StemTeX/gui/profiles")
-    scholia_sync_tree("${INSTALL_PREFIX}/StemTeX" "${STAGE_ROOT}/StemTeX" "${STAGE_ROOT}")
-    scholia_remove_inside("${STAGE_ROOT}/StemTeX/runtime/texmf-dist" "${STAGE_ROOT}")
-    scholia_remove_inside("${STAGE_ROOT}/StemTeX/runtime/texmf-var/fonts" "${STAGE_ROOT}")
-    scholia_remove_inside("${STAGE_ROOT}/StemTeX/runtime/texmf-var/cache-warmup-renders" "${STAGE_ROOT}")
-    scholia_remove_inside("${STAGE_ROOT}/StemTeX/runtime/texmf-var/cache-warmup-state" "${STAGE_ROOT}")
+    mengshee_validate_file("${INSTALL_PREFIX}" "StemTeX/runtime/bin/sdk/stemtex-renderer.dll")
+    mengshee_validate_file("${INSTALL_PREFIX}" "StemTeX/runtime/bin/windows/stemtex-worker-host.exe")
+    mengshee_validate_file("${INSTALL_PREFIX}" "StemTeX/runtime/bin/windows/xetexdaemon.exe")
+    mengshee_validate_file("${INSTALL_PREFIX}" "StemTeX/runtime/bin/windows/xdvipdfmxdaemon.exe")
+    mengshee_validate_file("${INSTALL_PREFIX}" "StemTeX/runtime/bin/windows/dvipdfmxdaemon.dll")
+    mengshee_validate_file("${INSTALL_PREFIX}" "StemTeX/runtime/bin/windows/dvisvgmdaemon.exe")
+    mengshee_validate_file("${INSTALL_PREFIX}" "StemTeX/runtime/bin/windows/dvisvgmdaemon.dll")
+    mengshee_validate_file("${INSTALL_PREFIX}" "StemTeX/gui/profiles")
+    mengshee_sync_tree("${INSTALL_PREFIX}/StemTeX" "${STAGE_ROOT}/StemTeX" "${STAGE_ROOT}")
+    mengshee_remove_inside("${STAGE_ROOT}/StemTeX/runtime/texmf-dist" "${STAGE_ROOT}")
+    mengshee_remove_inside("${STAGE_ROOT}/StemTeX/runtime/texmf-var/fonts" "${STAGE_ROOT}")
+    mengshee_remove_inside("${STAGE_ROOT}/StemTeX/runtime/texmf-var/cache-warmup-renders" "${STAGE_ROOT}")
+    mengshee_remove_inside("${STAGE_ROOT}/StemTeX/runtime/texmf-var/cache-warmup-state" "${STAGE_ROOT}")
     file(REMOVE "${STAGE_ROOT}/StemTeX/runtime/texmf-var/xdvipdfmx-init-trace.log")
 else()
-    scholia_remove_inside("${STAGE_ROOT}/StemTeX" "${STAGE_ROOT}")
+    mengshee_remove_inside("${STAGE_ROOT}/StemTeX" "${STAGE_ROOT}")
     message(WARNING "StemTeX runtime was not found under ${INSTALL_PREFIX}/StemTeX.")
 endif()
 
 set(_has_stemtex_support OFF)
 if(IS_DIRECTORY "${INSTALL_PREFIX}/StemTeX/runtime/texmf-dist")
     set(_has_stemtex_support ON)
-    scholia_remove_inside("${STEMTEX_SUPPORT_STAGE_ROOT}" "${WORKSPACE_ROOT}")
-    scholia_sync_tree("${INSTALL_PREFIX}/StemTeX/runtime/texmf-dist" "${STEMTEX_SUPPORT_STAGE_ROOT}/StemTeX/runtime/texmf-dist" "${STEMTEX_SUPPORT_STAGE_ROOT}")
+    mengshee_remove_inside("${STEMTEX_SUPPORT_STAGE_ROOT}" "${WORKSPACE_ROOT}")
+    mengshee_sync_tree("${INSTALL_PREFIX}/StemTeX/runtime/texmf-dist" "${STEMTEX_SUPPORT_STAGE_ROOT}/StemTeX/runtime/texmf-dist" "${STEMTEX_SUPPORT_STAGE_ROOT}")
     if(IS_DIRECTORY "${INSTALL_PREFIX}/StemTeX/runtime/texmf-var")
-        scholia_sync_tree("${INSTALL_PREFIX}/StemTeX/runtime/texmf-var" "${STEMTEX_SUPPORT_STAGE_ROOT}/StemTeX/runtime/texmf-var" "${STEMTEX_SUPPORT_STAGE_ROOT}")
-        scholia_remove_inside("${STEMTEX_SUPPORT_STAGE_ROOT}/StemTeX/runtime/texmf-var/fonts/conf" "${STEMTEX_SUPPORT_STAGE_ROOT}")
-        scholia_remove_inside("${STEMTEX_SUPPORT_STAGE_ROOT}/StemTeX/runtime/texmf-var/fonts/cache" "${STEMTEX_SUPPORT_STAGE_ROOT}")
-        scholia_remove_inside("${STEMTEX_SUPPORT_STAGE_ROOT}/StemTeX/runtime/texmf-var/cache-warmup-renders" "${STEMTEX_SUPPORT_STAGE_ROOT}")
-        scholia_remove_inside("${STEMTEX_SUPPORT_STAGE_ROOT}/StemTeX/runtime/texmf-var/cache-warmup-state" "${STEMTEX_SUPPORT_STAGE_ROOT}")
+        mengshee_sync_tree("${INSTALL_PREFIX}/StemTeX/runtime/texmf-var" "${STEMTEX_SUPPORT_STAGE_ROOT}/StemTeX/runtime/texmf-var" "${STEMTEX_SUPPORT_STAGE_ROOT}")
+        mengshee_remove_inside("${STEMTEX_SUPPORT_STAGE_ROOT}/StemTeX/runtime/texmf-var/fonts/conf" "${STEMTEX_SUPPORT_STAGE_ROOT}")
+        mengshee_remove_inside("${STEMTEX_SUPPORT_STAGE_ROOT}/StemTeX/runtime/texmf-var/fonts/cache" "${STEMTEX_SUPPORT_STAGE_ROOT}")
+        mengshee_remove_inside("${STEMTEX_SUPPORT_STAGE_ROOT}/StemTeX/runtime/texmf-var/cache-warmup-renders" "${STEMTEX_SUPPORT_STAGE_ROOT}")
+        mengshee_remove_inside("${STEMTEX_SUPPORT_STAGE_ROOT}/StemTeX/runtime/texmf-var/cache-warmup-state" "${STEMTEX_SUPPORT_STAGE_ROOT}")
         file(REMOVE "${STEMTEX_SUPPORT_STAGE_ROOT}/StemTeX/runtime/texmf-var/xdvipdfmx-init-trace.log")
     endif()
 else()
-    scholia_remove_inside("${STEMTEX_SUPPORT_STAGE_ROOT}" "${WORKSPACE_ROOT}")
+    mengshee_remove_inside("${STEMTEX_SUPPORT_STAGE_ROOT}" "${WORKSPACE_ROOT}")
     message(WARNING "StemTeX TeX tree was not found under ${INSTALL_PREFIX}/StemTeX/runtime/texmf-dist.")
 endif()
 
 foreach(_required IN ITEMS
-    "bin/scholia.exe"
-    "bin/scholia.ico"
-    "bin/data/applications/org.jairy.scholia.desktop"
-    "bin/data/metainfo/org.jairy.scholia.appdata.xml"
-    "bin/data/icons/hicolor/256x256/apps/scholia.png"
-    "bin/data/scholia/tools.xml"
-    "bin/data/scholia/toolsQuick.xml"
-    "bin/data/scholia/drawingtools.xml"
-    "bin/data/scholia/pics/annotation-latex-note.svg"
+    "bin/mengshee.exe"
+    "bin/mengshee.ico"
+    "bin/data/applications/org.jairy.mengshee.desktop"
+    "bin/data/metainfo/org.jairy.mengshee.appdata.xml"
+    "bin/data/icons/hicolor/256x256/apps/mengshee.png"
+    "bin/data/mengshee/tools.xml"
+    "bin/data/mengshee/toolsQuick.xml"
+    "bin/data/mengshee/drawingtools.xml"
+    "bin/data/mengshee/pics/annotation-latex-note.svg"
     "bin/data/locale/zh_CN/LC_MESSAGES/okular.mo"
     "share/poppler/cMap/Adobe-GB1/UniGB-UTF16-H"
     "share/poppler/cidToUnicode/Adobe-GB1"
 )
-    scholia_validate_file("${STAGE_ROOT}" "${_required}")
+    mengshee_validate_file("${STAGE_ROOT}" "${_required}")
 endforeach()
 
 if(DEFINED SKIP_INSTALLER AND SKIP_INSTALLER)
@@ -183,9 +183,9 @@ if(DEFINED SKIP_INSTALLER AND SKIP_INSTALLER)
 endif()
 
 file(MAKE_DIRECTORY "${OUTPUT_DIR}")
-scholia_find_inno_setup(_iscc)
-set(_iss "${SOURCE_ROOT}/windows-build/installer/scholia-installer.iss")
-set(_support_iss "${SOURCE_ROOT}/windows-build/installer/scholia-stemtex-support.iss")
+mengshee_find_inno_setup(_iscc)
+set(_iss "${SOURCE_ROOT}/windows-build/installer/mengshee-installer.iss")
+set(_support_iss "${SOURCE_ROOT}/windows-build/installer/mengshee-stemtex-support.iss")
 
 message(STATUS "Building installer with Inno Setup")
 message(STATUS "  ISCC        : ${_iscc}")
@@ -193,10 +193,10 @@ message(STATUS "  Script      : ${_iss}")
 
 execute_process(
     COMMAND "${CMAKE_COMMAND}" -E env
-        "SCHOLIA_STAGE=${STAGE_ROOT}"
-        "SCHOLIA_OUTPUT=${OUTPUT_DIR}"
-        "SCHOLIA_VERSION=${VERSION}"
-        "SCHOLIA_FILE_VERSION=${FILE_VERSION}"
+        "MENGSHEE_STAGE=${STAGE_ROOT}"
+        "MENGSHEE_OUTPUT=${OUTPUT_DIR}"
+        "MENGSHEE_VERSION=${VERSION}"
+        "MENGSHEE_FILE_VERSION=${FILE_VERSION}"
         "${_iscc}" "${_iss}"
     RESULT_VARIABLE _iscc_result
 )
@@ -209,10 +209,10 @@ if(_has_stemtex_support AND NOT (DEFINED SKIP_STEMTEX_SUPPORT_INSTALLER AND SKIP
     message(STATUS "  Script      : ${_support_iss}")
     execute_process(
         COMMAND "${CMAKE_COMMAND}" -E env
-            "SCHOLIA_SUPPORT_STAGE=${STEMTEX_SUPPORT_STAGE_ROOT}"
-            "SCHOLIA_OUTPUT=${OUTPUT_DIR}"
-            "SCHOLIA_VERSION=${VERSION}"
-            "SCHOLIA_FILE_VERSION=${FILE_VERSION}"
+            "MENGSHEE_SUPPORT_STAGE=${STEMTEX_SUPPORT_STAGE_ROOT}"
+            "MENGSHEE_OUTPUT=${OUTPUT_DIR}"
+            "MENGSHEE_VERSION=${VERSION}"
+            "MENGSHEE_FILE_VERSION=${FILE_VERSION}"
             "${_iscc}" "${_support_iss}"
         RESULT_VARIABLE _support_iscc_result
     )

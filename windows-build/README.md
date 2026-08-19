@@ -1,12 +1,12 @@
-# Scholia Windows Build
+# Mengshee Windows Build
 
 This directory contains the Windows standalone SDK, runtime deployment, staging,
-and installer scripts for this Scholia checkout.
+and installer scripts for this Mengshee checkout.
 
 Run commands from the repository root:
 
 ```powershell
-cd C:\Users\jairy\Documents\okular\scholia
+cd C:\Users\jairy\Documents\okular\mengshee
 ```
 
 Build output lives outside the source checkout under the sibling
@@ -17,9 +17,9 @@ Build output lives outside the source checkout under the sibling
 - Source tree: `.`
 - Build workspace: `..\windows_build`
 - SDK prefix: `..\windows_build\sdk`
-- Scholia build dir: `..\windows_build\build\scholia-standalone`
-- Scholia install dir: `..\windows_build\install\scholia`
-- Package stage: `..\windows_build\dist\scholia-pdf\app`
+- Mengshee build dir: `..\windows_build\build\mengshee-standalone`
+- Mengshee install dir: `..\windows_build\install\mengshee`
+- Package stage: `..\windows_build\dist\mengshee-pdf\app`
 - Package output: `..\windows_build\dist`
 
 ## Requirements
@@ -37,7 +37,7 @@ git submodule update --init --recursive external/poppler external/stemtex
 ```
 
 StemTeX is looked up in this order: an explicit `STEMTEX_ROOT`, the
-`SCHOLIA_STEMTEX_SOURCE_ROOT` environment variable, `external/stemtex`, and
+`MENGSHEE_STEMTEX_SOURCE_ROOT` environment variable, `external/stemtex`, and
 then the legacy local development path outside the checkout.
 
 The submodule supplies the StemTeX source tree. Packaging still expects StemTeX
@@ -64,12 +64,12 @@ Use the CMake driver for normal Windows builds:
 
 It runs:
 
-1. CMake configure/build/install for Scholia
-2. CMake runtime deployment from the SDK, Qt, StemTeX, and Scholia data
-3. stage refresh under `..\windows_build\dist\scholia-pdf\app`
+1. CMake configure/build/install for Mengshee
+2. CMake runtime deployment from the SDK, Qt, StemTeX, and Mengshee data
+3. stage refresh under `..\windows_build\dist\mengshee-pdf\app`
 4. Inno Setup installer build
 
-For a clean Scholia rebuild, add `-DCLEAN_BUILD=ON`.
+For a clean Mengshee rebuild, add `-DCLEAN_BUILD=ON`.
 
 If Inno Setup is not installed, still build and stage the runtime with:
 
@@ -85,14 +85,14 @@ If Inno Setup is not installed, still build and stage the runtime with:
 Expected installer output:
 
 ```text
-..\windows_build\dist\Scholia-<version>-Setup.exe
+..\windows_build\dist\Mengshee-<version>-Setup.exe
 ```
 
 ## CMake Package Step
 
-After `..\windows_build\install\scholia` has been built and deployed, the
+After `..\windows_build\install\mengshee` has been built and deployed, the
 package-only CMake script can recreate the stage and installer without
-rebuilding Scholia:
+rebuilding Mengshee:
 
 ```powershell
 & "C:\Qt\Tools\CMake_64\bin\cmake.exe" `
@@ -102,12 +102,12 @@ rebuilding Scholia:
 ```
 
 This script mirrors the deployed install tree into
-`..\windows_build\dist\scholia-pdf\app`, validates Scholia icons, gettext
+`..\windows_build\dist\mengshee-pdf\app`, validates Mengshee icons, gettext
 catalogs, annotation resources, and Poppler CMap/CID data, then calls Inno
 Setup. The main installer keeps the StemTeX renderer binaries and bundled
 profiles, but excludes the TeX package/font tree. That tree is staged separately
-under `..\windows_build\dist\scholia-stemtex-support\app` and built as
-`Scholia-<version>-StemTeX-Support.exe`.
+under `..\windows_build\dist\mengshee-stemtex-support\app` and built as
+`Mengshee-<version>-StemTeX-Support.exe`.
 
 To validate staging without building an installer:
 
@@ -135,14 +135,14 @@ These scripts are internal steps. Use them only when debugging a specific part
 of the Windows pipeline.
 
 - `cmake\build-windows.cmake`
-  - Canonical Windows driver for Scholia configure/build/install, runtime
+  - Canonical Windows driver for Mengshee configure/build/install, runtime
     deploy, stage refresh, and installer creation.
 - `cmake\deploy-runtime.cmake`
-  - CMake-based runtime deployment from an installed Scholia tree.
+  - CMake-based runtime deployment from an installed Mengshee tree.
 - `cmake\package-windows.cmake`
   - CMake-based stage and installer creation from an already deployed
-    `..\windows_build\install\scholia` tree.
-  - Builds both the main Scholia installer and the optional StemTeX support
+    `..\windows_build\install\mengshee` tree.
+  - Builds both the main Mengshee installer and the optional StemTeX support
     installer when the deployed StemTeX TeX tree is available.
 - `cmake\bootstrap-kf6-sdk.cmake`
   - CMake-based ECM bootstrap for the local Windows SDK.
@@ -154,22 +154,22 @@ of the Windows pipeline.
 - `cmake\install-gettext-native-sdk.cmake`,
   `cmake\install-winflexbison-sdk.cmake`
   - CMake-based pinned binary tool installers.
-- `build-scholia-standalone.ps1`
-  - Legacy PowerShell build entry. Configures, builds, and installs Scholia into
-    `..\windows_build\install\scholia`.
+- `build-mengshee-standalone.ps1`
+  - Legacy PowerShell build entry. Configures, builds, and installs Mengshee into
+    `..\windows_build\install\mengshee`.
   - Produces CMake-installed files, including application translations and
-    Scholia annotation resources.
-- `deploy-scholia-standalone-runtime.ps1`
+    Mengshee annotation resources.
+- `deploy-mengshee-standalone-runtime.ps1`
   - Legacy PowerShell deploy entry. Copies Qt, KF6, Poppler, QScintilla, and
     StemTeX runtime files into the install tree.
   - Normalizes plugin layout under `bin\plugins`.
-  - Restores Scholia runtime data after SDK data sync.
-- `smoke-test-scholia-stage.ps1`
-  - Starts staged `scholia.exe` with a test PDF and verifies it loads modules
+  - Restores Mengshee runtime data after SDK data sync.
+- `smoke-test-mengshee-stage.ps1`
+  - Starts staged `mengshee.exe` with a test PDF and verifies it loads modules
     from the stage, not from another workspace tree.
 
 The legacy Okular-named entry points were removed from this Windows line. New
-docs should point at the Scholia-named scripts above.
+docs should point at the Mengshee-named scripts above.
 
 ## Stage-Only Refresh
 
@@ -187,7 +187,7 @@ script to refresh the stage without rebuilding the installer:
 If a staged StemTeX process is still running, stop it before staging:
 
 ```powershell
-Get-Process | Where-Object { $_.ProcessName -match 'scholia|stemtex|xetex|xelatex|xetexdaemon' } |
+Get-Process | Where-Object { $_.ProcessName -match 'mengshee|stemtex|xetex|xelatex|xetexdaemon' } |
   Stop-Process -Force
 ```
 
@@ -195,20 +195,20 @@ Get-Process | Where-Object { $_.ProcessName -match 'scholia|stemtex|xetex|xelate
 
 The CMake runtime deployment intentionally mirrors SDK runtime data from
 `..\windows_build\sdk\bin\data` into `bin\data`. That SDK sync can remove files
-installed earlier by CMake, so deployment must restore Scholia data after the
+installed earlier by CMake, so deployment must restore Mengshee data after the
 sync.
 
 The deployed install tree and stage must contain:
 
-- `bin\scholia.exe`
-- `bin\scholia.ico`
-- `bin\data\applications\org.jairy.scholia.desktop`
-- `bin\data\metainfo\org.jairy.scholia.appdata.xml`
-- `bin\data\icons\hicolor\<size>x<size>\apps\scholia.png`
-- `bin\data\scholia\tools.xml`
-- `bin\data\scholia\toolsQuick.xml`
-- `bin\data\scholia\drawingtools.xml`
-- `bin\data\scholia\pics\annotation-*.svg`
+- `bin\mengshee.exe`
+- `bin\mengshee.ico`
+- `bin\data\applications\org.jairy.mengshee.desktop`
+- `bin\data\metainfo\org.jairy.mengshee.appdata.xml`
+- `bin\data\icons\hicolor\<size>x<size>\apps\mengshee.png`
+- `bin\data\mengshee\tools.xml`
+- `bin\data\mengshee\toolsQuick.xml`
+- `bin\data\mengshee\drawingtools.xml`
+- `bin\data\mengshee\pics\annotation-*.svg`
 - `bin\data\locale\<lang>\LC_MESSAGES\okular*.mo`
 - `share\poppler\cMap\...`
 - `share\poppler\cidToUnicode\...`
@@ -231,18 +231,18 @@ Run the staged smoke test:
 
 ```powershell
 powershell.exe -ExecutionPolicy Bypass -NoProfile `
-  -File .\windows-build\scripts\smoke-test-scholia-stage.ps1 `
+  -File .\windows-build\scripts\smoke-test-mengshee-stage.ps1 `
   -PdfPath .\autotests\data\file2.pdf
 ```
 
 Quick file checks:
 
 ```powershell
-$stage = "C:\Users\jairy\Documents\okular\windows_build\dist\scholia-pdf\app"
-Test-Path "$stage\bin\data\scholia\pics\annotation-latex-note.svg"
+$stage = "C:\Users\jairy\Documents\okular\windows_build\dist\mengshee-pdf\app"
+Test-Path "$stage\bin\data\mengshee\pics\annotation-latex-note.svg"
 Test-Path "$stage\bin\data\locale\zh_CN\LC_MESSAGES\okular.mo"
 Test-Path "$stage\share\poppler\cMap\Adobe-GB1\UniGB-UTF16-H"
-Test-Path "$stage\bin\data\icons\hicolor\256x256\apps\scholia.png"
+Test-Path "$stage\bin\data\icons\hicolor\256x256\apps\mengshee.png"
 ```
 
 ## SDK Bootstrap
@@ -315,33 +315,40 @@ Build custom Poppler:
   -P windows-build/cmake/build-poppler-sdk.cmake
 ```
 
+The command builds the pinned local fork in `external/poppler`. When that
+submodule changes, its installed libraries, generated private headers, and the
+Mengshee PDF generator must be rebuilt together. The generic page-sequence
+editor is compiled into the generator even though the Poppler SDK build uses
+`ENABLE_UTILS=OFF`. Maintenance details are in
+`docs/local-poppler-fork.md`.
+
 `install-gettext-native-sdk.cmake` installs pinned native Windows
 `gettext-iconv-windows` tools under
-`..\windows_build\sdk\tools\gettext-native`. Scholia uses that `msgfmt.exe` to
+`..\windows_build\sdk\tools\gettext-native`. Mengshee uses that `msgfmt.exe` to
 compile real gettext catalogs; the libintl shim is only the runtime
 compatibility layer needed by KI18n.
 
 ## LaTeX Notes
 
-Scholia supports the StemTeX renderer for LaTeX notes. The standalone Windows
+Mengshee supports the StemTeX renderer for LaTeX notes. The standalone Windows
 runtime bundles the StemTeX renderer binaries under `StemTeX\runtime\bin` with
-profiles under `StemTeX\gui\profiles`; Scholia starts that renderer during
+profiles under `StemTeX\gui\profiles`; Mengshee starts that renderer during
 application startup.
 
 The TeXLive package/font tree is optional. Users can install
-`Scholia-<version>-StemTeX-Support.exe` to add the bundled `texmf-dist` and
+`Mengshee-<version>-StemTeX-Support.exe` to add the bundled `texmf-dist` and
 `texmf-var` tree under `StemTeX\runtime`, or they can select their own TeX tree
-from `Settings -> Configure Scholia -> Annotations`. An empty setting does not
+from `Settings -> Configure Mengshee -> Annotations`. An empty setting does not
 probe the system for TeX; it only uses the bundled support tree when that tree
 has been installed.
 
 StemTeX runtime state, fontconfig files, caches, traces, and rendered-note
-outputs are written below Scholia's per-user temporary StemTeX directory, not
-below the installation directory. This keeps `C:\Program Files\Scholia`
+outputs are written below Mengshee's per-user temporary StemTeX directory, not
+below the installation directory. This keeps `C:\Program Files\Mengshee`
 read-only after installation.
 
 To inspect TeX rendering logs:
 
 ```powershell
-Get-Content "$env:LOCALAPPDATA\scholia\scholia-tex-debug.log" -Tail 80
+Get-Content "$env:LOCALAPPDATA\mengshee\mengshee-tex-debug.log" -Tail 80
 ```

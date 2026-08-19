@@ -113,7 +113,7 @@ WelcomeScreen::WelcomeScreen(QWidget *parent)
     Q_ASSERT(parent);
 
     setupUi(this);
-    label->setText(i18n("Welcome to %1", QStringLiteral("Scholia")));
+    label->setText(i18n("Welcome to %1", QStringLiteral("Mengshee")));
 
     connect(openButton, &QPushButton::clicked, this, &WelcomeScreen::openClicked);
     connect(closeButton, &QPushButton::clicked, this, &WelcomeScreen::closeClicked);
@@ -154,7 +154,7 @@ WelcomeScreen::~WelcomeScreen()
 void WelcomeScreen::showEvent(QShowEvent *e)
 {
     if (appIcon->pixmap(Qt::ReturnByValue).isNull()) {
-        appIcon->setPixmap(QIcon::fromTheme(QStringLiteral("scholia"), QIcon::fromTheme(QStringLiteral("okular"))).pixmap(KIconLoader::SizeEnormous));
+        appIcon->setPixmap(QIcon::fromTheme(QStringLiteral("mengshee"), QIcon::fromTheme(QStringLiteral("okular"))).pixmap(KIconLoader::SizeEnormous));
     }
 
     QWidget::showEvent(e);

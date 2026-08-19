@@ -176,7 +176,7 @@ public:
     QIcon toolIcon(const QString &type, const QString &name = QString()) const;
     QIcon strokeColorIcon(const QColor &color, bool textColorIcon = false) const;
     QIcon fillColorIcon(const QColor &color) const;
-    QIcon scholiaIcon(const QString &fileName) const;
+    QIcon mengsheeIcon(const QString &fileName) const;
     const QIcon widthIcon(double width);
     const QIcon stampIcon(const QString &stampIconName);
 
@@ -335,9 +335,9 @@ QIcon AnnotationActionHandlerPrivate::fillColorIcon(const QColor &color) const
     return QIcon(pixmap);
 }
 
-QIcon AnnotationActionHandlerPrivate::scholiaIcon(const QString &fileName) const
+QIcon AnnotationActionHandlerPrivate::mengsheeIcon(const QString &fileName) const
 {
-    const QString iconPath = QStandardPaths::locate(QStandardPaths::GenericDataLocation, QStringLiteral("scholia/pics/") + fileName);
+    const QString iconPath = QStandardPaths::locate(QStandardPaths::GenericDataLocation, QStringLiteral("mengshee/pics/") + fileName);
     return iconPath.isEmpty() ? QIcon() : QIcon(iconPath);
 }
 
@@ -927,28 +927,28 @@ AnnotationActionHandler::AnnotationActionHandler(PageViewAnnotator *parent, KAct
     d->annotator = parent;
 
     // toolbar visibility actions
-    d->aToolBarVisibility = new KToggleAction(d->scholiaIcon(QStringLiteral("annotation-freehand.svg")), i18n("&Annotations"), this);
+    d->aToolBarVisibility = new KToggleAction(d->mengsheeIcon(QStringLiteral("annotation-freehand.svg")), i18n("&Annotations"), this);
     d->aHideToolBar = new QAction(QIcon::fromTheme(QStringLiteral("dialog-close")), i18nc("@action:intoolbar Hide the toolbar", "Hide"), this);
-    d->aShowToolBar = new QAction(d->scholiaIcon(QStringLiteral("annotation-freehand.svg")), i18nc("@action:intoolbar Show the builtin annotation toolbar", "Show more annotation tools"), this);
+    d->aShowToolBar = new QAction(d->mengsheeIcon(QStringLiteral("annotation-freehand.svg")), i18nc("@action:intoolbar Show the builtin annotation toolbar", "Show more annotation tools"), this);
 
     // Text markup actions
-    KToggleAction *aHighlighter = new KToggleAction(d->scholiaIcon(QStringLiteral("annotation-highlight.svg")), i18nc("@action:intoolbar Annotation tool", "Highlighter"), this);
-    KToggleAction *aUnderline = new KToggleAction(d->scholiaIcon(QStringLiteral("annotation-underline.svg")), i18nc("@action:intoolbar Annotation tool", "Underline"), this);
-    KToggleAction *aSquiggle = new KToggleAction(d->scholiaIcon(QStringLiteral("annotation-squiggle.svg")), i18nc("@action:intoolbar Annotation tool", "Squiggle"), this);
-    KToggleAction *aStrikeout = new KToggleAction(d->scholiaIcon(QStringLiteral("annotation-strikeout.svg")), i18nc("@action:intoolbar Annotation tool", "Strike Out"), this);
+    KToggleAction *aHighlighter = new KToggleAction(d->mengsheeIcon(QStringLiteral("annotation-highlight.svg")), i18nc("@action:intoolbar Annotation tool", "Highlighter"), this);
+    KToggleAction *aUnderline = new KToggleAction(d->mengsheeIcon(QStringLiteral("annotation-underline.svg")), i18nc("@action:intoolbar Annotation tool", "Underline"), this);
+    KToggleAction *aSquiggle = new KToggleAction(d->mengsheeIcon(QStringLiteral("annotation-squiggle.svg")), i18nc("@action:intoolbar Annotation tool", "Squiggle"), this);
+    KToggleAction *aStrikeout = new KToggleAction(d->mengsheeIcon(QStringLiteral("annotation-strikeout.svg")), i18nc("@action:intoolbar Annotation tool", "Strike Out"), this);
     // Notes actions
-    KToggleAction *aTypewriter = new KToggleAction(d->scholiaIcon(QStringLiteral("annotation-typewriter.svg")), i18nc("@action:intoolbar Annotation tool", "Typewriter"), this);
-    KToggleAction *aInlineNote = new KToggleAction(d->scholiaIcon(QStringLiteral("annotation-inline-note.svg")), i18nc("@action:intoolbar Annotation tool", "Inline Note"), this);
-    KToggleAction *aPopupNote = new KToggleAction(d->scholiaIcon(QStringLiteral("annotation-popup-note.svg")), i18nc("@action:intoolbar Annotation tool", "Popup Note"), this);
-    KToggleAction *aCallout = new KToggleAction(d->scholiaIcon(QStringLiteral("annotation-callout.svg")), i18nc("@action:intoolbar Annotation tool", "Callout"), this);
-    KToggleAction *aFreehandLine = new KToggleAction(d->scholiaIcon(QStringLiteral("annotation-freehand.svg")), i18nc("@action:intoolbar Annotation tool", "Freehand Line"), this);
+    KToggleAction *aTypewriter = new KToggleAction(d->mengsheeIcon(QStringLiteral("annotation-typewriter.svg")), i18nc("@action:intoolbar Annotation tool", "Typewriter"), this);
+    KToggleAction *aInlineNote = new KToggleAction(d->mengsheeIcon(QStringLiteral("annotation-inline-note.svg")), i18nc("@action:intoolbar Annotation tool", "Inline Note"), this);
+    KToggleAction *aPopupNote = new KToggleAction(d->mengsheeIcon(QStringLiteral("annotation-popup-note.svg")), i18nc("@action:intoolbar Annotation tool", "Popup Note"), this);
+    KToggleAction *aCallout = new KToggleAction(d->mengsheeIcon(QStringLiteral("annotation-callout.svg")), i18nc("@action:intoolbar Annotation tool", "Callout"), this);
+    KToggleAction *aFreehandLine = new KToggleAction(d->mengsheeIcon(QStringLiteral("annotation-freehand.svg")), i18nc("@action:intoolbar Annotation tool", "Freehand Line"), this);
     // Geometrical shapes actions
-    KToggleAction *aStraightLine = new KToggleAction(d->scholiaIcon(QStringLiteral("annotation-straight-line.svg")), i18nc("@action:intoolbar Annotation tool", "Straight line"), this);
-    KToggleAction *aArrow = new KToggleAction(d->scholiaIcon(QStringLiteral("annotation-arrow.svg")), i18nc("@action:intoolbar Annotation tool", "Arrow"), this);
-    KToggleAction *aRectangle = new KToggleAction(d->scholiaIcon(QStringLiteral("annotation-rectangle.svg")), i18nc("@action:intoolbar Annotation tool", "Rectangle"), this);
-    KToggleAction *aEllipse = new KToggleAction(d->scholiaIcon(QStringLiteral("annotation-ellipse.svg")), i18nc("@action:intoolbar Annotation tool", "Ellipse"), this);
-    KToggleAction *aPolygon = new KToggleAction(d->scholiaIcon(QStringLiteral("annotation-polygon.svg")), i18nc("@action:intoolbar Annotation tool", "Polygon"), this);
-    d->aGeomShapes = new ToggleActionMenu(d->scholiaIcon(QStringLiteral("annotation-arrow.svg")), i18nc("@action", "Geometrical shapes"), this);
+    KToggleAction *aStraightLine = new KToggleAction(d->mengsheeIcon(QStringLiteral("annotation-straight-line.svg")), i18nc("@action:intoolbar Annotation tool", "Straight line"), this);
+    KToggleAction *aArrow = new KToggleAction(d->mengsheeIcon(QStringLiteral("annotation-arrow.svg")), i18nc("@action:intoolbar Annotation tool", "Arrow"), this);
+    KToggleAction *aRectangle = new KToggleAction(d->mengsheeIcon(QStringLiteral("annotation-rectangle.svg")), i18nc("@action:intoolbar Annotation tool", "Rectangle"), this);
+    KToggleAction *aEllipse = new KToggleAction(d->mengsheeIcon(QStringLiteral("annotation-ellipse.svg")), i18nc("@action:intoolbar Annotation tool", "Ellipse"), this);
+    KToggleAction *aPolygon = new KToggleAction(d->mengsheeIcon(QStringLiteral("annotation-polygon.svg")), i18nc("@action:intoolbar Annotation tool", "Polygon"), this);
+    d->aGeomShapes = new ToggleActionMenu(d->mengsheeIcon(QStringLiteral("annotation-arrow.svg")), i18nc("@action", "Geometrical shapes"), this);
     d->aGeomShapes->setEnabled(true); // Need to explicitly set this once, or refreshActions() in part.cpp will disable this action
     d->aGeomShapes->setPopupMode(QToolButton::MenuButtonPopup);
     d->aGeomShapes->addAction(aArrow);
@@ -981,7 +981,7 @@ AnnotationActionHandler::AnnotationActionHandler(PageViewAnnotator *parent, KAct
     d->textTools.append(aStrikeout);
 
     // Stamp action
-    d->aStamp = new ToggleActionMenu(d->scholiaIcon(QStringLiteral("annotation-stamp.svg")), i18nc("@action", "Stamp"), this);
+    d->aStamp = new ToggleActionMenu(d->mengsheeIcon(QStringLiteral("annotation-stamp.svg")), i18nc("@action", "Stamp"), this);
     d->aStamp->setPopupMode(QToolButton::MenuButtonPopup);
     for (const auto &stamp : StampAnnotationWidget::defaultStamps()) {
         KToggleAction *ann = new KToggleAction(d->stampIcon(stamp.second), stamp.first, this);
@@ -1002,20 +1002,20 @@ AnnotationActionHandler::AnnotationActionHandler(PageViewAnnotator *parent, KAct
     aStampSeparator->setSeparator(true);
     d->aStamp->addAction(aStampSeparator);
     d->aSelectCustomStamp = new QAction(QIcon::fromTheme(QStringLiteral("image-x-generic")), i18nc("@action:intoolbar Annotation tool", "Add Image Note…"), this);
-    d->aSelectCustomStamp->setIcon(d->scholiaIcon(QStringLiteral("annotation-image-note.svg")));
+    d->aSelectCustomStamp->setIcon(d->mengsheeIcon(QStringLiteral("annotation-image-note.svg")));
     d->aSelectCustomStamp->setToolTip(i18nc("@info:tooltip", "Add an image as a movable annotation"));
     d->aStamp->addAction(d->aSelectCustomStamp);
     connect(d->aSelectCustomStamp, &QAction::triggered, this, [this]() { d->slotSelectCustomStamp(); });
     d->aAddLatexNote = new QAction(QIcon::fromTheme(QStringLiteral("text-x-tex")), i18nc("@action:intoolbar Annotation tool", "Add LaTeX Note"), this);
-    d->aAddLatexNote->setIcon(d->scholiaIcon(QStringLiteral("annotation-latex-note.svg")));
+    d->aAddLatexNote->setIcon(d->mengsheeIcon(QStringLiteral("annotation-latex-note.svg")));
     d->aAddLatexNote->setToolTip(i18nc("@info:tooltip", "Add a movable LaTeX annotation"));
     connect(d->aAddLatexNote, &QAction::triggered, this, [this]() { d->slotAddLatexNote(); });
     d->aAddLatexInlineNote = new QAction(QIcon::fromTheme(QStringLiteral("note")), i18nc("@action:intoolbar Annotation tool", "Add LaTeX Inline Note"), this);
-    d->aAddLatexInlineNote->setIcon(d->scholiaIcon(QStringLiteral("annotation-latex-inline-note.svg")));
+    d->aAddLatexInlineNote->setIcon(d->mengsheeIcon(QStringLiteral("annotation-latex-inline-note.svg")));
     d->aAddLatexInlineNote->setToolTip(i18nc("@info:tooltip", "Add a LaTeX annotation with an inline-note background and border"));
     connect(d->aAddLatexInlineNote, &QAction::triggered, this, [this]() { d->slotAddLatexNote(true); });
     d->aAddLatexCallout = new QAction(QIcon::fromTheme(QStringLiteral("text-x-tex")), i18nc("@action:intoolbar Annotation tool", "Add LaTeX Callout"), this);
-    d->aAddLatexCallout->setIcon(d->scholiaIcon(QStringLiteral("annotation-latex-callout.svg")));
+    d->aAddLatexCallout->setIcon(d->mengsheeIcon(QStringLiteral("annotation-latex-callout.svg")));
     d->aAddLatexCallout->setToolTip(i18nc("@info:tooltip", "Add a stamp-based LaTeX callout note"));
     connect(d->aAddLatexCallout, &QAction::triggered, this, [this]() { d->slotAddLatexNote(true, true); });
     d->aAddTemplateNote = new QAction(QIcon::fromTheme(QStringLiteral("insert-text")), i18nc("@action:intoolbar Annotation tool", "Add Template Note"), this);
@@ -1030,7 +1030,7 @@ AnnotationActionHandler::AnnotationActionHandler(PageViewAnnotator *parent, KAct
     // Quick annotations action
     d->aQuickTools = new ToggleActionMenu(i18nc("@action:intoolbar Show list of quick annotation tools", "Quick Annotations"), this);
     d->aQuickTools->setPopupMode(QToolButton::MenuButtonPopup);
-    d->aQuickTools->setIcon(d->scholiaIcon(QStringLiteral("annotation-quick-tools.svg")));
+    d->aQuickTools->setIcon(d->mengsheeIcon(QStringLiteral("annotation-quick-tools.svg")));
     d->aQuickTools->setToolTip(i18nc("@info:tooltip", "Choose an annotation tool from the quick annotations"));
     d->aQuickTools->setEnabled(true); // required to ensure that populateQuickAnnotations is executed the first time
     // set the triggered quick annotation as default action (but avoid setting 'Configure...' as default action)
@@ -1055,27 +1055,27 @@ AnnotationActionHandler::AnnotationActionHandler(PageViewAnnotator *parent, KAct
     d->populateQuickAnnotations();
 
     // Add to quick annotation action
-    d->aAddToQuickTools = new QAction(d->scholiaIcon(QStringLiteral("annotation-favorite.svg")), i18nc("@action:intoolbar Add current annotation tool to the quick annotations list", "Add to Quick Annotations"), this);
+    d->aAddToQuickTools = new QAction(d->mengsheeIcon(QStringLiteral("annotation-favorite.svg")), i18nc("@action:intoolbar Add current annotation tool to the quick annotations list", "Add to Quick Annotations"), this);
 
     // Pin action
-    d->aContinuousMode = new KToggleAction(d->scholiaIcon(QStringLiteral("annotation-pin.svg")), i18nc("@action:intoolbar When checked keep the current annotation tool active after use", "Keep Active"), this);
+    d->aContinuousMode = new KToggleAction(d->mengsheeIcon(QStringLiteral("annotation-pin.svg")), i18nc("@action:intoolbar When checked keep the current annotation tool active after use", "Keep Active"), this);
     d->aContinuousMode->setToolTip(i18nc("@info:tooltip", "Keep the annotation tool active after use"));
     d->aContinuousMode->setChecked(d->annotator->continuousMode());
 
     // Constrain angle action
     d->aConstrainRatioAndAngle =
-        new KToggleAction(d->scholiaIcon(QStringLiteral("annotation-constrain.svg")), i18nc("@action When checked, line annotations are constrained to 15° steps, shape annotations to 1:1 ratio", "Constrain Ratio and Angle of Annotation Tools"), this);
+        new KToggleAction(d->mengsheeIcon(QStringLiteral("annotation-constrain.svg")), i18nc("@action When checked, line annotations are constrained to 15° steps, shape annotations to 1:1 ratio", "Constrain Ratio and Angle of Annotation Tools"), this);
     d->aConstrainRatioAndAngle->setChecked(d->annotator->constrainRatioAndAngleActive());
 
     // Annotation settings actions
     d->aColor = d->colorPickerAction(AnnotationActionHandlerPrivate::AnnotationColor::Color);
     d->aInnerColor = d->colorPickerAction(AnnotationActionHandlerPrivate::AnnotationColor::InnerColor);
     d->aTextColor = d->colorPickerAction(AnnotationActionHandlerPrivate::AnnotationColor::TextColor);
-    d->aFont = new QAction(d->scholiaIcon(QStringLiteral("annotation-font.svg")), i18nc("@action:intoolbar Current annotation config option", "Font"), this);
-    d->aAdvancedSettings = new QAction(d->scholiaIcon(QStringLiteral("annotation-advanced-settings.svg")), i18nc("@action:intoolbar Current annotation advanced settings", "Annotation Settings"), this);
+    d->aFont = new QAction(d->mengsheeIcon(QStringLiteral("annotation-font.svg")), i18nc("@action:intoolbar Current annotation config option", "Font"), this);
+    d->aAdvancedSettings = new QAction(d->mengsheeIcon(QStringLiteral("annotation-advanced-settings.svg")), i18nc("@action:intoolbar Current annotation advanced settings", "Annotation Settings"), this);
 
     // Width list
-    d->aWidth = new KSelectAction(d->scholiaIcon(QStringLiteral("annotation-line-width.svg")), i18nc("@action:intoolbar Current annotation config option", "Line width"), this);
+    d->aWidth = new KSelectAction(d->mengsheeIcon(QStringLiteral("annotation-line-width.svg")), i18nc("@action:intoolbar Current annotation config option", "Line width"), this);
     d->aWidth->setToolBarMode(KSelectAction::MenuMode);
     for (auto width : d->widthStandardValues) {
         KToggleAction *ann = new KToggleAction(d->widthIcon(width), i18nc("@item:inlistbox", "Width %1", width), this);
@@ -1084,7 +1084,7 @@ AnnotationActionHandler::AnnotationActionHandler(PageViewAnnotator *parent, KAct
     }
 
     // Opacity list
-    d->aOpacity = new KSelectAction(d->scholiaIcon(QStringLiteral("annotation-opacity.svg")), i18nc("@action:intoolbar Current annotation config option", "Opacity"), this);
+    d->aOpacity = new KSelectAction(d->mengsheeIcon(QStringLiteral("annotation-opacity.svg")), i18nc("@action:intoolbar Current annotation config option", "Opacity"), this);
     d->aOpacity->setToolBarMode(KSelectAction::MenuMode);
     for (double opacity : d->opacityStandardValues) {
         KToggleAction *ann = new KToggleAction(GuiUtils::createOpacityIcon(opacity), i18nc("@item:inlistbox Annotation opacity percentage level, make sure to include %1 in your translation", "%1%", opacity * 100), this);

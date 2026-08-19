@@ -135,7 +135,7 @@ if(BUILD_DESKTOP)
         TEST_NAME "mainshelltest"
         LINK_LIBRARIES Qt6::Test okularpart okularcore
     )
-    target_compile_definitions(mainshelltest PRIVATE OKULAR_BINARY="$<TARGET_FILE:scholia>")
+    target_compile_definitions(mainshelltest PRIVATE OKULAR_BINARY="$<TARGET_FILE:mengshee>")
 
     if (HAVE_X11)
         target_link_libraries(mainshelltest Qt6::GuiPrivate)

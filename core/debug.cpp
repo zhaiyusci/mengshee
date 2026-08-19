@@ -6,4 +6,4 @@
 
 #include "debug_p.h"
 
-Q_LOGGING_CATEGORY(OkularCoreDebug, "org.jairy.scholia.core", QtWarningMsg)
+Q_LOGGING_CATEGORY(OkularCoreDebug, "org.jairy.mengshee.core", QtWarningMsg)

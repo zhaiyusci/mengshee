@@ -24,11 +24,15 @@
 #include <QCommandLineParser>
 #include <QDebug>
 #include <QDir>
+#include <QDirIterator>
+#include <QFile>
+#include <QFileInfo>
 #include <QFileOpenEvent>
 #include <QLibraryInfo>
 #include <QLocale>
 #include <QObject>
 #include <QStringList>
+#include <QStandardPaths>
 #include <QTextStream>
 #include <QTimer>
 #include <QTranslator>
@@ -48,7 +52,7 @@
  * Should not do anything on Windows/Linux as QFileOpenEvent is never fired there.
  */
 
-class ScholiaApplication final : public QApplication
+class MengsheeApplication final : public QApplication
 {
 public:
     using QApplication::QApplication;
@@ -71,7 +75,7 @@ private:
     {
         try {
             const QString details = what && *what ? QString::fromLocal8Bit(what) : i18n("Unknown C++ exception");
-            qCritical().noquote() << "Scholia caught an unhandled exception in a Qt event:" << details;
+            qCritical().noquote() << "Mengshee caught an unhandled exception in a Qt event:" << details;
             if (m_exceptionDialogPending || m_exceptionDialogVisible) {
                 return;
             }
@@ -81,11 +85,11 @@ private:
                 m_exceptionDialogPending = false;
                 m_exceptionDialogVisible = true;
                 KMessageBox::error(QApplication::activeWindow(),
-                                   i18n("Scholia stopped an operation after an unexpected internal error. The application is still running, but you should save your work to a new file before continuing.\n\n%1", details));
+                                   i18n("Mengshee stopped an operation after an unexpected internal error. The application is still running, but you should save your work to a new file before continuing.\n\n%1", details));
                 m_exceptionDialogVisible = false;
             });
         } catch (...) {
-            std::fputs("Scholia caught an unhandled exception while reporting another exception.\n", stderr);
+            std::fputs("Mengshee caught an unhandled exception while reporting another exception.\n", stderr);
         }
     }
 
@@ -118,7 +122,50 @@ protected:
     }
 };
 
-static int runScholiaApplication(int argc, char **argv)
+static void copyLegacyDataTree(const QString &sourcePath, const QString &destinationPath)
+{
+    if (!QDir(sourcePath).exists()) {
+        return;
+    }
+
+    QDir().mkpath(destinationPath);
+    QDirIterator iterator(sourcePath, QDir::AllEntries | QDir::NoDotAndDotDot, QDirIterator::Subdirectories);
+    const QDir sourceDirectory(sourcePath);
+    while (iterator.hasNext()) {
+        const QString sourceEntry = iterator.next();
+        const QString relativePath = sourceDirectory.relativeFilePath(sourceEntry);
+        const QString destinationEntry = QDir(destinationPath).filePath(relativePath);
+        if (iterator.fileInfo().isDir()) {
+            QDir().mkpath(destinationEntry);
+        } else if (!QFile::exists(destinationEntry)) {
+            QDir().mkpath(QFileInfo(destinationEntry).absolutePath());
+            QFile::copy(sourceEntry, destinationEntry);
+        }
+    }
+}
+
+static void migrateLegacyApplicationData()
+{
+    const QString configLocation = QStandardPaths::writableLocation(QStandardPaths::ConfigLocation);
+    const QList<QPair<QString, QString>> configFiles = {
+        {QStringLiteral("scholiarc"), QStringLiteral("mengsheerc")},
+        {QStringLiteral("scholia-generator-popplerrc"), QStringLiteral("mengshee-generator-popplerrc")},
+        {QStringLiteral("okular-generator-ghostscriptrc"), QStringLiteral("mengshee-generator-ghostscriptrc")},
+    };
+    for (const auto &[legacyName, currentName] : configFiles) {
+        const QString legacyPath = QDir(configLocation).filePath(legacyName);
+        const QString currentPath = QDir(configLocation).filePath(currentName);
+        if (QFile::exists(legacyPath) && !QFile::exists(currentPath)) {
+            QDir().mkpath(configLocation);
+            QFile::copy(legacyPath, currentPath);
+        }
+    }
+
+    const QString dataLocation = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation);
+    copyLegacyDataTree(QDir(dataLocation).filePath(QStringLiteral("scholia")), QDir(dataLocation).filePath(QStringLiteral("mengshee")));
+}
+
+static int runMengsheeApplication(int argc, char **argv)
 {
     /**
      * trigger initialisation of proper icon theme
@@ -129,7 +176,8 @@ static int runScholiaApplication(int argc, char **argv)
 
     QCoreApplication::setAttribute(Qt::AA_CompressTabletEvents);
 
-    ScholiaApplication app(argc, argv);
+    MengsheeApplication app(argc, argv);
+    migrateLegacyApplicationData();
 
     QTranslator qtTranslator;
     if (qtTranslator.load(QLocale(), QStringLiteral("qt"), QStringLiteral("_"), QLibraryInfo::path(QLibraryInfo::TranslationsPath))) {
@@ -142,13 +190,13 @@ static int runScholiaApplication(int argc, char **argv)
 
     const QString appDir = QCoreApplication::applicationDirPath();
     const QString prefixDir = QDir(appDir).absoluteFilePath(QStringLiteral(".."));
-    const QStringList scholiaPluginPaths = {
+    const QStringList mengsheePluginPaths = {
         QDir(appDir).absoluteFilePath(QStringLiteral("plugins")),
         QDir(prefixDir).absoluteFilePath(QStringLiteral("plugins")),
         QDir(prefixDir).absoluteFilePath(QStringLiteral("lib/plugins")),
     };
     QStringList libraryPaths;
-    for (const QString &pluginPath : scholiaPluginPaths) {
+    for (const QString &pluginPath : mengsheePluginPaths) {
         if (QDir(pluginPath).exists()) {
             libraryPaths.append(pluginPath);
         }
@@ -159,8 +207,8 @@ static int runScholiaApplication(int argc, char **argv)
         }
     }
     QCoreApplication::setLibraryPaths(libraryPaths);
-    if (qEnvironmentVariableIsSet("SCHOLIA_DEBUG_PLUGIN_PATHS")) {
-        qDebug() << "Scholia plugin search paths:" << QCoreApplication::libraryPaths();
+    if (qEnvironmentVariableIsSet("MENGSHEE_DEBUG_PLUGIN_PATHS")) {
+        qDebug() << "Mengshee plugin search paths:" << QCoreApplication::libraryPaths();
     }
 
     const QString bundledLocaleDir = QDir(appDir).absoluteFilePath(QStringLiteral("data/locale"));
@@ -209,7 +257,7 @@ static int runScholiaApplication(int argc, char **argv)
     KAboutData aboutData = okularAboutData();
     KAboutData::setApplicationData(aboutData);
     // set icon for shells which do not use desktop file metadata
-    QApplication::setWindowIcon(QIcon::fromTheme(QStringLiteral("scholia"), QIcon::fromTheme(QStringLiteral("okular"))));
+    QApplication::setWindowIcon(QIcon::fromTheme(QStringLiteral("mengshee"), QIcon::fromTheme(QStringLiteral("okular"))));
 
     KCrash::initialize();
 
@@ -258,11 +306,11 @@ static int runScholiaApplication(int argc, char **argv)
 int main(int argc, char **argv)
 {
     try {
-        return runScholiaApplication(argc, argv);
+        return runMengsheeApplication(argc, argv);
     } catch (const std::exception &exception) {
-        std::fprintf(stderr, "Scholia stopped after an unhandled startup exception: %s\n", exception.what());
+        std::fprintf(stderr, "Mengshee stopped after an unhandled startup exception: %s\n", exception.what());
     } catch (...) {
-        std::fputs("Scholia stopped after an unknown startup exception.\n", stderr);
+        std::fputs("Mengshee stopped after an unknown startup exception.\n", stderr);
     }
     return EXIT_FAILURE;
 }

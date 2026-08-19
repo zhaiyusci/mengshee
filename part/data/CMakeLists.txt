@@ -3,7 +3,7 @@ install(FILES
    tools.xml
    toolsQuick.xml
    drawingtools.xml
-   DESTINATION ${KDE_INSTALL_DATADIR}/scholia)
+   DESTINATION ${KDE_INSTALL_DATADIR}/mengshee)
 
 # install annotation tool images
 install(FILES
@@ -48,7 +48,7 @@ install(FILES
    tool-note-inline-okular-colorizable@2x.png
    tool-typewriter-okular-colorizable.png
    tool-typewriter-okular-colorizable@2x.png
-   DESTINATION ${KDE_INSTALL_DATADIR}/scholia/pics)
+   DESTINATION ${KDE_INSTALL_DATADIR}/mengshee/pics)
 # install annotation page images
 install(FILES
    checkmark.png
@@ -68,5 +68,5 @@ install(FILES
    star.png
    uparrow.png
    upleftarrow.png
-   DESTINATION ${KDE_INSTALL_DATADIR}/scholia/pics)
+   DESTINATION ${KDE_INSTALL_DATADIR}/mengshee/pics)
 # install misc images

@@ -1,6 +1,6 @@
-# Scholia KF6 SDK Bootstrap
+# Mengshee KF6 SDK Bootstrap
 
-This path builds the KF6 development SDK used by the Windows standalone Scholia
+This path builds the KF6 development SDK used by the Windows standalone Mengshee
 build. The default version is the stable KF6 tag `v6.27.0`.
 
 All output goes under the sibling workspace:
@@ -34,7 +34,7 @@ To pin a different stable KF6 release:
   -P windows-build/cmake/bootstrap-kf6-sdk.cmake
 ```
 
-The script writes `scholia-sdk-bootstrap.json` and `scholia-sdk-env.cmake` into
+The script writes `mengshee-sdk-bootstrap.json` and `mengshee-sdk-env.cmake` into
 the SDK prefix so later build steps reuse the same Qt, CMake, Ninja, and MSVC
 paths.
 
@@ -99,7 +99,7 @@ After ECM is installed, build individual stable KF6 modules with:
 The script records installed modules in:
 
 ```text
-..\windows_build\sdk\scholia-sdk-modules.cmake
+..\windows_build\sdk\mengshee-sdk-modules.cmake
 ```
 
 Some modules need extra CMake options. For example, build `KArchive` with
@@ -127,6 +127,12 @@ After zlib and freetype are installed in the SDK, build custom Poppler:
   -P windows-build/cmake/build-poppler-sdk.cmake
 ```
 
-Scholia uses the installed Poppler libraries from `..\windows_build\sdk` and
+Mengshee uses the installed Poppler libraries from `..\windows_build\sdk` and
 the generated private Poppler headers from
 `..\windows_build\build\thirdparty\poppler-custom`.
+
+`external/poppler` is a locally modified, pinned fork rather than an arbitrary
+upstream checkout. After changing its gitlink, rebuild both the Poppler SDK and
+the Mengshee PDF generator; do not combine private headers or libraries from an
+older submodule revision with the current `PdfPageSequenceEditor` sources. See
+`docs/local-poppler-fork.md` for the patch boundary and update checklist.

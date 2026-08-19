@@ -11,7 +11,7 @@ $repoRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot "..\.."))
 $workspaceRoot = Split-Path -Parent $repoRoot
 $windowsBuildRoot = Join-Path $workspaceRoot "windows_build"
 if (!$StageRoot) {
-    $StageRoot = Join-Path $windowsBuildRoot "dist\scholia-pdf\app"
+    $StageRoot = Join-Path $windowsBuildRoot "dist\mengshee-pdf\app"
 }
 $StageRoot = [System.IO.Path]::GetFullPath($StageRoot)
 
@@ -24,12 +24,12 @@ if (!(Test-Path -LiteralPath $PdfPath)) {
 }
 $PdfPath = [System.IO.Path]::GetFullPath($PdfPath)
 
-$scholiaExe = Join-Path $StageRoot "bin\scholia.exe"
-if (!(Test-Path -LiteralPath $scholiaExe)) {
-    throw "Missing staged Scholia executable: $scholiaExe"
+$mengsheeExe = Join-Path $StageRoot "bin\mengshee.exe"
+if (!(Test-Path -LiteralPath $mengsheeExe)) {
+    throw "Missing staged Mengshee executable: $mengsheeExe"
 }
 
-Get-Process -Name scholia -ErrorAction SilentlyContinue |
+Get-Process -Name mengshee -ErrorAction SilentlyContinue |
     Where-Object { $_.Path -like "$StageRoot*" } |
     Stop-Process -Force
 
@@ -37,15 +37,15 @@ $oldPath = $env:PATH
 $process = $null
 try {
     $env:PATH = "$StageRoot\bin;$env:SystemRoot\System32;$env:SystemRoot"
-    Start-Process -FilePath $scholiaExe -ArgumentList "`"$PdfPath`"" -WorkingDirectory (Join-Path $StageRoot "bin") -WindowStyle Minimized
+    Start-Process -FilePath $mengsheeExe -ArgumentList "`"$PdfPath`"" -WorkingDirectory (Join-Path $StageRoot "bin") -WindowStyle Minimized
     Start-Sleep -Seconds $WaitSeconds
 
-    $process = Get-Process -Name scholia -ErrorAction Stop |
+    $process = Get-Process -Name mengshee -ErrorAction Stop |
         Where-Object { $_.Path -like "$StageRoot*" } |
         Select-Object -First 1
 
     if (!$process) {
-        throw "Staged Scholia is not running."
+        throw "Staged Mengshee is not running."
     }
 
     $modules = $process.Modules | ForEach-Object FileName | Where-Object { $_ }
@@ -63,7 +63,7 @@ try {
     } | Format-List
 
     if ($unexpectedWorkspaceModules) {
-        Write-Warning "Staged Scholia loaded project-local modules from outside the stage:"
+        Write-Warning "Staged Mengshee loaded project-local modules from outside the stage:"
         $unexpectedWorkspaceModules | Sort-Object | ForEach-Object { Write-Warning "  $_" }
         exit 2
     }

@@ -1,4 +1,4 @@
-﻿/*
+/*
     SPDX-FileCopyrightText: 2004 Duncan Mac-Vicar Prett <duncan@kde.org>
     SPDX-FileCopyrightText: 2004-2005 Olivier Goffart <ogoffart@kde.org>
     SPDX-FileCopyrightText: 2011 Niels Ole Salscheider
@@ -59,7 +59,7 @@ QString texInvocationLogPath()
         logDir = QDir::tempPath();
     }
     QDir().mkpath(logDir);
-    return QDir(logDir).filePath(QStringLiteral("scholia-tex-debug.log"));
+    return QDir(logDir).filePath(QStringLiteral("mengshee-tex-debug.log"));
 }
 
 void logTexInvocation(const char *operation, const QString &backend, const QString &reason, const QStringList &details = QStringList())
@@ -623,7 +623,7 @@ private:
 
     static QString runtimeRoot()
     {
-        const QString envRuntime = environmentPath("SCHOLIA_STEMTEX_RUNTIME_ROOT");
+        const QString envRuntime = environmentPath("MENGSHEE_STEMTEX_RUNTIME_ROOT");
         if (!envRuntime.isEmpty()) {
             return normalizeRuntimeRoot(envRuntime);
         }
@@ -653,7 +653,7 @@ private:
 
     static QString texmfRoot(const QString &runtimeRoot)
     {
-        const QString envTexmf = environmentPath("SCHOLIA_STEMTEX_TEXMF_ROOT");
+        const QString envTexmf = environmentPath("MENGSHEE_STEMTEX_TEXMF_ROOT");
         if (!envTexmf.isEmpty()) {
             return envTexmf;
         }
@@ -663,7 +663,7 @@ private:
 
     static QString profilesRoot()
     {
-        const QString envProfiles = environmentPath("SCHOLIA_STEMTEX_PROFILES_ROOT");
+        const QString envProfiles = environmentPath("MENGSHEE_STEMTEX_PROFILES_ROOT");
         if (!envProfiles.isEmpty()) {
             return envProfiles;
         }
@@ -676,7 +676,7 @@ private:
         if (temp.isEmpty()) {
             temp = QDir::tempPath();
         }
-        return QDir::cleanPath(QDir(temp).filePath(QStringLiteral("scholia/StemTeX")));
+        return QDir::cleanPath(QDir(temp).filePath(QStringLiteral("mengshee/StemTeX")));
     }
 
     static bool readProfileInfo(const StemtexApi &api, const QString &profileRoot, StemTeXProfileInfo *profileInfo, QString *error)
@@ -762,14 +762,14 @@ private:
 
     static QString selectProfileRoot(const StemtexApi &api, QString *error)
     {
-        const QString explicitProfileRoot = environmentPath("SCHOLIA_STEMTEX_PROFILE_ROOT");
+        const QString explicitProfileRoot = environmentPath("MENGSHEE_STEMTEX_PROFILE_ROOT");
         if (!explicitProfileRoot.isEmpty()) {
             StemTeXProfileInfo explicitProfile;
             return readProfileInfo(api, explicitProfileRoot, &explicitProfile, error) ? explicitProfile.path : QString();
         }
 
         QStringList preferredNames;
-        const QString envProfileName = QString::fromLocal8Bit(qgetenv("SCHOLIA_STEMTEX_PROFILE_NAME")).trimmed();
+        const QString envProfileName = QString::fromLocal8Bit(qgetenv("MENGSHEE_STEMTEX_PROFILE_NAME")).trimmed();
         const QString configuredProfileName = Okular::Settings::latexStemtexProfileName().trimmed();
         if (!envProfileName.isEmpty()) {
             preferredNames << envProfileName;
@@ -997,7 +997,7 @@ LatexRenderer::Error LatexRenderer::renderLatexInHtml(QString &html, const QColo
         return NoError;
     }
 
-    latexOutput = i18n("Legacy popup formula rendering has been removed. Use %1 LaTeX notes backed by StemTeX.", QStringLiteral("Scholia"));
+    latexOutput = i18n("Legacy popup formula rendering has been removed. Use %1 LaTeX notes backed by StemTeX.", QStringLiteral("Mengshee"));
     return LatexFailed;
 }
 
@@ -1102,7 +1102,7 @@ LatexRenderer::Error LatexRenderer::renderLatexToImage(const QString &latexFormu
     m_lastBackendName.clear();
     m_lastWarning = {};
     fileName.clear();
-    latexOutput = i18n("Legacy LaTeX image rendering has been removed. Use %1 LaTeX notes backed by StemTeX.", QStringLiteral("Scholia"));
+    latexOutput = i18n("Legacy LaTeX image rendering has been removed. Use %1 LaTeX notes backed by StemTeX.", QStringLiteral("Mengshee"));
     return LatexFailed;
 }
 

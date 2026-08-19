@@ -1,0 +1,36 @@
+#include <windows.h>
+
+IDI_ICON1 ICON "@MENGSHEE_ICON_RC_PATH@"
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION @MENGSHEE_VERSION_MAJOR@,@MENGSHEE_VERSION_MINOR@,@MENGSHEE_VERSION_MICRO@,@MENGSHEE_VERSION_HOTFIX@
+ PRODUCTVERSION @MENGSHEE_VERSION_MAJOR@,@MENGSHEE_VERSION_MINOR@,@MENGSHEE_VERSION_MICRO@,@MENGSHEE_VERSION_HOTFIX@
+ FILEFLAGSMASK 0x3fL
+#ifdef _DEBUG
+ FILEFLAGS 0x1L
+#else
+ FILEFLAGS 0x0L
+#endif
+ FILEOS 0x40004L
+ FILETYPE 0x1L
+ FILESUBTYPE 0x0L
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904b0"
+        BEGIN
+            VALUE "CompanyName", "Mengshee Contributors\0"
+            VALUE "FileDescription", "Mengshee PDF Application\0"
+            VALUE "FileVersion", "@MENGSHEE_VERSION@\0"
+            VALUE "InternalName", "mengshee\0"
+            VALUE "LegalCopyright", "2026 The Mengshee Contributors; 2002-2026 The Okular Developers\0"
+            VALUE "OriginalFilename", "mengshee.exe\0"
+            VALUE "ProductName", "Mengshee\0"
+            VALUE "ProductVersion", "@MENGSHEE_VERSION@\0"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END

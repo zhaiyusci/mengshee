@@ -6,10 +6,10 @@ get_filename_component(_default_source_root "${_windows_build_dir}/.." ABSOLUTE)
 get_filename_component(_default_workspace_root "${_default_source_root}/../windows_build" ABSOLUTE)
 include("${_script_dir}/kf6-sdk-common.cmake")
 
-scholia_default_path(SOURCE_ROOT "${_default_source_root}")
-scholia_default_path(WORKSPACE_ROOT "${_default_workspace_root}")
-scholia_default_path(SDK_PREFIX "${WORKSPACE_ROOT}/sdk")
-scholia_find_toolchain()
+mengshee_default_path(SOURCE_ROOT "${_default_source_root}")
+mengshee_default_path(WORKSPACE_ROOT "${_default_workspace_root}")
+mengshee_default_path(SDK_PREFIX "${WORKSPACE_ROOT}/sdk")
+mengshee_find_toolchain()
 
 if(NOT DEFINED BUILD_TYPE OR "${BUILD_TYPE}" STREQUAL "")
     set(BUILD_TYPE "RelWithDebInfo")
@@ -35,7 +35,7 @@ endif()
 get_filename_component(ECM_SOURCE "${ECM_SOURCE}" ABSOLUTE)
 set(ECM_BUILD "${BUILD_ROOT}/extra-cmake-modules")
 
-message(STATUS "Scholia KF6 SDK bootstrap")
+message(STATUS "Mengshee KF6 SDK bootstrap")
 message(STATUS "  QtPrefix    : ${QT_PREFIX}")
 message(STATUS "  SdkPrefix   : ${SDK_PREFIX}")
 message(STATUS "  Workspace   : ${WORKSPACE_ROOT}")
@@ -49,11 +49,11 @@ message(STATUS "  ECM ref     : ${ECM_GIT_REF}")
 file(MAKE_DIRECTORY "${WORKSPACE_ROOT}" "${SDK_PREFIX}" "${SOURCE_CACHE}" "${BUILD_ROOT}")
 
 if(NOT DEFINED SKIP_ECM OR NOT SKIP_ECM)
-    scholia_ensure_git_checkout("${ECM_GIT_URL}" "${ECM_GIT_REF}" "${ECM_SOURCE}")
+    mengshee_ensure_git_checkout("${ECM_GIT_URL}" "${ECM_GIT_REF}" "${ECM_SOURCE}")
     if(DEFINED CLEAN AND CLEAN)
-        scholia_remove_inside("${ECM_BUILD}" "${BUILD_ROOT}")
+        mengshee_remove_inside("${ECM_BUILD}" "${BUILD_ROOT}")
     endif()
-    scholia_prepare_build_dir("${ECM_BUILD}" "${BUILD_ROOT}" "${ECM_SOURCE}")
+    mengshee_prepare_build_dir("${ECM_BUILD}" "${BUILD_ROOT}" "${ECM_SOURCE}")
 
     set(_prefix_path "${QT_PREFIX}\\;${SDK_PREFIX}")
     set(_configure
@@ -68,17 +68,17 @@ if(NOT DEFINED SKIP_ECM OR NOT SKIP_ECM)
         -DBUILD_TESTING=OFF
     )
     list(JOIN _configure " " _configure_command)
-    scholia_run_vs("${_configure_command}")
-    scholia_run_vs("\"${CMAKE_PROGRAM}\" --build \"${ECM_BUILD}\" --target install --parallel ${JOBS}")
+    mengshee_run_vs("${_configure_command}")
+    mengshee_run_vs("\"${CMAKE_PROGRAM}\" --build \"${ECM_BUILD}\" --target install --parallel ${JOBS}")
 endif()
 
-file(WRITE "${SDK_PREFIX}/scholia-sdk-env.cmake"
-"set(SCHOLIA_SDK_PREFIX \"${SDK_PREFIX}\")
+file(WRITE "${SDK_PREFIX}/mengshee-sdk-env.cmake"
+"set(MENGSHEE_SDK_PREFIX \"${SDK_PREFIX}\")
 set(QT_PREFIX \"${QT_PREFIX}\")
 set(CMAKE_PREFIX_PATH \"${QT_PREFIX};${SDK_PREFIX}\")
 ")
 
-file(WRITE "${SDK_PREFIX}/scholia-sdk-bootstrap.json"
+file(WRITE "${SDK_PREFIX}/mengshee-sdk-bootstrap.json"
 "{
   \"Generated\": \"$ENV{DATE} $ENV{TIME}\",
   \"QtPrefix\": \"${QT_PREFIX}\",

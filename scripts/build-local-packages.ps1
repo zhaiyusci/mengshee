@@ -79,7 +79,7 @@ function Get-NewestFile([string] $Directory, [string] $Filter) {
         Select-Object -First 1
 }
 
-Write-Host "Scholia local package build"
+Write-Host "Mengshee local package build"
 Write-Host "  Repo:               $repoRoot"
 Write-Host "  Windows build root: $WindowsBuildRoot"
 Write-Host "  Linux AppImage dir: $linuxAppImageDir"
@@ -93,7 +93,7 @@ if (!$SkipWindows) {
             $args = @(
                 "-ExecutionPolicy", "Bypass",
                 "-NoProfile",
-                "-File", (Join-Path $repoRoot "windows-build\scripts\build-scholia-standalone.ps1"),
+                "-File", (Join-Path $repoRoot "windows-build\scripts\build-mengshee-standalone.ps1"),
                 "-WorkspaceRoot", $WindowsBuildRoot,
                 "-Jobs", $WindowsJobs
             )
@@ -112,7 +112,7 @@ if (!$SkipWindows) {
             $args = @(
                 "-ExecutionPolicy", "Bypass",
                 "-NoProfile",
-                "-File", (Join-Path $repoRoot "windows-build\scripts\build-scholia-installer.ps1"),
+                "-File", (Join-Path $repoRoot "windows-build\scripts\build-mengshee-installer.ps1"),
                 "-WorkspaceRoot", $WindowsBuildRoot,
                 "-Jobs", $WindowsJobs,
                 "-SkipBuild"
@@ -131,7 +131,7 @@ if (!$SkipWindows) {
             }
             Invoke-External "powershell.exe" $args
 
-            $installer = Get-NewestFile $windowsDist "Scholia-*-Setup.exe"
+            $installer = Get-NewestFile $windowsDist "Mengshee-*-Setup.exe"
             if (!$installer) {
                 throw "Windows installer was not found under $windowsDist"
             }

@@ -21,7 +21,7 @@ if (!$SdkPrefix) {
 }
 $SdkPrefix = [System.IO.Path]::GetFullPath($SdkPrefix)
 if (!$InstallPrefix) {
-    $InstallPrefix = Join-Path $WorkspaceRoot "install\scholia"
+    $InstallPrefix = Join-Path $WorkspaceRoot "install\mengshee"
 }
 $InstallPrefix = [System.IO.Path]::GetFullPath($InstallPrefix)
 
@@ -140,7 +140,7 @@ function Remove-EmptyGettextCatalogs([string] $Root) {
 
 function Remove-LegacyLatexRuntimeArtifacts([string] $Prefix) {
     Write-Host "Removing legacy LaTeX runtime artifacts..." -ForegroundColor Cyan
-    Remove-DirectoryInside (Join-Path $Prefix "bin\data\scholia\microtex") $Prefix
+    Remove-DirectoryInside (Join-Path $Prefix "bin\data\mengshee\microtex") $Prefix
     Remove-FileInside (Join-Path $Prefix "bin\LaTeX.dll") $Prefix
     Remove-FileInside (Join-Path $Prefix "lib\LaTeX.lib") $Prefix
 }
@@ -153,77 +153,77 @@ function Remove-ExpandedBreezeIconTheme([string] $Prefix) {
 
 function Copy-FileToDirectory([string] $Source, [string] $DestinationDir) {
     if (!(Test-Path -LiteralPath $Source)) {
-        throw "Missing Scholia runtime data file: $Source"
+        throw "Missing Mengshee runtime data file: $Source"
     }
     New-Item -ItemType Directory -Force -Path $DestinationDir | Out-Null
     Copy-Item -LiteralPath $Source -Destination $DestinationDir -Force
 }
 
-function Copy-ScholiaRuntimeData([string] $Prefix) {
-    Write-Host "Copying Scholia runtime data..." -ForegroundColor Cyan
+function Copy-MengsheeRuntimeData([string] $Prefix) {
+    Write-Host "Copying Mengshee runtime data..." -ForegroundColor Cyan
     $iconsRoot = Join-Path $script:repoRoot "icons"
     $dataIconsRoot = Join-Path $Prefix "bin\data\icons\hicolor"
 
     foreach ($size in @("16", "22", "32", "48", "64", "128", "256")) {
-        $source = Join-Path $iconsRoot "$size-apps-scholia.png"
+        $source = Join-Path $iconsRoot "$size-apps-mengshee.png"
         if (!(Test-Path -LiteralPath $source)) {
-            throw "Missing Scholia icon: $source"
+            throw "Missing Mengshee icon: $source"
         }
         $destinationDir = Join-Path $dataIconsRoot "$($size)x$size\apps"
         New-Item -ItemType Directory -Force -Path $destinationDir | Out-Null
-        Copy-Item -LiteralPath $source -Destination (Join-Path $destinationDir "scholia.png") -Force
+        Copy-Item -LiteralPath $source -Destination (Join-Path $destinationDir "mengshee.png") -Force
 
         $pdfIconSource = Join-Path $iconsRoot "$size-mimetypes-application-pdf.png"
         if (!(Test-Path -LiteralPath $pdfIconSource)) {
-            throw "Missing Scholia PDF icon: $pdfIconSource"
+            throw "Missing Mengshee PDF icon: $pdfIconSource"
         }
         $pdfIconDestinationDir = Join-Path $dataIconsRoot "$($size)x$size\mimetypes"
         New-Item -ItemType Directory -Force -Path $pdfIconDestinationDir | Out-Null
         Copy-Item -LiteralPath $pdfIconSource -Destination (Join-Path $pdfIconDestinationDir "application-pdf.png") -Force
     }
 
-    $icoSource = Join-Path $iconsRoot "scholia.ico"
+    $icoSource = Join-Path $iconsRoot "mengshee.ico"
     if (!(Test-Path -LiteralPath $icoSource)) {
-        throw "Missing Scholia icon: $icoSource"
+        throw "Missing Mengshee icon: $icoSource"
     }
-    Copy-Item -LiteralPath $icoSource -Destination (Join-Path $Prefix "bin\scholia.ico") -Force
+    Copy-Item -LiteralPath $icoSource -Destination (Join-Path $Prefix "bin\mengshee.ico") -Force
 
     $pdfIcoSource = Join-Path $iconsRoot "application-pdf.ico"
     if (!(Test-Path -LiteralPath $pdfIcoSource)) {
-        throw "Missing Scholia PDF icon: $pdfIcoSource"
+        throw "Missing Mengshee PDF icon: $pdfIcoSource"
     }
     Copy-Item -LiteralPath $pdfIcoSource -Destination (Join-Path $Prefix "bin\application-pdf.ico") -Force
 
-    Copy-FileToDirectory (Join-Path $script:repoRoot "shell\org.jairy.scholia.desktop") (Join-Path $Prefix "bin\data\applications")
-    Copy-FileToDirectory (Join-Path $script:repoRoot "shell\org.jairy.scholia.appdata.xml") (Join-Path $Prefix "bin\data\metainfo")
-    Copy-FileToDirectory (Join-Path $script:repoRoot "scholia.categories") (Join-Path $Prefix "bin\data\qlogging-categories6")
+    Copy-FileToDirectory (Join-Path $script:repoRoot "shell\org.jairy.mengshee.desktop") (Join-Path $Prefix "bin\data\applications")
+    Copy-FileToDirectory (Join-Path $script:repoRoot "shell\org.jairy.mengshee.appdata.xml") (Join-Path $Prefix "bin\data\metainfo")
+    Copy-FileToDirectory (Join-Path $script:repoRoot "mengshee.categories") (Join-Path $Prefix "bin\data\qlogging-categories6")
 
-    $scholiaDataDir = Join-Path $Prefix "bin\data\scholia"
+    $mengsheeDataDir = Join-Path $Prefix "bin\data\mengshee"
     foreach ($fileName in @("tools.xml", "toolsQuick.xml", "drawingtools.xml")) {
-        Copy-FileToDirectory (Join-Path $script:repoRoot "part\data\$fileName") $scholiaDataDir
+        Copy-FileToDirectory (Join-Path $script:repoRoot "part\data\$fileName") $mengsheeDataDir
     }
 
-    $scholiaPicsDir = Join-Path $scholiaDataDir "pics"
-    Copy-FileToDirectory (Join-Path $script:repoRoot "core\stamps.svg") $scholiaPicsDir
+    $mengsheePicsDir = Join-Path $mengsheeDataDir "pics"
+    Copy-FileToDirectory (Join-Path $script:repoRoot "core\stamps.svg") $mengsheePicsDir
     $partDataDir = Join-Path $script:repoRoot "part\data"
     foreach ($file in Get-ChildItem -LiteralPath $partDataDir -File) {
         if ($file.Extension -in @(".png", ".svg")) {
-            Copy-FileToDirectory $file.FullName $scholiaPicsDir
+            Copy-FileToDirectory $file.FullName $mengsheePicsDir
         }
     }
 }
 
-function Copy-ScholiaTranslations([string] $WorkspaceRoot, [string] $Prefix) {
-    Write-Host "Copying Scholia translations..." -ForegroundColor Cyan
-    $sourceRoot = Join-Path $WorkspaceRoot "build\scholia-standalone\locale"
+function Copy-MengsheeTranslations([string] $WorkspaceRoot, [string] $Prefix) {
+    Write-Host "Copying Mengshee translations..." -ForegroundColor Cyan
+    $sourceRoot = Join-Path $WorkspaceRoot "build\mengshee-standalone\locale"
     if (!(Test-Path -LiteralPath $sourceRoot)) {
-        throw "Missing Scholia translation build directory: $sourceRoot"
+        throw "Missing Mengshee translation build directory: $sourceRoot"
     }
 
     $destinationRoot = Join-Path $Prefix "bin\data\locale"
     $catalogs = @(Get-ChildItem -LiteralPath $sourceRoot -Recurse -Filter "*.mo" -File -ErrorAction SilentlyContinue | Where-Object { $_.Length -gt 28 })
     if ($catalogs.Count -eq 0) {
-        throw "No non-empty Scholia translation catalogs were found under $sourceRoot"
+        throw "No non-empty Mengshee translation catalogs were found under $sourceRoot"
     }
 
     $sourceRootWithSlash = $sourceRoot.TrimEnd([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar) + [System.IO.Path]::DirectorySeparatorChar
@@ -237,7 +237,7 @@ function Copy-ScholiaTranslations([string] $WorkspaceRoot, [string] $Prefix) {
         New-Item -ItemType Directory -Force -Path (Split-Path -Parent $destination) | Out-Null
         Copy-Item -LiteralPath $catalog.FullName -Destination $destination -Force
     }
-    Write-Host "Copied $($catalogs.Count) Scholia translation catalogs." -ForegroundColor Cyan
+    Write-Host "Copied $($catalogs.Count) Mengshee translation catalogs." -ForegroundColor Cyan
 }
 
 function Copy-QtChineseTranslations([string] $QtRoot, [string] $DestinationBinDir) {
@@ -284,8 +284,8 @@ function Find-StemTeXRoot([string] $RequestedRoot) {
     if ($RequestedRoot) {
         $candidates += $RequestedRoot
     }
-    if ($env:SCHOLIA_STEMTEX_SOURCE_ROOT) {
-        $candidates += $env:SCHOLIA_STEMTEX_SOURCE_ROOT
+    if ($env:MENGSHEE_STEMTEX_SOURCE_ROOT) {
+        $candidates += $env:MENGSHEE_STEMTEX_SOURCE_ROOT
     }
     $candidates += Join-Path $repoRoot "external\stemtex"
     $documentsRoot = Split-Path -Parent (Split-Path -Parent $repoRoot)
@@ -299,7 +299,7 @@ function Find-StemTeXRoot([string] $RequestedRoot) {
         }
     }
 
-    throw "Cannot find StemTeX source/staging tree. Pass -StemTeXRoot or set SCHOLIA_STEMTEX_SOURCE_ROOT."
+    throw "Cannot find StemTeX source/staging tree. Pass -StemTeXRoot or set MENGSHEE_STEMTEX_SOURCE_ROOT."
 }
 
 function Find-QScintillaRoot([string] $RequestedRoot, [string] $StemTeXRoot) {
@@ -307,8 +307,8 @@ function Find-QScintillaRoot([string] $RequestedRoot, [string] $StemTeXRoot) {
     if ($RequestedRoot) {
         $candidates += $RequestedRoot
     }
-    if ($env:SCHOLIA_QSCINTILLA_ROOT) {
-        $candidates += $env:SCHOLIA_QSCINTILLA_ROOT
+    if ($env:MENGSHEE_QSCINTILLA_ROOT) {
+        $candidates += $env:MENGSHEE_QSCINTILLA_ROOT
     }
     if ($StemTeXRoot) {
         $candidates += Join-Path $StemTeXRoot "third_party"
@@ -322,7 +322,7 @@ function Find-QScintillaRoot([string] $RequestedRoot, [string] $StemTeXRoot) {
         }
     }
 
-    throw "Cannot find the StemTeX QScintilla runtime. Pass -QScintillaRoot or set SCHOLIA_QSCINTILLA_ROOT."
+    throw "Cannot find the StemTeX QScintilla runtime. Pass -QScintillaRoot or set MENGSHEE_QSCINTILLA_ROOT."
 }
 
 function Resolve-StemTeXRuntimeSource([string] $Root) {
@@ -368,12 +368,12 @@ $StemTeXRuntimeSource = Resolve-StemTeXRuntimeSource $StemTeXRoot
 $StemTeXProfilesSource = Resolve-StemTeXProfilesSource $StemTeXRoot
 
 $binDir = Join-Path $InstallPrefix "bin"
-$exe = Join-Path $binDir "scholia.exe"
+$exe = Join-Path $binDir "mengshee.exe"
 if (!(Test-Path -LiteralPath $exe)) {
-    throw "Cannot find installed Scholia executable: $exe. Run build-scholia-standalone.ps1 first."
+    throw "Cannot find installed Mengshee executable: $exe. Run build-mengshee-standalone.ps1 first."
 }
 
-Write-Host "Scholia standalone runtime deploy" -ForegroundColor Green
+Write-Host "Mengshee standalone runtime deploy" -ForegroundColor Green
 Write-Host "QtPrefix  : $QtPrefix"
 Write-Host "SdkPrefix : $SdkPrefix"
 Write-Host "Install   : $InstallPrefix"
@@ -476,8 +476,8 @@ Sync-DirectoryContents $StemTeXRuntimeSource (Join-Path $stemTeXDestination "run
 Sync-DirectoryContents $StemTeXProfilesSource (Join-Path $stemTeXDestination "gui\profiles") $InstallPrefix
 
 Remove-ExpandedBreezeIconTheme $InstallPrefix
-Copy-ScholiaRuntimeData $InstallPrefix
-Copy-ScholiaTranslations $WorkspaceRoot $InstallPrefix
+Copy-MengsheeRuntimeData $InstallPrefix
+Copy-MengsheeTranslations $WorkspaceRoot $InstallPrefix
 Remove-DirectoryInside (Join-Path $InstallPrefix "plugins") $InstallPrefix
 Remove-DirectoryInside (Join-Path $InstallPrefix "lib\plugins") $InstallPrefix
 

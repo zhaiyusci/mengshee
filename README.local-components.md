@@ -2,7 +2,8 @@
 
 This fork pins local component sources as git submodules:
 
-- `external/poppler`: the Poppler fork/branch used for vector stamp appearance and Okular LaTeX note metadata.
+- `external/poppler`: the pinned, locally maintained Poppler fork used for
+  annotation behavior and the generic PDF page-sequence editor.
 - `external/stemtex`: the StemTeX renderer source used for bundled LaTeX note rendering.
 
 Initialize it after cloning:
@@ -17,15 +18,21 @@ prefix in `CMAKE_PREFIX_PATH`. The local Poppler build should also use bundled
 poppler-data from `$HOME/.local/opt/okular/share/poppler`, not the system
 `/usr/share/poppler`.
 
-LaTeX note rendering uses the StemTeX renderer. Scholia consumes StemTeX as
+The submodule is not an unmodified upstream checkout. Its maintenance policy,
+page-editor boundary, two-repository update procedure, and required regression
+checks are documented in `docs/local-poppler-fork.md`. In particular, the
+Poppler library, generated private headers, and page-editor sources used by one
+Mengshee build must come from compatible submodule revisions.
+
+LaTeX note rendering uses the StemTeX renderer. Mengshee consumes StemTeX as
 runtime artifacts copied during Windows deployment; the submodule provides the
 default source tree. Before packaging, StemTeX must have staged runtime outputs
 under that tree, or a different staged StemTeX checkout can be selected with
-`STEMTEX_ROOT` or `SCHOLIA_STEMTEX_SOURCE_ROOT`.
+`STEMTEX_ROOT` or `MENGSHEE_STEMTEX_SOURCE_ROOT`.
 
-Direct Scholia CMake configuration defaults `SCHOLIA_STEMTEX_ROOT` to
+Direct Mengshee CMake configuration defaults `MENGSHEE_STEMTEX_ROOT` to
 `external/stemtex` and uses its `third_party` QScintilla build when available.
-`SCHOLIA_QSCINTILLA_ROOT` can still be passed explicitly to override that
+`MENGSHEE_QSCINTILLA_ROOT` can still be passed explicitly to override that
 default.
 
 The detailed Linux local build and install workflow is documented in

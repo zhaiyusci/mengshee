@@ -24,7 +24,7 @@ $archiveDir = Join-Path $WorkspaceRoot "downloads"
 $archive = Join-Path $archiveDir "win_flex_bison-$Version.zip"
 $url = "https://github.com/lexxmark/winflexbison/releases/download/v$Version/win_flex_bison-$Version.zip"
 
-Write-Host "Scholia SDK winflexbison install" -ForegroundColor Green
+Write-Host "Mengshee SDK winflexbison install" -ForegroundColor Green
 Write-Host "Version     : $Version"
 Write-Host "SdkPrefix   : $SdkPrefix"
 Write-Host "Workspace   : $WorkspaceRoot"
@@ -67,7 +67,7 @@ $manifest = [pscustomobject]@{
     Url = $url
     InstalledAt = (Get-Date -Format o)
 }
-$manifest | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath (Join-Path $SdkPrefix "scholia-sdk-winflexbison.json") -Encoding UTF8
+$manifest | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath (Join-Path $SdkPrefix "mengshee-sdk-winflexbison.json") -Encoding UTF8
 
 Write-Host ""
 Write-Host "Installed winflexbison into SDK bin:" -ForegroundColor Green

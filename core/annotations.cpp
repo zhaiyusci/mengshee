@@ -54,7 +54,9 @@ ParsedTemplateNoteData parseTemplateNoteData(const QString &json)
     }
 
     const QJsonObject root = document.object();
-    if (root.value(QStringLiteral("version")).toInt() != TemplateNoteDataVersion || root.value(QStringLiteral("kind")).toString() != QLatin1String("scholia-template-note")) {
+    const QString kind = root.value(QStringLiteral("kind")).toString();
+    if (root.value(QStringLiteral("version")).toInt() != TemplateNoteDataVersion
+        || (kind != QLatin1String("mengshee-template-note") && kind != QLatin1String("scholia-template-note"))) {
         return data;
     }
 
@@ -253,7 +255,7 @@ QPixmap AnnotationUtils::loadStamp(const QString &nameOrPath, QSize size, Qt::As
 
     static std::unique_ptr<QSvgRenderer> svgStampFile;
     if (!svgStampFile.get()) {
-        const QString stampFile = QStandardPaths::locate(QStandardPaths::GenericDataLocation, QStringLiteral("scholia/pics/stamps.svg"));
+        const QString stampFile = QStandardPaths::locate(QStandardPaths::GenericDataLocation, QStringLiteral("mengshee/pics/stamps.svg"));
         if (!stampFile.isEmpty()) {
             svgStampFile = std::make_unique<QSvgRenderer>(stampFile);
             if (!svgStampFile->isValid()) {

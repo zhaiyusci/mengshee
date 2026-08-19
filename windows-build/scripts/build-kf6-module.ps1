@@ -181,7 +181,7 @@ $buildRoot = Join-Path $WorkspaceRoot "build\kf6-sdk"
 $moduleSource = [System.IO.Path]::GetFullPath((Join-Path $sourceRoot $Module))
 $moduleBuild = [System.IO.Path]::GetFullPath((Join-Path $buildRoot $Module))
 
-Write-Host "Scholia KF6 module build" -ForegroundColor Green
+Write-Host "Mengshee KF6 module build" -ForegroundColor Green
 Write-Host "Module      : $Module"
 Write-Host "Git URL     : $GitUrl"
 Write-Host "Git ref     : $GitRef"
@@ -228,7 +228,7 @@ Invoke-VsCmd $configure
 $build = """$CMake"" --build ""$moduleBuild"" --target install --parallel $Jobs"
 Invoke-VsCmd $build
 
-$moduleManifest = Join-Path $SdkPrefix "scholia-sdk-modules.json"
+$moduleManifest = Join-Path $SdkPrefix "mengshee-sdk-modules.json"
 $modules = @()
 if (Test-Path -LiteralPath $moduleManifest) {
     $loadedModules = Get-Content -LiteralPath $moduleManifest -Raw | ConvertFrom-Json

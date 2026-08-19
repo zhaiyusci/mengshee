@@ -187,10 +187,10 @@ Shell::Shell(const QString &serializedOptions)
     , m_toolBarWasShown(true)
     , m_isValid(true)
 {
-    setObjectName(QStringLiteral("scholia::Shell#"));
+    setObjectName(QStringLiteral("mengshee::Shell#"));
     setContextMenuPolicy(Qt::NoContextMenu);
     // otherwise .rc file won't be found by unit test
-    setComponentName(QStringLiteral("scholia"), QString());
+    setComponentName(QStringLiteral("mengshee"), QString());
     // set the shell's ui resource file
     setXMLFile(QStringLiteral("shell.rc"));
     m_fileformatsscanned = false;
@@ -205,7 +205,7 @@ Shell::Shell(const QString &serializedOptions)
         // if we couldn't find our Part, we exit since the Shell by
         // itself can't do anything useful
         m_isValid = false;
-        KMessageBox::error(this, i18n("Unable to find the %1 component: %2", QStringLiteral("Scholia"), result.errorString));
+        KMessageBox::error(this, i18n("Unable to find the %1 component: %2", QStringLiteral("Mengshee"), result.errorString));
         return;
     } else {
         m_partFactory = result.plugin;
@@ -246,7 +246,7 @@ Shell::Shell(const QString &serializedOptions)
         connect(m_tabWidget->tabBar(), &QTabBar::tabMoved, this, &Shell::moveTabData);
 
         m_sidebar = new Sidebar;
-        m_sidebar->setObjectName(QStringLiteral("scholia_sidebar"));
+        m_sidebar->setObjectName(QStringLiteral("mengshee_sidebar"));
         m_sidebar->setContextMenuPolicy(Qt::ActionsContextMenu);
         m_sidebar->setWindowTitle(i18n("Sidebar"));
         connect(m_sidebar, &QDockWidget::visibilityChanged, this, [this](bool visible) {
@@ -282,15 +282,15 @@ Shell::Shell(const QString &serializedOptions)
         m_unique = ShellUtils::unique(serializedOptions);
 #if HAVE_DBUS
         if (m_unique) {
-            m_unique = QDBusConnection::sessionBus().registerService(QStringLiteral("org.jairy.scholia"));
+            m_unique = QDBusConnection::sessionBus().registerService(QStringLiteral("org.jairy.mengshee"));
             if (!m_unique) {
-                KMessageBox::information(this, i18n("There is already a unique %1 instance running. This instance won't be the unique one.", QStringLiteral("Scholia")));
+                KMessageBox::information(this, i18n("There is already a unique %1 instance running. This instance won't be the unique one.", QStringLiteral("Mengshee")));
             }
         } else {
             // TODO When porting to KF7 Remove
             // PID is not unique in containers and "-" in the name violates D-Bus naming conventions.
             // Was left for compatibility with 3rd-party scripts.
-            QString serviceName = QStringLiteral("org.jairy.scholia-") + QString::number(qApp->applicationPid());
+            QString serviceName = QStringLiteral("org.jairy.mengshee-") + QString::number(qApp->applicationPid());
             QDBusConnection::sessionBus().registerService(serviceName);
 
             QDBusConnection::sessionBus().registerService(ShellUtils::currentProcessDbusName());
@@ -313,7 +313,7 @@ Shell::Shell(const QString &serializedOptions)
         showWelcomeScreen();
     } else {
         m_isValid = false;
-        KMessageBox::error(this, i18n("Unable to find the %1 component.", QStringLiteral("Scholia")));
+        KMessageBox::error(this, i18n("Unable to find the %1 component.", QStringLiteral("Mengshee")));
     }
 
     connect(guiFactory(), &KXMLGUIFactory::shortcutsSaved, this, &Shell::reloadAllXML);
@@ -385,7 +385,7 @@ Shell::~Shell()
     }
 #if HAVE_DBUS
     if (m_unique) {
-        QDBusConnection::sessionBus().unregisterService(QStringLiteral("org.jairy.scholia"));
+        QDBusConnection::sessionBus().unregisterService(QStringLiteral("org.jairy.mengshee"));
     }
 #endif // HAVE_DBUS
 
@@ -630,7 +630,7 @@ void Shell::setupActions()
     m_undoCloseTab->setEnabled(false);
     connect(m_undoCloseTab, &QAction::triggered, this, &Shell::undoCloseTab);
 
-    m_lockSidebarAction = actionCollection()->addAction(QStringLiteral("scholia_lock_sidebar"));
+    m_lockSidebarAction = actionCollection()->addAction(QStringLiteral("mengshee_lock_sidebar"));
     m_lockSidebarAction->setCheckable(true);
     m_lockSidebarAction->setIcon(QIcon::fromTheme(QStringLiteral("lock")));
     m_lockSidebarAction->setText(i18n("Lock Sidebar"));
@@ -1283,8 +1283,8 @@ void Shell::triggerUpdateRecentItems(const int maxItems)
 
 void Shell::readRecentFilesSettings()
 {
-    // Read no. of max. recent items from scholiarc, populate File->Open Recent menu-item as well as recentsListView on welcome screen
-    QString configFilePath = QStandardPaths::writableLocation(QStandardPaths::ConfigLocation) + QLatin1Char('/') + QLatin1String("scholiarc");
+    // Read no. of max. recent items from mengsheerc, populate File->Open Recent menu-item as well as recentsListView on welcome screen
+    QString configFilePath = QStandardPaths::writableLocation(QStandardPaths::ConfigLocation) + QLatin1Char('/') + QLatin1String("mengsheerc");
     const KConfigGroup confgrp = KSharedConfig::openConfig(configFilePath).data()->group(QStringLiteral("General"));
     const int defaultMaxRecentItems = 10;
     int maxRecentItems = confgrp.readEntry<int>("MaxRecentItems", defaultMaxRecentItems);

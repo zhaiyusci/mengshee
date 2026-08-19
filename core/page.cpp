@@ -697,8 +697,8 @@ QColor Page::textSelectionColor() const
 void Page::addAnnotation(Annotation *annotation)
 {
     if (annotation->uniqueName().isEmpty()) {
-        // Generate uniqueName: scholia-{UUID}
-        QString uniqueName = QStringLiteral("scholia-") + QUuid::createUuid().toString();
+        // Generate uniqueName: mengshee-{UUID}
+        QString uniqueName = QStringLiteral("mengshee-") + QUuid::createUuid().toString();
         annotation->setUniqueName(uniqueName);
     }
     int numberAnnotationChild = annotation->revisions().size();

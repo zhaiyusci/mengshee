@@ -6,10 +6,10 @@ get_filename_component(_default_source_root "${_windows_build_dir}/.." ABSOLUTE)
 get_filename_component(_default_workspace_root "${_default_source_root}/../windows_build" ABSOLUTE)
 include("${_script_dir}/kf6-sdk-common.cmake")
 
-scholia_default_path(SOURCE_ROOT "${_default_source_root}")
-scholia_default_path(WORKSPACE_ROOT "${_default_workspace_root}")
-scholia_default_path(SDK_PREFIX "${WORKSPACE_ROOT}/sdk")
-scholia_find_toolchain()
+mengshee_default_path(SOURCE_ROOT "${_default_source_root}")
+mengshee_default_path(WORKSPACE_ROOT "${_default_workspace_root}")
+mengshee_default_path(SDK_PREFIX "${WORKSPACE_ROOT}/sdk")
+mengshee_find_toolchain()
 
 if(NOT DEFINED BUILD_TYPE OR "${BUILD_TYPE}" STREQUAL "")
     set(BUILD_TYPE "RelWithDebInfo")
@@ -22,13 +22,13 @@ set(LIBINTL_SHIM_SOURCE "${SOURCE_ROOT}/windows-build/sdk-sources/libintl-shim")
 set(BUILD_ROOT "${WORKSPACE_ROOT}/build/thirdparty")
 set(LIBINTL_SHIM_BUILD "${BUILD_ROOT}/libintl-shim")
 
-message(STATUS "Scholia SDK libintl shim build")
+message(STATUS "Mengshee SDK libintl shim build")
 message(STATUS "  SdkPrefix : ${SDK_PREFIX}")
 
 if(DEFINED CLEAN AND CLEAN)
-    scholia_remove_inside("${LIBINTL_SHIM_BUILD}" "${BUILD_ROOT}")
+    mengshee_remove_inside("${LIBINTL_SHIM_BUILD}" "${BUILD_ROOT}")
 endif()
-scholia_prepare_build_dir("${LIBINTL_SHIM_BUILD}" "${BUILD_ROOT}" "${LIBINTL_SHIM_SOURCE}")
+mengshee_prepare_build_dir("${LIBINTL_SHIM_BUILD}" "${BUILD_ROOT}" "${LIBINTL_SHIM_SOURCE}")
 
 set(_configure
     "\"${CMAKE_PROGRAM}\""
@@ -40,7 +40,7 @@ set(_configure
     "-DCMAKE_INSTALL_PREFIX=\"${SDK_PREFIX}\""
 )
 list(JOIN _configure " " _configure_command)
-scholia_run_vs("${_configure_command}")
-scholia_run_vs("\"${CMAKE_PROGRAM}\" --build \"${LIBINTL_SHIM_BUILD}\" --target install --parallel ${JOBS}")
+mengshee_run_vs("${_configure_command}")
+mengshee_run_vs("\"${CMAKE_PROGRAM}\" --build \"${LIBINTL_SHIM_BUILD}\" --target install --parallel ${JOBS}")
 
 message(STATUS "libintl shim installed into SDK.")

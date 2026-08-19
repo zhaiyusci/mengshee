@@ -41,35 +41,35 @@ kconfig_add_kcfg_files(okularGenerator_poppler_PART_SRCS GENERATE_MOC conf/pdfse
 
 okular_add_generator(okularGenerator_poppler ${okularGenerator_poppler_PART_SRCS})
 
-set(SCHOLIA_POPPLER_PRIVATE_BUILD_DIR "${CMAKE_BINARY_DIR}/../thirdparty/poppler-custom")
-if(NOT EXISTS "${SCHOLIA_POPPLER_PRIVATE_BUILD_DIR}/config.h")
-    set(SCHOLIA_POPPLER_PRIVATE_BUILD_DIR "${CMAKE_BINARY_DIR}/../poppler-local")
+set(MENGSHEE_POPPLER_PRIVATE_BUILD_DIR "${CMAKE_BINARY_DIR}/../thirdparty/poppler-custom")
+if(NOT EXISTS "${MENGSHEE_POPPLER_PRIVATE_BUILD_DIR}/config.h")
+    set(MENGSHEE_POPPLER_PRIVATE_BUILD_DIR "${CMAKE_BINARY_DIR}/../poppler-local")
 endif()
 
-add_library(scholia_pdfpages STATIC
-    ${CMAKE_SOURCE_DIR}/external/poppler/utils/ScholiaPdfPages.cc
-    ${CMAKE_SOURCE_DIR}/external/poppler/utils/ScholiaPdfPages.h
+add_library(pdf_page_sequence_editor STATIC
+    ${CMAKE_SOURCE_DIR}/external/poppler/utils/PdfPageSequenceEditor.cc
+    ${CMAKE_SOURCE_DIR}/external/poppler/utils/PdfPageSequenceEditor.h
 )
-set_target_properties(scholia_pdfpages PROPERTIES POSITION_INDEPENDENT_CODE ON)
-target_include_directories(scholia_pdfpages
+set_target_properties(pdf_page_sequence_editor PROPERTIES POSITION_INDEPENDENT_CODE ON)
+target_include_directories(pdf_page_sequence_editor
     PUBLIC
         ${CMAKE_SOURCE_DIR}/external/poppler/utils
     PRIVATE
         ${CMAKE_SOURCE_DIR}/external/poppler
         ${CMAKE_SOURCE_DIR}/external/poppler/poppler
-        ${SCHOLIA_POPPLER_PRIVATE_BUILD_DIR}
-        ${SCHOLIA_POPPLER_PRIVATE_BUILD_DIR}/poppler
+        ${MENGSHEE_POPPLER_PRIVATE_BUILD_DIR}
+        ${MENGSHEE_POPPLER_PRIVATE_BUILD_DIR}/poppler
 )
-target_link_libraries(scholia_pdfpages Poppler::Core)
+target_link_libraries(pdf_page_sequence_editor Poppler::Core)
 
 target_include_directories(okularGenerator_poppler PRIVATE
     ${CMAKE_SOURCE_DIR}/external/poppler
     ${CMAKE_SOURCE_DIR}/external/poppler/poppler
     ${CMAKE_SOURCE_DIR}/external/poppler/qt6/src
-    ${SCHOLIA_POPPLER_PRIVATE_BUILD_DIR}
-    ${SCHOLIA_POPPLER_PRIVATE_BUILD_DIR}/poppler
+    ${MENGSHEE_POPPLER_PRIVATE_BUILD_DIR}
+    ${MENGSHEE_POPPLER_PRIVATE_BUILD_DIR}/poppler
 )
-target_link_libraries(okularGenerator_poppler okularcore KF6::I18n KF6::Completion KF6::KIOWidgets Poppler::Core Poppler::Qt6 Qt6::Xml scholia_pdfpages)
+target_link_libraries(okularGenerator_poppler okularcore KF6::I18n KF6::Completion KF6::KIOWidgets Poppler::Core Poppler::Qt6 Qt6::Xml pdf_page_sequence_editor)
 if(POPPLER_QT6_HAS_ANNOTATION_CUSTOM_SCALAR_PROPERTIES)
     target_compile_definitions(okularGenerator_poppler PRIVATE POPPLER_QT6_HAS_ANNOTATION_CUSTOM_SCALAR_PROPERTIES)
 endif()

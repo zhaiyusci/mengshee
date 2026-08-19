@@ -163,7 +163,7 @@ if (!$EcmGitRef) {
 $EcmSource = [System.IO.Path]::GetFullPath($EcmSource)
 $ecmBuild = Join-Path $buildRoot "extra-cmake-modules"
 
-Write-Host "Scholia KF6 SDK bootstrap" -ForegroundColor Green
+Write-Host "Mengshee KF6 SDK bootstrap" -ForegroundColor Green
 Write-Host "QtPrefix    : $QtPrefix"
 Write-Host "SdkPrefix   : $SdkPrefix"
 Write-Host "Workspace   : $WorkspaceRoot"
@@ -205,16 +205,16 @@ if (!$SkipEcm) {
     Invoke-VsCmd $build
 }
 
-$envScript = Join-Path $SdkPrefix "scholia-sdk-env.ps1"
+$envScript = Join-Path $SdkPrefix "mengshee-sdk-env.ps1"
 $envContent = @"
-`$env:SCHOLIA_SDK_PREFIX = '$SdkPrefix'
+`$env:MENGSHEE_SDK_PREFIX = '$SdkPrefix'
 `$env:QTDIR = '$QtPrefix'
 `$env:PATH = '$QtPrefix\bin;$SdkPrefix\bin;' + `$env:PATH
 `$env:CMAKE_PREFIX_PATH = '$QtPrefix;$SdkPrefix'
 `$env:QT_PLUGIN_PATH = '$QtPrefix\plugins;$SdkPrefix\plugins'
-Write-Host "Scholia SDK environment loaded:"
+Write-Host "Mengshee SDK environment loaded:"
 Write-Host "  QtPrefix : `$env:QTDIR"
-Write-Host "  SdkPrefix: `$env:SCHOLIA_SDK_PREFIX"
+Write-Host "  SdkPrefix: `$env:MENGSHEE_SDK_PREFIX"
 "@
 $envContent | Set-Content -LiteralPath $envScript -Encoding UTF8
 
@@ -230,7 +230,7 @@ $manifest = [ordered]@{
     EcmSource = $EcmSource
     EcmGitRef = $EcmGitRef
 }
-$manifestPath = Join-Path $SdkPrefix "scholia-sdk-bootstrap.json"
+$manifestPath = Join-Path $SdkPrefix "mengshee-sdk-bootstrap.json"
 $manifest | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $manifestPath -Encoding UTF8
 
 Write-Host ""

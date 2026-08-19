@@ -46,7 +46,7 @@ class KPluginFactory;
 class Shell : public KParts::MainWindow
 {
     Q_OBJECT
-    Q_CLASSINFO("D-Bus Interface", "org.jairy.scholia")
+    Q_CLASSINFO("D-Bus Interface", "org.jairy.mengshee")
 
     friend class MainShellTest;
     friend class AnnotationToolBarTest;

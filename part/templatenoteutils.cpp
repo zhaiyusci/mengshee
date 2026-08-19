@@ -53,7 +53,7 @@ QString TemplateNoteUtils::defaultPageNumberTemplateData()
 {
     QJsonObject root;
     root.insert(QStringLiteral("version"), 20260630);
-    root.insert(QStringLiteral("kind"), QStringLiteral("scholia-template-note"));
+    root.insert(QStringLiteral("kind"), QStringLiteral("mengshee-template-note"));
     root.insert(QStringLiteral("template"), QStringLiteral("${frameNumber} / ${totalFrameNumber}"));
 
     return QString::fromUtf8(QJsonDocument(root).toJson(QJsonDocument::Compact));
@@ -72,7 +72,7 @@ QString TemplateNoteUtils::templateDataWithTemplate(const QString &templateData,
     }
 
     root.insert(QStringLiteral("version"), 20260630);
-    root.insert(QStringLiteral("kind"), QStringLiteral("scholia-template-note"));
+    root.insert(QStringLiteral("kind"), QStringLiteral("mengshee-template-note"));
     root.insert(QStringLiteral("template"), templateText);
     root.remove(QStringLiteral("style"));
     return QString::fromUtf8(QJsonDocument(root).toJson(QJsonDocument::Compact));

@@ -2633,8 +2633,8 @@ QString DocumentPrivate::docDataFileName(const QUrl &url, qint64 document_size)
 {
     QString fn = url.fileName();
     fn = QString::number(document_size) + QLatin1Char('.') + fn + QStringLiteral(".xml");
-    QString docdataDir = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + QStringLiteral("/scholia/docdata");
-    // make sure that the scholia/docdata/ directory exists (probably this used to be handled by KStandardDirs)
+    QString docdataDir = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + QStringLiteral("/mengshee/docdata");
+    // make sure that the mengshee/docdata/ directory exists (probably this used to be handled by KStandardDirs)
     if (!QFileInfo::exists(docdataDir)) {
         qCDebug(OkularCoreDebug) << "creating docdata folder" << docdataDir;
         QDir().mkpath(docdataDir);
@@ -6197,7 +6197,7 @@ ArchiveData *DocumentPrivate::unpackDocumentArchive(const QString &archivePath)
     std::unique_ptr<ArchiveData> archiveData = std::make_unique<ArchiveData>();
     const int dotPos = documentFileName.indexOf(QLatin1Char('.'));
     if (dotPos != -1) {
-        archiveData->document.setFileTemplate(QDir::tempPath() + QLatin1String("/scholia_XXXXXX") + documentFileName.mid(dotPos));
+        archiveData->document.setFileTemplate(QDir::tempPath() + QLatin1String("/mengshee_XXXXXX") + documentFileName.mid(dotPos));
     }
     if (!archiveData->document.open()) {
         return nullptr;
@@ -6214,7 +6214,7 @@ ArchiveData *DocumentPrivate::unpackDocumentArchive(const QString &archivePath)
     const KArchiveEntry *metadataEntry = mainDir->entry(metadataFileName);
     if (metadataEntry && metadataEntry->isFile()) {
         std::unique_ptr<QIODevice> metadataEntryDevice(static_cast<const KZipFileEntry *>(metadataEntry)->createDevice());
-        archiveData->metadataFile.setFileTemplate(QDir::tempPath() + QLatin1String("/scholia_XXXXXX.xml"));
+        archiveData->metadataFile.setFileTemplate(QDir::tempPath() + QLatin1String("/mengshee_XXXXXX.xml"));
         if (archiveData->metadataFile.open()) {
             copyQIODevice(metadataEntryDevice.get(), &archiveData->metadataFile);
             archiveData->metadataFile.close();

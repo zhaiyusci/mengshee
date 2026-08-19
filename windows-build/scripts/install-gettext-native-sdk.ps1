@@ -45,7 +45,7 @@ function Test-FileSha256([string] $Path, [string] $ExpectedHash) {
     return $actual.Equals($ExpectedHash, [System.StringComparison]::OrdinalIgnoreCase)
 }
 
-Write-Host "Scholia SDK native gettext install" -ForegroundColor Green
+Write-Host "Mengshee SDK native gettext install" -ForegroundColor Green
 Write-Host "Version     : gettext $Version, iconv $IconvVersion"
 Write-Host "SdkPrefix   : $SdkPrefix"
 Write-Host "Workspace   : $WorkspaceRoot"
@@ -95,7 +95,7 @@ $manifest = [pscustomobject]@{
     Url = $url
     InstalledAt = (Get-Date -Format o)
 }
-$manifest | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath (Join-Path $SdkPrefix "scholia-sdk-gettext-native.json") -Encoding UTF8
+$manifest | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath (Join-Path $SdkPrefix "mengshee-sdk-gettext-native.json") -Encoding UTF8
 
 Write-Host ""
 Write-Host "Installed native gettext into SDK:" -ForegroundColor Green

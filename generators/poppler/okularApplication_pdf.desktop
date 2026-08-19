@@ -1,7 +1,7 @@
 [Desktop Entry]
 MimeType=application/pdf;application/x-gzpdf;application/x-bzpdf;application/x-wwf;
 Terminal=false
-Name=Scholia
+Name=Mengshee
 GenericName=Document Viewer
 GenericName[ar]=عارض المستندات
 GenericName[az]=Sənədə baxış vasitısi
@@ -126,8 +126,8 @@ Comment[uk]=Універсальний переглядач документів
 Comment[vi]=Trình xem tài liệu vạn năng
 Comment[zh_CN]=通用文档查看器
 Comment[zh_TW]=通用文件檢視器
-Exec=scholia %U
-Icon=scholia
+Exec=mengshee %U
+Icon=mengshee
 Type=Application
 InitialPreference=8
 Categories=Qt;Graphics;Viewer;

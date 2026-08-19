@@ -1,13 +1,13 @@
-# Scholia Page Editing and Annotation Model
+# Mengshee Page Editing and Annotation Model
 
-This document records the intended model for page-level editing in Scholia,
+This document records the intended model for page-level editing in Mengshee,
 especially how it interacts with PDF annotations. It exists to prevent a common
 implementation mistake: treating page reordering as a PDF save/rewrite problem
 instead of a document-model operation.
 
 ## Core Model
 
-Scholia edits an open document. The source of truth while the document is open
+Mengshee edits an open document. The source of truth while the document is open
 is the live document model, not the PDF file currently on disk.
 
 The live state includes:
@@ -26,7 +26,7 @@ their conceptual model.
 
 ## Annotation Lifecycle
 
-When the user creates an annotation, Scholia does not merely record a sidecar
+When the user creates an annotation, Mengshee does not merely record a sidecar
 entry for later saving.
 
 The current code path is:
@@ -41,7 +41,7 @@ The current code path is:
    `DocumentPrivate::performAddPageAnnotation(page, annotation)`.
 5. `DocumentPrivate::performAddPageAnnotation()` attaches the annotation to the
    target Okular `Page` first, through `Page::addAnnotation()`.
-6. `Page::addAnnotation()` assigns a stable `scholia-{UUID}` unique name if the
+6. `Page::addAnnotation()` assigns a stable `mengshee-{UUID}` unique name if the
    annotation does not already have one.
 7. `PagePrivate::addAnnotation()` records the Okular ownership:
    `annotation->d_ptr->m_page` is set to the page private object, the annotation
@@ -65,7 +65,7 @@ Therefore, the live annotation state exists in both:
 - Okular's `Page::m_annotations`;
 - Poppler's in-memory PDF document and page objects.
 
-The disk PDF is updated only when Scholia explicitly serializes changes, such
+The disk PDF is updated only when Mengshee explicitly serializes changes, such
 as through `Document::saveChanges()` or the user's save operation.
 
 This means an annotation that the user can see in an open document is already a
@@ -115,7 +115,7 @@ their pages.
 ## Persistence Boundary
 
 Page editing must not rely on a temporary PDF rewrite as its primary semantic
-model. Saving or exporting a PDF is a persistence boundary, not the way Scholia
+model. Saving or exporting a PDF is a persistence boundary, not the way Mengshee
 should represent ordinary page movement in an open document.
 
 A temporary PDF may be used as an internal persistence mechanism only when the
@@ -125,7 +125,7 @@ implementation detail that is proven to be equivalent to the live model.
 The temporary file must not be treated as the semantic source of truth. If page
 editing uses a PDF serialization internally, it must preserve:
 
-- all annotations currently visible in Scholia;
+- all annotations currently visible in Mengshee;
 - annotation `/Rect`, `/Contents`, `/AP`, style, flags, and private metadata;
 - page-to-annotation attachment through `/Annots`;
 - annotation-to-page references such as `/P`, when present;
@@ -139,6 +139,19 @@ For page reordering, the preferred implementation is to reorder the live page
 sequence and the corresponding backend page mapping without serializing and
 reloading the document. A file-level rewrite may be useful for final PDF
 output, but it is too fragile to define the in-memory editing operation.
+
+### Poppler Page-Sequence Serializer
+
+The final persistence step is implemented by the branding-neutral
+`PdfPageSequenceEditor` in the pinned local Poppler submodule. The Mengshee PDF
+generator compiles that source into the `pdf_page_sequence_editor` static
+target and invokes it only through generator page-editing/save interfaces.
+
+The editor uses Poppler Core's unstable object-writing API to rebuild the page
+tree. Its location in the Poppler fork does not make it product-specific:
+Mengshee policy, live-model semantics, undo/redo, and UI stay in this
+repository. See `docs/local-poppler-fork.md` for the ownership and upgrade
+contract.
 
 ## Page Reordering Requirements
 
@@ -175,14 +188,14 @@ When debugging page editing bugs, first identify which layer is wrong:
 - Poppler native state: the annotation exists in Okular but cannot be saved.
 - PDF serialization: the annotation exists before serialization but is missing
   from the generated PDF.
-- Reload/rebind: the generated PDF contains the annotation, but Scholia fails to
+- Reload/rebind: the generated PDF contains the annotation, but Mengshee fails to
   rebuild the corresponding Okular annotation after swapping backing files.
 
 These are different failures and should not be fixed with the same patch.
 
 ## Relation to Slide Editing
 
-Scholia's slide-editor direction depends on this model. A PDF page is treated
+Mengshee's slide-editor direction depends on this model. A PDF page is treated
 as a slide, and annotations are slide objects. Reordering slides must preserve
 the objects on each slide exactly as a presentation editor would.
 

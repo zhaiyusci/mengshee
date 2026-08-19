@@ -139,7 +139,7 @@ $buildRoot = Join-Path $WorkspaceRoot "build\thirdparty"
 $freetypeSource = [System.IO.Path]::GetFullPath((Join-Path $sourceRoot "freetype"))
 $freetypeBuild = [System.IO.Path]::GetFullPath((Join-Path $buildRoot "freetype"))
 
-Write-Host "Scholia SDK freetype build" -ForegroundColor Green
+Write-Host "Mengshee SDK freetype build" -ForegroundColor Green
 Write-Host "Git ref   : $FreetypeGitRef"
 Write-Host "SdkPrefix : $SdkPrefix"
 Write-Host "QtPrefix  : $QtPrefix"

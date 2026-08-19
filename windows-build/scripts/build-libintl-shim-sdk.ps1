@@ -81,7 +81,7 @@ if ($Clean -and (Test-Path -LiteralPath $build)) {
 }
 New-Item -ItemType Directory -Force -Path $build | Out-Null
 
-Write-Host "Scholia SDK libintl shim build" -ForegroundColor Green
+Write-Host "Mengshee SDK libintl shim build" -ForegroundColor Green
 Write-Host "SdkPrefix : $SdkPrefix"
 
 $configure = @(

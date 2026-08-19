@@ -115,7 +115,7 @@ value is passed unchanged to StemTeX's per-request font-size API; StemTeX uses
 `/Contents`. Font-size commands inside `/Contents` may still override it
 locally.
 
-`style.fontSizePt` is a TeX layout input, not an appearance zoom. Scholia must
+`style.fontSizePt` is a TeX layout input, not an appearance zoom. Mengshee must
 render glyphs at the requested size and must not scale the completed `/AP`.
 
 `style.fillColor`
@@ -297,7 +297,7 @@ normalized page coordinates.
 
 ## Rendering Triggers
 
-Scholia should re-render a LaTeX note only when the rendered LaTeX appearance
+Mengshee should re-render a LaTeX note only when the rendered LaTeX appearance
 can change:
 
 - when creating a new LaTeX note with non-empty source;
@@ -308,7 +308,7 @@ can change:
 - when a resize operation needs the appearance but the runtime appearance PDF
   path or page size is unavailable.
 
-Scholia should not invoke TeX or StemTeX for operations that only move or reuse
+Mengshee should not invoke TeX or StemTeX for operations that only move or reuse
 the existing appearance:
 
 - moving the annotation on the page;

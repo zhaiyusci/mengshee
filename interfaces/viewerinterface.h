@@ -124,6 +124,6 @@ public:
 }
 
 Q_DECLARE_INTERFACE(Okular::ViewerInterface, "org.kde.okular.ViewerInterface/0.1")
-Q_DECLARE_INTERFACE(Okular::PageEditingInterface, "org.jairy.scholia.PageEditingInterface/1.0")
+Q_DECLARE_INTERFACE(Okular::PageEditingInterface, "org.jairy.mengshee.PageEditingInterface/1.0")
 
 #endif

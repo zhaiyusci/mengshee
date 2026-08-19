@@ -1,17 +1,17 @@
 cmake_minimum_required(VERSION 3.22)
 
-# Scholia application version
-file(READ "${CMAKE_CURRENT_SOURCE_DIR}/VERSION.txt" SCHOLIA_VERSION)
-string(STRIP "${SCHOLIA_VERSION}" SCHOLIA_VERSION)
-if (NOT SCHOLIA_VERSION MATCHES "^([0-9]+)\\.([0-9]+)\\.([0-9]+)\\.([0-9]+)$")
-    message(FATAL_ERROR "VERSION.txt must contain MAJOR.MINOR.PATCH.HOTFIX, got '${SCHOLIA_VERSION}'")
+# Mengshee application version
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/VERSION.txt" MENGSHEE_VERSION)
+string(STRIP "${MENGSHEE_VERSION}" MENGSHEE_VERSION)
+if (NOT MENGSHEE_VERSION MATCHES "^([0-9]+)\\.([0-9]+)\\.([0-9]+)\\.([0-9]+)$")
+    message(FATAL_ERROR "VERSION.txt must contain MAJOR.MINOR.PATCH.HOTFIX, got '${MENGSHEE_VERSION}'")
 endif()
-set(SCHOLIA_VERSION_MAJOR "${CMAKE_MATCH_1}")
-set(SCHOLIA_VERSION_MINOR "${CMAKE_MATCH_2}")
-set(SCHOLIA_VERSION_MICRO "${CMAKE_MATCH_3}")
-set(SCHOLIA_VERSION_HOTFIX "${CMAKE_MATCH_4}")
+set(MENGSHEE_VERSION_MAJOR "${CMAKE_MATCH_1}")
+set(MENGSHEE_VERSION_MINOR "${CMAKE_MATCH_2}")
+set(MENGSHEE_VERSION_MICRO "${CMAKE_MATCH_3}")
+set(MENGSHEE_VERSION_HOTFIX "${CMAKE_MATCH_4}")
 
-project(scholia VERSION ${SCHOLIA_VERSION})
+project(mengshee VERSION ${MENGSHEE_VERSION})
 
 set(QT_REQUIRED_VERSION "6.6.0") # Remember to update the QT_DEPRECATED_WARNINGS_SINCE below
 set(KF_REQUIRED_VERSION "5.240.0") # Remember to update the KF_DEPRECATED_WARNINGS_SINCE below
@@ -107,45 +107,45 @@ ecm_setup_version(${PROJECT_VERSION}
 
 find_package(Qt6 ${QT_REQUIRED_VERSION} CONFIG REQUIRED COMPONENTS Core Test Widgets PrintSupport Svg Xml)
 
-set(SCHOLIA_STEMTEX_ROOT
+set(MENGSHEE_STEMTEX_ROOT
     "${CMAKE_CURRENT_SOURCE_DIR}/external/stemtex"
     CACHE PATH "Root of the StemTeX source/staging tree")
-set(SCHOLIA_QSCINTILLA_ROOT
+set(MENGSHEE_QSCINTILLA_ROOT
     ""
-    CACHE PATH "Root of the bundled QScintilla build used by StemTeX; empty uses SCHOLIA_STEMTEX_ROOT/third_party when available")
-set(_scholia_stemtex_root "")
-set(_scholia_qscintilla_root "")
-set(_scholia_qscintilla_root_explicit FALSE)
-if(SCHOLIA_STEMTEX_ROOT)
-    get_filename_component(_scholia_stemtex_root "${SCHOLIA_STEMTEX_ROOT}" ABSOLUTE)
+    CACHE PATH "Root of the bundled QScintilla build used by StemTeX; empty uses MENGSHEE_STEMTEX_ROOT/third_party when available")
+set(_mengshee_stemtex_root "")
+set(_mengshee_qscintilla_root "")
+set(_mengshee_qscintilla_root_explicit FALSE)
+if(MENGSHEE_STEMTEX_ROOT)
+    get_filename_component(_mengshee_stemtex_root "${MENGSHEE_STEMTEX_ROOT}" ABSOLUTE)
 endif()
-if(SCHOLIA_QSCINTILLA_ROOT)
-    set(_scholia_qscintilla_root "${SCHOLIA_QSCINTILLA_ROOT}")
-    set(_scholia_qscintilla_root_explicit TRUE)
-elseif(_scholia_stemtex_root AND IS_DIRECTORY "${_scholia_stemtex_root}/third_party")
-    set(_scholia_qscintilla_root "${_scholia_stemtex_root}/third_party")
+if(MENGSHEE_QSCINTILLA_ROOT)
+    set(_mengshee_qscintilla_root "${MENGSHEE_QSCINTILLA_ROOT}")
+    set(_mengshee_qscintilla_root_explicit TRUE)
+elseif(_mengshee_stemtex_root AND IS_DIRECTORY "${_mengshee_stemtex_root}/third_party")
+    set(_mengshee_qscintilla_root "${_mengshee_stemtex_root}/third_party")
 endif()
-if(_scholia_qscintilla_root)
-    get_filename_component(_scholia_qscintilla_root "${_scholia_qscintilla_root}" ABSOLUTE)
-    set(SCHOLIA_QSCINTILLA_INCLUDE_DIR "${_scholia_qscintilla_root}/qscintilla-src/src")
-    set(SCHOLIA_QSCINTILLA_SCINTILLA_INCLUDE_DIR "${_scholia_qscintilla_root}/qscintilla-src/scintilla/include")
-    set(SCHOLIA_QSCINTILLA_LIBRARY "${_scholia_qscintilla_root}/qscintilla-build/release/qscintilla2_qt6.lib")
-    set(SCHOLIA_QSCINTILLA_RUNTIME "${_scholia_qscintilla_root}/qscintilla-build/release/qscintilla2_qt6.dll")
-    if(EXISTS "${SCHOLIA_QSCINTILLA_INCLUDE_DIR}/Qsci/qsciscintilla.h" AND EXISTS "${SCHOLIA_QSCINTILLA_SCINTILLA_INCLUDE_DIR}/Scintilla.h" AND EXISTS "${SCHOLIA_QSCINTILLA_LIBRARY}" AND EXISTS "${SCHOLIA_QSCINTILLA_RUNTIME}")
+if(_mengshee_qscintilla_root)
+    get_filename_component(_mengshee_qscintilla_root "${_mengshee_qscintilla_root}" ABSOLUTE)
+    set(MENGSHEE_QSCINTILLA_INCLUDE_DIR "${_mengshee_qscintilla_root}/qscintilla-src/src")
+    set(MENGSHEE_QSCINTILLA_SCINTILLA_INCLUDE_DIR "${_mengshee_qscintilla_root}/qscintilla-src/scintilla/include")
+    set(MENGSHEE_QSCINTILLA_LIBRARY "${_mengshee_qscintilla_root}/qscintilla-build/release/qscintilla2_qt6.lib")
+    set(MENGSHEE_QSCINTILLA_RUNTIME "${_mengshee_qscintilla_root}/qscintilla-build/release/qscintilla2_qt6.dll")
+    if(EXISTS "${MENGSHEE_QSCINTILLA_INCLUDE_DIR}/Qsci/qsciscintilla.h" AND EXISTS "${MENGSHEE_QSCINTILLA_SCINTILLA_INCLUDE_DIR}/Scintilla.h" AND EXISTS "${MENGSHEE_QSCINTILLA_LIBRARY}" AND EXISTS "${MENGSHEE_QSCINTILLA_RUNTIME}")
         set(HAVE_QSCINTILLA 1)
-        message(STATUS "Using QScintilla from ${_scholia_qscintilla_root}")
-    elseif(_scholia_qscintilla_root_explicit)
-        message(FATAL_ERROR "SCHOLIA_QSCINTILLA_ROOT is set but QScintilla headers/library/runtime were not found under ${_scholia_qscintilla_root}")
+        message(STATUS "Using QScintilla from ${_mengshee_qscintilla_root}")
+    elseif(_mengshee_qscintilla_root_explicit)
+        message(FATAL_ERROR "MENGSHEE_QSCINTILLA_ROOT is set but QScintilla headers/library/runtime were not found under ${_mengshee_qscintilla_root}")
     else()
         set(HAVE_QSCINTILLA 0)
-        message(STATUS "StemTeX QScintilla build was not found under ${_scholia_qscintilla_root}; QScintilla support is disabled")
+        message(STATUS "StemTeX QScintilla build was not found under ${_mengshee_qscintilla_root}; QScintilla support is disabled")
     endif()
 else()
     set(HAVE_QSCINTILLA 0)
 endif()
-unset(_scholia_stemtex_root)
-unset(_scholia_qscintilla_root)
-unset(_scholia_qscintilla_root_explicit)
+unset(_mengshee_stemtex_root)
+unset(_mengshee_qscintilla_root)
+unset(_mengshee_qscintilla_root_explicit)
 
 find_package(KF6 ${KF_REQUIRED_VERSION} REQUIRED COMPONENTS
     Archive
@@ -647,8 +647,8 @@ target_link_libraries(okularpart okularcore
 )
 if(HAVE_QSCINTILLA)
     target_compile_definitions(okularpart PRIVATE HAVE_QSCINTILLA=1 QSCINTILLA_DLL)
-    target_include_directories(okularpart PRIVATE "${SCHOLIA_QSCINTILLA_INCLUDE_DIR}" "${SCHOLIA_QSCINTILLA_SCINTILLA_INCLUDE_DIR}")
-    target_link_libraries(okularpart "${SCHOLIA_QSCINTILLA_LIBRARY}")
+    target_include_directories(okularpart PRIVATE "${MENGSHEE_QSCINTILLA_INCLUDE_DIR}" "${MENGSHEE_QSCINTILLA_SCINTILLA_INCLUDE_DIR}")
+    target_link_libraries(okularpart "${MENGSHEE_QSCINTILLA_LIBRARY}")
 endif()
 if (TARGET Qt6::DBus)
     target_link_libraries(okularpart Qt6::DBus)
@@ -689,7 +689,7 @@ endif()# End of BUILD_DESKTOP if
 
 ########### install files ###############
 
-install(FILES scholia.categories DESTINATION ${KDE_INSTALL_LOGGINGCATEGORIESDIR})
+install(FILES mengshee.categories DESTINATION ${KDE_INSTALL_LOGGINGCATEGORIESDIR})
 
 ki18n_install(po)
 if(KF6DocTools_FOUND)
@@ -716,7 +716,7 @@ install(EXPORT Okular6Targets DESTINATION "${CMAKECONFIG_INSTALL_DIR}" FILE Okul
 
 install(FILES
    core/stamps.svg
-   DESTINATION ${KDE_INSTALL_DATADIR}/scholia/pics)
+   DESTINATION ${KDE_INSTALL_DATADIR}/mengshee/pics)
 
 ########### summary #################
 

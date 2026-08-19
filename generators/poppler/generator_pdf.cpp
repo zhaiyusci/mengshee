@@ -16,7 +16,7 @@
 
 #include "generator_pdf.h"
 
-#include "ScholiaPdfPages.h"
+#include "PdfPageSequenceEditor.h"
 
 // qt/kde includes
 #include <QCheckBox>
@@ -1905,7 +1905,7 @@ Okular::Document::PrintError PDFGenerator::print(QPrinter &printer)
     }
 
     // Create the tempfile to send to FilePrinter, which will manage the deletion
-    QTemporaryFile tf(QDir::tempPath() + QLatin1String("/scholia_XXXXXX.ps"));
+    QTemporaryFile tf(QDir::tempPath() + QLatin1String("/mengshee_XXXXXX.ps"));
     if (!tf.open()) {
         return Okular::Document::TemporaryFileOpenPrintError;
     }
@@ -2407,7 +2407,7 @@ static std::string pdfPagesFileName(const QString &fileName);
 template<typename Operation> static bool runPdfPagesOperation(Operation &&operation, QString *errorText)
 {
     try {
-        const ScholiaPdfPages::Result result = operation();
+        const PdfPageSequenceEditor::Result result = operation();
         if (result.ok()) {
             if (errorText) {
                 errorText->clear();
@@ -2439,7 +2439,7 @@ bool PDFGenerator::save(const QString &fileName, SaveOptions options, QString *e
     QString converterOutputFileName = fileName;
 
     if ((options & SaveChanges) && !pageOrderIsIdentity()) {
-        pageOrderSourceFile = std::make_unique<QTemporaryFile>(QDir::tempPath() + QLatin1String("/scholia-save-page-order-source-XXXXXX.pdf"));
+        pageOrderSourceFile = std::make_unique<QTemporaryFile>(QDir::tempPath() + QLatin1String("/mengshee-save-page-order-source-XXXXXX.pdf"));
         if (!pageOrderSourceFile->open()) {
             if (errorText) {
                 *errorText = QStringLiteral("Could not create a temporary file for saving the reordered page sequence.");
@@ -2485,7 +2485,7 @@ bool PDFGenerator::save(const QString &fileName, SaveOptions options, QString *e
     }
 
     if (success && pageOrderSourceFile) {
-        if (!runPdfPagesOperation([&] { return ScholiaPdfPages::reorderPages(pdfPagesFileName(converterOutputFileName), pdfPagesFileName(fileName), oneBasedPageOrder()); }, errorText)) {
+        if (!runPdfPagesOperation([&] { return PdfPageSequenceEditor::reorderPages(pdfPagesFileName(converterOutputFileName), pdfPagesFileName(fileName), oneBasedPageOrder()); }, errorText)) {
             return false;
         }
     }
@@ -2504,12 +2504,12 @@ static std::string pdfPagesFileName(const QString &fileName)
 
 bool PDFGenerator::saveWithBlankPageInsertedAfter(const QString &sourceFileName, const QString &outputFileName, int pageNumber, QString *errorText)
 {
-    return runPdfPagesOperation([&] { return ScholiaPdfPages::insertBlankPageAfter(pdfPagesFileName(sourceFileName), pdfPagesFileName(outputFileName), pageNumber); }, errorText);
+    return runPdfPagesOperation([&] { return PdfPageSequenceEditor::insertBlankPageAfter(pdfPagesFileName(sourceFileName), pdfPagesFileName(outputFileName), pageNumber); }, errorText);
 }
 
 bool PDFGenerator::saveWithBlankPageInsertedAfter(const QString &sourceFileName, const QString &outputFileName, int pageNumber, double width, double height, QString *errorText)
 {
-    return runPdfPagesOperation([&] { return ScholiaPdfPages::insertBlankPageAfter(pdfPagesFileName(sourceFileName), pdfPagesFileName(outputFileName), pageNumber, width, height); }, errorText);
+    return runPdfPagesOperation([&] { return PdfPageSequenceEditor::insertBlankPageAfter(pdfPagesFileName(sourceFileName), pdfPagesFileName(outputFileName), pageNumber, width, height); }, errorText);
 }
 
 bool PDFGenerator::canInsertPageFromPdf() const
@@ -2519,7 +2519,7 @@ bool PDFGenerator::canInsertPageFromPdf() const
 
 bool PDFGenerator::saveWithPdfPageInsertedAfter(const QString &sourceFileName, const QString &outputFileName, int pageNumber, const QString &insertedFileName, int pageToInsert, QString *errorText)
 {
-    return runPdfPagesOperation([&] { return ScholiaPdfPages::insertPdfPageAfter(pdfPagesFileName(sourceFileName), pdfPagesFileName(outputFileName), pageNumber, pdfPagesFileName(insertedFileName), pageToInsert); }, errorText);
+    return runPdfPagesOperation([&] { return PdfPageSequenceEditor::insertPdfPageAfter(pdfPagesFileName(sourceFileName), pdfPagesFileName(outputFileName), pageNumber, pdfPagesFileName(insertedFileName), pageToInsert); }, errorText);
 }
 
 bool PDFGenerator::canDeletePage() const
@@ -2529,7 +2529,7 @@ bool PDFGenerator::canDeletePage() const
 
 bool PDFGenerator::saveWithPageDeleted(const QString &sourceFileName, const QString &outputFileName, int pageNumber, QString *errorText)
 {
-    return runPdfPagesOperation([&] { return ScholiaPdfPages::deletePage(pdfPagesFileName(sourceFileName), pdfPagesFileName(outputFileName), pageNumber); }, errorText);
+    return runPdfPagesOperation([&] { return PdfPageSequenceEditor::deletePage(pdfPagesFileName(sourceFileName), pdfPagesFileName(outputFileName), pageNumber); }, errorText);
 }
 
 bool PDFGenerator::canMovePage() const
@@ -2569,7 +2569,7 @@ bool PDFGenerator::movePageInDocument(int sourcePageNumber, int destinationPageN
 
 bool PDFGenerator::saveWithPageMoved(const QString &sourceFileName, const QString &outputFileName, int sourcePageNumber, int destinationPageNumber, QString *errorText)
 {
-    return runPdfPagesOperation([&] { return ScholiaPdfPages::movePage(pdfPagesFileName(sourceFileName), pdfPagesFileName(outputFileName), sourcePageNumber, destinationPageNumber); }, errorText);
+    return runPdfPagesOperation([&] { return PdfPageSequenceEditor::movePage(pdfPagesFileName(sourceFileName), pdfPagesFileName(outputFileName), sourcePageNumber, destinationPageNumber); }, errorText);
 }
 
 Okular::AnnotationProxy *PDFGenerator::annotationProxy() const
@@ -2622,7 +2622,7 @@ std::pair<Okular::SigningResult, QString> PDFGenerator::sign(const Okular::NewSi
     std::unique_ptr<QTemporaryFile> timg;
 
     // save to tmp file - poppler doesn't like overwriting in-place
-    QTemporaryFile tf(QFileInfo(rFilename).absolutePath() + QLatin1String("/scholia_XXXXXX.pdf"));
+    QTemporaryFile tf(QFileInfo(rFilename).absolutePath() + QLatin1String("/mengshee_XXXXXX.pdf"));
     tf.setAutoRemove(false);
     if (!tf.open()) {
         return {Okular::SignatureWriteFailed, i18n("Failed writing temporary file")};
@@ -2654,7 +2654,7 @@ std::pair<Okular::SigningResult, QString> PDFGenerator::sign(const Okular::NewSi
         auto input = reader.read();
         if (!input.isNull()) {
             auto scaled = imagescaling::scaleAndFitCanvas(input, QSize(width, height));
-            timg = std::make_unique<QTemporaryFile>(QFileInfo(rFilename).absolutePath() + QLatin1String("/scholia_XXXXXX.png"));
+            timg = std::make_unique<QTemporaryFile>(QFileInfo(rFilename).absolutePath() + QLatin1String("/mengshee_XXXXXX.png"));
             timg->setAutoRemove(true);
             if (!timg->open()) {
                 tf.setAutoRemove(true);
@@ -2706,6 +2706,6 @@ void PDFGenerator::xrefReconstructionHandler()
 
 #include "generator_pdf.moc"
 
-Q_LOGGING_CATEGORY(OkularPdfDebug, "org.jairy.scholia.generators.pdf", QtWarningMsg)
+Q_LOGGING_CATEGORY(OkularPdfDebug, "org.jairy.mengshee.generators.pdf", QtWarningMsg)
 
 /* kate: replace-tabs on; indent-width 4; */

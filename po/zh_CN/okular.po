@@ -6475,10 +6475,10 @@ msgstr "未知的 C++ 异常"
 #: shell/main.cpp
 #, kde-format
 msgid ""
-"Scholia stopped an operation after an unexpected internal error. The application is still running, but you should save your work to a new file before continuing.\n"
+"Mengshee stopped an operation after an unexpected internal error. The application is still running, but you should save your work to a new file before continuing.\n"
 "\n"
 "%1"
 msgstr ""
-"Scholia 因意外的内部错误停止了当前操作。应用程序仍在运行，但建议先将当前工作保存到新文件，再继续操作。\n"
+"Mengshee 因意外的内部错误停止了当前操作。应用程序仍在运行，但建议先将当前工作保存到新文件，再继续操作。\n"
 "\n"
 "%1"

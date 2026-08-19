@@ -26,7 +26,7 @@ if (!$WorkspaceRoot) {
 }
 $WorkspaceRoot = [System.IO.Path]::GetFullPath($WorkspaceRoot)
 if (!$InstallPrefix) {
-    $InstallPrefix = Join-Path $WorkspaceRoot "install\scholia"
+    $InstallPrefix = Join-Path $WorkspaceRoot "install\mengshee"
 }
 $InstallPrefix = [System.IO.Path]::GetFullPath($InstallPrefix)
 if (!$SdkPrefix) {
@@ -34,7 +34,7 @@ if (!$SdkPrefix) {
 }
 $SdkPrefix = [System.IO.Path]::GetFullPath($SdkPrefix)
 if (!$StageRoot) {
-    $StageRoot = Join-Path $WorkspaceRoot "dist\scholia-pdf\app"
+    $StageRoot = Join-Path $WorkspaceRoot "dist\mengshee-pdf\app"
 }
 if (!$OutputDir) {
     $OutputDir = Join-Path $WorkspaceRoot "dist"
@@ -110,15 +110,15 @@ function Assert-StemTeXBundleLayout([string] $Root) {
     foreach ($relativePath in $requiredPaths) {
         $path = Join-Path $Root $relativePath
         if (!(Test-Path -LiteralPath $path)) {
-            throw "StemTeX bundle has an unsupported layout. Missing $relativePath under $Root. Run deploy-scholia-standalone-runtime.ps1 first."
+            throw "StemTeX bundle has an unsupported layout. Missing $relativePath under $Root. Run deploy-mengshee-standalone-runtime.ps1 first."
         }
     }
 }
 
 function Copy-RuntimeStage([string] $SourcePrefix, [string] $DestinationRoot) {
     $sourceBin = Join-Path $SourcePrefix "bin"
-    if (!(Test-Path -LiteralPath (Join-Path $sourceBin "scholia.exe"))) {
-        throw "Cannot find deployed Scholia runtime under $sourceBin. Run deploy-scholia-standalone-runtime.ps1 first."
+    if (!(Test-Path -LiteralPath (Join-Path $sourceBin "mengshee.exe"))) {
+        throw "Cannot find deployed Mengshee runtime under $sourceBin. Run deploy-mengshee-standalone-runtime.ps1 first."
     }
 
     New-Item -ItemType Directory -Force -Path $DestinationRoot | Out-Null
@@ -183,10 +183,10 @@ function Find-InnoSetupCompiler([string] $RequestedPath) {
     throw "Cannot find Inno Setup compiler. Pass -ISCC with the path to ISCC.exe."
 }
 
-function Read-ScholiaVersion([string] $Root) {
+function Read-MengsheeVersion([string] $Root) {
     $versionFile = Join-Path $Root "VERSION.txt"
     if (!(Test-Path -LiteralPath $versionFile)) {
-        throw "Cannot find Scholia version file: $versionFile"
+        throw "Cannot find Mengshee version file: $versionFile"
     }
     $value = (Get-Content -LiteralPath $versionFile -Raw).Trim()
     if ($value -notmatch '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$') {
@@ -195,7 +195,7 @@ function Read-ScholiaVersion([string] $Root) {
     return $value
 }
 
-$repoVersion = Read-ScholiaVersion $repoRoot
+$repoVersion = Read-MengsheeVersion $repoRoot
 if (!$Version) {
     $Version = $repoVersion
 }
@@ -223,7 +223,7 @@ if (!$SkipStage) {
             $buildArgs += @("-VcVars", $VcVars)
         }
         $buildArgs += @("-SdkPrefix", $SdkPrefix)
-        Invoke-ChildScript (Join-Path $PSScriptRoot "build-scholia-standalone.ps1") $buildArgs
+        Invoke-ChildScript (Join-Path $PSScriptRoot "build-mengshee-standalone.ps1") $buildArgs
     }
 
     if (!$SkipDeploy) {
@@ -235,7 +235,7 @@ if (!$SkipStage) {
             $deployArgs += @("-QtPrefix", $QtPrefix)
         }
         $deployArgs += @("-SdkPrefix", $SdkPrefix)
-        Invoke-ChildScript (Join-Path $PSScriptRoot "deploy-scholia-standalone-runtime.ps1") $deployArgs
+        Invoke-ChildScript (Join-Path $PSScriptRoot "deploy-mengshee-standalone-runtime.ps1") $deployArgs
     }
 
     if ($CleanStage) {
@@ -254,12 +254,12 @@ $ISCC = Find-InnoSetupCompiler $ISCC
 
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 
-$env:SCHOLIA_STAGE = $StageRoot
-$env:SCHOLIA_OUTPUT = $OutputDir
-$env:SCHOLIA_VERSION = $Version
-$env:SCHOLIA_FILE_VERSION = $FileVersion
+$env:MENGSHEE_STAGE = $StageRoot
+$env:MENGSHEE_OUTPUT = $OutputDir
+$env:MENGSHEE_VERSION = $Version
+$env:MENGSHEE_FILE_VERSION = $FileVersion
 
-$iss = Join-Path (Split-Path -Parent $PSScriptRoot) "installer\scholia-installer.iss"
+$iss = Join-Path (Split-Path -Parent $PSScriptRoot) "installer\mengshee-installer.iss"
 Write-Host "Building installer with Inno Setup:"
 Write-Host "  Script: $iss"
 Write-Host "  Stage: $StageRoot"

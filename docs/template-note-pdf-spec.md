@@ -1,20 +1,20 @@
-# Scholia Template Note PDF Specification
+# Mengshee Template Note PDF Specification
 
-This document defines the intended PDF representation for Scholia template
+This document defines the intended PDF representation for Mengshee template
 notes. A template note is an editable annotation whose displayed text is
 computed from document context, such as page number, page count, page label, or
 date.
 
 The design follows the LaTeX note model: the saved PDF must contain a normal,
 self-contained appearance stream that other PDF readers can display, while
-Scholia-specific edit state is stored in one private JSON payload.
+Mengshee-specific edit state is stored in one private JSON payload.
 
 ## Design Goals
 
 - A template note is a normal PDF FreeText annotation.
 - Other PDF readers must be able to display it through the normal appearance
   stream.
-- Scholia-specific state should be stored in one private JSON payload.
+- Mengshee-specific state should be stored in one private JSON payload.
 - The annotation position and size are normal annotation geometry, not template
   metadata.
 - The template expression language should follow JavaScript template literal
@@ -51,7 +51,7 @@ payload.
 
 `/Contents`
 : The last computed plain-text result. This gives ordinary PDF tools a useful
-text value and provides a fallback if Scholia-specific metadata is ignored.
+text value and provides a fallback if Mengshee-specific metadata is ignored.
 
 `/DA`
 : The default appearance string for the FreeText annotation. It should describe
@@ -62,12 +62,12 @@ the font, font size, and text color used for the current appearance.
 for right. This is normal FreeText appearance state, not template metadata.
 
 `/TemplateNoteData`
-: A PDF string containing UTF-8 JSON. This is the single Scholia private field
+: A PDF string containing UTF-8 JSON. This is the single Mengshee private field
 that identifies and restores a template note.
 
 `/AP /N`
 : The normal appearance stream. It must be self-contained and display the last
-computed template result without requiring Scholia.
+computed template result without requiring Mengshee.
 
 Optional fields:
 
@@ -81,13 +81,13 @@ writer behavior.
 
 ## Identity Rule
 
-A PDF annotation is a Scholia template note when:
+A PDF annotation is a Mengshee template note when:
 
 - `/Subtype` is `/FreeText`;
 - `/TemplateNoteData` is present;
 - `/TemplateNoteData` parses as JSON;
 - the parsed JSON has `"version": 20260630`;
-- the parsed JSON has `"kind": "scholia-template-note"`.
+- the parsed JSON has `"kind": "mengshee-template-note"`.
 
 No icon name, visual appearance, `/Contents` text, or appearance-stream content
 should be used as the source of identity.
@@ -101,7 +101,7 @@ Minimal schema:
 ```json
 {
   "version": 20260630,
-  "kind": "scholia-template-note",
+  "kind": "mengshee-template-note",
   "template": "${frameNumber} / ${totalFrameNumber}"
 }
 ```
@@ -112,12 +112,12 @@ Fields:
 : Required integer. For this specification, the value is `20260630`.
 
 `kind`
-: Required string. Must be `"scholia-template-note"`.
+: Required string. Must be `"mengshee-template-note"`.
 
 `template`
 : Required string. A JSON string interpreted as a restricted JavaScript
 template literal body. Text outside `${...}` placeholders is copied literally.
-Each placeholder contains a JavaScript expression evaluated by Scholia.
+Each placeholder contains a JavaScript expression evaluated by Mengshee.
 
 Unknown JSON fields must be preserved when possible. Readers may ignore fields
 they do not understand.
@@ -129,14 +129,14 @@ annotations.
 The JSON payload must not contain visual style fields such as font family, font
 size, text color, fill color, border color, border width, or alignment. Those
 properties are normal FreeText annotation state (`/DA`, `/Q`, `/C`, `/IC`,
-`/BS`, and the generated appearance stream). Scholia may use product defaults
+`/BS`, and the generated appearance stream). Mengshee may use product defaults
 when creating a new template note, but after creation the FreeText annotation
 itself is the source of truth for appearance.
 
 ## Template Expression Language
 
 Template notes use the interpolation syntax of JavaScript template literals.
-Conceptually, Scholia evaluates the user string as if it were inside backticks:
+Conceptually, Mengshee evaluates the user string as if it were inside backticks:
 
 ```js
 `Frame ${frameNumber} of ${totalFrameNumber}`
@@ -159,7 +159,7 @@ This is not a general scripting interface. Template evaluation must not be
 allowed to modify the document, access files, access the network, or call
 arbitrary application APIs.
 
-The expression context contains only Scholia predefined read-only variables and
+The expression context contains only Mengshee predefined read-only variables and
 predefined pure functions. User-defined global variables, user-defined
 functions, statements, assignments, imports, file access, network access, and
 document mutation are outside this specification.
@@ -167,13 +167,13 @@ document mutation are outside this specification.
 The predefined names are inspired by Beamer's `\insert...` commands. Beamer
 uses inserts such as `\insertframenumber`, `\inserttotalframenumber`,
 `\insertshorttitle`, `\insertshortauthor`, `\insertsection`, and
-`\insertshortdate` inside headline and footline templates. Scholia exposes the
+`\insertshortdate` inside headline and footline templates. Mengshee exposes the
 same concepts as JavaScript-style camelCase values, usually without the
 `insert` prefix.
 
 The naming rule is:
 
-- Beamer `\insert...` commands become Scholia camelCase variables.
+- Beamer `\insert...` commands become Mengshee camelCase variables.
 - The `insert` prefix is removed when the remaining name is clear.
 - Frame-oriented names are preferred for slide templates, because this feature
   is meant to support slide-like PDFs.
@@ -182,7 +182,7 @@ The naming rule is:
 
 Mapping examples:
 
-| Beamer concept | Beamer name | Scholia template name |
+| Beamer concept | Beamer name | Mengshee template name |
 | --- | --- | --- |
 | current frame number | `\insertframenumber` | `frameNumber` |
 | total frame number | `\inserttotalframenumber` | `totalFrameNumber` |
@@ -239,12 +239,12 @@ the first implementation this is the same as `pageNumber`.
 
 `slideNumber`
 : One-based slide number within the current frame. This mirrors Beamer's
-`\insertslidenumber`. Since Scholia PDF pages do not have Beamer overlays in
+`\insertslidenumber`. Since Mengshee PDF pages do not have Beamer overlays in
 the first implementation, this value is `1`.
 
 `overlayNumber`
 : Current overlay number. This mirrors Beamer's `\insertoverlaynumber`. Since
-Scholia PDF pages do not have overlays in the first implementation, this value
+Mengshee PDF pages do not have overlays in the first implementation, this value
 is `1`.
 
 ### Document Metadata Variables
@@ -332,25 +332,25 @@ JavaScript already has formatting APIs such as `Intl.DateTimeFormat`,
 `String.prototype.padStart()`. Template notes should not expose the whole
 runtime formatting surface directly as the stable document format, because
 native locale behavior can vary across platforms and Qt versions. Instead,
-Scholia exposes a small stable wrapper API. Implementations may use JavaScript
+Mengshee exposes a small stable wrapper API. Implementations may use JavaScript
 `Intl`, Qt `QLocale`, or custom code internally, but the behavior documented
 here is the compatibility contract.
 
 Formatting rule:
 
-- Template authors should use Scholia wrapper functions for portable output.
+- Template authors should use Mengshee wrapper functions for portable output.
 - Direct JS formatting methods, such as `now.toLocaleDateString()`, are not
   part of the stable document-format contract.
-- Scholia may reject, warn about, or treat unsupported formatting calls as
+- Mengshee may reject, warn about, or treat unsupported formatting calls as
   implementation-defined.
 - Wrapper functions are pure: the same input values, locale, and pattern must
-  produce the same output for a given Scholia version.
+  produce the same output for a given Mengshee version.
 
 `formatDate(date, patternOrOptions, locale)`
 : Formats a JavaScript `Date` object. If `patternOrOptions` is a string,
-Scholia-owned stable patterns are used. The first required pattern is
+Mengshee-owned stable patterns are used. The first required pattern is
 `"yyyy-MM-dd"`. If `patternOrOptions` is an object, it follows the spirit of
-JavaScript `Intl.DateTimeFormat` options, but Scholia owns the supported subset
+JavaScript `Intl.DateTimeFormat` options, but Mengshee owns the supported subset
 and must keep existing behavior stable. `locale` is optional.
 
 Required string patterns:
@@ -362,7 +362,7 @@ Required string patterns:
 `formatNumber(value, options, locale)`
 : Formats a number. If `options` is omitted, returns a plain decimal string.
 If `options` is an object, it follows the spirit of JavaScript
-`Intl.NumberFormat` options, but Scholia owns the supported subset and must
+`Intl.NumberFormat` options, but Mengshee owns the supported subset and must
 keep existing behavior stable. `locale` is optional.
 
 Required options:
@@ -400,7 +400,7 @@ ${formatNumber(totalFrameNumber)}
 
 ## Appearance Stream Contract
 
-The saved PDF must not depend on Scholia to display the template note. Scholia
+The saved PDF must not depend on Mengshee to display the template note. Mengshee
 may recompute template text while editing, but every save must write a normal
 appearance stream for the current computed result.
 
@@ -413,11 +413,11 @@ appearance.
 The exact PDF drawing implementation is not part of the JSON schema. Other PDF
 readers should treat `/AP /N` as the visual source of truth.
 
-`/Contents` and `/AP /N` must be updated together whenever Scholia refreshes a
+`/Contents` and `/AP /N` must be updated together whenever Mengshee refreshes a
 template note successfully.
 
-If template evaluation fails, Scholia should keep the previous `/Contents` and
-`/AP /N` visible, and expose the error in the Scholia UI rather than saving a
+If template evaluation fails, Mengshee should keep the previous `/Contents` and
+`/AP /N` visible, and expose the error in the Mengshee UI rather than saving a
 broken appearance.
 
 ## Refresh Rules
@@ -433,7 +433,7 @@ text may have changed:
 - after opening a document containing template notes;
 - before saving a document containing template notes.
 
-Refresh is per annotation. Scholia should not scan for one "master" template
+Refresh is per annotation. Mengshee should not scan for one "master" template
 note and copy it to other pages. If multiple pages should contain page numbers,
 the UI should create one template note per target page.
 
@@ -449,7 +449,7 @@ Footer page number:
 ```json
 {
   "version": 20260630,
-  "kind": "scholia-template-note",
+  "kind": "mengshee-template-note",
   "template": "${frameNumber} / ${totalFrameNumber}"
 }
 ```
@@ -459,7 +459,7 @@ Page label fallback:
 ```json
 {
   "version": 20260630,
-  "kind": "scholia-template-note",
+  "kind": "mengshee-template-note",
   "template": "${pageLabel || frameNumber}"
 }
 ```
@@ -469,7 +469,7 @@ Date note:
 ```json
 {
   "version": 20260630,
-  "kind": "scholia-template-note",
+  "kind": "mengshee-template-note",
   "template": "${formatDate(now, \"yyyy-MM-dd\")}"
 }
 ```

@@ -6,10 +6,10 @@ get_filename_component(_default_source_root "${_windows_build_dir}/.." ABSOLUTE)
 get_filename_component(_default_workspace_root "${_default_source_root}/../windows_build" ABSOLUTE)
 include("${_script_dir}/kf6-sdk-common.cmake")
 
-scholia_default_path(SOURCE_ROOT "${_default_source_root}")
-scholia_default_path(WORKSPACE_ROOT "${_default_workspace_root}")
-scholia_default_path(SDK_PREFIX "${WORKSPACE_ROOT}/sdk")
-scholia_find_toolchain()
+mengshee_default_path(SOURCE_ROOT "${_default_source_root}")
+mengshee_default_path(WORKSPACE_ROOT "${_default_workspace_root}")
+mengshee_default_path(SDK_PREFIX "${WORKSPACE_ROOT}/sdk")
+mengshee_find_toolchain()
 
 if(NOT DEFINED BUILD_TYPE OR "${BUILD_TYPE}" STREQUAL "")
     set(BUILD_TYPE "RelWithDebInfo")
@@ -32,16 +32,16 @@ set(BUILD_ROOT "${WORKSPACE_ROOT}/build/thirdparty")
 set(ZLIB_SOURCE "${SOURCE_CACHE}/zlib")
 set(ZLIB_BUILD "${BUILD_ROOT}/zlib")
 
-message(STATUS "Scholia SDK zlib build")
+message(STATUS "Mengshee SDK zlib build")
 message(STATUS "  Git ref   : ${ZLIB_GIT_REF}")
 message(STATUS "  SdkPrefix : ${SDK_PREFIX}")
 message(STATUS "  QtPrefix  : ${QT_PREFIX}")
 
-scholia_ensure_git_checkout("${ZLIB_GIT_URL}" "${ZLIB_GIT_REF}" "${ZLIB_SOURCE}")
+mengshee_ensure_git_checkout("${ZLIB_GIT_URL}" "${ZLIB_GIT_REF}" "${ZLIB_SOURCE}")
 if(DEFINED CLEAN AND CLEAN)
-    scholia_remove_inside("${ZLIB_BUILD}" "${BUILD_ROOT}")
+    mengshee_remove_inside("${ZLIB_BUILD}" "${BUILD_ROOT}")
 endif()
-scholia_prepare_build_dir("${ZLIB_BUILD}" "${BUILD_ROOT}" "${ZLIB_SOURCE}")
+mengshee_prepare_build_dir("${ZLIB_BUILD}" "${BUILD_ROOT}" "${ZLIB_SOURCE}")
 
 set(_configure
     "\"${CMAKE_PROGRAM}\""
@@ -54,7 +54,7 @@ set(_configure
     -DSKIP_INSTALL_FILES=ON
 )
 list(JOIN _configure " " _configure_command)
-scholia_run_vs("${_configure_command}")
-scholia_run_vs("\"${CMAKE_PROGRAM}\" --build \"${ZLIB_BUILD}\" --target install --parallel ${JOBS}")
+mengshee_run_vs("${_configure_command}")
+mengshee_run_vs("\"${CMAKE_PROGRAM}\" --build \"${ZLIB_BUILD}\" --target install --parallel ${JOBS}")
 
 message(STATUS "zlib installed into SDK.")

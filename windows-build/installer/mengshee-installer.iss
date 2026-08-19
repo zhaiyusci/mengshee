@@ -1,28 +1,28 @@
-#define AppName "Scholia"
-#define AppIconFile AddBackslash(SourcePath) + "..\..\icons\scholia.ico"
-#define ScholiaVersionFile AddBackslash(SourcePath) + "..\..\VERSION.txt"
-#define ScholiaVersionHandle FileOpen(ScholiaVersionFile)
-#define ScholiaVersionFromFile Trim(FileRead(ScholiaVersionHandle))
-#expr FileClose(ScholiaVersionHandle)
-#define AppVersion GetEnv("SCHOLIA_VERSION")
+#define AppName "Mengshee"
+#define AppIconFile AddBackslash(SourcePath) + "..\..\icons\mengshee.ico"
+#define MengsheeVersionFile AddBackslash(SourcePath) + "..\..\VERSION.txt"
+#define MengsheeVersionHandle FileOpen(MengsheeVersionFile)
+#define MengsheeVersionFromFile Trim(FileRead(MengsheeVersionHandle))
+#expr FileClose(MengsheeVersionHandle)
+#define AppVersion GetEnv("MENGSHEE_VERSION")
 #if AppVersion == ""
-#define AppVersion ScholiaVersionFromFile
+#define AppVersion MengsheeVersionFromFile
 #endif
-#define FileVersion GetEnv("SCHOLIA_FILE_VERSION")
+#define FileVersion GetEnv("MENGSHEE_FILE_VERSION")
 #if FileVersion == ""
-#define FileVersion ScholiaVersionFromFile
+#define FileVersion MengsheeVersionFromFile
 #endif
-#define SourceDir GetEnv("SCHOLIA_STAGE")
+#define SourceDir GetEnv("MENGSHEE_STAGE")
 #if SourceDir == ""
-#define SourceDir "..\..\..\dist\scholia-pdf\app"
+#define SourceDir "..\..\..\dist\mengshee-pdf\app"
 #endif
-#define OutputDir GetEnv("SCHOLIA_OUTPUT")
+#define OutputDir GetEnv("MENGSHEE_OUTPUT")
 #if OutputDir == ""
 #define OutputDir "..\..\..\dist"
 #endif
-#define StemTeXSupportUrl GetEnv("SCHOLIA_STEMTEX_SUPPORT_URL")
+#define StemTeXSupportUrl GetEnv("MENGSHEE_STEMTEX_SUPPORT_URL")
 #if StemTeXSupportUrl == ""
-#define StemTeXSupportUrl "https://github.com/zhaiyusci/scholia/releases/download/v" + AppVersion + "/Scholia-" + AppVersion + "-StemTeX-Support.exe"
+#define StemTeXSupportUrl "https://github.com/zhaiyusci/mengshee/releases/download/v" + AppVersion + "/Mengshee-" + AppVersion + "-StemTeX-Support.exe"
 #endif
 
 [Setup]
@@ -34,20 +34,20 @@ VersionInfoVersion={#FileVersion}
 VersionInfoProductVersion={#FileVersion}
 VersionInfoProductName={#AppName}
 VersionInfoDescription={#AppName} Setup
-VersionInfoOriginalFileName=Scholia-{#AppVersion}-Setup.exe
-DefaultDirName={autopf}\Scholia
-DefaultGroupName=Scholia
+VersionInfoOriginalFileName=Mengshee-{#AppVersion}-Setup.exe
+DefaultDirName={autopf}\Mengshee
+DefaultGroupName=Mengshee
 DisableDirPage=no
 DisableProgramGroupPage=yes
 OutputDir={#OutputDir}
-OutputBaseFilename=Scholia-{#AppVersion}-Setup
+OutputBaseFilename=Mengshee-{#AppVersion}-Setup
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
 SetupIconFile={#AppIconFile}
 ArchitecturesAllowed=x64
 ArchitecturesInstallIn64BitMode=x64
-UninstallDisplayIcon={app}\bin\scholia.exe
+UninstallDisplayIcon={app}\bin\mengshee.exe
 ChangesAssociations=yes
 
 [Languages]
@@ -55,26 +55,26 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
-Name: "associatepdf"; Description: "Associate .pdf files with Scholia"; GroupDescription: "File associations:"
+Name: "associatepdf"; Description: "Associate .pdf files with Mengshee"; GroupDescription: "File associations:"
 Name: "stemtexsupport"; Description: "Install bundled StemTeX TeX tree support package"; GroupDescription: "Optional downloads:"; Flags: unchecked
 
 [Files]
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{group}\Scholia"; Filename: "{app}\bin\scholia.exe"; IconFilename: "{app}\bin\scholia.ico"
-Name: "{autodesktop}\Scholia"; Filename: "{app}\bin\scholia.exe"; IconFilename: "{app}\bin\scholia.ico"; Tasks: desktopicon
+Name: "{group}\Mengshee"; Filename: "{app}\bin\mengshee.exe"; IconFilename: "{app}\bin\mengshee.ico"
+Name: "{autodesktop}\Mengshee"; Filename: "{app}\bin\mengshee.exe"; IconFilename: "{app}\bin\mengshee.ico"; Tasks: desktopicon
 
 [Registry]
-Root: HKCR; Subkey: ".pdf"; ValueType: string; ValueName: ""; ValueData: "Scholia.Document"; Flags: uninsdeletevalue; Tasks: associatepdf
-Root: HKCR; Subkey: "Scholia.Document"; ValueType: string; ValueName: ""; ValueData: "PDF Document"; Flags: uninsdeletekey; Tasks: associatepdf
-Root: HKCR; Subkey: "Scholia.Document\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\bin\application-pdf.ico"; Tasks: associatepdf
-Root: HKCR; Subkey: "Scholia.Document\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\bin\scholia.exe"" ""%1"""; Tasks: associatepdf
+Root: HKCR; Subkey: ".pdf"; ValueType: string; ValueName: ""; ValueData: "Mengshee.Document"; Flags: uninsdeletevalue; Tasks: associatepdf
+Root: HKCR; Subkey: "Mengshee.Document"; ValueType: string; ValueName: ""; ValueData: "PDF Document"; Flags: uninsdeletekey; Tasks: associatepdf
+Root: HKCR; Subkey: "Mengshee.Document\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\bin\application-pdf.ico"; Tasks: associatepdf
+Root: HKCR; Subkey: "Mengshee.Document\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\bin\mengshee.exe"" ""%1"""; Tasks: associatepdf
 
 [Run]
 Filename: "{tmp}\vc_redist.x64.exe"; Parameters: "/install /quiet /norestart"; StatusMsg: "Installing Microsoft Visual C++ Runtime..."; Flags: waituntilterminated runhidden; Check: NeedsMsvcRuntime
-Filename: "{tmp}\Scholia-StemTeX-Support.exe"; Parameters: "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /DIR=""{app}"""; StatusMsg: "Installing StemTeX support package..."; Flags: waituntilterminated runhidden; Check: ShouldInstallStemTeXSupport
-Filename: "{app}\bin\scholia.exe"; Description: "Launch Scholia"; Flags: nowait postinstall skipifsilent
+Filename: "{tmp}\Mengshee-StemTeX-Support.exe"; Parameters: "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /DIR=""{app}"""; StatusMsg: "Installing StemTeX support package..."; Flags: waituntilterminated runhidden; Check: ShouldInstallStemTeXSupport
+Filename: "{app}\bin\mengshee.exe"; Description: "Launch Mengshee"; Flags: nowait postinstall skipifsilent
 
 [Code]
 var
@@ -108,7 +108,7 @@ begin
     if NeedsMsvcRuntime then
       DownloadPage.Add('https://aka.ms/vs/17/release/vc_redist.x64.exe', 'vc_redist.x64.exe', '');
     if ShouldInstallStemTeXSupport then
-      DownloadPage.Add('{#StemTeXSupportUrl}', 'Scholia-StemTeX-Support.exe', '');
+      DownloadPage.Add('{#StemTeXSupportUrl}', 'Mengshee-StemTeX-Support.exe', '');
     DownloadPage.Show;
     try
       try

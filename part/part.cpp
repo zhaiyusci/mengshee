@@ -375,7 +375,7 @@ Part::Part(QObject *parent, const QVariantList &args)
     // create browser extension (for printing when embedded into browser)
     m_bExtension = new BrowserExtension(this);
 
-    const QStringList iconDirs = QStandardPaths::locateAll(QStandardPaths::GenericDataLocation, QStringLiteral("scholia/pics"), QStandardPaths::LocateDirectory);
+    const QStringList iconDirs = QStandardPaths::locateAll(QStandardPaths::GenericDataLocation, QStringLiteral("mengshee/pics"), QStandardPaths::LocateDirectory);
     QIcon::setFallbackSearchPaths(QIcon::fallbackSearchPaths() << iconDirs);
 
     m_sidebar = new Sidebar(widget());
@@ -819,7 +819,7 @@ Part::Part(QObject *parent, const QVariantList &args)
 
 void Part::setupConfigSkeleton(const QVariantList &args)
 {
-    const QLatin1String configFileName("scholiarc");
+    const QLatin1String configFileName("mengsheerc");
 
     // first, we check if a config file name has been specified
     QString configFilePath = detectConfigFileName(args);
@@ -1748,7 +1748,7 @@ bool Part::slotImportPSFile()
 
     QUrl url = QFileDialog::getOpenFileUrl(widget(), QString(), QUrl(), filter);
     if (url.isLocalFile()) {
-        QTemporaryFile tf(QDir::tempPath() + QLatin1String("/scholia_XXXXXX.pdf"));
+        QTemporaryFile tf(QDir::tempPath() + QLatin1String("/mengshee_XXXXXX.pdf"));
         tf.setAutoRemove(false);
         if (!tf.open()) {
             return false;
@@ -4095,7 +4095,7 @@ void Part::duplicatePage(int pageNumber)
     std::unique_ptr<QTemporaryFile> savedSourceFile;
     QString sourceFileName;
     QString snapshotErrorText;
-    const PageEditSourceSnapshotResult snapshotResult = createPageEditSourceSnapshot(m_document, QStringLiteral("scholia-page-duplicate-source"), savedSourceFile, sourceFileName, snapshotErrorText);
+    const PageEditSourceSnapshotResult snapshotResult = createPageEditSourceSnapshot(m_document, QStringLiteral("mengshee-page-duplicate-source"), savedSourceFile, sourceFileName, snapshotErrorText);
     if (snapshotResult == PageEditSourceSnapshotResult::TemporaryFileError) {
         KMessageBox::information(widget(), i18n("Could not create a temporary file for page duplication."));
         return;
@@ -4109,7 +4109,7 @@ void Part::duplicatePage(int pageNumber)
         return;
     }
 
-    std::unique_ptr<QTemporaryFile> editedFile(createClosedTemporaryPdfFile(QStringLiteral("scholia-page-duplicate-output")));
+    std::unique_ptr<QTemporaryFile> editedFile(createClosedTemporaryPdfFile(QStringLiteral("mengshee-page-duplicate-output")));
     if (!editedFile) {
         KMessageBox::information(widget(), i18n("Could not create a temporary file for page duplication."));
         return;
@@ -4185,7 +4185,7 @@ void Part::insertBlankPage(int insertAfterPageNumber, const QSizeF &pageSize)
     std::unique_ptr<QTemporaryFile> savedSourceFile;
     QString sourceFileName;
     QString snapshotErrorText;
-    const PageEditSourceSnapshotResult snapshotResult = createPageEditSourceSnapshot(m_document, QStringLiteral("scholia-page-insert-source"), savedSourceFile, sourceFileName, snapshotErrorText);
+    const PageEditSourceSnapshotResult snapshotResult = createPageEditSourceSnapshot(m_document, QStringLiteral("mengshee-page-insert-source"), savedSourceFile, sourceFileName, snapshotErrorText);
     if (snapshotResult == PageEditSourceSnapshotResult::TemporaryFileError) {
         KMessageBox::information(widget(), i18n("Could not create a temporary file for page insertion."));
         return;
@@ -4199,7 +4199,7 @@ void Part::insertBlankPage(int insertAfterPageNumber, const QSizeF &pageSize)
         return;
     }
 
-    std::unique_ptr<QTemporaryFile> editedFile(createClosedTemporaryPdfFile(QStringLiteral("scholia-page-insert-output")));
+    std::unique_ptr<QTemporaryFile> editedFile(createClosedTemporaryPdfFile(QStringLiteral("mengshee-page-insert-output")));
     if (!editedFile) {
         KMessageBox::information(widget(), i18n("Could not create a temporary file for page insertion."));
         return;
@@ -4268,7 +4268,7 @@ void Part::insertPdfPage(int insertAfterPageNumber, const QString &insertedFileN
     std::unique_ptr<QTemporaryFile> savedSourceFile;
     QString sourceFileName;
     QString snapshotErrorText;
-    const PageEditSourceSnapshotResult snapshotResult = createPageEditSourceSnapshot(m_document, QStringLiteral("scholia-page-insert-source"), savedSourceFile, sourceFileName, snapshotErrorText);
+    const PageEditSourceSnapshotResult snapshotResult = createPageEditSourceSnapshot(m_document, QStringLiteral("mengshee-page-insert-source"), savedSourceFile, sourceFileName, snapshotErrorText);
     if (snapshotResult == PageEditSourceSnapshotResult::TemporaryFileError) {
         KMessageBox::information(widget(), i18n("Could not create a temporary file for page insertion."));
         return;
@@ -4282,7 +4282,7 @@ void Part::insertPdfPage(int insertAfterPageNumber, const QString &insertedFileN
         return;
     }
 
-    std::unique_ptr<QTemporaryFile> editedFile(createClosedTemporaryPdfFile(QStringLiteral("scholia-page-insert-output")));
+    std::unique_ptr<QTemporaryFile> editedFile(createClosedTemporaryPdfFile(QStringLiteral("mengshee-page-insert-output")));
     if (!editedFile) {
         KMessageBox::information(widget(), i18n("Could not create a temporary file for page insertion."));
         return;
@@ -4355,7 +4355,7 @@ void Part::deletePage(int pageNumber)
     std::unique_ptr<QTemporaryFile> savedSourceFile;
     QString sourceFileName;
     QString snapshotErrorText;
-    const PageEditSourceSnapshotResult snapshotResult = createPageEditSourceSnapshot(m_document, QStringLiteral("scholia-page-delete-source"), savedSourceFile, sourceFileName, snapshotErrorText);
+    const PageEditSourceSnapshotResult snapshotResult = createPageEditSourceSnapshot(m_document, QStringLiteral("mengshee-page-delete-source"), savedSourceFile, sourceFileName, snapshotErrorText);
     if (snapshotResult == PageEditSourceSnapshotResult::TemporaryFileError) {
         KMessageBox::information(widget(), i18n("Could not create a temporary file for page deletion."));
         return;
@@ -4369,7 +4369,7 @@ void Part::deletePage(int pageNumber)
         return;
     }
 
-    std::unique_ptr<QTemporaryFile> editedFile(createClosedTemporaryPdfFile(QStringLiteral("scholia-page-delete-output")));
+    std::unique_ptr<QTemporaryFile> editedFile(createClosedTemporaryPdfFile(QStringLiteral("mengshee-page-delete-output")));
     if (!editedFile) {
         KMessageBox::information(widget(), i18n("Could not create a temporary file for page deletion."));
         return;
@@ -4600,9 +4600,9 @@ void Part::slotPrintPreview()
     QString tempFilePattern;
 
     if (m_document->printingSupport() == Okular::Document::PostscriptPrinting) {
-        tempFilePattern = (QDir::tempPath() + QLatin1String("/scholia_XXXXXX.ps"));
+        tempFilePattern = (QDir::tempPath() + QLatin1String("/mengshee_XXXXXX.ps"));
     } else if (m_document->printingSupport() == Okular::Document::NativePrinting) {
-        tempFilePattern = (QDir::tempPath() + QLatin1String("/scholia_XXXXXX.pdf"));
+        tempFilePattern = (QDir::tempPath() + QLatin1String("/mengshee_XXXXXX.pdf"));
     } else {
         return;
     }

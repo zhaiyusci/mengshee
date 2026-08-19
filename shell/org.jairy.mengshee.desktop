@@ -1,14 +1,14 @@
 [Desktop Entry]
 Terminal=false
-Name=Scholia
+Name=Mengshee
 GenericName=PDF Document Viewer
 Comment=PDF-centered document viewer and annotation tool based on Okular
-Exec=scholia %U
-Icon=scholia
+Exec=mengshee %U
+Icon=mengshee
 Type=Application
 X-DocPath=okular/index.html
 InitialPreference=7
 Categories=Qt;Graphics;Office;Viewer;
 MimeType=application/pdf;
-X-DBUS-ServiceName=org.jairy.scholia
-StartupWMClass=scholia
+X-DBUS-ServiceName=org.jairy.mengshee
+StartupWMClass=mengshee
