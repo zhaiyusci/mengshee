@@ -4,6 +4,15 @@ Mengshee is a PDF-centered document and slide editor derived from KDE Okular.
 It is focused on technical reading, annotation, LaTeX-backed notes, and
 PDF-native slide construction.
 
+The name **Mengshee** is a deliberately adapted spelling of **Mengxi**
+(`Mèngxī`, 梦溪, in Hanyu Pinyin). It pays tribute to the Northern Song
+polymath Shen Kuo (沈括), traditionally also referred to as Shen Mengxi
+(沈梦溪), and to his encyclopedic work
+[*Mengxi Bitan*](https://zh.wikisource.org/zh-hans/%E6%A2%A6%E6%BA%AA%E7%AC%94%E8%B0%88)
+(`Mèngxī Bǐtán`, 《梦溪笔谈》), commonly known in English as *Dream Pool
+Essays*. The name reflects the project's interest in reading, technical
+inquiry, careful observation, and the practical recording of knowledge.
+
 Mengshee is not an official KDE Okular release and is not affiliated with or
 endorsed by KDE. It inherits a large amount of Okular's document-viewing
 infrastructure, but the product direction in this repository is
