@@ -14,6 +14,8 @@
 #include <QRect>
 #include <QString>
 
+#include <memory>
+
 #include "area.h"
 #include "okularcore_export.h"
 #include "signatureutils.h"
@@ -928,6 +930,12 @@ public:
      * @note Only called if supports(Removal) == true
      */
     virtual void notifyRemoval(Annotation *annotation, int page) = 0;
+
+    /**
+     * Returns an opaque, generator-owned copy of the annotation's current
+     * appearance. This is used for in-process annotation clipboard transfers.
+     */
+    virtual std::shared_ptr<void> annotationAppearance(const Annotation *annotation) const;
 };
 
 class OKULARCORE_EXPORT TextAnnotation : public Annotation

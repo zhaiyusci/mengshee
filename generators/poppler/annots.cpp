@@ -143,6 +143,11 @@ static QColor customColorProperty(const Poppler::Annotation *annotation, const Q
 
 namespace
 {
+struct StampAppearanceTransfer {
+    Poppler::Document *document = nullptr;
+    std::unique_ptr<Poppler::AnnotationAppearance> appearance;
+};
+
 constexpr int LatexNoteDataVersion = 20260610;
 const QString LatexNoteDataKey = QStringLiteral("LatexNoteData");
 const QString TemplateNoteDataKey = QStringLiteral("TemplateNoteData");
@@ -1202,6 +1207,8 @@ void PopplerAnnotationProxy::notifyAddition(Okular::Annotation *okl_ann, int pag
         return;
     }
 
+    const auto *stampAppearanceTransfer = okl_ann->subType() == Okular::Annotation::AStamp && okl_ann->nativeData() ? static_cast<const StampAppearanceTransfer *>(okl_ann->nativeData()) : nullptr;
+
     okl_ann->setFlags(okl_ann->flags() | Okular::Annotation::ExternallyDrawn);
 
     // Bind poppler object to page
@@ -1212,6 +1219,14 @@ void PopplerAnnotationProxy::notifyAddition(Okular::Annotation *okl_ann, int pag
         if (okl_stampann->isOkularLatex()) {
             updatePopplerAnnotationFromOkularAnnotation(okl_stampann, static_cast<Poppler::StampAnnotation *>(ppl_ann), ppl_page.get());
         }
+
+        // Apply a clipboard appearance only after the native annotation has
+        // been added and all type-specific updates have run. Both operations
+        // can otherwise replace the AP with the named fallback stamp (Draft).
+        if (stampAppearanceTransfer && stampAppearanceTransfer->document == ppl_doc && stampAppearanceTransfer->appearance) {
+            ppl_ann->setAnnotationAppearance(*stampAppearanceTransfer->appearance);
+        }
+        okl_ann->setNativeData(nullptr);
     }
 
     // Set pointer to poppler annotation as native Id
@@ -1219,6 +1234,24 @@ void PopplerAnnotationProxy::notifyAddition(Okular::Annotation *okl_ann, int pag
     okl_ann->setDisposeDataFunction(disposeAnnotation);
 
     qCDebug(OkularPdfDebug) << okl_ann->uniqueName();
+}
+
+std::shared_ptr<void> PopplerAnnotationProxy::annotationAppearance(const Okular::Annotation *annotation) const
+{
+    if (!annotation || annotation->subType() != Okular::Annotation::AStamp || !ppl_doc) {
+        return {};
+    }
+
+    QMutexLocker locker(mutex);
+    auto *popplerAnnotation = qvariant_cast<Poppler::Annotation *>(annotation->nativeId());
+    if (!popplerAnnotation || popplerAnnotation->subType() != Poppler::Annotation::AStamp) {
+        return {};
+    }
+
+    auto transfer = std::make_shared<StampAppearanceTransfer>();
+    transfer->document = ppl_doc;
+    transfer->appearance = popplerAnnotation->annotationAppearance();
+    return transfer->appearance ? transfer : std::shared_ptr<void>();
 }
 
 void PopplerAnnotationProxy::notifyModification(const Okular::Annotation *okl_ann, int page, bool appearanceChanged)

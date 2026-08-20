@@ -3871,6 +3871,13 @@ void Document::addPageAnnotation(int page, Annotation *annotation)
     d->m_undoStack->push(uc);
 }
 
+std::shared_ptr<void> Document::annotationAppearance(const Annotation *annotation) const
+{
+    Okular::SaveInterface *iface = qobject_cast<Okular::SaveInterface *>(d->m_generator);
+    AnnotationProxy *proxy = iface ? iface->annotationProxy() : nullptr;
+    return proxy ? proxy->annotationAppearance(annotation) : std::shared_ptr<void>();
+}
+
 bool Document::canModifyPageAnnotation(const Annotation *annotation) const
 {
     if (!annotation || (annotation->flags() & Annotation::DenyWrite)) {

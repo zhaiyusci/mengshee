@@ -27,12 +27,10 @@
 
 // qt/kde includes
 #include <QApplication>
-#include <QClipboard>
 #include <QComboBox>
 #include <QContextMenuEvent>
 #include <QCursor>
 #include <QDir>
-#include <QDomDocument>
 #if HAVE_DBUS
 #include <QDBusConnection>
 #endif // HAVE_DBUS
@@ -51,7 +49,6 @@
 #include <QLineEdit>
 #include <QMenu>
 #include <QMenuBar>
-#include <QMimeData>
 #include <QMimeDatabase>
 #include <QPainter>
 #include <QPrintDialog>
@@ -5482,22 +5479,13 @@ void Part::slotCopyAnnotation()
 {
     PageView *activeView = workspaceActivePageView();
     Okular::Annotation *annotation = activeView ? activeView->focusedAnnotation() : nullptr;
-    if (!annotation || annotation->subType() != Okular::Annotation::AText) {
+    if (!AnnotationPopup::annotationSupportsCopy(annotation)) {
         return;
     }
 
-    QDomDocument document(QStringLiteral("okular-annotations"));
-    QDomElement root = document.createElement(QStringLiteral("annotations"));
-    root.setAttribute(QStringLiteral("version"), AnnotationPopup::annotationClipboardFormatVersion);
-    document.appendChild(root);
-
-    QDomElement annotationElement = document.createElement(QStringLiteral("annotation"));
-    Okular::AnnotationUtils::storeAnnotation(annotation, annotationElement, document);
-    root.appendChild(annotationElement);
-
-    auto *mimeData = new QMimeData();
-    mimeData->setData(QLatin1String(AnnotationPopup::annotationClipboardMimeType), document.toByteArray());
-    QApplication::clipboard()->setMimeData(mimeData, QClipboard::Clipboard);
+    AnnotationPopup popup(m_document, AnnotationPopup::SingleAnnotationMode, widget());
+    popup.addAnnotation(annotation, -1);
+    popup.doCopyAnnotation({annotation, -1});
 }
 
 void Part::slotCopyTextSelectionOrAnnotation()
@@ -5507,7 +5495,7 @@ void Part::slotCopyTextSelectionOrAnnotation()
         return;
     }
     Okular::Annotation *annotation = activeView->focusedAnnotation();
-    if (annotation && annotation->subType() == Okular::Annotation::AText) {
+    if (AnnotationPopup::annotationSupportsCopy(annotation)) {
         slotCopyAnnotation();
         return;
     }

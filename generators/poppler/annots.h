@@ -33,6 +33,7 @@ public:
     void notifyAddition(Okular::Annotation *okl_ann, int page) override;
     void notifyModification(const Okular::Annotation *okl_ann, int page, bool appearanceChanged) override;
     void notifyRemoval(Okular::Annotation *okl_ann, int page) override;
+    std::shared_ptr<void> annotationAppearance(const Okular::Annotation *annotation) const override;
 
 private:
     int nativePageForLogicalPage(int logicalPage) const;

@@ -532,6 +532,12 @@ public:
     void addPageAnnotation(int page, Annotation *annotation);
 
     /**
+     * Returns an opaque copy of the native appearance currently used to draw
+     * @p annotation, if the active generator provides one.
+     */
+    std::shared_ptr<void> annotationAppearance(const Annotation *annotation) const;
+
+    /**
      * Tests if the @p annotation can be modified
      *
      * @since 0.15 (KDE 4.9)

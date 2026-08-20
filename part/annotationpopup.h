@@ -50,6 +50,7 @@ public:
     void exec(const QPoint point = QPoint());
     void pasteAnnotationToPage(int pageNumber, const Okular::NormalizedPoint *targetPoint = nullptr);
 
+    static bool annotationSupportsCopy(const Okular::Annotation *annotation);
     static bool clipboardHasAnnotations();
 
 Q_SIGNALS:

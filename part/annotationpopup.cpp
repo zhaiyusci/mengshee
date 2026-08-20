@@ -7,6 +7,7 @@
 #include "annotationpopup.h"
 
 #include <algorithm>
+#include <array>
 
 #include <KLocalizedString>
 #include <KMessageBox>
@@ -23,6 +24,7 @@
 #include <QPlainTextEdit>
 #include <QSizeF>
 #include <QTransform>
+#include <QUuid>
 #include <QVBoxLayout>
 
 #include "annotationpropertiesdialog.h"
@@ -47,6 +49,19 @@ Q_DECLARE_METATYPE(AnnotationPopup::AnnotPagePair)
 
 namespace
 {
+constexpr char stampAppearanceTokenMimeType[] = "application/x-okular-annotation-stamp-appearance-token";
+
+struct StampClipboardAppearanceCache {
+    QByteArray token;
+    std::shared_ptr<void> stampAppearance;
+};
+
+StampClipboardAppearanceCache &stampClipboardAppearanceCache()
+{
+    static StampClipboardAppearanceCache cache;
+    return cache;
+}
+
 bool annotationHasFileAttachment(Okular::Annotation *annotation)
 {
     return (annotation->subType() == Okular::Annotation::AFileAttachment || annotation->subType() == Okular::Annotation::ARichMedia);
@@ -63,27 +78,6 @@ Okular::EmbeddedFile *embeddedFileFromAnnotation(Okular::Annotation *annotation)
     } else {
         return nullptr;
     }
-}
-
-bool annotationSupportsCopy(const Okular::Annotation *annotation)
-{
-    if (!annotation) {
-        return false;
-    }
-
-    switch (annotation->subType()) {
-    case Okular::Annotation::AGeom:
-    case Okular::Annotation::AInk:
-    case Okular::Annotation::ALine:
-    case Okular::Annotation::AText:
-        return true;
-        break;
-
-    default:
-        return false;
-        break;
-    }
-    return false;
 }
 
 bool clipboardFormatVersionSupported(const QDomElement &root)
@@ -106,6 +100,44 @@ Okular::TextAnnotation *latexTextAnnotation(Okular::Annotation *annotation)
 Okular::StampAnnotation *latexStampAnnotation(Okular::Annotation *annotation)
 {
     return LatexNoteUtils::annotationAsLatexStampAnnotation(annotation);
+}
+
+void translateAnnotationForPaste(Okular::Annotation *annotation, const Okular::NormalizedPoint &offset)
+{
+    std::array<Okular::NormalizedPoint, 3> calloutPoints;
+    bool translateWholeCallout = false;
+
+    if (auto *textAnnotation = dynamic_cast<Okular::TextAnnotation *>(annotation); textAnnotation && textAnnotation->textType() == Okular::TextAnnotation::InPlace && textAnnotation->inplaceIntent() == Okular::TextAnnotation::Callout) {
+        for (int index = 0; index < 3; ++index) {
+            calloutPoints[index] = textAnnotation->inplaceCallout(index);
+        }
+        translateWholeCallout = true;
+    } else if (annotation->isLatexCallout()) {
+        for (int index = 0; index < 3; ++index) {
+            calloutPoints[index] = annotation->latexCalloutPoint(index);
+        }
+        translateWholeCallout = true;
+    }
+
+    annotation->translate(offset);
+
+    if (!translateWholeCallout) {
+        return;
+    }
+
+    for (Okular::NormalizedPoint &point : calloutPoints) {
+        point.x += offset.x;
+        point.y += offset.y;
+    }
+    if (auto *textAnnotation = dynamic_cast<Okular::TextAnnotation *>(annotation)) {
+        for (int index = 0; index < 3; ++index) {
+            textAnnotation->setInplaceCallout(calloutPoints[index], index);
+        }
+    } else {
+        for (int index = 0; index < 3; ++index) {
+            annotation->setLatexCalloutPoint(calloutPoints[index], index);
+        }
+    }
 }
 
 Okular::TextAnnotation *templateTextAnnotation(Okular::Annotation *annotation)
@@ -511,7 +543,7 @@ void AnnotationPopup::addActionsToMenu(QMenu *menu)
 
 void AnnotationPopup::doCopyAnnotation(AnnotPagePair pair)
 {
-    if (mAnnotations.isEmpty() || !annotationSupportsCopy(pair.annotation)) {
+    if (mAnnotations.isEmpty() || !AnnotationPopup::annotationSupportsCopy(pair.annotation)) {
         return;
     }
 
@@ -526,6 +558,19 @@ void AnnotationPopup::doCopyAnnotation(AnnotPagePair pair)
 
     auto *mimeData = new QMimeData();
     mimeData->setData(QLatin1String(annotationClipboardMimeType), document.toByteArray());
+    if (pair.annotation->subType() == Okular::Annotation::AStamp) {
+        std::shared_ptr<void> stampAppearance = mDocument->annotationAppearance(pair.annotation);
+        if (!stampAppearance) {
+            delete mimeData;
+            KMessageBox::error(mParent, i18nc("@info", "The stamp annotation could not be copied because its current appearance is unavailable."));
+            return;
+        }
+
+        StampClipboardAppearanceCache &cache = stampClipboardAppearanceCache();
+        cache.token = QUuid::createUuid().toByteArray(QUuid::WithoutBraces);
+        cache.stampAppearance = std::move(stampAppearance);
+        mimeData->setData(QLatin1String(stampAppearanceTokenMimeType), cache.token);
+    }
     QApplication::clipboard()->setMimeData(mimeData, QClipboard::Clipboard);
 }
 
@@ -696,6 +741,9 @@ void AnnotationPopup::pasteAnnotationToPage(int pageNumber, const Okular::Normal
         return;
     }
 
+    const QByteArray stampAppearanceToken = mimeData->data(QLatin1String(stampAppearanceTokenMimeType));
+    const StampClipboardAppearanceCache &cache = stampClipboardAppearanceCache();
+    const std::shared_ptr<void> stampAppearance = !stampAppearanceToken.isEmpty() && stampAppearanceToken == cache.token ? cache.stampAppearance : std::shared_ptr<void>();
     QList<Okular::Annotation *> annotations;
     Okular::NormalizedRect unionRect;
     bool hasUnionRect = false;
@@ -703,6 +751,14 @@ void AnnotationPopup::pasteAnnotationToPage(int pageNumber, const Okular::Normal
         Okular::Annotation *annotation = Okular::AnnotationUtils::createAnnotation(element);
         if (!annotation) {
             continue;
+        }
+
+        if (annotation->subType() == Okular::Annotation::AStamp) {
+            if (!stampAppearance) {
+                delete annotation;
+                continue;
+            }
+            annotation->setNativeData(stampAppearance);
         }
 
         // Avoid duplicate uniqueName collisions when pasting annotations.
@@ -728,8 +784,27 @@ void AnnotationPopup::pasteAnnotationToPage(int pageNumber, const Okular::Normal
     }
 
     for (Okular::Annotation *annotation : std::as_const(annotations)) {
-        annotation->translate(offset);
+        translateAnnotationForPaste(annotation, offset);
         mDocument->addPageAnnotation(pageNumber, annotation);
+    }
+}
+
+bool AnnotationPopup::annotationSupportsCopy(const Okular::Annotation *annotation)
+{
+    if (!annotation) {
+        return false;
+    }
+
+    switch (annotation->subType()) {
+    case Okular::Annotation::AGeom:
+    case Okular::Annotation::AInk:
+    case Okular::Annotation::ALine:
+    case Okular::Annotation::AText:
+        return true;
+    case Okular::Annotation::AStamp:
+        return true;
+    default:
+        return false;
     }
 }
 

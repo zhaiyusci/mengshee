@@ -306,6 +306,12 @@ AnnotationProxy::~AnnotationProxy()
 {
 }
 
+std::shared_ptr<void> AnnotationProxy::annotationAppearance(const Annotation *annotation) const
+{
+    Q_UNUSED(annotation)
+    return {};
+}
+
 // BEGIN Annotation implementation
 
 class Annotation::Style::Private
