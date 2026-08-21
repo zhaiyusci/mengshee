@@ -720,6 +720,7 @@ void PartTest::testAuxiliaryDocumentWorkspace()
     QTest::mouseClick(originalMainView->viewport(), Qt::MiddleButton, Qt::NoModifier, internalLinkPosition);
 
     QTRY_COMPARE(workspace->auxiliaryViewCount(), 1);
+    QCOMPARE(workspace->auxiliaryPaneCount(), 1);
     QCOMPARE(workspace->mainView(), originalMainView);
     QCOMPARE(originalMainView->documentViewport().pageNumber, originalMainPage);
 
@@ -757,10 +758,19 @@ void PartTest::testAuxiliaryDocumentWorkspace()
     QCOMPARE(workspace->viewTitle(controlClickAuxiliaryView.data()), controlClickTitle);
     QCOMPARE(originalMainView->documentViewport().pageNumber, originalMainPage);
 
+    // Dragging a tab to the bottom edge is backed by the same split operation:
+    // it creates a separately resizable pane without changing either view.
+    QVERIFY(workspace->splitAuxiliaryView(controlClickAuxiliaryView.data(), firstAuxiliaryView, Qt::Vertical, true));
+    QCOMPARE(workspace->auxiliaryPaneCount(), 2);
+    QVERIFY(controlClickAuxiliaryView->parentWidget() != firstAuxiliaryView->parentWidget());
+    QTRY_VERIFY(controlClickAuxiliaryView->isVisibleTo(workspace));
+    QTRY_VERIFY(firstAuxiliaryView->isVisibleTo(workspace));
+
     const int controlClickAuxiliaryIndex = workspace->auxiliaryViews().indexOf(controlClickAuxiliaryView.data());
     QVERIFY(controlClickAuxiliaryIndex >= 0);
     workspace->closeAuxiliaryTab(controlClickAuxiliaryIndex);
     QTRY_COMPARE(workspace->auxiliaryViewCount(), 1);
+    QTRY_COMPARE(workspace->auxiliaryPaneCount(), 1);
     QTRY_VERIFY(controlClickAuxiliaryView.isNull());
     QCOMPARE(workspace->activeView(), firstAuxiliaryView);
     // A splitter relayout can change which page is nearest the center in
@@ -790,6 +800,38 @@ void PartTest::testAuxiliaryDocumentWorkspace()
     QTRY_COMPARE(workspace->activeView(), secondAuxiliaryView);
     QCOMPARE(part.workspaceActivePageView(), secondAuxiliaryView);
     QCOMPARE(part.m_workspaceActionView.data(), secondAuxiliaryView);
+    QCOMPARE(workspace->auxiliaryPaneCount(), 1);
+    QCOMPARE(secondAuxiliaryView->parentWidget(), firstAuxiliaryView->parentWidget());
+
+    // A horizontal edge drop creates a second auxiliary pane.  Promotion and
+    // reload below must preserve this topology and all existing view routing.
+    QVERIFY(workspace->splitAuxiliaryView(secondAuxiliaryView, firstAuxiliaryView, Qt::Horizontal, true));
+    QCOMPARE(workspace->auxiliaryPaneCount(), 2);
+    QVERIFY(secondAuxiliaryView->parentWidget() != firstAuxiliaryView->parentWidget());
+    QTRY_VERIFY(secondAuxiliaryView->isVisibleTo(workspace));
+    QTRY_VERIFY(firstAuxiliaryView->isVisibleTo(workspace));
+
+    const QString thirdTitle = QStringLiteral("Nested auxiliary link");
+    const DocumentViewport thirdTarget(2);
+    QVERIFY(QMetaObject::invokeMethod(firstAuxiliaryView,
+                                      "openInternalLinkInAuxiliaryFrame",
+                                      Qt::DirectConnection,
+                                      Q_ARG(Okular::DocumentViewport, thirdTarget),
+                                      Q_ARG(QString, thirdTitle)));
+    QCOMPARE(workspace->auxiliaryViewCount(), 3);
+    QCOMPARE(workspace->auxiliaryPaneCount(), 2);
+    PageView *thirdAuxiliaryView = workspace->auxiliaryViews().at(1);
+    QVERIFY(thirdAuxiliaryView != firstAuxiliaryView);
+    QVERIFY(thirdAuxiliaryView != secondAuxiliaryView);
+    QCOMPARE(workspace->viewTitle(thirdAuxiliaryView), thirdTitle);
+    QCOMPARE(thirdAuxiliaryView->parentWidget(), firstAuxiliaryView->parentWidget());
+    QVERIFY(workspace->splitAuxiliaryView(thirdAuxiliaryView, secondAuxiliaryView, Qt::Vertical, true));
+    QCOMPARE(workspace->auxiliaryPaneCount(), 3);
+    QPointer<PageView> closingNestedView = thirdAuxiliaryView;
+    workspace->closeAuxiliaryTab(workspace->auxiliaryViews().indexOf(thirdAuxiliaryView));
+    QTRY_VERIFY(closingNestedView.isNull());
+    QCOMPARE(workspace->auxiliaryViewCount(), 2);
+    QTRY_COMPARE(workspace->auxiliaryPaneCount(), 2);
 
     // Part-level navigation must be routed to the active auxiliary tab. Its
     // independent Back entry is the viewport of the frame that spawned it.
@@ -849,6 +891,7 @@ void PartTest::testAuxiliaryDocumentWorkspace()
         QTRY_VERIFY_WITH_TIMEOUT(!resizeTimer->isActive(), 5000);
     }
     QCOMPARE(workspace->auxiliaryViewCount(), 2);
+    QCOMPARE(workspace->auxiliaryPaneCount(), 2);
     QCOMPARE(workspace->mainView(), reloadedMainView.data());
     QCOMPARE(workspace->activeView(), reloadedMainView.data());
     QCOMPARE(part.m_pageView.data(), reloadedMainView.data());
@@ -865,6 +908,7 @@ void PartTest::testAuxiliaryDocumentWorkspace()
     QVERIFY(firstAuxiliaryIndex >= 0);
     workspace->closeAuxiliaryTab(firstAuxiliaryIndex);
     QCOMPARE(workspace->auxiliaryViewCount(), 1);
+    QTRY_COMPARE(workspace->auxiliaryPaneCount(), 1);
     QTRY_VERIFY(reloadedFirstAuxiliaryView.isNull());
     QCOMPARE(workspace->mainView(), reloadedMainView.data());
     QCOMPARE(workspace->activeView(), reloadedMainView.data());

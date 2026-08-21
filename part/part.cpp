@@ -669,7 +669,7 @@ Part::Part(QObject *parent, const QVariantList &args)
         view->initializeIndependentNavigation(sourceView ? sourceView->documentViewport() : DocumentViewport(), target);
         m_document->addObserver(view);
         m_document->registerView(view);
-        m_documentWorkspace->addAuxiliaryView(view, title);
+        m_documentWorkspace->addAuxiliaryView(view, title, sourceView);
         updateWorkspacePageViews();
         view->setFocus();
     });
@@ -2620,6 +2620,27 @@ bool Part::slotAttemptReload(bool oneShot, const QUrl &newUrl)
                 DocumentViewport viewport = state.viewport;
                 viewport.pageNumber = qBound(0, viewport.pageNumber, lastPage);
                 state.view->goToDocumentViewport(viewport, false, false);
+                const QPointer<PageView> view = state.view;
+                QTimer::singleShot(0, state.view, [view, viewport] {
+                    if (!view) {
+                        return;
+                    }
+                    const auto restoreViewport = [view, viewport] {
+                        if (view) {
+                            view->goToDocumentViewport(viewport, false, false);
+                        }
+                    };
+                    // Reopening a document queues PageView layout work.  In a
+                    // split workspace that delayed resize can otherwise run
+                    // after the immediate restoration and select a neighboring
+                    // page as the new center.  Apply the durable viewport once
+                    // the real layout has settled.
+                    if (QTimer *resizeTimer = view->findChild<QTimer *>(QStringLiteral("delayResizeEventTimer")); resizeTimer && resizeTimer->isActive()) {
+                        connect(resizeTimer, &QTimer::timeout, view, restoreViewport, Qt::SingleShotConnection);
+                    } else {
+                        restoreViewport();
+                    }
+                });
             }
         }
         if (m_reloadWorkspaceActiveView) {
