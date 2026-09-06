@@ -42,6 +42,7 @@
 #include <QHelpEvent>
 #include <QLayout>
 #include <QLineEdit>
+#include <QListWidget>
 #include <QMenu>
 #include <QMessageBox>
 #include <QMimeDatabase>
@@ -88,6 +89,7 @@ private Q_SLOTS:
     void testRemoveLineBreaks();
     void testClickInternalLink();
     void testNamedDestinationOverlay();
+    void testEditPdfNamedDestinationAndLink();
     void testOpenAuxiliaryViewWithoutLink();
     void testAuxiliaryDocumentWorkspace();
     void testFindBarDoesNotConsumeWorkspaceHeight();
@@ -311,6 +313,46 @@ static bool findVisibleInternalGotoLink(PageView *view,
     *targetViewport = selectedTarget;
     *title = selectedTitle;
     return true;
+}
+
+static bool linkEditorOpensForView(PageView *view, const Okular::DocumentViewport &target)
+{
+    if (!view || !target.isValid()) {
+        return false;
+    }
+
+    bool editorShown = false;
+    QTimer dialogCloser;
+    dialogCloser.setSingleShot(true);
+    QObject::connect(&dialogCloser, &QTimer::timeout, view, [&editorShown]() {
+        auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+        if (dialog && dialog->objectName() == QLatin1String("EditLinkDestinationDialog")) {
+            auto *search = dialog->findChild<QLineEdit *>(QStringLiteral("NamedDestinationSearch"));
+            auto *destinationList = dialog->findChild<QListWidget *>(QStringLiteral("NamedDestinationList"));
+            editorShown = search && destinationList && destinationList->count() > 0;
+            if (editorShown) {
+                search->setText(QStringLiteral("subsection.2.1"));
+                for (int row = 0; row < destinationList->count(); ++row) {
+                    const QListWidgetItem *item = destinationList->item(row);
+                    if (!item->isHidden() && !item->text().contains(search->text(), Qt::CaseInsensitive)) {
+                        editorShown = false;
+                        break;
+                    }
+                }
+            }
+            dialog->reject();
+        }
+    });
+    dialogCloser.start(0);
+    const bool invoked = QMetaObject::invokeMethod(view,
+                                                   "editInternalLinkRequested",
+                                                   Qt::DirectConnection,
+                                                   Q_ARG(int, 0),
+                                                   Q_ARG(QRectF, QRectF(0.1, 0.1, 0.1, 0.1)),
+                                                   Q_ARG(QString, QStringLiteral("subsection.2.1")),
+                                                   Q_ARG(Okular::DocumentViewport, target));
+    dialogCloser.stop();
+    return invoked && editorShown;
 }
 
 static bool hasInternalGotoLinkToPage(Okular::Document *document, int sourcePageNumber, int targetPageNumber)
@@ -732,6 +774,9 @@ void PartTest::testClickInternalLink()
     QTRY_VERIFY(QToolTip::text().contains(QString::number(internalLinkTarget.pageNumber + 1)));
     QTRY_VERIFY(QToolTip::text().contains(QStringLiteral("subsection.2.1")));
     QToolTip::hideText();
+
+    QVERIFY(linkEditorOpensForView(part.m_pageView, internalLinkTarget));
+
     QTest::mouseMove(part.m_pageView->viewport(), internalLinkPosition);
     QTest::mouseClick(part.m_pageView->viewport(), Qt::LeftButton, Qt::NoModifier, internalLinkPosition);
     QTRY_COMPARE(part.m_document->currentPage(), static_cast<uint>(internalLinkTarget.pageNumber));
@@ -765,8 +810,10 @@ void PartTest::testNamedDestinationOverlay()
     QVERIFY(toggle);
     QVERIFY(toggle->isCheckable());
     QVERIFY(toggle->isEnabled());
+    QVERIFY(!part.m_pageView->namedDestinationsVisible());
     toggle->setChecked(true);
     QVERIFY(toggle->isChecked());
+    QVERIFY(part.m_pageView->namedDestinationsVisible());
     QApplication::processEvents();
 }
 
@@ -857,6 +904,7 @@ void PartTest::testAuxiliaryDocumentWorkspace()
     QTRY_COMPARE(workspace->activeView(), firstAuxiliaryView);
     QCOMPARE(part.workspaceActivePageView(), firstAuxiliaryView);
     QCOMPARE(part.m_workspaceActionView.data(), firstAuxiliaryView);
+    QVERIFY(linkEditorOpensForView(firstAuxiliaryView, modifiedClickTarget));
 
     // The other advertised gesture must take the same path. The splitter has
     // resized the main view, so derive the link position again after relayout.
@@ -2356,6 +2404,221 @@ void PartTest::testDeletePagePreservesInternalLinks()
     QVERIFY(findVisibleInternalGotoLink(reopenedPart.m_pageView, reopenedPart.m_document, 0, 1, expectedLinkTitle, &internalLinkPosition, &internalLinkTarget, &internalLinkTitle));
     QCOMPARE(internalLinkTitle, expectedLinkTitle);
     QCOMPARE(internalLinkTarget.pageNumber, 1);
+}
+
+void PartTest::testEditPdfNamedDestinationAndLink()
+{
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+    const QString workingFile = tempDir.filePath(QStringLiteral("link-edit-source.pdf"));
+    const QString destinationFile = tempDir.filePath(QStringLiteral("link-edit-destination.pdf"));
+    const QString movedDestinationFile = tempDir.filePath(QStringLiteral("link-edit-destination-moved.pdf"));
+    const QString createdLinkFile = tempDir.filePath(QStringLiteral("link-created-result.pdf"));
+    const QString editedLinkFile = tempDir.filePath(QStringLiteral("link-edit-result.pdf"));
+    const QString renamedDestinationFile = tempDir.filePath(QStringLiteral("link-edit-renamed.pdf"));
+    const QString deletedDestinationFile = tempDir.filePath(QStringLiteral("link-edit-deleted.pdf"));
+    QVERIFY(QFile::copy(QStringLiteral(KDESRCDIR "data/pdf_with_internal_links.pdf"), workingFile));
+
+    Okular::Part sourcePart(nullptr, {});
+    QVERIFY(openDocument(&sourcePart, workingFile));
+    QVERIFY(sourcePart.m_document->canEditPdfLinks());
+    sourcePart.widget()->show();
+    if (qgetenv("KDECI_CANNOT_CREATE_WINDOWS") == "1") {
+        QSKIP("KDE CI can't create a window on this platform, skipping some GUI tests");
+    }
+    QVERIFY(QTest::qWaitForWindowExposed(sourcePart.widget()));
+    sourcePart.m_document->setViewportPage(0);
+    QTRY_VERIFY(sourcePart.m_document->page(0)->hasPixmap(sourcePart.m_pageView));
+
+    QRectF sourceLinkRectangle;
+    for (const Okular::ObjectRect *rect : sourcePart.m_document->page(0)->objectRects()) {
+        if (!rect || rect->objectType() != Okular::ObjectRect::Action || !rect->object()) {
+            continue;
+        }
+        const auto *action = static_cast<const Okular::Action *>(rect->object());
+        if (action->actionType() != Okular::Action::Goto || static_cast<const Okular::GotoAction *>(action)->isExternal()) {
+            continue;
+        }
+        sourceLinkRectangle = rect->region().boundingRect();
+        break;
+    }
+    QVERIFY(sourceLinkRectangle.isValid());
+
+    QString errorText;
+    const QString destinationName = QStringLiteral("user.eq2");
+    QVERIFY2(sourcePart.m_document->saveWithNamedDestinationAdded(workingFile, destinationFile, destinationName, 2, 0.35, 0.45, &errorText), qPrintable(errorText));
+
+    DocumentViewport requestedViewport(0);
+    requestedViewport.rePos.enabled = true;
+    requestedViewport.rePos.normalizedX = 0.37;
+    requestedViewport.rePos.normalizedY = 0.42;
+    requestedViewport.rePos.pos = DocumentViewport::Center;
+    sourcePart.m_pageView->goToDocumentViewport(requestedViewport, false, false);
+    QApplication::processEvents();
+    const DocumentViewport viewportBeforeEdit = sourcePart.m_pageView->documentViewport();
+    QVERIFY(viewportBeforeEdit.isValid());
+    QVERIFY(sourcePart.applyPageEditBackingFile(destinationFile, 0, false, true));
+    const DocumentViewport viewportAfterEdit = sourcePart.m_pageView->documentViewport();
+    QCOMPARE(viewportAfterEdit.pageNumber, viewportBeforeEdit.pageNumber);
+    QCOMPARE(viewportAfterEdit.rePos.enabled, viewportBeforeEdit.rePos.enabled);
+    QVERIFY(qAbs(viewportAfterEdit.rePos.normalizedX - viewportBeforeEdit.rePos.normalizedX) < 0.001);
+    QVERIFY(qAbs(viewportAfterEdit.rePos.normalizedY - viewportBeforeEdit.rePos.normalizedY) < 0.001);
+    QCOMPARE(viewportAfterEdit.rePos.pos, viewportBeforeEdit.rePos.pos);
+    sourcePart.closeUrl();
+
+    Okular::Part destinationPart(nullptr, {});
+    QVERIFY(openDocument(&destinationPart, destinationFile));
+    const DocumentViewport addedDestination(destinationPart.m_document->metaData(QStringLiteral("NamedViewport"), destinationName).toString());
+    QVERIFY(addedDestination.isValid());
+    QCOMPARE(addedDestination.pageNumber, 1);
+    QVERIFY(addedDestination.rePos.enabled);
+    QVERIFY(qAbs(addedDestination.rePos.normalizedX - 0.35) < 0.01);
+    QVERIFY(qAbs(addedDestination.rePos.normalizedY - 0.45) < 0.01);
+
+    const QRectF createdLinkRectangle(0.08, 0.08, 0.18, 0.07);
+    QVERIFY2(destinationPart.m_document->saveWithInternalLinkCreated(destinationFile,
+                                                                     createdLinkFile,
+                                                                     1,
+                                                                     createdLinkRectangle.left(),
+                                                                     createdLinkRectangle.top(),
+                                                                     createdLinkRectangle.right(),
+                                                                     createdLinkRectangle.bottom(),
+                                                                     destinationName,
+                                                                     2,
+                                                                     0.35,
+                                                                     0.45,
+                                                                     &errorText),
+             qPrintable(errorText));
+
+    Okular::Part createdLinkPart(nullptr, {});
+    QVERIFY(openDocument(&createdLinkPart, createdLinkFile));
+    createdLinkPart.widget()->show();
+    QVERIFY(QTest::qWaitForWindowExposed(createdLinkPart.widget()));
+    createdLinkPart.m_document->setViewportPage(0);
+    QTRY_VERIFY(createdLinkPart.m_document->page(0)->hasPixmap(createdLinkPart.m_pageView));
+    bool foundCreatedLink = false;
+    for (const Okular::ObjectRect *rect : createdLinkPart.m_document->page(0)->objectRects()) {
+        if (!rect || rect->objectType() != Okular::ObjectRect::Action || !rect->object() || !rect->region().boundingRect().intersects(createdLinkRectangle)) {
+            continue;
+        }
+        const auto *action = static_cast<const Okular::Action *>(rect->object());
+        if (action->actionType() == Okular::Action::Goto && static_cast<const Okular::GotoAction *>(action)->destinationName() == destinationName) {
+            foundCreatedLink = true;
+            break;
+        }
+    }
+    QVERIFY(foundCreatedLink);
+    createdLinkPart.closeUrl();
+
+    QVERIFY2(destinationPart.m_document->saveWithNamedDestinationAdded(destinationFile, movedDestinationFile, destinationName, 3, 0.2, 0.25, &errorText), qPrintable(errorText));
+    destinationPart.closeUrl();
+
+    Okular::Part movedDestinationPart(nullptr, {});
+    QVERIFY(openDocument(&movedDestinationPart, movedDestinationFile));
+    const DocumentViewport movedDestination(movedDestinationPart.m_document->metaData(QStringLiteral("NamedViewport"), destinationName).toString());
+    QVERIFY(movedDestination.isValid());
+    QCOMPARE(movedDestination.pageNumber, 2);
+    QVERIFY(qAbs(movedDestination.rePos.normalizedX - 0.2) < 0.01);
+    QVERIFY(qAbs(movedDestination.rePos.normalizedY - 0.25) < 0.01);
+    movedDestinationPart.closeUrl();
+
+    Okular::Part destinationPartForLink(nullptr, {});
+    QVERIFY(openDocument(&destinationPartForLink, destinationFile));
+    QVERIFY2(destinationPartForLink.m_document->saveWithInternalLinkDestinationChanged(destinationFile,
+                                                                                 editedLinkFile,
+                                                                                 1,
+                                                                                 sourceLinkRectangle.left(),
+                                                                                 sourceLinkRectangle.top(),
+                                                                                 sourceLinkRectangle.right(),
+                                                                                 sourceLinkRectangle.bottom(),
+                                                                                 destinationName,
+                                                                                 2,
+                                                                                 0.35,
+                                                                                 0.45,
+                                                                                 &errorText),
+             qPrintable(errorText));
+    destinationPartForLink.closeUrl();
+
+    Okular::Part editedPart(nullptr, {});
+    QVERIFY(openDocument(&editedPart, editedLinkFile));
+    editedPart.widget()->show();
+    QVERIFY(QTest::qWaitForWindowExposed(editedPart.widget()));
+    editedPart.m_document->setViewportPage(0);
+    QTRY_VERIFY(editedPart.m_document->page(0)->hasPixmap(editedPart.m_pageView));
+
+    bool foundEditedLink = false;
+    for (const Okular::ObjectRect *rect : editedPart.m_document->page(0)->objectRects()) {
+        if (!rect || rect->objectType() != Okular::ObjectRect::Action || !rect->object() || !rect->region().boundingRect().intersects(sourceLinkRectangle)) {
+            continue;
+        }
+        const auto *action = static_cast<const Okular::Action *>(rect->object());
+        if (action->actionType() != Okular::Action::Goto) {
+            continue;
+        }
+        const auto *gotoAction = static_cast<const Okular::GotoAction *>(action);
+        if (gotoAction->destinationName() == destinationName) {
+            foundEditedLink = true;
+            break;
+        }
+    }
+    QVERIFY(foundEditedLink);
+    const DocumentViewport resolvedDestination(editedPart.m_document->metaData(QStringLiteral("NamedViewport"), destinationName).toString());
+    QCOMPARE(resolvedDestination.pageNumber, 1);
+
+    const QString renamedDestinationName = QStringLiteral("user.eq2.renamed");
+    QVERIFY2(editedPart.m_document->saveWithNamedDestinationRenamed(editedLinkFile, renamedDestinationFile, destinationName, renamedDestinationName, &errorText), qPrintable(errorText));
+    editedPart.closeUrl();
+
+    Okular::Part renamedPart(nullptr, {});
+    QVERIFY(openDocument(&renamedPart, renamedDestinationFile));
+    renamedPart.widget()->show();
+    QVERIFY(QTest::qWaitForWindowExposed(renamedPart.widget()));
+    renamedPart.m_document->setViewportPage(0);
+    QTRY_VERIFY(renamedPart.m_document->page(0)->hasPixmap(renamedPart.m_pageView));
+    const DocumentViewport removedOldDestination(renamedPart.m_document->metaData(QStringLiteral("NamedViewport"), destinationName).toString());
+    QVERIFY(!removedOldDestination.isValid());
+    const DocumentViewport renamedDestination(renamedPart.m_document->metaData(QStringLiteral("NamedViewport"), renamedDestinationName).toString());
+    QVERIFY(renamedDestination.isValid());
+    QCOMPARE(renamedDestination.pageNumber, 1);
+
+    bool foundRenamedLink = false;
+    for (const Okular::ObjectRect *rect : renamedPart.m_document->page(0)->objectRects()) {
+        if (!rect || rect->objectType() != Okular::ObjectRect::Action || !rect->object() || !rect->region().boundingRect().intersects(sourceLinkRectangle)) {
+            continue;
+        }
+        const auto *action = static_cast<const Okular::Action *>(rect->object());
+        if (action->actionType() == Okular::Action::Goto && static_cast<const Okular::GotoAction *>(action)->destinationName() == renamedDestinationName) {
+            foundRenamedLink = true;
+            break;
+        }
+    }
+    QVERIFY(foundRenamedLink);
+
+    QVERIFY2(renamedPart.m_document->saveWithNamedDestinationDeleted(renamedDestinationFile, deletedDestinationFile, renamedDestinationName, &errorText), qPrintable(errorText));
+    renamedPart.closeUrl();
+
+    Okular::Part deletedPart(nullptr, {});
+    QVERIFY(openDocument(&deletedPart, deletedDestinationFile));
+    deletedPart.widget()->show();
+    QVERIFY(QTest::qWaitForWindowExposed(deletedPart.widget()));
+    deletedPart.m_document->setViewportPage(0);
+    QTRY_VERIFY(deletedPart.m_document->page(0)->hasPixmap(deletedPart.m_pageView));
+    const DocumentViewport deletedDestination(deletedPart.m_document->metaData(QStringLiteral("NamedViewport"), renamedDestinationName).toString());
+    QVERIFY(!deletedDestination.isValid());
+
+    bool preservedUnresolvedLink = false;
+    for (const Okular::ObjectRect *rect : deletedPart.m_document->page(0)->objectRects()) {
+        if (!rect || rect->objectType() != Okular::ObjectRect::Action || !rect->object() || !rect->region().boundingRect().intersects(sourceLinkRectangle)) {
+            continue;
+        }
+        const auto *action = static_cast<const Okular::Action *>(rect->object());
+        if (action->actionType() == Okular::Action::Goto && static_cast<const Okular::GotoAction *>(action)->destinationName() == renamedDestinationName) {
+            preservedUnresolvedLink = true;
+            break;
+        }
+    }
+    QVERIFY(preservedUnresolvedLink);
+    deletedPart.closeUrl();
 }
 
 void PartTest::testDuplicatePagePreservesInternalLinks()

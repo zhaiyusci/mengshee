@@ -27,6 +27,7 @@
 #include "pageviewutils.h"
 #include <QAbstractScrollArea>
 #include <QList>
+#include <QStringList>
 
 #include "signaturepartutils.h"
 
@@ -70,6 +71,9 @@ public:
     ~PageView() override;
 
     OKULARPART_EXPORT bool mapGlobalPosToPagePoint(QPoint globalPos, int *pageNumber, Okular::NormalizedPoint *point) const;
+    QStringList namedDestinationsAtGlobalPos(QPoint globalPos) const;
+    OKULARPART_EXPORT bool namedDestinationsVisible() const;
+    void startInternalLinkCreation();
 
     // Zoom mode ( last 4 are internally used only! )
     enum ZoomMode { ZoomFixed = 0, ZoomFitWidth = 1, ZoomFitPage = 2, ZoomFitAuto = 3, ZoomIn, ZoomOut, ZoomRefreshCurrent, ZoomActual };
@@ -211,6 +215,15 @@ Q_SIGNALS:
      * possible and otherwise falls back to the destination page number.
      */
     void openInternalLinkInAuxiliaryFrame(const Okular::DocumentViewport &viewport, const QString &title);
+    /** Requests editing the PDF-level destination of an internal link. */
+    void editInternalLinkRequested(int sourcePageNumber,
+                                   const QRectF &normalizedLinkRectangle,
+                                   const QString &currentDestinationName,
+                                   const Okular::DocumentViewport &currentDestination);
+    /** Requests moving a named destination to a point selected in this view. */
+    void moveNamedDestinationRequested(const QString &name, int pageNumber, const Okular::NormalizedPoint &position);
+    /** Requests creating an internal link over a rectangle drawn in this view. */
+    void createInternalLinkRequested(int sourcePageNumber, const QRectF &normalizedLinkRectangle);
 
 protected:
     bool event(QEvent *event) override;
@@ -246,6 +259,7 @@ private:
     // draw background and items on the opened qpainter
     void drawDocumentOnPainter(const QRect contentsRect, QPainter *p);
     void drawNamedDestinations(const QRect &contentsRect, QPainter *p);
+    void drawInternalLinkCreation(const QRect &contentsRect, QPainter *p);
     void loadNamedDestinations();
     // update item width and height using current zoom parameters
     void updateItemSize(PageViewItem *item, int colWidth, int rowHeight);

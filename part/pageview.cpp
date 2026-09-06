@@ -176,6 +176,12 @@ struct NamedDestinationMarker {
     double normalizedY = 0.0;
 };
 
+struct NamedDestinationHitRegion {
+    int pageNumber = -1;
+    QString name;
+    QRectF rect;
+};
+
 TableSelectionPart::TableSelectionPart(PageViewItem *item_p, const Okular::NormalizedRect &rectInItem_p, const Okular::NormalizedRect &rectInSelection_p)
     : item(item_p)
     , rectInItem(rectInItem_p)
@@ -205,8 +211,18 @@ public:
     QList<PageViewItem *> visibleItems;
     MagnifierView *magnifierView = nullptr;
     QHash<int, QList<NamedDestinationMarker>> namedDestinationsByPage;
+    QList<NamedDestinationHitRegion> namedDestinationHitRegions;
     bool namedDestinationsLoaded = false;
     bool showNamedDestinations = false;
+    QString draggedNamedDestination;
+    QPointF namedDestinationDragStartGlobal;
+    QPoint namedDestinationDragContentPosition;
+    bool namedDestinationDragging = false;
+    bool creatingInternalLink = false;
+    bool internalLinkCreationDragging = false;
+    int internalLinkCreationPage = -1;
+    QPoint internalLinkCreationStart;
+    QRect internalLinkCreationRect;
 
     // view layout (columns in Settings), zoom and mouse
     PageView::ZoomMode zoomMode = PageView::ZoomFitWidth;
@@ -584,6 +600,41 @@ OKULARPART_EXPORT bool PageView::mapGlobalPosToPagePoint(QPoint globalPos, int *
     return true;
 }
 
+QStringList PageView::namedDestinationsAtGlobalPos(QPoint globalPos) const
+{
+    QStringList names;
+    if (!d->showNamedDestinations) {
+        return names;
+    }
+
+    const QPoint contentPos = contentAreaPoint(viewport()->mapFromGlobal(globalPos));
+    for (auto it = d->namedDestinationHitRegions.crbegin(); it != d->namedDestinationHitRegions.crend(); ++it) {
+        if (it->rect.contains(contentPos) && !names.contains(it->name)) {
+            names.append(it->name);
+        }
+    }
+    return names;
+}
+
+OKULARPART_EXPORT bool PageView::namedDestinationsVisible() const
+{
+    return d->showNamedDestinations;
+}
+
+void PageView::startInternalLinkCreation()
+{
+    if (!d->showNamedDestinations || !d->document->canEditPdfLinks()) {
+        return;
+    }
+    d->creatingInternalLink = true;
+    d->internalLinkCreationDragging = false;
+    d->internalLinkCreationPage = -1;
+    d->internalLinkCreationRect = QRect();
+    d->scroller->stop();
+    setCursor(Qt::CrossCursor);
+    displayMessage(i18n("Drag a rectangle over the area that should become an internal link. Press Esc to cancel."));
+}
+
 void PageView::setupViewport(QWidget *viewport)
 {
     notifyAnnotationWindowsAboutViewportBoundsChange();
@@ -717,6 +768,13 @@ void PageView::setupViewerActions(KActionCollection *ac)
     d->aToggleNamedDestinations->setEnabled(false);
     connect(d->aToggleNamedDestinations, &QAction::toggled, this, [this](bool checked) {
         d->showNamedDestinations = checked;
+        if (!checked) {
+            d->creatingInternalLink = false;
+            d->internalLinkCreationDragging = false;
+            d->internalLinkCreationPage = -1;
+            d->internalLinkCreationRect = QRect();
+            updateCursor();
+        }
         if (checked && !d->namedDestinationsLoaded) {
             loadNamedDestinations();
         }
@@ -2257,6 +2315,7 @@ void PageView::paintEvent(QPaintEvent *pe)
 
             // 4) Layer 2: overlays
             drawNamedDestinations(contentsRect, &pixmapPainter);
+            drawInternalLinkCreation(contentsRect, &pixmapPainter);
             if (Okular::Settings::debugDrawBoundaries()) {
                 pixmapPainter.setPen(Qt::blue);
                 pixmapPainter.drawRect(contentsRect);
@@ -2294,6 +2353,7 @@ void PageView::paintEvent(QPaintEvent *pe)
 
             // 4) Layer 2: overlays
             drawNamedDestinations(contentsRect, &screenPainter);
+            drawInternalLinkCreation(contentsRect, &screenPainter);
             if (Okular::Settings::debugDrawBoundaries()) {
                 screenPainter.setPen(Qt::red);
                 screenPainter.drawRect(contentsRect);
@@ -2337,6 +2397,7 @@ void PageView::drawTableDividers(QPainter *screenPainter)
 void PageView::loadNamedDestinations()
 {
     d->namedDestinationsByPage.clear();
+    d->namedDestinationHitRegions.clear();
     d->namedDestinationsLoaded = true;
 
     const QVariantList destinations = d->document->metaData(QStringLiteral("NamedViewports")).toList();
@@ -2394,6 +2455,7 @@ void PageView::drawNamedDestinations(const QRect &contentsRect, QPainter *p)
         }
 
         const QRectF pageRect(item->croppedGeometry());
+        d->namedDestinationHitRegions.removeIf([item](const NamedDestinationHitRegion &region) { return region.pageNumber == item->pageNumber(); });
         QList<DestinationGroup> groups;
         for (const NamedDestinationMarker &marker : destinationIt.value()) {
             Okular::NormalizedPoint normalized(marker.normalizedX, marker.normalizedY);
@@ -2479,6 +2541,15 @@ void PageView::drawNamedDestinations(const QRect &contentsRect, QPainter *p)
             }
             occupiedLabels.append(labelRect);
 
+            const QRectF anchorHitRect(group.anchor - QPointF(10.0, 10.0), QSizeF(20.0, 20.0));
+            for (qsizetype nameIndex = 0; nameIndex < group.names.size(); ++nameIndex) {
+                const QString &name = group.names.at(nameIndex);
+                const qreal lineTop = labelRect.top() + 4.0 + nameIndex * metrics.height();
+                const qreal lineBottom = qMin(labelRect.bottom(), lineTop + metrics.height());
+                d->namedDestinationHitRegions.append(NamedDestinationHitRegion { item->pageNumber(), name, QRectF(labelRect.left(), lineTop, labelRect.width(), lineBottom - lineTop) });
+                d->namedDestinationHitRegions.append(NamedDestinationHitRegion { item->pageNumber(), name, anchorHitRect });
+            }
+
             QPen leaderPen(markerColor);
             leaderPen.setWidthF(1.25);
             p->setPen(leaderPen);
@@ -2501,6 +2572,38 @@ void PageView::drawNamedDestinations(const QRect &contentsRect, QPainter *p)
         }
         p->restore();
     }
+
+    if (d->namedDestinationDragging && !d->draggedNamedDestination.isEmpty() && contentsRect.contains(d->namedDestinationDragContentPosition)) {
+        const QPointF target = d->namedDestinationDragContentPosition;
+        QPen dragPen(markerColor, 2.0, Qt::DashLine);
+        p->setPen(dragPen);
+        p->setBrush(QColor(232, 246, 255, 180));
+        p->drawEllipse(target, 8.0, 8.0);
+        p->drawLine(target + QPointF(-12.0, 0.0), target + QPointF(12.0, 0.0));
+        p->drawLine(target + QPointF(0.0, -12.0), target + QPointF(0.0, 12.0));
+
+        QRectF dragLabel = metrics.boundingRect(d->draggedNamedDestination).adjusted(-6.0, -4.0, 6.0, 4.0);
+        dragLabel.moveTopLeft(target + QPointF(14.0, 14.0));
+        p->setPen(QPen(markerColor, 1.0));
+        p->drawRoundedRect(dragLabel, 4.0, 4.0);
+        p->setPen(labelText);
+        p->drawText(dragLabel, Qt::AlignCenter, d->draggedNamedDestination);
+    }
+    p->restore();
+}
+
+void PageView::drawInternalLinkCreation(const QRect &contentsRect, QPainter *p)
+{
+    if (!d->creatingInternalLink || !d->internalLinkCreationDragging || d->internalLinkCreationRect.isNull() || !contentsRect.intersects(d->internalLinkCreationRect)) {
+        return;
+    }
+
+    p->save();
+    p->setClipRect(contentsRect, Qt::IntersectClip);
+    p->setRenderHint(QPainter::Antialiasing, true);
+    p->setPen(QPen(QColor(30, 115, 190), 2.0, Qt::DashLine));
+    p->setBrush(QColor(70, 150, 225, 45));
+    p->drawRect(d->internalLinkCreationRect.normalized());
     p->restore();
 }
 
@@ -2544,6 +2647,26 @@ void PageView::resizeEvent(QResizeEvent *e)
 
 void PageView::keyPressEvent(QKeyEvent *e)
 {
+    if (e->key() == Qt::Key_Escape && d->creatingInternalLink) {
+        d->creatingInternalLink = false;
+        d->internalLinkCreationDragging = false;
+        d->internalLinkCreationPage = -1;
+        d->internalLinkCreationRect = QRect();
+        viewport()->update();
+        updateCursor();
+        e->accept();
+        return;
+    }
+
+    if (e->key() == Qt::Key_Escape && !d->draggedNamedDestination.isEmpty()) {
+        d->draggedNamedDestination.clear();
+        d->namedDestinationDragging = false;
+        viewport()->update();
+        updateCursor();
+        e->accept();
+        return;
+    }
+
     // Ignore ESC key press to send to shell.cpp
     if (e->key() != Qt::Key_Escape) {
         e->accept();
@@ -2750,6 +2873,43 @@ void PageView::mouseMoveEvent(QMouseEvent *e)
 
     const QPoint eventPos = contentAreaPoint(e->pos());
 
+    if (d->creatingInternalLink) {
+        if (d->internalLinkCreationDragging && (e->buttons() & Qt::LeftButton)) {
+            PageViewItem *sourceItem = nullptr;
+            for (PageViewItem *item : std::as_const(d->items)) {
+                if (item->pageNumber() == d->internalLinkCreationPage) {
+                    sourceItem = item;
+                    break;
+                }
+            }
+            if (sourceItem) {
+                const QRect pageRect = sourceItem->uncroppedGeometry();
+                const QPoint boundedPoint(qBound(pageRect.left(), eventPos.x(), pageRect.right()), qBound(pageRect.top(), eventPos.y(), pageRect.bottom()));
+                d->internalLinkCreationRect = QRect(d->internalLinkCreationStart, boundedPoint).normalized();
+                viewport()->update();
+            }
+        }
+        setCursor(Qt::CrossCursor);
+        e->accept();
+        return;
+    }
+
+    if (!d->draggedNamedDestination.isEmpty()) {
+        if (e->buttons() & Qt::LeftButton) {
+            if (!d->namedDestinationDragging && (d->namedDestinationDragStartGlobal - e->globalPosition()).manhattanLength() >= QApplication::startDragDistance()) {
+                d->namedDestinationDragging = true;
+                displayMessage(i18n("Move '%1' to the new position and release the mouse button.", d->draggedNamedDestination));
+            }
+            if (d->namedDestinationDragging) {
+                d->namedDestinationDragContentPosition = eventPos;
+                setCursor(Qt::SizeAllCursor);
+                viewport()->update();
+            }
+        }
+        e->accept();
+        return;
+    }
+
     // if we're editing an annotation, dispatch event to it
     if (d->annotator && d->annotator->active()) {
         if (d->annotator->pageView() == this) {
@@ -2870,6 +3030,50 @@ void PageView::mousePressEvent(QMouseEvent *e)
     }
 
     const QPoint eventPos = contentAreaPoint(e->pos());
+
+    if (d->creatingInternalLink) {
+        if (e->button() == Qt::RightButton) {
+            d->creatingInternalLink = false;
+            d->internalLinkCreationDragging = false;
+            d->internalLinkCreationPage = -1;
+            d->internalLinkCreationRect = QRect();
+            viewport()->update();
+            updateCursor();
+            e->accept();
+            return;
+        }
+        if (e->button() == Qt::LeftButton) {
+            PageViewItem *pageItem = pickItemOnPoint(eventPos.x(), eventPos.y());
+            if (pageItem) {
+                d->scroller->stop();
+                d->dragScrollTimer.stop();
+                d->mouseGrabOffset = QPoint();
+                d->internalLinkCreationDragging = true;
+                d->internalLinkCreationPage = pageItem->pageNumber();
+                d->internalLinkCreationStart = eventPos;
+                d->internalLinkCreationRect = QRect(eventPos, eventPos);
+                e->accept();
+                return;
+            }
+        }
+    }
+
+    if (e->button() == Qt::LeftButton && d->document->canEditPdfLinks()) {
+        const QStringList destinationNames = namedDestinationsAtGlobalPos(e->globalPosition().toPoint());
+        if (destinationNames.size() == 1) {
+            d->scroller->stop();
+            d->dragScrollTimer.stop();
+            d->mouseGrabOffset = QPoint();
+            d->draggedNamedDestination = destinationNames.constFirst();
+            d->namedDestinationDragStartGlobal = e->globalPosition();
+            d->namedDestinationDragContentPosition = eventPos;
+            d->namedDestinationDragging = false;
+            d->mousePressPos = e->globalPosition();
+            setCursor(Qt::SizeAllCursor);
+            e->accept();
+            return;
+        }
+    }
 
     if (e->button() == Qt::MiddleButton && !(d->annotator && d->annotator->active())) {
         PageViewItem *pageItem = pickItemOnPoint(eventPos.x(), eventPos.y());
@@ -3162,6 +3366,54 @@ void PageView::mouseReleaseEvent(QMouseEvent *e)
 
     const QPoint eventPos = contentAreaPoint(e->pos());
 
+    if (leftButton && d->creatingInternalLink && d->internalLinkCreationDragging) {
+        PageViewItem *sourceItem = nullptr;
+        for (PageViewItem *item : std::as_const(d->items)) {
+            if (item->pageNumber() == d->internalLinkCreationPage) {
+                sourceItem = item;
+                break;
+            }
+        }
+
+        const QRect linkRect = d->internalLinkCreationRect.normalized();
+        const int sourcePageNumber = d->internalLinkCreationPage;
+        if (sourceItem && linkRect.width() >= QApplication::startDragDistance() && linkRect.height() >= QApplication::startDragDistance()) {
+            const QRectF normalizedLinkRectangle(QPointF(sourceItem->absToPageX(linkRect.left()), sourceItem->absToPageY(linkRect.top())),
+                                                 QPointF(sourceItem->absToPageX(linkRect.right()), sourceItem->absToPageY(linkRect.bottom())));
+            d->creatingInternalLink = false;
+            d->internalLinkCreationDragging = false;
+            d->internalLinkCreationPage = -1;
+            d->internalLinkCreationRect = QRect();
+            viewport()->update();
+            updateCursor();
+            Q_EMIT createInternalLinkRequested(sourcePageNumber, normalizedLinkRectangle.normalized());
+        } else {
+            d->internalLinkCreationDragging = false;
+            d->internalLinkCreationPage = -1;
+            d->internalLinkCreationRect = QRect();
+            viewport()->update();
+            displayMessage(i18n("The link area is too small. Drag a larger rectangle, or press Esc to cancel."));
+        }
+        e->accept();
+        return;
+    }
+
+    if (leftButton && !d->draggedNamedDestination.isEmpty()) {
+        PageViewItem *pageItem = pickItemOnPoint(eventPos.x(), eventPos.y());
+        const QString name = d->draggedNamedDestination;
+        const bool moved = d->namedDestinationDragging && pageItem;
+        d->draggedNamedDestination.clear();
+        d->namedDestinationDragging = false;
+        viewport()->update();
+        updateCursor();
+        if (moved) {
+            const Okular::NormalizedPoint position(pageItem->absToPageX(eventPos.x()), pageItem->absToPageY(eventPos.y()));
+            Q_EMIT moveNamedDestinationRequested(name, pageItem->pageNumber(), position);
+        }
+        e->accept();
+        return;
+    }
+
     if (leftButton && d->auxiliaryLinkControlClickPending) {
         const bool isClick = (d->auxiliaryLinkPressGlobalPos - e->globalPosition()).manhattanLength() < QApplication::startDragDistance();
         if (isClick && d->auxiliaryLinkPressObject) {
@@ -3263,6 +3515,11 @@ void PageView::mouseReleaseEvent(QMouseEvent *e)
             }
         } else if (rightButton && !d->mouseAnnotation->isModified()) {
             if (pageItem && pageItem == pageItemPressPos && ((d->mousePressPos - e->globalPosition()).manhattanLength() < QApplication::startDragDistance())) {
+                if (d->document->canEditPdfLinks() && !namedDestinationsAtGlobalPos(e->globalPosition().toPoint()).isEmpty()) {
+                    Q_EMIT rightClick(pageItem->page(), e->globalPosition().toPoint());
+                    e->accept();
+                    return;
+                }
                 QMenu *menu = createProcessLinkMenu(pageItem, eventPos);
 
                 const QRect &itemRect = pageItem->uncroppedGeometry();
@@ -4888,6 +5145,11 @@ void PageView::updateCursor()
 
 void PageView::updateCursor(const QPoint p)
 {
+    if (d->creatingInternalLink) {
+        setCursor(Qt::CrossCursor);
+        return;
+    }
+
     // reset mouse over link it will be re-set if that still valid
     d->mouseOverLinkObject = nullptr;
 
@@ -4906,6 +5168,19 @@ void PageView::updateCursor(const QPoint p)
     } else if (scrollerState == QScroller::Pressed || scrollerState == QScroller::Dragging) {
         setCursor(Qt::ClosedHandCursor);
     } else if (pageItem) {
+        QStringList destinationNames;
+        if (d->showNamedDestinations && d->document->canEditPdfLinks()) {
+            for (const NamedDestinationHitRegion &region : std::as_const(d->namedDestinationHitRegions)) {
+                if (region.rect.contains(p) && !destinationNames.contains(region.name)) {
+                    destinationNames.append(region.name);
+                }
+            }
+        }
+        if (destinationNames.size() == 1) {
+            setCursor(Qt::SizeAllCursor);
+            return;
+        }
+
         double nX = pageItem->absToPageX(p.x());
         double nY = pageItem->absToPageY(p.y());
         Qt::CursorShape cursorShapeFallback;
@@ -5171,11 +5446,24 @@ QMenu *PageView::createProcessLinkMenu(PageViewItem *item, const QPoint eventPos
         QAction *processLink = menu->addAction(i18n("Follow This Link"));
         processLink->setObjectName(QStringLiteral("ProcessLinkAction"));
         Okular::DocumentViewport target;
-        if (viewportForInternalGotoLink(d->document, rect, &target)) {
+        const bool hasResolvedInternalTarget = viewportForInternalGotoLink(d->document, rect, &target);
+        const auto *gotoAction = link->actionType() == Okular::Action::Goto ? static_cast<const Okular::GotoAction *>(link) : nullptr;
+        const bool isInternalGoto = gotoAction && !gotoAction->isExternal();
+        if (hasResolvedInternalTarget) {
             QAction *openInAuxiliaryFrame = menu->addAction(QIcon::fromTheme(QStringLiteral("view-right-new")), i18n("Open in Auxiliary Frame"));
             openInAuxiliaryFrame->setObjectName(QStringLiteral("OpenLinkInAuxiliaryFrameAction"));
             connect(openInAuxiliaryFrame, &QAction::triggered, this, [this, rect, eventPos]() {
                 requestInternalLinkInAuxiliaryFrame(rect, eventPos);
+            });
+        }
+        if (isInternalGoto) {
+            const int sourcePageNumber = item->pageNumber();
+            const QRectF normalizedLinkRectangle = rect->region().boundingRect();
+            const QString currentDestinationName = gotoAction->destinationName();
+            QAction *editLink = menu->addAction(QIcon::fromTheme(QStringLiteral("edit-link"), QIcon::fromTheme(QStringLiteral("document-edit"))), i18n("Edit Link Destination..."));
+            editLink->setObjectName(QStringLiteral("EditInternalLinkAction"));
+            connect(editLink, &QAction::triggered, this, [this, sourcePageNumber, normalizedLinkRectangle, currentDestinationName, target]() {
+                Q_EMIT editInternalLinkRequested(sourcePageNumber, normalizedLinkRectangle, currentDestinationName, target);
             });
         }
         if (link->actionType() == Okular::Action::Sound) {

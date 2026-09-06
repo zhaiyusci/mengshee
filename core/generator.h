@@ -297,6 +297,77 @@ public:
 };
 
 /**
+ * Optional interface implemented by PDF generators that can edit named
+ * destinations and internal link annotations in a copied document.
+ */
+class OKULARCORE_EXPORT PdfLinkEditingInterface
+{
+public:
+    virtual ~PdfLinkEditingInterface() = default;
+
+    virtual bool canEditPdfLinks() const = 0;
+
+    /**
+     * Writes a copy with @p name pointing to the normalized position on the
+     * 1-based @p pageNumber. An existing destination with the same name is
+     * replaced.
+     */
+    virtual bool saveWithNamedDestinationAdded(const QString &sourceFileName,
+                                               const QString &outputFileName,
+                                               const QString &name,
+                                               int pageNumber,
+                                               double normalizedX,
+                                               double normalizedY,
+                                               QString *errorText) = 0;
+
+    /** Writes a copy with a named destination renamed and exact internal references updated. */
+    virtual bool saveWithNamedDestinationRenamed(const QString &sourceFileName,
+                                                 const QString &outputFileName,
+                                                 const QString &oldName,
+                                                 const QString &newName,
+                                                 QString *errorText) = 0;
+
+    /** Writes a copy with a named destination definition removed. References are preserved. */
+    virtual bool saveWithNamedDestinationDeleted(const QString &sourceFileName,
+                                                 const QString &outputFileName,
+                                                 const QString &name,
+                                                 QString *errorText) = 0;
+
+    /**
+     * Writes a copy with the selected internal link redirected. The source
+     * page is 1-based and the link rectangle is normalized. A non-empty
+     * @p destinationName is preferred and stored directly; otherwise the
+     * 1-based destination page and normalized position are stored explicitly.
+     */
+    virtual bool saveWithInternalLinkDestinationChanged(const QString &sourceFileName,
+                                                        const QString &outputFileName,
+                                                        int sourcePageNumber,
+                                                        double linkLeft,
+                                                        double linkTop,
+                                                        double linkRight,
+                                                        double linkBottom,
+                                                        const QString &destinationName,
+                                                        int destinationPageNumber,
+                                                        double destinationX,
+                                                        double destinationY,
+                                                        QString *errorText) = 0;
+
+    /** Writes a copy with a new internal link annotation. */
+    virtual bool saveWithInternalLinkCreated(const QString &sourceFileName,
+                                             const QString &outputFileName,
+                                             int sourcePageNumber,
+                                             double linkLeft,
+                                             double linkTop,
+                                             double linkRight,
+                                             double linkBottom,
+                                             const QString &destinationName,
+                                             int destinationPageNumber,
+                                             double destinationX,
+                                             double destinationY,
+                                             QString *errorText) = 0;
+};
+
+/**
  * @short [Abstract Class] The information generator.
  *
  * Most of class members are virtuals and some of them pure virtual. The pure

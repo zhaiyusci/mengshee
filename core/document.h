@@ -1082,6 +1082,59 @@ public:
      */
     bool saveWithPageRotated(const QString &sourceFileName, const QString &outputFileName, int pageNumber, int rotationDegrees, QString *errorText);
 
+    /** Returns whether the current backend can edit PDF named destinations and internal links. */
+    bool canEditPdfLinks() const;
+
+    /** Writes a copy with a named destination added or replaced. Page numbers are 1-based. */
+    bool saveWithNamedDestinationAdded(const QString &sourceFileName,
+                                       const QString &outputFileName,
+                                       const QString &name,
+                                       int pageNumber,
+                                       double normalizedX,
+                                       double normalizedY,
+                                       QString *errorText);
+
+    /** Writes a copy with a named destination renamed and exact internal references updated. */
+    bool saveWithNamedDestinationRenamed(const QString &sourceFileName,
+                                         const QString &outputFileName,
+                                         const QString &oldName,
+                                         const QString &newName,
+                                         QString *errorText);
+
+    /** Writes a copy with a named destination definition removed. References are preserved. */
+    bool saveWithNamedDestinationDeleted(const QString &sourceFileName,
+                                         const QString &outputFileName,
+                                         const QString &name,
+                                         QString *errorText);
+
+    /** Writes a copy with one internal link redirected. Page numbers are 1-based. */
+    bool saveWithInternalLinkDestinationChanged(const QString &sourceFileName,
+                                                const QString &outputFileName,
+                                                int sourcePageNumber,
+                                                double linkLeft,
+                                                double linkTop,
+                                                double linkRight,
+                                                double linkBottom,
+                                                const QString &destinationName,
+                                                int destinationPageNumber,
+                                                double destinationX,
+                                                double destinationY,
+                                                QString *errorText);
+
+    /** Writes a copy with a new internal link annotation. Page numbers are 1-based. */
+    bool saveWithInternalLinkCreated(const QString &sourceFileName,
+                                     const QString &outputFileName,
+                                     int sourcePageNumber,
+                                     double linkLeft,
+                                     double linkTop,
+                                     double linkRight,
+                                     double linkBottom,
+                                     const QString &destinationName,
+                                     int destinationPageNumber,
+                                     double destinationX,
+                                     double destinationY,
+                                     QString *errorText);
+
     /**
      * Sets the history to be clean
      *

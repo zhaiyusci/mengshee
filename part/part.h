@@ -27,9 +27,12 @@
 #include <QList>
 #include <QPointer>
 #include <QProcess>
+#include <QRectF>
 #include <QSizeF>
 #include <QStringList>
 #include <QUrl>
+
+#include <functional>
 
 #include <KCompressionDevice>
 #include <KIO/Job>
@@ -335,7 +338,7 @@ private:
     void slotRemoveBookmark(const DocumentViewport &viewport);
     void resetStartArguments();
     void checkNativeSaveDataLoss(bool *out_wontSaveForms, bool *out_wontSaveAnnotations) const;
-    bool applyPageEditBackingFile(const QString &fileName, int pageNumber, bool forcePageTopologyChanged = false);
+    bool applyPageEditBackingFile(const QString &fileName, int pageNumber, bool forcePageTopologyChanged = false, bool preserveViewport = false);
     bool applyLivePageMove(int sourcePage, int destinationPage);
     bool canUsePageLevelEditing() const;
     void updatePageEditActions();
@@ -345,6 +348,24 @@ private:
     void insertPdfPage(int insertAfterPageNumber, const QString &insertedFileName, int pageToInsert);
     void insertBlankPageAfterPage(int pageNumber);
     void duplicatePage(int pageNumber);
+    void addNamedDestination(int pageNumber, const Okular::NormalizedPoint &position);
+    void renameNamedDestination(const QString &oldName);
+    void deleteNamedDestination(const QString &name);
+    void moveNamedDestination(const QString &name, int pageNumber, const Okular::NormalizedPoint &position);
+    void editInternalLink(int sourcePageNumber,
+                          const QRectF &normalizedLinkRectangle,
+                          const QString &currentDestinationName,
+                          const Okular::DocumentViewport &currentDestination);
+    void createInternalLink(int sourcePageNumber, const QRectF &normalizedLinkRectangle);
+    void configureInternalLink(int sourcePageNumber,
+                               const QRectF &normalizedLinkRectangle,
+                               const QString &currentDestinationName,
+                               const Okular::DocumentViewport &currentDestination,
+                               bool creating);
+    bool applyPdfLinkEdit(const QString &undoText,
+                          const QString &failureText,
+                          int pageNumber,
+                          const std::function<bool(const QString &, const QString &, QString *)> &operation);
     QString pageTemplateFileName() const;
     void setPageTemplateFileName(const QString &fileName);
     void deletePage(int pageNumber);

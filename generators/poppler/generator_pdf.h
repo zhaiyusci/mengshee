@@ -45,7 +45,12 @@ class PopplerAnnotationProxy;
  * contents from out OutputDevs when rendering finishes.
  *
  */
-class PDFGenerator : public Okular::Generator, public Okular::ConfigInterface, public Okular::PrintInterface, public Okular::SaveInterface, public Okular::PageInsertionInterface
+class PDFGenerator : public Okular::Generator,
+                     public Okular::ConfigInterface,
+                     public Okular::PrintInterface,
+                     public Okular::SaveInterface,
+                     public Okular::PageInsertionInterface,
+                     public Okular::PdfLinkEditingInterface
 {
     Q_OBJECT
     Q_INTERFACES(Okular::Generator)
@@ -128,6 +133,47 @@ public:
     bool saveWithPageMoved(const QString &sourceFileName, const QString &outputFileName, int sourcePageNumber, int destinationPageNumber, QString *errorText) override;
     bool canRotatePage() const override;
     bool saveWithPageRotated(const QString &sourceFileName, const QString &outputFileName, int pageNumber, int rotationDegrees, QString *errorText) override;
+    bool canEditPdfLinks() const override;
+    bool saveWithNamedDestinationAdded(const QString &sourceFileName,
+                                       const QString &outputFileName,
+                                       const QString &name,
+                                       int pageNumber,
+                                       double normalizedX,
+                                       double normalizedY,
+                                       QString *errorText) override;
+    bool saveWithNamedDestinationRenamed(const QString &sourceFileName,
+                                         const QString &outputFileName,
+                                         const QString &oldName,
+                                         const QString &newName,
+                                         QString *errorText) override;
+    bool saveWithNamedDestinationDeleted(const QString &sourceFileName,
+                                         const QString &outputFileName,
+                                         const QString &name,
+                                         QString *errorText) override;
+    bool saveWithInternalLinkDestinationChanged(const QString &sourceFileName,
+                                                const QString &outputFileName,
+                                                int sourcePageNumber,
+                                                double linkLeft,
+                                                double linkTop,
+                                                double linkRight,
+                                                double linkBottom,
+                                                const QString &destinationName,
+                                                int destinationPageNumber,
+                                                double destinationX,
+                                                double destinationY,
+                                                QString *errorText) override;
+    bool saveWithInternalLinkCreated(const QString &sourceFileName,
+                                     const QString &outputFileName,
+                                     int sourcePageNumber,
+                                     double linkLeft,
+                                     double linkTop,
+                                     double linkRight,
+                                     double linkBottom,
+                                     const QString &destinationName,
+                                     int destinationPageNumber,
+                                     double destinationX,
+                                     double destinationY,
+                                     QString *errorText) override;
 
     bool canSign() const override;
     std::pair<Okular::SigningResult, QString> sign(const Okular::NewSignatureData &oData, const QString &rFilename) override;

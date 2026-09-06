@@ -6066,6 +6066,129 @@ bool Document::saveWithPageRotated(const QString &sourceFileName, const QString 
     return pageInsertion->saveWithPageRotated(sourceFileName, outputFileName, pageNumber, rotationDegrees, errorText);
 }
 
+bool Document::canEditPdfLinks() const
+{
+    const auto editor = dynamic_cast<PdfLinkEditingInterface *>(d->m_generator);
+    return editor && editor->canEditPdfLinks();
+}
+
+bool Document::saveWithNamedDestinationAdded(const QString &sourceFileName,
+                                             const QString &outputFileName,
+                                             const QString &name,
+                                             int pageNumber,
+                                             double normalizedX,
+                                             double normalizedY,
+                                             QString *errorText)
+{
+    auto editor = dynamic_cast<PdfLinkEditingInterface *>(d->m_generator);
+    if (!editor || sourceFileName.isEmpty() || outputFileName.isEmpty() || name.isEmpty()) {
+        if (errorText) {
+            errorText->clear();
+        }
+        return false;
+    }
+    return editor->saveWithNamedDestinationAdded(sourceFileName, outputFileName, name, pageNumber, normalizedX, normalizedY, errorText);
+}
+
+bool Document::saveWithNamedDestinationRenamed(const QString &sourceFileName,
+                                               const QString &outputFileName,
+                                               const QString &oldName,
+                                               const QString &newName,
+                                               QString *errorText)
+{
+    auto editor = dynamic_cast<PdfLinkEditingInterface *>(d->m_generator);
+    if (!editor || sourceFileName.isEmpty() || outputFileName.isEmpty() || oldName.isEmpty() || newName.isEmpty()) {
+        if (errorText) {
+            errorText->clear();
+        }
+        return false;
+    }
+    return editor->saveWithNamedDestinationRenamed(sourceFileName, outputFileName, oldName, newName, errorText);
+}
+
+bool Document::saveWithNamedDestinationDeleted(const QString &sourceFileName,
+                                               const QString &outputFileName,
+                                               const QString &name,
+                                               QString *errorText)
+{
+    auto editor = dynamic_cast<PdfLinkEditingInterface *>(d->m_generator);
+    if (!editor || sourceFileName.isEmpty() || outputFileName.isEmpty() || name.isEmpty()) {
+        if (errorText) {
+            errorText->clear();
+        }
+        return false;
+    }
+    return editor->saveWithNamedDestinationDeleted(sourceFileName, outputFileName, name, errorText);
+}
+
+bool Document::saveWithInternalLinkDestinationChanged(const QString &sourceFileName,
+                                                      const QString &outputFileName,
+                                                      int sourcePageNumber,
+                                                      double linkLeft,
+                                                      double linkTop,
+                                                      double linkRight,
+                                                      double linkBottom,
+                                                      const QString &destinationName,
+                                                      int destinationPageNumber,
+                                                      double destinationX,
+                                                      double destinationY,
+                                                      QString *errorText)
+{
+    auto editor = dynamic_cast<PdfLinkEditingInterface *>(d->m_generator);
+    if (!editor || sourceFileName.isEmpty() || outputFileName.isEmpty()) {
+        if (errorText) {
+            errorText->clear();
+        }
+        return false;
+    }
+    return editor->saveWithInternalLinkDestinationChanged(sourceFileName,
+                                                          outputFileName,
+                                                          sourcePageNumber,
+                                                          linkLeft,
+                                                          linkTop,
+                                                          linkRight,
+                                                          linkBottom,
+                                                          destinationName,
+                                                          destinationPageNumber,
+                                                          destinationX,
+                                                          destinationY,
+                                                          errorText);
+}
+
+bool Document::saveWithInternalLinkCreated(const QString &sourceFileName,
+                                           const QString &outputFileName,
+                                           int sourcePageNumber,
+                                           double linkLeft,
+                                           double linkTop,
+                                           double linkRight,
+                                           double linkBottom,
+                                           const QString &destinationName,
+                                           int destinationPageNumber,
+                                           double destinationX,
+                                           double destinationY,
+                                           QString *errorText)
+{
+    auto editor = dynamic_cast<PdfLinkEditingInterface *>(d->m_generator);
+    if (!editor || sourceFileName.isEmpty() || outputFileName.isEmpty()) {
+        if (errorText) {
+            errorText->clear();
+        }
+        return false;
+    }
+    return editor->saveWithInternalLinkCreated(sourceFileName,
+                                               outputFileName,
+                                               sourcePageNumber,
+                                               linkLeft,
+                                               linkTop,
+                                               linkRight,
+                                               linkBottom,
+                                               destinationName,
+                                               destinationPageNumber,
+                                               destinationX,
+                                               destinationY,
+                                               errorText);
+}
+
 void Document::setHistoryClean(bool clean)
 {
     if (clean) {

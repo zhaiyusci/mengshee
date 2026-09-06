@@ -2913,6 +2913,108 @@ bool PDFGenerator::saveWithPageRotated(const QString &sourceFileName, const QStr
     return runPdfPagesOperation([&] { return PdfPageSequenceEditor::rotatePage(pdfPagesFileName(sourceFileName), pdfPagesFileName(outputFileName), pageNumber, rotationDegrees); }, errorText);
 }
 
+bool PDFGenerator::canEditPdfLinks() const
+{
+    return true;
+}
+
+bool PDFGenerator::saveWithNamedDestinationAdded(const QString &sourceFileName,
+                                                 const QString &outputFileName,
+                                                 const QString &name,
+                                                 int pageNumber,
+                                                 double normalizedX,
+                                                 double normalizedY,
+                                                 QString *errorText)
+{
+    const std::string encodedName = name.toUtf8().toStdString();
+    return runPdfPagesOperation(
+        [&] { return PdfPageSequenceEditor::addNamedDestination(pdfPagesFileName(sourceFileName), pdfPagesFileName(outputFileName), encodedName, pageNumber, normalizedX, normalizedY); }, errorText);
+}
+
+bool PDFGenerator::saveWithNamedDestinationRenamed(const QString &sourceFileName,
+                                                   const QString &outputFileName,
+                                                   const QString &oldName,
+                                                   const QString &newName,
+                                                   QString *errorText)
+{
+    const std::string encodedOldName = oldName.toUtf8().toStdString();
+    const std::string encodedNewName = newName.toUtf8().toStdString();
+    return runPdfPagesOperation(
+        [&] { return PdfPageSequenceEditor::renameNamedDestination(pdfPagesFileName(sourceFileName), pdfPagesFileName(outputFileName), encodedOldName, encodedNewName); }, errorText);
+}
+
+bool PDFGenerator::saveWithNamedDestinationDeleted(const QString &sourceFileName,
+                                                   const QString &outputFileName,
+                                                   const QString &name,
+                                                   QString *errorText)
+{
+    const std::string encodedName = name.toUtf8().toStdString();
+    return runPdfPagesOperation(
+        [&] { return PdfPageSequenceEditor::deleteNamedDestination(pdfPagesFileName(sourceFileName), pdfPagesFileName(outputFileName), encodedName); }, errorText);
+}
+
+bool PDFGenerator::saveWithInternalLinkDestinationChanged(const QString &sourceFileName,
+                                                          const QString &outputFileName,
+                                                          int sourcePageNumber,
+                                                          double linkLeft,
+                                                          double linkTop,
+                                                          double linkRight,
+                                                          double linkBottom,
+                                                          const QString &destinationName,
+                                                          int destinationPageNumber,
+                                                          double destinationX,
+                                                          double destinationY,
+                                                          QString *errorText)
+{
+    const std::string encodedName = destinationName.toUtf8().toStdString();
+    return runPdfPagesOperation(
+        [&] {
+            return PdfPageSequenceEditor::editInternalLinkDestination(pdfPagesFileName(sourceFileName),
+                                                                      pdfPagesFileName(outputFileName),
+                                                                      sourcePageNumber,
+                                                                      linkLeft,
+                                                                      linkTop,
+                                                                      linkRight,
+                                                                      linkBottom,
+                                                                      encodedName,
+                                                                      destinationPageNumber,
+                                                                      destinationX,
+                                                                      destinationY);
+        },
+        errorText);
+}
+
+bool PDFGenerator::saveWithInternalLinkCreated(const QString &sourceFileName,
+                                               const QString &outputFileName,
+                                               int sourcePageNumber,
+                                               double linkLeft,
+                                               double linkTop,
+                                               double linkRight,
+                                               double linkBottom,
+                                               const QString &destinationName,
+                                               int destinationPageNumber,
+                                               double destinationX,
+                                               double destinationY,
+                                               QString *errorText)
+{
+    const std::string encodedName = destinationName.toUtf8().toStdString();
+    return runPdfPagesOperation(
+        [&] {
+            return PdfPageSequenceEditor::createInternalLink(pdfPagesFileName(sourceFileName),
+                                                             pdfPagesFileName(outputFileName),
+                                                             sourcePageNumber,
+                                                             linkLeft,
+                                                             linkTop,
+                                                             linkRight,
+                                                             linkBottom,
+                                                             encodedName,
+                                                             destinationPageNumber,
+                                                             destinationX,
+                                                             destinationY);
+        },
+        errorText);
+}
+
 Okular::AnnotationProxy *PDFGenerator::annotationProxy() const
 {
     return annotProxy;
