@@ -127,8 +127,8 @@
 #include "core/generator.h"
 #include "core/page.h"
 #include "core/printoptionswidget.h"
-#include "drawingtoolactions.h"
 #include "documentworkspace.h"
+#include "drawingtoolactions.h"
 #include "embeddedfilesdialog.h"
 #include "extensions.h"
 #include "fileprinterpreview.h"
@@ -214,13 +214,13 @@ K_PLUGIN_FACTORY_WITH_JSON(OkularPartFactory, "okular_part.json", registerPlugin
 
 static std::optional<bool> askWhetherToResolveDestinationConflicts(QWidget *parent)
 {
-    const KMessageBox::ButtonCode choice = KMessageBox::questionTwoActionsCancel(
-        parent,
-        i18n("The copied page may contain named destinations that already exist in this document.\n\n"
-             "Add a suffix to give the copied destinations their own names and update matching links, or keep the original names as they are. All links are retained in either mode."),
-        i18n("Named Destination Conflicts"),
-        KGuiItem(i18nc("@action:button", "Add Suffixes"), QStringLiteral("edit-rename")),
-        KGuiItem(i18nc("@action:button", "Keep Names As Is"), QStringLiteral("insert-link")));
+    const KMessageBox::ButtonCode choice =
+        KMessageBox::questionTwoActionsCancel(parent,
+                                              i18n("The copied page may contain named destinations that already exist in this document.\n\n"
+                                                   "Add a suffix to give the copied destinations their own names and update matching links, or keep the original names as they are. All links are retained in either mode."),
+                                              i18n("Named Destination Conflicts"),
+                                              KGuiItem(i18nc("@action:button", "Add Suffixes"), QStringLiteral("edit-rename")),
+                                              KGuiItem(i18nc("@action:button", "Keep Names As Is"), QStringLiteral("insert-link")));
     if (choice == KMessageBox::Cancel) {
         return std::nullopt;
     }
@@ -753,6 +753,7 @@ Part::Part(QObject *parent, const QVariantList &args)
 
     // also update the state of the actions in the page view
     m_pageView->updateActionState(false, false);
+    updatePageEditActions();
 
     if (m_embedMode == NativeShellMode) {
         m_sidebar->setAutoFillBackground(false);
@@ -1077,11 +1078,14 @@ void Part::setupActions()
     });
     m_copyWithoutLineBreaks->setEnabled(false);
 
-    m_selectAll = KStandardAction::selectAll(this, [this]() {
-        if (PageView *view = workspaceActivePageView()) {
-            view->selectAll();
-        }
-    }, ac);
+    m_selectAll = KStandardAction::selectAll(
+        this,
+        [this]() {
+            if (PageView *view = workspaceActivePageView()) {
+                view->selectAll();
+            }
+        },
+        ac);
 
     // Setup select all action for the current page
     m_selectCurrentPage = ac->addAction(QStringLiteral("edit_select_all_current_page"));
@@ -1218,9 +1222,9 @@ void Part::connectWorkspacePageView(PageView *view)
     connect(view, &PageView::rightClick, this, &Part::slotShowMenu);
     connect(view, &PageView::editInternalLinkRequested, this, &Part::editInternalLink);
     connect(view, &PageView::createInternalLinkRequested, this, &Part::createInternalLink);
-    connect(view, &PageView::moveNamedDestinationRequested, this, [this](const QString &name, int pageNumber, const Okular::NormalizedPoint &position) {
-        moveNamedDestination(name, pageNumber, position);
-    });
+    connect(view, &PageView::deletePdfLinkRequested, this, &Part::deletePdfLink);
+    connect(view, &PageView::advancedModeChanged, this, &Part::setAdvancedModeEnabled);
+    connect(view, &PageView::moveNamedDestinationRequested, this, [this](const QString &name, int pageNumber, const Okular::NormalizedPoint &position) { moveNamedDestination(name, pageNumber, position); });
     connect(view, &PageView::triggerSearch, this, [this, view](const QString &searchText) {
         m_findBar->setSearchView(view);
         m_findBar->startSearch(searchText);
@@ -1261,6 +1265,7 @@ void Part::openAuxiliaryView(PageView *sourceView, const DocumentViewport &targe
     if (m_embedMode != ViewerWidgetMode && m_embedMode != PrintPreviewMode) {
         view->setupActions(viewActions, m_pageView->annotator());
     }
+    view->setAdvancedModeEnabled(m_advancedModeEnabled);
     registerWorkspacePageViewActions(view);
     connectWorkspacePageView(view);
     // Seed the new tab from the source frame. For links this makes Back return
@@ -3859,24 +3864,66 @@ void Part::refreshTemplateNotes()
 void Part::updatePageEditActions()
 {
     const bool canEditPages = canUsePageLevelEditing();
+    const bool showAdvancedActions = m_advancedModeEnabled;
     if (m_combinePdfFiles) {
         m_combinePdfFiles->setEnabled(!m_document->isOpened() || m_document->canCombinePdfFiles());
     }
+    if (m_addCurrentPageToContents) {
+        m_addCurrentPageToContents->setVisible(showAdvancedActions);
+        m_addCurrentPageToContents->setEnabled(showAdvancedActions && canEditPages);
+    }
     if (m_insertPage) {
-        m_insertPage->setEnabled(canEditPages && (m_document->canInsertBlankPage() || m_document->canInsertPageFromPdf()));
+        m_insertPage->setVisible(showAdvancedActions);
+        m_insertPage->setEnabled(showAdvancedActions && canEditPages && (m_document->canInsertBlankPage() || m_document->canInsertPageFromPdf()));
+    }
+    if (m_setPageTemplate) {
+        m_setPageTemplate->setVisible(showAdvancedActions);
+        m_setPageTemplate->setEnabled(showAdvancedActions);
     }
     if (m_insertPageFromTemplate) {
-        m_insertPageFromTemplate->setEnabled(canEditPages && m_document->canInsertPageFromPdf());
+        m_insertPageFromTemplate->setVisible(showAdvancedActions);
+        m_insertPageFromTemplate->setEnabled(showAdvancedActions && canEditPages && m_document->canInsertPageFromPdf());
     }
     if (m_insertBlankPageAfterCurrentPage) {
-        m_insertBlankPageAfterCurrentPage->setEnabled(canEditPages && m_document->canInsertBlankPage());
+        m_insertBlankPageAfterCurrentPage->setVisible(showAdvancedActions);
+        m_insertBlankPageAfterCurrentPage->setEnabled(showAdvancedActions && canEditPages && m_document->canInsertBlankPage());
     }
     if (m_duplicateCurrentPage) {
-        m_duplicateCurrentPage->setEnabled(canEditPages && m_document->canInsertPageFromPdf());
+        m_duplicateCurrentPage->setVisible(showAdvancedActions);
+        m_duplicateCurrentPage->setEnabled(showAdvancedActions && canEditPages && m_document->canInsertPageFromPdf());
     }
     if (m_deleteCurrentPage) {
-        m_deleteCurrentPage->setEnabled(canEditPages && m_document->canDeletePage() && m_document->pages() > 1);
+        m_deleteCurrentPage->setVisible(showAdvancedActions);
+        m_deleteCurrentPage->setEnabled(showAdvancedActions && canEditPages && m_document->canDeletePage() && m_document->pages() > 1);
     }
+    if (m_toc) {
+        m_toc->setEditingEnabled(showAdvancedActions && canEditPages);
+    }
+    if (m_thumbnailList) {
+        m_thumbnailList->setPageReorderingEnabled(showAdvancedActions && canEditPages && m_document->canMovePage() && m_document->pages() > 1);
+    }
+}
+
+void Part::setAdvancedModeEnabled(bool enabled)
+{
+    if (m_advancedModeEnabled == enabled) {
+        return;
+    }
+
+    m_advancedModeEnabled = enabled;
+    QList<PageView *> views;
+    if (m_documentWorkspace) {
+        if (PageView *mainView = m_documentWorkspace->mainView()) {
+            views.append(mainView);
+        }
+        views.append(m_documentWorkspace->auxiliaryViews());
+    } else if (m_pageView) {
+        views.append(m_pageView);
+    }
+    for (PageView *view : std::as_const(views)) {
+        view->setAdvancedModeEnabled(enabled);
+    }
+    updatePageEditActions();
 }
 
 void Part::slotCombinePdfFiles()
@@ -4005,8 +4052,7 @@ void Part::slotCombinePdfFiles()
             return;
         }
 
-        const int pageCount = !backendFileName.isEmpty() && sameFile(info.absoluteFilePath(), backendFileName) ? static_cast<int>(backendDocument->pages())
-                                                                                                             : backendDocument->pdfPageCount(info.absoluteFilePath(), &errorText);
+        const int pageCount = !backendFileName.isEmpty() && sameFile(info.absoluteFilePath(), backendFileName) ? static_cast<int>(backendDocument->pages()) : backendDocument->pdfPageCount(info.absoluteFilePath(), &errorText);
         if (pageCount < 1) {
             const QString detail = errorText.isEmpty() ? i18n("The file could not be read as a PDF.") : errorText;
             KMessageBox::information(&dialog, i18n("Could not add %1. %2", info.fileName(), detail));
@@ -4141,21 +4187,33 @@ void Part::slotCombinePdfFiles()
 
 void Part::slotInsertBlankPageAfterCurrentPage()
 {
+    if (!m_advancedModeEnabled) {
+        return;
+    }
     insertBlankPageAfterPage(workspaceActivePageNumber());
 }
 
 void Part::slotDuplicateCurrentPage()
 {
+    if (!m_advancedModeEnabled) {
+        return;
+    }
     duplicatePage(workspaceActivePageNumber());
 }
 
 void Part::slotInsertPage()
 {
+    if (!m_advancedModeEnabled) {
+        return;
+    }
     insertPageWithDialog(workspaceActivePageNumber());
 }
 
 void Part::slotSetPageTemplate()
 {
+    if (!m_advancedModeEnabled) {
+        return;
+    }
     const QString currentTemplate = pageTemplateFileName();
     const QString startDirectory = currentTemplate.isEmpty() ? QString() : QFileInfo(currentTemplate).absolutePath();
     const QString fileName = QFileDialog::getOpenFileName(widget(), i18n("Select Page Template PDF"), startDirectory, i18n("PDF Documents (*.pdf)"));
@@ -4172,6 +4230,9 @@ void Part::slotSetPageTemplate()
 
 void Part::slotInsertPageFromTemplate()
 {
+    if (!m_advancedModeEnabled) {
+        return;
+    }
     insertPageFromTemplateWithDialog(workspaceActivePageNumber());
 }
 
@@ -4468,10 +4529,7 @@ void Part::duplicatePage(int pageNumber)
     }
 }
 
-bool Part::applyPdfLinkEdit(const QString &undoText,
-                            const QString &failureText,
-                            int pageNumber,
-                            const std::function<bool(const QString &, const QString &, QString *)> &operation)
+bool Part::applyPdfLinkEdit(const QString &undoText, const QString &failureText, int pageNumber, const std::function<bool(const QString &, const QString &, QString *)> &operation)
 {
     if (!m_document->isOpened() || !url().isLocalFile() || isDocumentArchive || !m_document->canEditPdfLinks()) {
         KMessageBox::information(widget(), i18n("Links and named destinations can only be edited in local PDF files."));
@@ -4517,7 +4575,7 @@ bool Part::applyPdfLinkEdit(const QString &undoText,
 
 void Part::addNamedDestination(int pageNumber, const Okular::NormalizedPoint &displayPosition)
 {
-    if (!m_document->canEditPdfLinks() || pageNumber < 0 || pageNumber >= static_cast<int>(m_document->pages())) {
+    if (!m_advancedModeEnabled || !m_document->canEditPdfLinks() || pageNumber < 0 || pageNumber >= static_cast<int>(m_document->pages())) {
         KMessageBox::information(widget(), i18n("A named destination cannot be added here."));
         return;
     }
@@ -4531,11 +4589,8 @@ void Part::addNamedDestination(int pageNumber, const Okular::NormalizedPoint &di
     const QVariantList existingDestinations = m_document->metaData(QStringLiteral("NamedViewports")).toList();
     const bool nameExists = std::ranges::any_of(existingDestinations, [&name](const QVariant &value) { return value.toMap().value(QStringLiteral("name")).toString() == name; });
     if (nameExists) {
-        const auto answer = KMessageBox::questionTwoActions(widget(),
-                                                            i18n("A named destination called '%1' already exists. Replace it?", name),
-                                                            i18n("Replace Named Destination"),
-                                                            KGuiItem(i18n("Replace"), QStringLiteral("edit-redo")),
-                                                            KStandardGuiItem::cancel());
+        const auto answer = KMessageBox::questionTwoActions(
+            widget(), i18n("A named destination called '%1' already exists. Replace it?", name), i18n("Replace Named Destination"), KGuiItem(i18n("Replace"), QStringLiteral("edit-redo")), KStandardGuiItem::cancel());
         if (answer != KMessageBox::PrimaryAction) {
             return;
         }
@@ -4559,12 +4614,10 @@ void Part::addNamedDestination(int pageNumber, const Okular::NormalizedPoint &di
         }
     }
 
-    const bool edited = applyPdfLinkEdit(i18nc("Undo action", "Add Named Destination"),
-                                         i18n("Could not add the named destination."),
-                                         pageNumber,
-                                         [this, name, pageNumber, position](const QString &sourceFileName, const QString &outputFileName, QString *errorText) {
-                                             return m_document->saveWithNamedDestinationAdded(sourceFileName, outputFileName, name, pageNumber + 1, position.x, position.y, errorText);
-                                         });
+    const bool edited = applyPdfLinkEdit(
+        i18nc("Undo action", "Add Named Destination"), i18n("Could not add the named destination."), pageNumber, [this, name, pageNumber, position](const QString &sourceFileName, const QString &outputFileName, QString *errorText) {
+            return m_document->saveWithNamedDestinationAdded(sourceFileName, outputFileName, name, pageNumber + 1, position.x, position.y, errorText);
+        });
     if (!edited) {
         return;
     }
@@ -4579,7 +4632,7 @@ void Part::addNamedDestination(int pageNumber, const Okular::NormalizedPoint &di
 
 void Part::renameNamedDestination(const QString &oldName)
 {
-    if (!m_document->canEditPdfLinks() || oldName.isEmpty()) {
+    if (!m_advancedModeEnabled || !m_document->canEditPdfLinks() || oldName.isEmpty()) {
         KMessageBox::information(widget(), i18n("This named destination cannot be edited."));
         return;
     }
@@ -4615,12 +4668,10 @@ void Part::renameNamedDestination(const QString &oldName)
         }
     }
 
-    const bool edited = applyPdfLinkEdit(i18nc("Undo action", "Rename Named Destination"),
-                                         i18n("Could not rename the named destination."),
-                                         pageNumber,
-                                         [this, oldName, newName](const QString &sourceFileName, const QString &outputFileName, QString *errorText) {
-                                             return m_document->saveWithNamedDestinationRenamed(sourceFileName, outputFileName, oldName, newName, errorText);
-                                         });
+    const bool edited = applyPdfLinkEdit(
+        i18nc("Undo action", "Rename Named Destination"), i18n("Could not rename the named destination."), pageNumber, [this, oldName, newName](const QString &sourceFileName, const QString &outputFileName, QString *errorText) {
+            return m_document->saveWithNamedDestinationRenamed(sourceFileName, outputFileName, oldName, newName, errorText);
+        });
     if (edited) {
         if (PageView *view = workspaceActivePageView()) {
             view->displayMessage(i18n("Renamed named destination '%1' to '%2'. Save the document to keep this change.", oldName, newName));
@@ -4630,16 +4681,17 @@ void Part::renameNamedDestination(const QString &oldName)
 
 void Part::deleteNamedDestination(const QString &name)
 {
-    if (!m_document->canEditPdfLinks() || name.isEmpty()) {
+    if (!m_advancedModeEnabled || !m_document->canEditPdfLinks() || name.isEmpty()) {
         KMessageBox::information(widget(), i18n("This named destination cannot be edited."));
         return;
     }
 
-    const auto answer = KMessageBox::warningTwoActions(widget(),
-                                                       i18n("Delete the named destination '%1'? Existing links that refer to this name will be kept, but they will no longer resolve unless another destination with this name is added later.", name),
-                                                       i18n("Delete Named Destination"),
-                                                       KStandardGuiItem::del(),
-                                                       KStandardGuiItem::cancel());
+    const auto answer =
+        KMessageBox::warningTwoActions(widget(),
+                                       i18n("Delete the named destination '%1'? Existing links that refer to this name will be kept, but they will no longer resolve unless another destination with this name is added later.", name),
+                                       i18n("Delete Named Destination"),
+                                       KStandardGuiItem::del(),
+                                       KStandardGuiItem::cancel());
     if (answer != KMessageBox::PrimaryAction) {
         return;
     }
@@ -4657,12 +4709,10 @@ void Part::deleteNamedDestination(const QString &name)
         }
     }
 
-    const bool edited = applyPdfLinkEdit(i18nc("Undo action", "Delete Named Destination"),
-                                         i18n("Could not delete the named destination."),
-                                         pageNumber,
-                                         [this, name](const QString &sourceFileName, const QString &outputFileName, QString *errorText) {
-                                             return m_document->saveWithNamedDestinationDeleted(sourceFileName, outputFileName, name, errorText);
-                                         });
+    const bool edited =
+        applyPdfLinkEdit(i18nc("Undo action", "Delete Named Destination"), i18n("Could not delete the named destination."), pageNumber, [this, name](const QString &sourceFileName, const QString &outputFileName, QString *errorText) {
+            return m_document->saveWithNamedDestinationDeleted(sourceFileName, outputFileName, name, errorText);
+        });
     if (edited) {
         if (PageView *view = workspaceActivePageView()) {
             view->displayMessage(i18n("Deleted named destination '%1'. Existing references were left unchanged. Save the document to keep this change.", name));
@@ -4672,7 +4722,7 @@ void Part::deleteNamedDestination(const QString &name)
 
 void Part::moveNamedDestination(const QString &name, int pageNumber, const Okular::NormalizedPoint &displayPosition)
 {
-    if (!m_document->canEditPdfLinks() || name.isEmpty() || pageNumber < 0 || pageNumber >= static_cast<int>(m_document->pages())) {
+    if (!m_advancedModeEnabled || !m_document->canEditPdfLinks() || name.isEmpty() || pageNumber < 0 || pageNumber >= static_cast<int>(m_document->pages())) {
         KMessageBox::information(widget(), i18n("This named destination cannot be moved here."));
         return;
     }
@@ -4695,12 +4745,10 @@ void Part::moveNamedDestination(const QString &name, int pageNumber, const Okula
         }
     }
 
-    const bool edited = applyPdfLinkEdit(i18nc("Undo action", "Move Named Destination"),
-                                         i18n("Could not move the named destination."),
-                                         pageNumber,
-                                         [this, name, pageNumber, position](const QString &sourceFileName, const QString &outputFileName, QString *errorText) {
-                                             return m_document->saveWithNamedDestinationAdded(sourceFileName, outputFileName, name, pageNumber + 1, position.x, position.y, errorText);
-                                         });
+    const bool edited = applyPdfLinkEdit(
+        i18nc("Undo action", "Move Named Destination"), i18n("Could not move the named destination."), pageNumber, [this, name, pageNumber, position](const QString &sourceFileName, const QString &outputFileName, QString *errorText) {
+            return m_document->saveWithNamedDestinationAdded(sourceFileName, outputFileName, name, pageNumber + 1, position.x, position.y, errorText);
+        });
     if (edited) {
         if (PageView *view = workspaceActivePageView()) {
             view->displayMessage(i18n("Moved named destination '%1'. Save the document to keep this change.", name));
@@ -4708,10 +4756,7 @@ void Part::moveNamedDestination(const QString &name, int pageNumber, const Okula
     }
 }
 
-void Part::editInternalLink(int sourcePageNumber,
-                            const QRectF &normalizedLinkRectangle,
-                            const QString &currentDestinationName,
-                            const Okular::DocumentViewport &currentDestination)
+void Part::editInternalLink(int sourcePageNumber, const QRectF &normalizedLinkRectangle, const QString &currentDestinationName, const Okular::DocumentViewport &currentDestination)
 {
     configureInternalLink(sourcePageNumber, normalizedLinkRectangle, currentDestinationName, currentDestination, false);
 }
@@ -4721,13 +4766,33 @@ void Part::createInternalLink(int sourcePageNumber, const QRectF &normalizedLink
     configureInternalLink(sourcePageNumber, normalizedLinkRectangle, QString(), Okular::DocumentViewport(), true);
 }
 
-void Part::configureInternalLink(int sourcePageNumber,
-                                 const QRectF &normalizedLinkRectangle,
-                                 const QString &currentDestinationName,
-                                 const Okular::DocumentViewport &currentDestination,
-                                 bool creating)
+void Part::deletePdfLink(int sourcePageNumber, const QRectF &normalizedLinkRectangle)
 {
-    if (!m_document->canEditPdfLinks() || sourcePageNumber < 0 || sourcePageNumber >= static_cast<int>(m_document->pages())) {
+    if (!m_advancedModeEnabled || !m_document->canEditPdfLinks() || sourcePageNumber < 0 || sourcePageNumber >= static_cast<int>(m_document->pages())) {
+        KMessageBox::information(widget(), i18n("This link cannot be deleted."));
+        return;
+    }
+
+    const auto answer = KMessageBox::warningTwoActions(widget(), i18n("Delete this link?"), i18n("Delete Link"), KStandardGuiItem::del(), KStandardGuiItem::cancel());
+    if (answer != KMessageBox::PrimaryAction) {
+        return;
+    }
+
+    const bool edited = applyPdfLinkEdit(
+        i18nc("Undo action", "Delete Link"), i18n("Could not delete the link."), sourcePageNumber, [this, sourcePageNumber, normalizedLinkRectangle](const QString &sourceFileName, const QString &outputFileName, QString *errorText) {
+            return m_document->saveWithPdfLinkDeleted(
+                sourceFileName, outputFileName, sourcePageNumber + 1, normalizedLinkRectangle.left(), normalizedLinkRectangle.top(), normalizedLinkRectangle.right(), normalizedLinkRectangle.bottom(), errorText);
+        });
+    if (edited) {
+        if (PageView *view = workspaceActivePageView()) {
+            view->displayMessage(i18n("Deleted the link. Save the document to keep this change."));
+        }
+    }
+}
+
+void Part::configureInternalLink(int sourcePageNumber, const QRectF &normalizedLinkRectangle, const QString &currentDestinationName, const Okular::DocumentViewport &currentDestination, bool creating)
+{
+    if (!m_advancedModeEnabled || !m_document->canEditPdfLinks() || sourcePageNumber < 0 || sourcePageNumber >= static_cast<int>(m_document->pages())) {
         KMessageBox::information(widget(), creating ? i18n("An internal link cannot be created here.") : i18n("This internal link cannot be edited."));
         return;
     }
@@ -4752,7 +4817,7 @@ void Part::configureInternalLink(int sourcePageNumber,
         const QString name = destination.value(QStringLiteral("name")).toString();
         const Okular::DocumentViewport viewport(destination.value(QStringLiteral("viewport")).toString());
         if (!name.isEmpty() && viewport.isValid()) {
-            destinations.append({ name, viewport });
+            destinations.append({name, viewport});
         }
     }
 
@@ -4896,52 +4961,45 @@ void Part::configureInternalLink(int sourcePageNumber,
         destinationY = choice.viewport.rePos.enabled ? choice.viewport.rePos.normalizedY : 0.0;
     }
 
-    const bool edited = applyPdfLinkEdit(creating ? i18nc("Undo action", "Create Internal Link") : i18nc("Undo action", "Edit Link Destination"),
-                                         creating ? i18n("Could not create the internal link.") : i18n("Could not edit the link destination."),
-                                         sourcePageNumber,
-                                         [this,
-                                          creating,
-                                          sourcePageNumber,
-                                          normalizedLinkRectangle,
-                                          destinationName,
-                                          destinationPageNumber,
-                                          destinationX,
-                                          destinationY](const QString &sourceFileName, const QString &outputFileName, QString *errorText) {
-                                             if (creating) {
-                                                 return m_document->saveWithInternalLinkCreated(sourceFileName,
-                                                                                                outputFileName,
-                                                                                                sourcePageNumber + 1,
-                                                                                                normalizedLinkRectangle.left(),
-                                                                                                normalizedLinkRectangle.top(),
-                                                                                                normalizedLinkRectangle.right(),
-                                                                                                normalizedLinkRectangle.bottom(),
-                                                                                                destinationName,
-                                                                                                destinationPageNumber,
-                                                                                                destinationX,
-                                                                                                destinationY,
-                                                                                                errorText);
-                                             }
-                                             return m_document->saveWithInternalLinkDestinationChanged(sourceFileName,
-                                                                                                        outputFileName,
-                                                                                                        sourcePageNumber + 1,
-                                                                                                        normalizedLinkRectangle.left(),
-                                                                                                        normalizedLinkRectangle.top(),
-                                                                                                        normalizedLinkRectangle.right(),
-                                                                                                        normalizedLinkRectangle.bottom(),
-                                                                                                        destinationName,
-                                                                                                        destinationPageNumber,
-                                                                                                        destinationX,
-                                                                                                        destinationY,
-                                                                                                        errorText);
-                                         });
+    const bool edited =
+        applyPdfLinkEdit(creating ? i18nc("Undo action", "Create Internal Link") : i18nc("Undo action", "Edit Link Destination"),
+                         creating ? i18n("Could not create the internal link.") : i18n("Could not edit the link destination."),
+                         sourcePageNumber,
+                         [this, creating, sourcePageNumber, normalizedLinkRectangle, destinationName, destinationPageNumber, destinationX, destinationY](const QString &sourceFileName, const QString &outputFileName, QString *errorText) {
+                             if (creating) {
+                                 return m_document->saveWithInternalLinkCreated(sourceFileName,
+                                                                                outputFileName,
+                                                                                sourcePageNumber + 1,
+                                                                                normalizedLinkRectangle.left(),
+                                                                                normalizedLinkRectangle.top(),
+                                                                                normalizedLinkRectangle.right(),
+                                                                                normalizedLinkRectangle.bottom(),
+                                                                                destinationName,
+                                                                                destinationPageNumber,
+                                                                                destinationX,
+                                                                                destinationY,
+                                                                                errorText);
+                             }
+                             return m_document->saveWithInternalLinkDestinationChanged(sourceFileName,
+                                                                                       outputFileName,
+                                                                                       sourcePageNumber + 1,
+                                                                                       normalizedLinkRectangle.left(),
+                                                                                       normalizedLinkRectangle.top(),
+                                                                                       normalizedLinkRectangle.right(),
+                                                                                       normalizedLinkRectangle.bottom(),
+                                                                                       destinationName,
+                                                                                       destinationPageNumber,
+                                                                                       destinationX,
+                                                                                       destinationY,
+                                                                                       errorText);
+                         });
     if (edited) {
         if (PageView *view = workspaceActivePageView()) {
             if (creating) {
                 view->displayMessage(destinationName.isEmpty() ? i18n("Created the internal link. Save the document to keep this change.")
                                                                : i18n("Created a link to named destination '%1'. Save the document to keep this change.", destinationName));
             } else {
-                view->displayMessage(destinationName.isEmpty() ? i18n("Updated the internal link. Save the document to keep this change.")
-                                                               : i18n("Linked to named destination '%1'. Save the document to keep this change.", destinationName));
+                view->displayMessage(destinationName.isEmpty() ? i18n("Updated the internal link. Save the document to keep this change.") : i18n("Linked to named destination '%1'. Save the document to keep this change.", destinationName));
             }
         }
     }
@@ -5292,15 +5350,7 @@ void Part::setPageRotation(int pageNumber, int rotationDegrees)
     setArguments(args);
 
     const QString editedFileName = editedFile->fileName();
-    auto command = std::make_unique<PageBackingFileCommand>(this,
-                                                            i18nc("Undo action", "Rotate Page"),
-                                                            std::move(savedSourceFile),
-                                                            sourceFileName,
-                                                            std::move(editedFile),
-                                                            editedFileName,
-                                                            pageNumber,
-                                                            pageNumber,
-                                                            true);
+    auto command = std::make_unique<PageBackingFileCommand>(this, i18nc("Undo action", "Rotate Page"), std::move(savedSourceFile), sourceFileName, std::move(editedFile), editedFileName, pageNumber, pageNumber, true);
     m_document->pushUndoCommand(command.release());
     refreshTemplateNotes();
 
@@ -5311,6 +5361,10 @@ void Part::setPageRotation(int pageNumber, int rotationDegrees)
 
 void Part::movePageFromThumbnail(int sourcePage, int targetPage, bool insertAfterTarget)
 {
+    if (!m_advancedModeEnabled) {
+        return;
+    }
+
     int destinationPage = targetPage + (insertAfterTarget ? 1 : 0);
     if (destinationPage > sourcePage) {
         --destinationPage;
@@ -5566,10 +5620,12 @@ void Part::showMenu(const Okular::Page *page, const QPoint point, const QString 
 
     QMenu popup;
     if (showTOCActions) {
-        popup.addAction(QIcon::fromTheme(QStringLiteral("list-add")), i18n("Add Current Page to Contents"), m_toc.data(), &TOC::addCurrentPageEntry);
-        popup.addAction(QIcon::fromTheme(QStringLiteral("edit-rename")), i18n("Rename Contents Entry"), m_toc.data(), &TOC::renameCurrentEntry);
-        popup.addAction(QIcon::fromTheme(QStringLiteral("edit-delete")), i18n("Delete Contents Entry"), m_toc.data(), &TOC::deleteCurrentEntry);
-        popup.addSeparator();
+        if (m_advancedModeEnabled) {
+            popup.addAction(QIcon::fromTheme(QStringLiteral("list-add")), i18n("Add Current Page to Contents"), m_toc.data(), &TOC::addCurrentPageEntry);
+            popup.addAction(QIcon::fromTheme(QStringLiteral("edit-rename")), i18n("Rename Contents Entry"), m_toc.data(), &TOC::renameCurrentEntry);
+            popup.addAction(QIcon::fromTheme(QStringLiteral("edit-delete")), i18n("Delete Contents Entry"), m_toc.data(), &TOC::deleteCurrentEntry);
+            popup.addSeparator();
+        }
         popup.addAction(i18n("Expand Whole Section"), m_toc.data(), &TOC::expandRecursively);
         popup.addAction(i18n("Collapse Whole Section"), m_toc.data(), &TOC::collapseRecursively);
         popup.addAction(i18n("Expand All"), m_toc.data(), &TOC::expandAll);
@@ -5602,7 +5658,7 @@ void Part::showMenu(const Okular::Page *page, const QPoint point, const QString 
     if (page) {
         pageEditTargetPage = page->number();
         const bool canEditPages = canUsePageLevelEditing();
-        if (canEditPages && m_document->canEditPdfLinks() && !clickedNamedDestinations.isEmpty()) {
+        if (m_advancedModeEnabled && canEditPages && m_document->canEditPdfLinks() && !clickedNamedDestinations.isEmpty()) {
             if (clickedNamedDestinations.size() == 1) {
                 const QString &name = clickedNamedDestinations.constFirst();
                 popup.addAction(new OKMenuTitle(&popup, i18n("Named Destination: %1", name)));
@@ -5632,7 +5688,7 @@ void Part::showMenu(const Okular::Page *page, const QPoint point, const QString 
         if (contextView && contextView->canFitPageWidth()) {
             fitPageWidth = popup.addAction(QIcon::fromTheme(QStringLiteral("zoom-fit-best")), i18n("Fit Width"));
         }
-        if (canEditPages && m_document->canEditPdfLinks() && contextView && contextView->namedDestinationsVisible()) {
+        if (m_advancedModeEnabled && canEditPages && m_document->canEditPdfLinks() && contextView && contextView->namedDestinationsVisible()) {
             int targetPageNumber = -1;
             hasNamedDestinationPoint = contextView && contextView->mapGlobalPosToPagePoint(point, &targetPageNumber, &namedDestinationPoint) && targetPageNumber == page->number();
             if (hasNamedDestinationPoint && clickedNamedDestinations.isEmpty()) {
@@ -5641,27 +5697,27 @@ void Part::showMenu(const Okular::Page *page, const QPoint point, const QString 
             createInternalLinkAction = popup.addAction(QIcon::fromTheme(QStringLiteral("insert-link")), i18n("Create Internal Link..."));
         }
         bool addedPageEditAction = false;
-        if (canEditPages && (m_document->canInsertBlankPage() || m_document->canInsertPageFromPdf())) {
+        if (m_advancedModeEnabled && canEditPages && (m_document->canInsertBlankPage() || m_document->canInsertPageFromPdf())) {
             insertPageAction = popup.addAction(QIcon::fromTheme(QStringLiteral("document-new")), i18n("Insert Page After This Page..."));
             addedPageEditAction = true;
         }
-        if (canEditPages && m_document->canInsertPageFromPdf() && QFileInfo(pageTemplateFileName()).exists()) {
+        if (m_advancedModeEnabled && canEditPages && m_document->canInsertPageFromPdf() && QFileInfo(pageTemplateFileName()).exists()) {
             insertPageFromTemplateAction = popup.addAction(QIcon::fromTheme(QStringLiteral("document-import")), i18n("Insert Page From Template After This Page..."));
             addedPageEditAction = true;
         }
-        if (canEditPages && m_document->canInsertBlankPage()) {
+        if (m_advancedModeEnabled && canEditPages && m_document->canInsertBlankPage()) {
             insertBlankPageAfterPageAction = popup.addAction(QIcon::fromTheme(QStringLiteral("document-new")), i18n("Insert Blank Page After This Page"));
             addedPageEditAction = true;
         }
-        if (canEditPages && m_document->canInsertPageFromPdf()) {
+        if (m_advancedModeEnabled && canEditPages && m_document->canInsertPageFromPdf()) {
             duplicatePageAction = popup.addAction(QIcon::fromTheme(QStringLiteral("edit-copy")), i18n("Duplicate This Page"));
             addedPageEditAction = true;
         }
-        if (canEditPages && m_document->canDeletePage() && m_document->pages() > 1) {
+        if (m_advancedModeEnabled && canEditPages && m_document->canDeletePage() && m_document->pages() > 1) {
             deletePageAction = popup.addAction(QIcon::fromTheme(QStringLiteral("edit-delete")), i18n("Delete This Page"));
             addedPageEditAction = true;
         }
-        if (canEditPages && m_document->canRotatePage()) {
+        if (m_advancedModeEnabled && canEditPages && m_document->canRotatePage()) {
             QMenu *rotatePageMenu = popup.addMenu(QIcon::fromTheme(QStringLiteral("object-rotate-right")), i18n("Rotate This Page"));
             rotatePageLeftAction = rotatePageMenu->addAction(QIcon::fromTheme(QStringLiteral("object-rotate-left")), i18n("Rotate Left"));
             rotatePageRightAction = rotatePageMenu->addAction(QIcon::fromTheme(QStringLiteral("object-rotate-right")), i18n("Rotate Right"));
@@ -6068,16 +6124,8 @@ void Part::slotPrint()
     bool success = true;
 #ifdef Q_OS_WIN
     const int currentPrintPage = qMax(1, workspaceActivePageNumber() + 1);
-    MengsheePrintDialog printDialog(&printer,
-                                    m_document->pages(),
-                                    currentPrintPage,
-                                    m_document->orientation(),
-                                    !m_document->bookmarkedPageRange().isEmpty(),
-                                    printConfigWidget,
-                                    widget());
-    connect(&printDialog, &MengsheePrintDialog::paintRequested, this, [this](QPrinter *previewPrinter) {
-        doPrint(*previewPrinter);
-    });
+    MengsheePrintDialog printDialog(&printer, m_document->pages(), currentPrintPage, m_document->orientation(), !m_document->bookmarkedPageRange().isEmpty(), printConfigWidget, widget());
+    connect(&printDialog, &MengsheePrintDialog::paintRequested, this, [this](QPrinter *previewPrinter) { doPrint(*previewPrinter); });
 
     if (printDialog.exec() == QDialog::Accepted) {
         success = doPrint(printer);

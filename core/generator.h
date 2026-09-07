@@ -191,6 +191,7 @@ public:
      * Writes @p outputFileName as a copy of @p sourceFileName with one blank
      * page inserted after @p pageNumber. @p pageNumber is 1-based; 0 means
      * insert before the first page. @p width and @p height are PDF points.
+
      */
     virtual bool saveWithBlankPageInsertedAfter(const QString &sourceFileName, const QString &outputFileName, int pageNumber, double width, double height, QString *errorText) = 0;
 
@@ -204,17 +205,12 @@ public:
      * Writes @p outputFileName as a copy of @p sourceFileName with page
      * @p pageToInsert from @p insertedFileName inserted after @p pageNumber.
      * Both page numbers are 1-based except @p pageNumber, where 0 means insert
-     * before the first page. Local links are always retained. If
+
+     * * before the first page. Local links are always retained. If
      * @p resolveDestinationConflicts is true, named destinations copied with
      * the page receive a common unique suffix and matching links are rewritten.
      */
-    virtual bool saveWithPdfPageInsertedAfter(const QString &sourceFileName,
-                                              const QString &outputFileName,
-                                              int pageNumber,
-                                              const QString &insertedFileName,
-                                              int pageToInsert,
-                                              bool resolveDestinationConflicts,
-                                              QString *errorText) = 0;
+    virtual bool saveWithPdfPageInsertedAfter(const QString &sourceFileName, const QString &outputFileName, int pageNumber, const QString &insertedFileName, int pageToInsert, bool resolveDestinationConflicts, QString *errorText) = 0;
 
     /**
      * Returns whether this generator can combine complete PDF files.
@@ -229,13 +225,11 @@ public:
     /**
      * Combines @p inputFileNames, in order, into @p outputFileName. Local links
      * are always retained. If @p resolveDestinationConflicts is true, each
-     * source PDF receives its own suffixed named-destination namespace and
+     * source PDF receives its own suffixed named-destination namespace
+     * and
      * matching links are rewritten.
      */
-    virtual bool combinePdfFiles(const QStringList &inputFileNames,
-                                 const QString &outputFileName,
-                                 bool resolveDestinationConflicts,
-                                 QString *errorText) = 0;
+    virtual bool combinePdfFiles(const QStringList &inputFileNames, const QString &outputFileName, bool resolveDestinationConflicts, QString *errorText) = 0;
 
     /**
      * Returns whether this generator can write a copy of the document with a
@@ -259,7 +253,10 @@ public:
      * Returns whether this generator can move a page in the live document
      * model without serializing and reloading the PDF.
      */
-    virtual bool canMovePageInDocument() const { return false; }
+    virtual bool canMovePageInDocument() const
+    {
+        return false;
+    }
 
     /**
      * Moves a page in the live document model. Page numbers are 0-based and
@@ -312,31 +309,19 @@ public:
      * 1-based @p pageNumber. An existing destination with the same name is
      * replaced.
      */
-    virtual bool saveWithNamedDestinationAdded(const QString &sourceFileName,
-                                               const QString &outputFileName,
-                                               const QString &name,
-                                               int pageNumber,
-                                               double normalizedX,
-                                               double normalizedY,
-                                               QString *errorText) = 0;
+    virtual bool saveWithNamedDestinationAdded(const QString &sourceFileName, const QString &outputFileName, const QString &name, int pageNumber, double normalizedX, double normalizedY, QString *errorText) = 0;
 
     /** Writes a copy with a named destination renamed and exact internal references updated. */
-    virtual bool saveWithNamedDestinationRenamed(const QString &sourceFileName,
-                                                 const QString &outputFileName,
-                                                 const QString &oldName,
-                                                 const QString &newName,
-                                                 QString *errorText) = 0;
+    virtual bool saveWithNamedDestinationRenamed(const QString &sourceFileName, const QString &outputFileName, const QString &oldName, const QString &newName, QString *errorText) = 0;
 
     /** Writes a copy with a named destination definition removed. References are preserved. */
-    virtual bool saveWithNamedDestinationDeleted(const QString &sourceFileName,
-                                                 const QString &outputFileName,
-                                                 const QString &name,
-                                                 QString *errorText) = 0;
+    virtual bool saveWithNamedDestinationDeleted(const QString &sourceFileName, const QString &outputFileName, const QString &name, QString *errorText) = 0;
 
     /**
      * Writes a copy with the selected internal link redirected. The source
      * page is 1-based and the link rectangle is normalized. A non-empty
      * @p destinationName is preferred and stored directly; otherwise the
+     *
      * 1-based destination page and normalized position are stored explicitly.
      */
     virtual bool saveWithInternalLinkDestinationChanged(const QString &sourceFileName,
@@ -365,6 +350,9 @@ public:
                                              double destinationX,
                                              double destinationY,
                                              QString *errorText) = 0;
+
+    /** Writes a copy with the selected PDF link annotation removed. */
+    virtual bool saveWithPdfLinkDeleted(const QString &sourceFileName, const QString &outputFileName, int sourcePageNumber, double linkLeft, double linkTop, double linkRight, double linkBottom, QString *errorText) = 0;
 };
 
 /**

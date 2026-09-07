@@ -11,8 +11,8 @@
 */
 
 #include <algorithm>
-#include <exception>
 #include <cmath>
+#include <exception>
 #include <memory>
 #include <vector>
 
@@ -2071,10 +2071,7 @@ Okular::Document::PrintError PDFGenerator::print(QPrinter &printer)
                         }
                     }
                 }
-                const QRectF cell(sheetRect.left() + column * sheetRect.width() / columns,
-                                  sheetRect.top() + row * sheetRect.height() / rows,
-                                  sheetRect.width() / columns,
-                                  sheetRect.height() / rows);
+                const QRectF cell(sheetRect.left() + column * sheetRect.width() / columns, sheetRect.top() + row * sheetRect.height() / rows, sheetRect.width() / columns, sheetRect.height() / rows);
                 if (page < 0) {
                     continue;
                 }
@@ -2812,16 +2809,11 @@ bool PDFGenerator::canInsertPageFromPdf() const
     return true;
 }
 
-bool PDFGenerator::saveWithPdfPageInsertedAfter(const QString &sourceFileName,
-                                                const QString &outputFileName,
-                                                int pageNumber,
-                                                const QString &insertedFileName,
-                                                int pageToInsert,
-                                                bool resolveDestinationConflicts,
-                                                QString *errorText)
+bool PDFGenerator::saveWithPdfPageInsertedAfter(const QString &sourceFileName, const QString &outputFileName, int pageNumber, const QString &insertedFileName, int pageToInsert, bool resolveDestinationConflicts, QString *errorText)
 {
     const auto conflictPolicy = resolveDestinationConflicts ? PdfPageSequenceEditor::NamedDestinationConflictPolicy::AddSuffixes : PdfPageSequenceEditor::NamedDestinationConflictPolicy::KeepNames;
-    return runPdfPagesOperation([&] { return PdfPageSequenceEditor::insertPdfPageAfter(pdfPagesFileName(sourceFileName), pdfPagesFileName(outputFileName), pageNumber, pdfPagesFileName(insertedFileName), pageToInsert, conflictPolicy); }, errorText);
+    return runPdfPagesOperation([&] { return PdfPageSequenceEditor::insertPdfPageAfter(pdfPagesFileName(sourceFileName), pdfPagesFileName(outputFileName), pageNumber, pdfPagesFileName(insertedFileName), pageToInsert, conflictPolicy); },
+                                errorText);
 }
 
 bool PDFGenerator::canCombinePdfFiles() const
@@ -2839,10 +2831,7 @@ int PDFGenerator::pdfPageCount(const QString &inputFileName, QString *errorText)
     return count;
 }
 
-bool PDFGenerator::combinePdfFiles(const QStringList &inputFileNames,
-                                   const QString &outputFileName,
-                                   bool resolveDestinationConflicts,
-                                   QString *errorText)
+bool PDFGenerator::combinePdfFiles(const QStringList &inputFileNames, const QString &outputFileName, bool resolveDestinationConflicts, QString *errorText)
 {
     std::vector<std::string> inputs;
     inputs.reserve(inputFileNames.size());
@@ -2918,39 +2907,23 @@ bool PDFGenerator::canEditPdfLinks() const
     return true;
 }
 
-bool PDFGenerator::saveWithNamedDestinationAdded(const QString &sourceFileName,
-                                                 const QString &outputFileName,
-                                                 const QString &name,
-                                                 int pageNumber,
-                                                 double normalizedX,
-                                                 double normalizedY,
-                                                 QString *errorText)
+bool PDFGenerator::saveWithNamedDestinationAdded(const QString &sourceFileName, const QString &outputFileName, const QString &name, int pageNumber, double normalizedX, double normalizedY, QString *errorText)
 {
     const std::string encodedName = name.toUtf8().toStdString();
-    return runPdfPagesOperation(
-        [&] { return PdfPageSequenceEditor::addNamedDestination(pdfPagesFileName(sourceFileName), pdfPagesFileName(outputFileName), encodedName, pageNumber, normalizedX, normalizedY); }, errorText);
+    return runPdfPagesOperation([&] { return PdfPageSequenceEditor::addNamedDestination(pdfPagesFileName(sourceFileName), pdfPagesFileName(outputFileName), encodedName, pageNumber, normalizedX, normalizedY); }, errorText);
 }
 
-bool PDFGenerator::saveWithNamedDestinationRenamed(const QString &sourceFileName,
-                                                   const QString &outputFileName,
-                                                   const QString &oldName,
-                                                   const QString &newName,
-                                                   QString *errorText)
+bool PDFGenerator::saveWithNamedDestinationRenamed(const QString &sourceFileName, const QString &outputFileName, const QString &oldName, const QString &newName, QString *errorText)
 {
     const std::string encodedOldName = oldName.toUtf8().toStdString();
     const std::string encodedNewName = newName.toUtf8().toStdString();
-    return runPdfPagesOperation(
-        [&] { return PdfPageSequenceEditor::renameNamedDestination(pdfPagesFileName(sourceFileName), pdfPagesFileName(outputFileName), encodedOldName, encodedNewName); }, errorText);
+    return runPdfPagesOperation([&] { return PdfPageSequenceEditor::renameNamedDestination(pdfPagesFileName(sourceFileName), pdfPagesFileName(outputFileName), encodedOldName, encodedNewName); }, errorText);
 }
 
-bool PDFGenerator::saveWithNamedDestinationDeleted(const QString &sourceFileName,
-                                                   const QString &outputFileName,
-                                                   const QString &name,
-                                                   QString *errorText)
+bool PDFGenerator::saveWithNamedDestinationDeleted(const QString &sourceFileName, const QString &outputFileName, const QString &name, QString *errorText)
 {
     const std::string encodedName = name.toUtf8().toStdString();
-    return runPdfPagesOperation(
-        [&] { return PdfPageSequenceEditor::deleteNamedDestination(pdfPagesFileName(sourceFileName), pdfPagesFileName(outputFileName), encodedName); }, errorText);
+    return runPdfPagesOperation([&] { return PdfPageSequenceEditor::deleteNamedDestination(pdfPagesFileName(sourceFileName), pdfPagesFileName(outputFileName), encodedName); }, errorText);
 }
 
 bool PDFGenerator::saveWithInternalLinkDestinationChanged(const QString &sourceFileName,
@@ -2969,17 +2942,8 @@ bool PDFGenerator::saveWithInternalLinkDestinationChanged(const QString &sourceF
     const std::string encodedName = destinationName.toUtf8().toStdString();
     return runPdfPagesOperation(
         [&] {
-            return PdfPageSequenceEditor::editInternalLinkDestination(pdfPagesFileName(sourceFileName),
-                                                                      pdfPagesFileName(outputFileName),
-                                                                      sourcePageNumber,
-                                                                      linkLeft,
-                                                                      linkTop,
-                                                                      linkRight,
-                                                                      linkBottom,
-                                                                      encodedName,
-                                                                      destinationPageNumber,
-                                                                      destinationX,
-                                                                      destinationY);
+            return PdfPageSequenceEditor::editInternalLinkDestination(
+                pdfPagesFileName(sourceFileName), pdfPagesFileName(outputFileName), sourcePageNumber, linkLeft, linkTop, linkRight, linkBottom, encodedName, destinationPageNumber, destinationX, destinationY);
         },
         errorText);
 }
@@ -3000,19 +2964,15 @@ bool PDFGenerator::saveWithInternalLinkCreated(const QString &sourceFileName,
     const std::string encodedName = destinationName.toUtf8().toStdString();
     return runPdfPagesOperation(
         [&] {
-            return PdfPageSequenceEditor::createInternalLink(pdfPagesFileName(sourceFileName),
-                                                             pdfPagesFileName(outputFileName),
-                                                             sourcePageNumber,
-                                                             linkLeft,
-                                                             linkTop,
-                                                             linkRight,
-                                                             linkBottom,
-                                                             encodedName,
-                                                             destinationPageNumber,
-                                                             destinationX,
-                                                             destinationY);
+            return PdfPageSequenceEditor::createInternalLink(
+                pdfPagesFileName(sourceFileName), pdfPagesFileName(outputFileName), sourcePageNumber, linkLeft, linkTop, linkRight, linkBottom, encodedName, destinationPageNumber, destinationX, destinationY);
         },
         errorText);
+}
+
+bool PDFGenerator::saveWithPdfLinkDeleted(const QString &sourceFileName, const QString &outputFileName, int sourcePageNumber, double linkLeft, double linkTop, double linkRight, double linkBottom, QString *errorText)
+{
+    return runPdfPagesOperation([&] { return PdfPageSequenceEditor::deleteLink(pdfPagesFileName(sourceFileName), pdfPagesFileName(outputFileName), sourcePageNumber, linkLeft, linkTop, linkRight, linkBottom); }, errorText);
 }
 
 Okular::AnnotationProxy *PDFGenerator::annotationProxy() const

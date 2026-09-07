@@ -88,6 +88,7 @@ public:
     int m_pageMoveHandleHover = -1;
     bool m_pageMoveAfter = false;
     bool m_pageMoveDragging = false;
+    bool m_pageReorderingEnabled = false;
 
     // resize thumbnails to fit the width
     void viewportResizeEvent(QResizeEvent *);
@@ -261,7 +262,7 @@ void ThumbnailListPrivate::resetPageMove()
 
 bool ThumbnailListPrivate::pageMoveHandleContains(const ThumbnailWidget *item, const QPoint &pos) const
 {
-    if (!item) {
+    if (!m_pageReorderingEnabled || !item) {
         return false;
     }
 
@@ -390,14 +391,24 @@ void ThumbnailList::setPageView(PageView *pageView)
     d->m_pageView = pageView;
 
     if (pageView) {
-        d->m_pageViewViewportConnection = connect(pageView, &PageView::viewportStateChanged, this, [this]() {
-            notifyCurrentPageChanged(-1, d->documentViewport().pageNumber);
-        });
+        d->m_pageViewViewportConnection = connect(pageView, &PageView::viewportStateChanged, this, [this]() { notifyCurrentPageChanged(-1, d->documentViewport().pageNumber); });
     } else {
         d->m_pageViewViewportConnection = {};
     }
 
     notifyCurrentPageChanged(-1, d->documentViewport().pageNumber);
+}
+
+void ThumbnailList::setPageReorderingEnabled(bool enabled)
+{
+    if (d->m_pageReorderingEnabled == enabled) {
+        return;
+    }
+
+    d->m_pageReorderingEnabled = enabled;
+    d->resetPageMove();
+    d->unsetCursor();
+    d->update();
 }
 
 // BEGIN DocumentObserver inherited methods
@@ -1224,43 +1235,45 @@ void ThumbnailWidget::paint(QPainter &p, const QRect _clipRect)
         }
         p.restore();
 
-        p.save();
-        const QRect handleRect = pageMoveHandleRect();
-        const bool handleHovered = m_parent->m_pageMoveHandleHover == pageNumber();
-        const bool handleActive = m_parent->m_pageMoveSource == pageNumber();
-        const QColor highlight = pal.color(QPalette::Active, QPalette::Highlight);
-        if (handleActive) {
-            QColor sourceFill = highlight;
-            sourceFill.setAlpha(m_parent->m_pageMoveDragging ? 45 : 30);
-            p.setPen(QPen(highlight, 2));
-            p.setBrush(sourceFill);
-            p.drawRoundedRect(QRect(m_margin / 2, m_margin / 2, m_pixmapWidth, m_pixmapHeight).adjusted(1, 1, -1, -1), 3, 3);
-        }
+        if (m_parent->m_pageReorderingEnabled) {
+            p.save();
+            const QRect handleRect = pageMoveHandleRect();
+            const bool handleHovered = m_parent->m_pageMoveHandleHover == pageNumber();
+            const bool handleActive = m_parent->m_pageMoveSource == pageNumber();
+            const QColor highlight = pal.color(QPalette::Active, QPalette::Highlight);
+            if (handleActive) {
+                QColor sourceFill = highlight;
+                sourceFill.setAlpha(m_parent->m_pageMoveDragging ? 45 : 30);
+                p.setPen(QPen(highlight, 2));
+                p.setBrush(sourceFill);
+                p.drawRoundedRect(QRect(m_margin / 2, m_margin / 2, m_pixmapWidth, m_pixmapHeight).adjusted(1, 1, -1, -1), 3, 3);
+            }
 
-        QColor base = handleActive ? highlight : pal.color(QPalette::Active, QPalette::Button);
-        QColor outline = handleHovered || handleActive ? highlight : pal.color(QPalette::Active, QPalette::Mid);
-        if (!handleHovered && !handleActive) {
-            base.setAlpha(185);
-        } else if (handleActive) {
-            base.setAlpha(95);
-        }
-        p.setRenderHint(QPainter::Antialiasing);
-        p.setPen(outline);
-        p.setBrush(base);
-        p.drawRoundedRect(handleRect.adjusted(1, 1, -1, -1), 4, 4);
+            QColor base = handleActive ? highlight : pal.color(QPalette::Active, QPalette::Button);
+            QColor outline = handleHovered || handleActive ? highlight : pal.color(QPalette::Active, QPalette::Mid);
+            if (!handleHovered && !handleActive) {
+                base.setAlpha(185);
+            } else if (handleActive) {
+                base.setAlpha(95);
+            }
+            p.setRenderHint(QPainter::Antialiasing);
+            p.setPen(outline);
+            p.setBrush(base);
+            p.drawRoundedRect(handleRect.adjusted(1, 1, -1, -1), 4, 4);
 
-        QStyleOption handleOption;
-        handleOption.initFrom(m_parent);
-        handleOption.rect = handleRect.adjusted(6, 7, -6, -7);
-        handleOption.state |= QStyle::State_Enabled;
-        if (handleHovered) {
-            handleOption.state |= QStyle::State_MouseOver;
+            QStyleOption handleOption;
+            handleOption.initFrom(m_parent);
+            handleOption.rect = handleRect.adjusted(6, 7, -6, -7);
+            handleOption.state |= QStyle::State_Enabled;
+            if (handleHovered) {
+                handleOption.state |= QStyle::State_MouseOver;
+            }
+            if (handleActive) {
+                handleOption.state |= QStyle::State_Sunken;
+            }
+            m_parent->style()->drawPrimitive(QStyle::PE_IndicatorToolBarHandle, &handleOption, &p, m_parent);
+            p.restore();
         }
-        if (handleActive) {
-            handleOption.state |= QStyle::State_Sunken;
-        }
-        m_parent->style()->drawPrimitive(QStyle::PE_IndicatorToolBarHandle, &handleOption, &p, m_parent);
-        p.restore();
     }
 }
 

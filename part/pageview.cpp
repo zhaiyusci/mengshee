@@ -28,8 +28,8 @@
 #include <QDomElement>
 #include <QElapsedTimer>
 #include <QEvent>
-#include <QFrame>
 #include <QFontMetricsF>
+#include <QFrame>
 #include <QGestureEvent>
 #include <QHash>
 #include <QImage>
@@ -83,13 +83,13 @@
 #include "formwidgets.h"
 #include "gui/debug_ui.h"
 #include "gui/guiutils.h"
-#include "templatenoteutils.h"
 #include "gui/pagepainter.h"
 #include "gui/priorities.h"
 #include "okmenutitle.h"
 #include "pageviewannotator.h"
 #include "pageviewmouseannotation.h"
 #include "pageviewutils.h"
+#include "templatenoteutils.h"
 #include "toggleactionmenu.h"
 #if HAVE_SPEECH
 #include "tts.h"
@@ -621,6 +621,21 @@ OKULARPART_EXPORT bool PageView::namedDestinationsVisible() const
     return d->showNamedDestinations;
 }
 
+OKULARPART_EXPORT bool PageView::advancedModeEnabled() const
+{
+    return d->showNamedDestinations;
+}
+
+void PageView::setAdvancedModeEnabled(bool enabled)
+{
+    if (d->aToggleNamedDestinations) {
+        d->aToggleNamedDestinations->setChecked(enabled);
+        return;
+    }
+
+    d->showNamedDestinations = enabled;
+}
+
 void PageView::startInternalLinkCreation()
 {
     if (!d->showNamedDestinations || !d->document->canEditPdfLinks()) {
@@ -763,12 +778,15 @@ void PageView::setupViewerActions(KActionCollection *ac)
     connect(d->aReadingDirection, &QAction::toggled, this, &PageView::slotReadingDirectionToggled);
     connect(Okular::SettingsCore::self(), &Okular::SettingsCore::configChanged, this, &PageView::slotUpdateReadingDirectionAction);
 
-    d->aToggleNamedDestinations = new KToggleAction(QIcon::fromTheme(QStringLiteral("insert-link")), i18n("Show Named Destinations"), this);
+    d->aToggleNamedDestinations = new KToggleAction(QIcon::fromTheme(QStringLiteral("document-edit")), i18n("Advanced Mode"), this);
+    d->aToggleNamedDestinations->setToolTip(i18n("Show advanced PDF editing tools for pages, contents, links, and named destinations"));
     ac->addAction(QStringLiteral("view_toggle_named_destinations"), d->aToggleNamedDestinations);
     d->aToggleNamedDestinations->setEnabled(false);
     connect(d->aToggleNamedDestinations, &QAction::toggled, this, [this](bool checked) {
         d->showNamedDestinations = checked;
         if (!checked) {
+            d->draggedNamedDestination.clear();
+            d->namedDestinationDragging = false;
             d->creatingInternalLink = false;
             d->internalLinkCreationDragging = false;
             d->internalLinkCreationPage = -1;
@@ -779,6 +797,7 @@ void PageView::setupViewerActions(KActionCollection *ac)
             loadNamedDestinations();
         }
         viewport()->update();
+        Q_EMIT advancedModeChanged(checked);
     });
 
     // Mouse mode actions for viewer mode
@@ -2314,6 +2333,7 @@ void PageView::paintEvent(QPaintEvent *pe)
             d->mouseAnnotation->routePaint(&pixmapPainter, contentsRect);
 
             // 4) Layer 2: overlays
+            drawLinkHighlights(contentsRect, &pixmapPainter);
             drawNamedDestinations(contentsRect, &pixmapPainter);
             drawInternalLinkCreation(contentsRect, &pixmapPainter);
             if (Okular::Settings::debugDrawBoundaries()) {
@@ -2352,6 +2372,7 @@ void PageView::paintEvent(QPaintEvent *pe)
             d->mouseAnnotation->routePaint(&screenPainter, contentsRect);
 
             // 4) Layer 2: overlays
+            drawLinkHighlights(contentsRect, &screenPainter);
             drawNamedDestinations(contentsRect, &screenPainter);
             drawInternalLinkCreation(contentsRect, &screenPainter);
             if (Okular::Settings::debugDrawBoundaries()) {
@@ -2360,6 +2381,46 @@ void PageView::paintEvent(QPaintEvent *pe)
             }
         }
     }
+}
+
+void PageView::drawLinkHighlights(const QRect &contentsRect, QPainter *p)
+{
+    if (!d->showNamedDestinations) {
+        return;
+    }
+
+    p->save();
+    p->setClipRect(contentsRect, Qt::IntersectClip);
+    p->setRenderHint(QPainter::Antialiasing, true);
+    const QColor fillColor(0, 120, 212, 42);
+    const QColor borderColor(0, 100, 190, 220);
+    QPen borderPen(borderColor, 1.5);
+    borderPen.setCosmetic(true);
+    p->setPen(borderPen);
+    p->setBrush(fillColor);
+
+    for (const PageViewItem *item : std::as_const(d->items)) {
+        if (!item->isVisible() || !item->croppedGeometry().intersects(contentsRect)) {
+            continue;
+        }
+
+        const QRect visiblePageRect = item->croppedGeometry().intersected(contentsRect);
+        for (const Okular::ObjectRect *objectRect : item->page()->objectRects()) {
+            if (!objectRect || objectRect->objectType() != Okular::ObjectRect::Action || !objectRect->object()) {
+                continue;
+            }
+
+            const QRectF normalizedRect = objectRect->region().boundingRect();
+            QRectF highlightRect(normalizedRect.left() * item->uncroppedWidth(), normalizedRect.top() * item->uncroppedHeight(), normalizedRect.width() * item->uncroppedWidth(), normalizedRect.height() * item->uncroppedHeight());
+            highlightRect.translate(item->uncroppedGeometry().topLeft());
+            const QRectF clippedRect = highlightRect.intersected(QRectF(visiblePageRect));
+            if (!clippedRect.isEmpty()) {
+                p->drawRoundedRect(clippedRect.adjusted(0.75, 0.75, -0.75, -0.75), 2.0, 2.0);
+            }
+        }
+    }
+
+    p->restore();
 }
 
 void PageView::drawTableDividers(QPainter *screenPainter)
@@ -2477,19 +2538,15 @@ void PageView::drawNamedDestinations(const QRect &contentsRect, QPainter *p)
             anchor.setX(qBound(pageRect.left() + 3.0, anchor.x(), pageRect.right() - 3.0));
             anchor.setY(qBound(pageRect.top() + 3.0, anchor.y(), pageRect.bottom() - 3.0));
 
-            auto groupIt = std::find_if(groups.begin(), groups.end(), [&anchor](const DestinationGroup &group) {
-                return qAbs(group.anchor.x() - anchor.x()) <= 2.0 && qAbs(group.anchor.y() - anchor.y()) <= 2.0;
-            });
+            auto groupIt = std::find_if(groups.begin(), groups.end(), [&anchor](const DestinationGroup &group) { return qAbs(group.anchor.x() - anchor.x()) <= 2.0 && qAbs(group.anchor.y() - anchor.y()) <= 2.0; });
             if (groupIt == groups.end()) {
-                groups.append(DestinationGroup { anchor, { marker.name } });
+                groups.append(DestinationGroup {anchor, {marker.name}});
             } else {
                 groupIt->names.append(marker.name);
             }
         }
 
-        std::sort(groups.begin(), groups.end(), [](const DestinationGroup &left, const DestinationGroup &right) {
-            return left.anchor.y() == right.anchor.y() ? left.anchor.x() < right.anchor.x() : left.anchor.y() < right.anchor.y();
-        });
+        std::sort(groups.begin(), groups.end(), [](const DestinationGroup &left, const DestinationGroup &right) { return left.anchor.y() == right.anchor.y() ? left.anchor.x() < right.anchor.x() : left.anchor.y() < right.anchor.y(); });
 
         p->save();
         p->setClipRect(pageRect, Qt::IntersectClip);
@@ -2546,8 +2603,8 @@ void PageView::drawNamedDestinations(const QRect &contentsRect, QPainter *p)
                 const QString &name = group.names.at(nameIndex);
                 const qreal lineTop = labelRect.top() + 4.0 + nameIndex * metrics.height();
                 const qreal lineBottom = qMin(labelRect.bottom(), lineTop + metrics.height());
-                d->namedDestinationHitRegions.append(NamedDestinationHitRegion { item->pageNumber(), name, QRectF(labelRect.left(), lineTop, labelRect.width(), lineBottom - lineTop) });
-                d->namedDestinationHitRegions.append(NamedDestinationHitRegion { item->pageNumber(), name, anchorHitRect });
+                d->namedDestinationHitRegions.append(NamedDestinationHitRegion {item->pageNumber(), name, QRectF(labelRect.left(), lineTop, labelRect.width(), lineBottom - lineTop)});
+                d->namedDestinationHitRegions.append(NamedDestinationHitRegion {item->pageNumber(), name, anchorHitRect});
             }
 
             QPen leaderPen(markerColor);
@@ -3378,8 +3435,7 @@ void PageView::mouseReleaseEvent(QMouseEvent *e)
         const QRect linkRect = d->internalLinkCreationRect.normalized();
         const int sourcePageNumber = d->internalLinkCreationPage;
         if (sourceItem && linkRect.width() >= QApplication::startDragDistance() && linkRect.height() >= QApplication::startDragDistance()) {
-            const QRectF normalizedLinkRectangle(QPointF(sourceItem->absToPageX(linkRect.left()), sourceItem->absToPageY(linkRect.top())),
-                                                 QPointF(sourceItem->absToPageX(linkRect.right()), sourceItem->absToPageY(linkRect.bottom())));
+            const QRectF normalizedLinkRectangle(QPointF(sourceItem->absToPageX(linkRect.left()), sourceItem->absToPageY(linkRect.top())), QPointF(sourceItem->absToPageX(linkRect.right()), sourceItem->absToPageY(linkRect.bottom())));
             d->creatingInternalLink = false;
             d->internalLinkCreationDragging = false;
             d->internalLinkCreationPage = -1;
@@ -5452,11 +5508,9 @@ QMenu *PageView::createProcessLinkMenu(PageViewItem *item, const QPoint eventPos
         if (hasResolvedInternalTarget) {
             QAction *openInAuxiliaryFrame = menu->addAction(QIcon::fromTheme(QStringLiteral("view-right-new")), i18n("Open in Auxiliary Frame"));
             openInAuxiliaryFrame->setObjectName(QStringLiteral("OpenLinkInAuxiliaryFrameAction"));
-            connect(openInAuxiliaryFrame, &QAction::triggered, this, [this, rect, eventPos]() {
-                requestInternalLinkInAuxiliaryFrame(rect, eventPos);
-            });
+            connect(openInAuxiliaryFrame, &QAction::triggered, this, [this, rect, eventPos]() { requestInternalLinkInAuxiliaryFrame(rect, eventPos); });
         }
-        if (isInternalGoto) {
+        if (isInternalGoto && d->showNamedDestinations) {
             const int sourcePageNumber = item->pageNumber();
             const QRectF normalizedLinkRectangle = rect->region().boundingRect();
             const QString currentDestinationName = gotoAction->destinationName();
@@ -5465,6 +5519,13 @@ QMenu *PageView::createProcessLinkMenu(PageViewItem *item, const QPoint eventPos
             connect(editLink, &QAction::triggered, this, [this, sourcePageNumber, normalizedLinkRectangle, currentDestinationName, target]() {
                 Q_EMIT editInternalLinkRequested(sourcePageNumber, normalizedLinkRectangle, currentDestinationName, target);
             });
+        }
+        if (d->showNamedDestinations && d->document->canEditPdfLinks()) {
+            const int sourcePageNumber = item->pageNumber();
+            const QRectF normalizedLinkRectangle = rect->region().boundingRect();
+            QAction *deleteLink = menu->addAction(QIcon::fromTheme(QStringLiteral("edit-delete")), i18n("Delete Link"));
+            deleteLink->setObjectName(QStringLiteral("DeletePdfLinkAction"));
+            connect(deleteLink, &QAction::triggered, this, [this, sourcePageNumber, normalizedLinkRectangle]() { Q_EMIT deletePdfLinkRequested(sourcePageNumber, normalizedLinkRectangle); });
         }
         if (link->actionType() == Okular::Action::Sound) {
             processLink->setText(i18n("Play this Sound"));

@@ -72,6 +72,8 @@ public:
 
     OKULARPART_EXPORT bool mapGlobalPosToPagePoint(QPoint globalPos, int *pageNumber, Okular::NormalizedPoint *point) const;
     QStringList namedDestinationsAtGlobalPos(QPoint globalPos) const;
+    OKULARPART_EXPORT bool advancedModeEnabled() const;
+    void setAdvancedModeEnabled(bool enabled);
     OKULARPART_EXPORT bool namedDestinationsVisible() const;
     void startInternalLinkCreation();
 
@@ -209,6 +211,8 @@ Q_SIGNALS:
     void signingFinished();
     /** Emitted whenever this view's viewport or navigation history changes. */
     void viewportStateChanged();
+    /** Emitted when this view requests that advanced PDF editing mode changes for every workspace view. */
+    void advancedModeChanged(bool enabled);
     /**
      * Requests opening an internal document destination in an auxiliary frame.
      * The title is derived from the text covered by the source link when
@@ -216,14 +220,13 @@ Q_SIGNALS:
      */
     void openInternalLinkInAuxiliaryFrame(const Okular::DocumentViewport &viewport, const QString &title);
     /** Requests editing the PDF-level destination of an internal link. */
-    void editInternalLinkRequested(int sourcePageNumber,
-                                   const QRectF &normalizedLinkRectangle,
-                                   const QString &currentDestinationName,
-                                   const Okular::DocumentViewport &currentDestination);
+    void editInternalLinkRequested(int sourcePageNumber, const QRectF &normalizedLinkRectangle, const QString &currentDestinationName, const Okular::DocumentViewport &currentDestination);
     /** Requests moving a named destination to a point selected in this view. */
     void moveNamedDestinationRequested(const QString &name, int pageNumber, const Okular::NormalizedPoint &position);
     /** Requests creating an internal link over a rectangle drawn in this view. */
     void createInternalLinkRequested(int sourcePageNumber, const QRectF &normalizedLinkRectangle);
+    /** Requests deleting the selected PDF link annotation. */
+    void deletePdfLinkRequested(int sourcePageNumber, const QRectF &normalizedLinkRectangle);
 
 protected:
     bool event(QEvent *event) override;
@@ -258,6 +261,7 @@ private:
     void notifyAnnotationWindowsAboutViewportBoundsChange();
     // draw background and items on the opened qpainter
     void drawDocumentOnPainter(const QRect contentsRect, QPainter *p);
+    void drawLinkHighlights(const QRect &contentsRect, QPainter *p);
     void drawNamedDestinations(const QRect &contentsRect, QPainter *p);
     void drawInternalLinkCreation(const QRect &contentsRect, QPainter *p);
     void loadNamedDestinations();

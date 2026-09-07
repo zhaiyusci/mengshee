@@ -39,8 +39,8 @@
 #include <QMetaObject>
 #include <QMimeDatabase>
 #include <QPageSize>
-#include <QPrintDialog>
 #include <QPointer>
+#include <QPrintDialog>
 #include <QRegularExpression>
 #include <QScreen>
 #include <QStack>
@@ -1867,7 +1867,8 @@ void DocumentPrivate::doContinueDirectionMatchSearch(DoContinueDirectionMatchSea
 
             DocumentPrivate *documentPrivate = documentGuard->d;
             search = documentPrivate->m_searches.value(searchStruct->searchID);
-            if (!search || search->generation != searchStruct->generation || search->documentGeneration != searchStruct->documentGeneration || documentPrivate->m_documentGeneration != searchStruct->documentGeneration || documentPrivate->m_searchCancelled) {
+            if (!search || search->generation != searchStruct->generation || search->documentGeneration != searchStruct->documentGeneration || documentPrivate->m_documentGeneration != searchStruct->documentGeneration ||
+                documentPrivate->m_searchCancelled) {
                 documentPrivate->doContinueDirectionMatchSearch(searchStruct);
                 return;
             }
@@ -2143,7 +2144,8 @@ void DocumentPrivate::doContinueAllDocumentSearch(QSet<int> *pagesToNotify, QHas
         }
         delete lastMatch;
 
-        QTimer::singleShot(0, m_parent, [this, pagesToNotify, pageMatches, currentPage, searchID, generation, documentGeneration] { doContinueAllDocumentSearch(pagesToNotify, pageMatches, currentPage + 1, searchID, generation, documentGeneration); });
+        QTimer::singleShot(
+            0, m_parent, [this, pagesToNotify, pageMatches, currentPage, searchID, generation, documentGeneration] { doContinueAllDocumentSearch(pagesToNotify, pageMatches, currentPage + 1, searchID, generation, documentGeneration); });
     } else {
         // reset cursor to previous shape
         QApplication::restoreOverrideCursor();
@@ -2311,7 +2313,9 @@ void DocumentPrivate::doContinueGooglesDocumentSearch(QSet<int> *pagesToNotify, 
             pageMatches->remove(page);
         }
 
-        QTimer::singleShot(0, m_parent, [this, pagesToNotify, pageMatches, currentPage, searchID, generation, documentGeneration, words] { doContinueGooglesDocumentSearch(pagesToNotify, pageMatches, currentPage + 1, searchID, generation, documentGeneration, words); });
+        QTimer::singleShot(0, m_parent, [this, pagesToNotify, pageMatches, currentPage, searchID, generation, documentGeneration, words] {
+            doContinueGooglesDocumentSearch(pagesToNotify, pageMatches, currentPage + 1, searchID, generation, documentGeneration, words);
+        });
     } else {
         // reset cursor to previous shape
         QApplication::restoreOverrideCursor();
@@ -4332,7 +4336,8 @@ void Document::searchText(int searchID, const QString &text, bool fromStart, Qt:
         // search and highlight every word in 'text' on all pages
         const quint64 generation = s->generation;
         const quint64 documentGeneration = s->documentGeneration;
-        QTimer::singleShot(0, this, [this, pagesToNotify, pageMatches, searchID, generation, documentGeneration, words] { d->doContinueGooglesDocumentSearch(pagesToNotify, pageMatches, 0, searchID, generation, documentGeneration, words); });
+        QTimer::singleShot(
+            0, this, [this, pagesToNotify, pageMatches, searchID, generation, documentGeneration, words] { d->doContinueGooglesDocumentSearch(pagesToNotify, pageMatches, 0, searchID, generation, documentGeneration, words); });
     }
 }
 
@@ -5796,13 +5801,7 @@ bool Document::canInsertPageFromPdf() const
     return pageInsertion && pageInsertion->canInsertPageFromPdf();
 }
 
-bool Document::saveWithPdfPageInsertedAfter(const QString &sourceFileName,
-                                            const QString &outputFileName,
-                                            int pageNumber,
-                                            const QString &insertedFileName,
-                                            int pageToInsert,
-                                            bool resolveDestinationConflicts,
-                                            QString *errorText)
+bool Document::saveWithPdfPageInsertedAfter(const QString &sourceFileName, const QString &outputFileName, int pageNumber, const QString &insertedFileName, int pageToInsert, bool resolveDestinationConflicts, QString *errorText)
 {
     auto pageInsertion = dynamic_cast<PageInsertionInterface *>(d->m_generator);
     if (!pageInsertion || sourceFileName.isEmpty() || outputFileName.isEmpty() || insertedFileName.isEmpty()) {
@@ -5834,10 +5833,7 @@ int Document::pdfPageCount(const QString &inputFileName, QString *errorText)
     return pageInsertion->pdfPageCount(inputFileName, errorText);
 }
 
-bool Document::combinePdfFiles(const QStringList &inputFileNames,
-                               const QString &outputFileName,
-                               bool resolveDestinationConflicts,
-                               QString *errorText)
+bool Document::combinePdfFiles(const QStringList &inputFileNames, const QString &outputFileName, bool resolveDestinationConflicts, QString *errorText)
 {
     auto pageInsertion = dynamic_cast<PageInsertionInterface *>(d->m_generator);
     if (!pageInsertion || inputFileNames.size() < 2 || outputFileName.isEmpty()) {
@@ -6072,13 +6068,7 @@ bool Document::canEditPdfLinks() const
     return editor && editor->canEditPdfLinks();
 }
 
-bool Document::saveWithNamedDestinationAdded(const QString &sourceFileName,
-                                             const QString &outputFileName,
-                                             const QString &name,
-                                             int pageNumber,
-                                             double normalizedX,
-                                             double normalizedY,
-                                             QString *errorText)
+bool Document::saveWithNamedDestinationAdded(const QString &sourceFileName, const QString &outputFileName, const QString &name, int pageNumber, double normalizedX, double normalizedY, QString *errorText)
 {
     auto editor = dynamic_cast<PdfLinkEditingInterface *>(d->m_generator);
     if (!editor || sourceFileName.isEmpty() || outputFileName.isEmpty() || name.isEmpty()) {
@@ -6090,11 +6080,7 @@ bool Document::saveWithNamedDestinationAdded(const QString &sourceFileName,
     return editor->saveWithNamedDestinationAdded(sourceFileName, outputFileName, name, pageNumber, normalizedX, normalizedY, errorText);
 }
 
-bool Document::saveWithNamedDestinationRenamed(const QString &sourceFileName,
-                                               const QString &outputFileName,
-                                               const QString &oldName,
-                                               const QString &newName,
-                                               QString *errorText)
+bool Document::saveWithNamedDestinationRenamed(const QString &sourceFileName, const QString &outputFileName, const QString &oldName, const QString &newName, QString *errorText)
 {
     auto editor = dynamic_cast<PdfLinkEditingInterface *>(d->m_generator);
     if (!editor || sourceFileName.isEmpty() || outputFileName.isEmpty() || oldName.isEmpty() || newName.isEmpty()) {
@@ -6106,10 +6092,7 @@ bool Document::saveWithNamedDestinationRenamed(const QString &sourceFileName,
     return editor->saveWithNamedDestinationRenamed(sourceFileName, outputFileName, oldName, newName, errorText);
 }
 
-bool Document::saveWithNamedDestinationDeleted(const QString &sourceFileName,
-                                               const QString &outputFileName,
-                                               const QString &name,
-                                               QString *errorText)
+bool Document::saveWithNamedDestinationDeleted(const QString &sourceFileName, const QString &outputFileName, const QString &name, QString *errorText)
 {
     auto editor = dynamic_cast<PdfLinkEditingInterface *>(d->m_generator);
     if (!editor || sourceFileName.isEmpty() || outputFileName.isEmpty() || name.isEmpty()) {
@@ -6141,18 +6124,7 @@ bool Document::saveWithInternalLinkDestinationChanged(const QString &sourceFileN
         }
         return false;
     }
-    return editor->saveWithInternalLinkDestinationChanged(sourceFileName,
-                                                          outputFileName,
-                                                          sourcePageNumber,
-                                                          linkLeft,
-                                                          linkTop,
-                                                          linkRight,
-                                                          linkBottom,
-                                                          destinationName,
-                                                          destinationPageNumber,
-                                                          destinationX,
-                                                          destinationY,
-                                                          errorText);
+    return editor->saveWithInternalLinkDestinationChanged(sourceFileName, outputFileName, sourcePageNumber, linkLeft, linkTop, linkRight, linkBottom, destinationName, destinationPageNumber, destinationX, destinationY, errorText);
 }
 
 bool Document::saveWithInternalLinkCreated(const QString &sourceFileName,
@@ -6175,18 +6147,19 @@ bool Document::saveWithInternalLinkCreated(const QString &sourceFileName,
         }
         return false;
     }
-    return editor->saveWithInternalLinkCreated(sourceFileName,
-                                               outputFileName,
-                                               sourcePageNumber,
-                                               linkLeft,
-                                               linkTop,
-                                               linkRight,
-                                               linkBottom,
-                                               destinationName,
-                                               destinationPageNumber,
-                                               destinationX,
-                                               destinationY,
-                                               errorText);
+    return editor->saveWithInternalLinkCreated(sourceFileName, outputFileName, sourcePageNumber, linkLeft, linkTop, linkRight, linkBottom, destinationName, destinationPageNumber, destinationX, destinationY, errorText);
+}
+
+bool Document::saveWithPdfLinkDeleted(const QString &sourceFileName, const QString &outputFileName, int sourcePageNumber, double linkLeft, double linkTop, double linkRight, double linkBottom, QString *errorText)
+{
+    auto editor = dynamic_cast<PdfLinkEditingInterface *>(d->m_generator);
+    if (!editor || sourceFileName.isEmpty() || outputFileName.isEmpty()) {
+        if (errorText) {
+            errorText->clear();
+        }
+        return false;
+    }
+    return editor->saveWithPdfLinkDeleted(sourceFileName, outputFileName, sourcePageNumber, linkLeft, linkTop, linkRight, linkBottom, errorText);
 }
 
 void Document::setHistoryClean(bool clean)

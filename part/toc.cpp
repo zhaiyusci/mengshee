@@ -8,8 +8,8 @@
 
 // qt/kde includes
 #include <QContextMenuEvent>
-#include <QInputDialog>
 #include <QHeaderView>
+#include <QInputDialog>
 #include <QLayout>
 #include <QTreeView>
 #include <qdom.h>
@@ -86,6 +86,11 @@ void TOC::setPageView(PageView *pageView)
     }
 
     refreshCurrentViewport();
+}
+
+void TOC::setEditingEnabled(bool enabled)
+{
+    m_editingEnabled = enabled;
 }
 
 Okular::DocumentViewport TOC::documentViewport() const
@@ -310,7 +315,7 @@ bool TOC::applySynopsis(const Okular::DocumentSynopsis &synopsis)
 
 void TOC::addCurrentPageEntry()
 {
-    if (!m_document->isOpened()) {
+    if (!m_editingEnabled || !m_document->isOpened()) {
         return;
     }
 
@@ -330,6 +335,10 @@ void TOC::addCurrentPageEntry()
 
 void TOC::renameCurrentEntry()
 {
+    if (!m_editingEnabled) {
+        return;
+    }
+
     const QModelIndex index = m_treeView->currentIndex();
     if (!index.isValid()) {
         return;
@@ -352,6 +361,10 @@ void TOC::renameCurrentEntry()
 
 void TOC::deleteCurrentEntry()
 {
+    if (!m_editingEnabled) {
+        return;
+    }
+
     const QModelIndex index = m_treeView->currentIndex();
     if (!index.isValid()) {
         return;

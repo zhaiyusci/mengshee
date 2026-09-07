@@ -40,6 +40,7 @@ public:
     ~TOC() override;
 
     void setPageView(PageView *pageView);
+    void setEditingEnabled(bool enabled);
 
     // inherited from DocumentObserver
     void notifySetup(const QList<Okular::Page *> &pages, int setupFlags) override;
@@ -88,6 +89,7 @@ private:
     QTreeView *m_treeView;
     KTreeViewSearchLine *m_searchLine;
     TOCModel *m_model;
+    bool m_editingEnabled = false;
 };
 
 #endif

@@ -22,8 +22,8 @@
 #else                           // HAVE_DBUS
 #define Q_NOREPLY
 #endif // HAVE_DBUS
-#include <QIcon>
 #include <QHash>
+#include <QIcon>
 #include <QList>
 #include <QPointer>
 #include <QProcess>
@@ -306,12 +306,7 @@ public Q_SLOTS:
 
 private:
     bool aboutToShowContextMenu(QMenu *menu, QAction *action, QMenu *contextMenu);
-    void showMenu(const Okular::Page *page,
-                  const QPoint point,
-                  const QString &bookmarkTitle = QString(),
-                  const Okular::DocumentViewport &vp = DocumentViewport(),
-                  bool showTOCActions = false,
-                  PageView *sourceView = nullptr);
+    void showMenu(const Okular::Page *page, const QPoint point, const QString &bookmarkTitle = QString(), const Okular::DocumentViewport &vp = DocumentViewport(), bool showTOCActions = false, PageView *sourceView = nullptr);
     /**
      * Searches the actionCollections of all KXMLGUIClients that were created by the same factory()
      * as this Part for a QAction that has both the specified name and the specified class.
@@ -341,6 +336,7 @@ private:
     bool applyPageEditBackingFile(const QString &fileName, int pageNumber, bool forcePageTopologyChanged = false, bool preserveViewport = false);
     bool applyLivePageMove(int sourcePage, int destinationPage);
     bool canUsePageLevelEditing() const;
+    void setAdvancedModeEnabled(bool enabled);
     void updatePageEditActions();
     void insertPageWithDialog(int pageNumber);
     void insertPageFromTemplateWithDialog(int pageNumber);
@@ -352,20 +348,11 @@ private:
     void renameNamedDestination(const QString &oldName);
     void deleteNamedDestination(const QString &name);
     void moveNamedDestination(const QString &name, int pageNumber, const Okular::NormalizedPoint &position);
-    void editInternalLink(int sourcePageNumber,
-                          const QRectF &normalizedLinkRectangle,
-                          const QString &currentDestinationName,
-                          const Okular::DocumentViewport &currentDestination);
+    void editInternalLink(int sourcePageNumber, const QRectF &normalizedLinkRectangle, const QString &currentDestinationName, const Okular::DocumentViewport &currentDestination);
     void createInternalLink(int sourcePageNumber, const QRectF &normalizedLinkRectangle);
-    void configureInternalLink(int sourcePageNumber,
-                               const QRectF &normalizedLinkRectangle,
-                               const QString &currentDestinationName,
-                               const Okular::DocumentViewport &currentDestination,
-                               bool creating);
-    bool applyPdfLinkEdit(const QString &undoText,
-                          const QString &failureText,
-                          int pageNumber,
-                          const std::function<bool(const QString &, const QString &, QString *)> &operation);
+    void deletePdfLink(int sourcePageNumber, const QRectF &normalizedLinkRectangle);
+    void configureInternalLink(int sourcePageNumber, const QRectF &normalizedLinkRectangle, const QString &currentDestinationName, const Okular::DocumentViewport &currentDestination, bool creating);
+    bool applyPdfLinkEdit(const QString &undoText, const QString &failureText, int pageNumber, const std::function<bool(const QString &, const QString &, QString *)> &operation);
     QString pageTemplateFileName() const;
     void setPageTemplateFileName(const QString &fileName);
     void deletePage(int pageNumber);
@@ -527,6 +514,7 @@ private:
     QAction *m_insertBlankPageAfterCurrentPage = nullptr;
     QAction *m_duplicateCurrentPage = nullptr;
     QAction *m_deleteCurrentPage = nullptr;
+    bool m_advancedModeEnabled = false;
     QMenu *m_exportAsMenu;
 #if HAVE_PURPOSE
     Purpose::Menu *m_shareMenu;

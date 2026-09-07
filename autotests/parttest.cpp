@@ -47,16 +47,16 @@
 #include <QMessageBox>
 #include <QMimeDatabase>
 #include <QPageRanges>
-#include <QPushButton>
 #include <QPrinter>
+#include <QPushButton>
 #include <QScrollBar>
 #include <QTabletEvent>
 #include <QTemporaryDir>
 #include <QTemporaryFile>
 #include <QTextEdit>
 #include <QTimer>
-#include <QToolTip>
 #include <QToolBar>
+#include <QToolTip>
 #include <QTreeView>
 #include <QUrl>
 
@@ -199,14 +199,8 @@ static QString linkText(const Okular::Page *page, const Okular::ObjectRect *rect
     return title;
 }
 
-static bool findVisibleInternalGotoLink(PageView *view,
-                                        Okular::Document *document,
-                                        int sourcePageNumber,
-                                        int targetPageNumber,
-                                        const QString &preferredTitle,
-                                        QPoint *viewportPosition,
-                                        Okular::DocumentViewport *targetViewport,
-                                        QString *title)
+static bool
+findVisibleInternalGotoLink(PageView *view, Okular::Document *document, int sourcePageNumber, int targetPageNumber, const QString &preferredTitle, QPoint *viewportPosition, Okular::DocumentViewport *targetViewport, QString *title)
 {
     if (!view || !document || !viewportPosition || !targetViewport || !title) {
         return false;
@@ -291,10 +285,7 @@ static bool findVisibleInternalGotoLink(PageView *view,
         return false;
     }
 
-    const QRect refineRect(closestPosition.x() - coarseStep,
-                           closestPosition.y() - coarseStep,
-                           coarseStep * 2 + 1,
-                           coarseStep * 2 + 1);
+    const QRect refineRect(closestPosition.x() - coarseStep, closestPosition.y() - coarseStep, coarseStep * 2 + 1, coarseStep * 2 + 1);
     const QRect visibleRefineRect = refineRect.intersected(scanRect);
     for (int y = visibleRefineRect.top(); y <= visibleRefineRect.bottom(); ++y) {
         for (int x = visibleRefineRect.left(); x <= visibleRefineRect.right(); ++x) {
@@ -304,8 +295,7 @@ static bool findVisibleInternalGotoLink(PageView *view,
 
     int mappedPage = -1;
     Okular::NormalizedPoint mappedPoint;
-    if (!view->mapGlobalPosToPagePoint(view->viewport()->mapToGlobal(closestPosition), &mappedPage, &mappedPoint) || mappedPage != sourcePageNumber ||
-        !selectedLink->contains(mappedPoint.x, mappedPoint.y, 1.0, 1.0)) {
+    if (!view->mapGlobalPosToPagePoint(view->viewport()->mapToGlobal(closestPosition), &mappedPage, &mappedPoint) || mappedPage != sourcePageNumber || !selectedLink->contains(mappedPoint.x, mappedPoint.y, 1.0, 1.0)) {
         return false;
     }
 
@@ -344,13 +334,8 @@ static bool linkEditorOpensForView(PageView *view, const Okular::DocumentViewpor
         }
     });
     dialogCloser.start(0);
-    const bool invoked = QMetaObject::invokeMethod(view,
-                                                   "editInternalLinkRequested",
-                                                   Qt::DirectConnection,
-                                                   Q_ARG(int, 0),
-                                                   Q_ARG(QRectF, QRectF(0.1, 0.1, 0.1, 0.1)),
-                                                   Q_ARG(QString, QStringLiteral("subsection.2.1")),
-                                                   Q_ARG(Okular::DocumentViewport, target));
+    const bool invoked =
+        QMetaObject::invokeMethod(view, "editInternalLinkRequested", Qt::DirectConnection, Q_ARG(int, 0), Q_ARG(QRectF, QRectF(0.1, 0.1, 0.1, 0.1)), Q_ARG(QString, QStringLiteral("subsection.2.1")), Q_ARG(Okular::DocumentViewport, target));
     dialogCloser.stop();
     return invoked && editorShown;
 }
@@ -775,6 +760,9 @@ void PartTest::testClickInternalLink()
     QTRY_VERIFY(QToolTip::text().contains(QStringLiteral("subsection.2.1")));
     QToolTip::hideText();
 
+    QAction *advancedMode = part.actionCollection()->action(QStringLiteral("view_toggle_named_destinations"));
+    QVERIFY(advancedMode);
+    advancedMode->setChecked(true);
     QVERIFY(linkEditorOpensForView(part.m_pageView, internalLinkTarget));
 
     QTest::mouseMove(part.m_pageView->viewport(), internalLinkPosition);
@@ -810,10 +798,20 @@ void PartTest::testNamedDestinationOverlay()
     QVERIFY(toggle);
     QVERIFY(toggle->isCheckable());
     QVERIFY(toggle->isEnabled());
+    QCOMPARE(toggle->text(), i18n("Advanced Mode"));
+    QAction *insertPage = part.actionCollection()->action(QStringLiteral("tools_insert_page"));
+    QVERIFY(insertPage);
+    QVERIFY(!insertPage->isVisible());
+    QVERIFY(!part.m_pageView->advancedModeEnabled());
     QVERIFY(!part.m_pageView->namedDestinationsVisible());
     toggle->setChecked(true);
     QVERIFY(toggle->isChecked());
+    QVERIFY(insertPage->isVisible());
+    QVERIFY(part.m_pageView->advancedModeEnabled());
     QVERIFY(part.m_pageView->namedDestinationsVisible());
+    toggle->setChecked(false);
+    QVERIFY(!insertPage->isVisible());
+    QVERIFY(!part.m_pageView->advancedModeEnabled());
     QApplication::processEvents();
 }
 
@@ -885,6 +883,11 @@ void PartTest::testAuxiliaryDocumentWorkspace()
     QCOMPARE(modifiedClickTitle, expectedLinkTitle);
     const int unsplitMainViewWidth = originalMainView->width();
 
+    QAction *advancedMode = part.actionCollection()->action(QStringLiteral("view_toggle_named_destinations"));
+    QVERIFY(advancedMode);
+    advancedMode->setChecked(true);
+    QVERIFY(originalMainView->advancedModeEnabled());
+
     // Exercise the real default gesture once. The remaining lifecycle checks
     // use the public request signal so they do not depend on rendered geometry.
     QTest::mouseMove(originalMainView->viewport(), internalLinkPosition);
@@ -897,11 +900,22 @@ void PartTest::testAuxiliaryDocumentWorkspace()
 
     PageView *firstAuxiliaryView = workspace->auxiliaryViews().constFirst();
     QVERIFY(firstAuxiliaryView);
+    QVERIFY(firstAuxiliaryView->advancedModeEnabled());
+    QTRY_COMPARE(workspace->activeView(), firstAuxiliaryView);
+    QTRY_COMPARE(part.m_workspaceActionView.data(), firstAuxiliaryView);
+    QAction *auxiliaryAdvancedMode = part.actionCollection()->action(QStringLiteral("view_toggle_named_destinations"));
+    QVERIFY(auxiliaryAdvancedMode);
+    auxiliaryAdvancedMode->setChecked(false);
+    QVERIFY(!firstAuxiliaryView->advancedModeEnabled());
+    QVERIFY(!originalMainView->advancedModeEnabled());
+    auxiliaryAdvancedMode->setChecked(true);
+    QVERIFY(firstAuxiliaryView->advancedModeEnabled());
+    QVERIFY(originalMainView->advancedModeEnabled());
     DocumentViewport firstAuxiliaryTarget = firstAuxiliaryView->documentViewport();
     QVERIFY(firstAuxiliaryTarget == modifiedClickTarget);
     QCOMPARE(workspace->viewTitle(firstAuxiliaryView), modifiedClickTitle);
     QVERIFY(!firstAuxiliaryView->viewportHistoryAtBegin());
-    QTRY_COMPARE(workspace->activeView(), firstAuxiliaryView);
+    QCOMPARE(workspace->activeView(), firstAuxiliaryView);
     QCOMPARE(part.workspaceActivePageView(), firstAuxiliaryView);
     QCOMPARE(part.m_workspaceActionView.data(), firstAuxiliaryView);
     QVERIFY(linkEditorOpensForView(firstAuxiliaryView, modifiedClickTarget));
@@ -955,11 +969,7 @@ void PartTest::testAuxiliaryDocumentWorkspace()
 
     const QString secondTitle = QStringLiteral("Second auxiliary link");
     const DocumentViewport secondTarget(0);
-    QVERIFY(QMetaObject::invokeMethod(firstAuxiliaryView,
-                                      "openInternalLinkInAuxiliaryFrame",
-                                      Qt::DirectConnection,
-                                      Q_ARG(Okular::DocumentViewport, secondTarget),
-                                      Q_ARG(QString, secondTitle)));
+    QVERIFY(QMetaObject::invokeMethod(firstAuxiliaryView, "openInternalLinkInAuxiliaryFrame", Qt::DirectConnection, Q_ARG(Okular::DocumentViewport, secondTarget), Q_ARG(QString, secondTitle)));
 
     QCOMPARE(workspace->auxiliaryViewCount(), 2);
     PageView *secondAuxiliaryView = workspace->auxiliaryViews().constLast();
@@ -985,11 +995,7 @@ void PartTest::testAuxiliaryDocumentWorkspace()
 
     const QString thirdTitle = QStringLiteral("Nested auxiliary link");
     const DocumentViewport thirdTarget(2);
-    QVERIFY(QMetaObject::invokeMethod(firstAuxiliaryView,
-                                      "openInternalLinkInAuxiliaryFrame",
-                                      Qt::DirectConnection,
-                                      Q_ARG(Okular::DocumentViewport, thirdTarget),
-                                      Q_ARG(QString, thirdTitle)));
+    QVERIFY(QMetaObject::invokeMethod(firstAuxiliaryView, "openInternalLinkInAuxiliaryFrame", Qt::DirectConnection, Q_ARG(Okular::DocumentViewport, thirdTarget), Q_ARG(QString, thirdTitle)));
     QCOMPARE(workspace->auxiliaryViewCount(), 3);
     QCOMPARE(workspace->auxiliaryPaneCount(), 2);
     PageView *thirdAuxiliaryView = workspace->auxiliaryViews().at(1);
@@ -1900,11 +1906,12 @@ void PartTest::testFailedBackingFileSwapKeepsDocumentUsable()
 
     QTemporaryFile invalidReplacement(QStringLiteral("%1/okrXXXXXX.okular").arg(QDir::tempPath()));
     QVERIFY(invalidReplacement.open());
-    invalidReplacement.write("%PDF-1.4\n"
-                             "1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n"
-                             "2 0 obj << /Type /Pages /Count 1 /Kids [3 0 R] >> endobj\n"
-                             "trailer << /Root 1 0 R >>\n"
-                             "%%EOF\n");
+    invalidReplacement.write(
+        "%PDF-1.4\n"
+        "1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n"
+        "2 0 obj << /Type /Pages /Count 1 /Kids [3 0 R] >> endobj\n"
+        "trailer << /Root 1 0 R >>\n"
+        "%%EOF\n");
     invalidReplacement.close();
 
     QVERIFY(!part.m_document->swapBackingFile(invalidReplacement.fileName(), QUrl::fromLocalFile(invalidReplacement.fileName())));
@@ -2414,6 +2421,7 @@ void PartTest::testEditPdfNamedDestinationAndLink()
     const QString destinationFile = tempDir.filePath(QStringLiteral("link-edit-destination.pdf"));
     const QString movedDestinationFile = tempDir.filePath(QStringLiteral("link-edit-destination-moved.pdf"));
     const QString createdLinkFile = tempDir.filePath(QStringLiteral("link-created-result.pdf"));
+    const QString deletedLinkFile = tempDir.filePath(QStringLiteral("link-deleted-result.pdf"));
     const QString editedLinkFile = tempDir.filePath(QStringLiteral("link-edit-result.pdf"));
     const QString renamedDestinationFile = tempDir.filePath(QStringLiteral("link-edit-renamed.pdf"));
     const QString deletedDestinationFile = tempDir.filePath(QStringLiteral("link-edit-deleted.pdf"));
@@ -2476,18 +2484,8 @@ void PartTest::testEditPdfNamedDestinationAndLink()
     QVERIFY(qAbs(addedDestination.rePos.normalizedY - 0.45) < 0.01);
 
     const QRectF createdLinkRectangle(0.08, 0.08, 0.18, 0.07);
-    QVERIFY2(destinationPart.m_document->saveWithInternalLinkCreated(destinationFile,
-                                                                     createdLinkFile,
-                                                                     1,
-                                                                     createdLinkRectangle.left(),
-                                                                     createdLinkRectangle.top(),
-                                                                     createdLinkRectangle.right(),
-                                                                     createdLinkRectangle.bottom(),
-                                                                     destinationName,
-                                                                     2,
-                                                                     0.35,
-                                                                     0.45,
-                                                                     &errorText),
+    QVERIFY2(destinationPart.m_document->saveWithInternalLinkCreated(
+                 destinationFile, createdLinkFile, 1, createdLinkRectangle.left(), createdLinkRectangle.top(), createdLinkRectangle.right(), createdLinkRectangle.bottom(), destinationName, 2, 0.35, 0.45, &errorText),
              qPrintable(errorText));
 
     Okular::Part createdLinkPart(nullptr, {});
@@ -2508,7 +2506,22 @@ void PartTest::testEditPdfNamedDestinationAndLink()
         }
     }
     QVERIFY(foundCreatedLink);
+
+    QVERIFY2(createdLinkPart.m_document->saveWithPdfLinkDeleted(createdLinkFile, deletedLinkFile, 1, createdLinkRectangle.left(), createdLinkRectangle.top(), createdLinkRectangle.right(), createdLinkRectangle.bottom(), &errorText),
+             qPrintable(errorText));
     createdLinkPart.closeUrl();
+
+    Okular::Part deletedLinkPart(nullptr, {});
+    QVERIFY(openDocument(&deletedLinkPart, deletedLinkFile));
+    bool foundDeletedLink = false;
+    for (const Okular::ObjectRect *rect : deletedLinkPart.m_document->page(0)->objectRects()) {
+        if (rect && rect->objectType() == Okular::ObjectRect::Action && rect->object() && rect->region().boundingRect().intersects(createdLinkRectangle)) {
+            foundDeletedLink = true;
+            break;
+        }
+    }
+    QVERIFY(!foundDeletedLink);
+    deletedLinkPart.closeUrl();
 
     QVERIFY2(destinationPart.m_document->saveWithNamedDestinationAdded(destinationFile, movedDestinationFile, destinationName, 3, 0.2, 0.25, &errorText), qPrintable(errorText));
     destinationPart.closeUrl();
@@ -2524,18 +2537,8 @@ void PartTest::testEditPdfNamedDestinationAndLink()
 
     Okular::Part destinationPartForLink(nullptr, {});
     QVERIFY(openDocument(&destinationPartForLink, destinationFile));
-    QVERIFY2(destinationPartForLink.m_document->saveWithInternalLinkDestinationChanged(destinationFile,
-                                                                                 editedLinkFile,
-                                                                                 1,
-                                                                                 sourceLinkRectangle.left(),
-                                                                                 sourceLinkRectangle.top(),
-                                                                                 sourceLinkRectangle.right(),
-                                                                                 sourceLinkRectangle.bottom(),
-                                                                                 destinationName,
-                                                                                 2,
-                                                                                 0.35,
-                                                                                 0.45,
-                                                                                 &errorText),
+    QVERIFY2(destinationPartForLink.m_document->saveWithInternalLinkDestinationChanged(
+                 destinationFile, editedLinkFile, 1, sourceLinkRectangle.left(), sourceLinkRectangle.top(), sourceLinkRectangle.right(), sourceLinkRectangle.bottom(), destinationName, 2, 0.35, 0.45, &errorText),
              qPrintable(errorText));
     destinationPartForLink.closeUrl();
 
@@ -2833,8 +2836,8 @@ void PartTest::testCombinePdfFilesPreservesSourceLinkNamespaces()
     QString errorText;
     QCOMPARE(editorPart.m_document->pdfPageCount(sourceFile, &errorText), 3);
     QVERIFY2(errorText.isEmpty(), qPrintable(errorText));
-    QVERIFY2(editorPart.m_document->combinePdfFiles(QStringList { sourceFile, sourceFile }, namespacedFile, true, &errorText), qPrintable(errorText));
-    QVERIFY2(editorPart.m_document->combinePdfFiles(QStringList { sourceFile, sourceFile }, asIsFile, false, &errorText), qPrintable(errorText));
+    QVERIFY2(editorPart.m_document->combinePdfFiles(QStringList {sourceFile, sourceFile}, namespacedFile, true, &errorText), qPrintable(errorText));
+    QVERIFY2(editorPart.m_document->combinePdfFiles(QStringList {sourceFile, sourceFile}, asIsFile, false, &errorText), qPrintable(errorText));
 
     const QString debugOutput = QString::fromLocal8Bit(qgetenv("MENGSHEE_COMBINE_TEST_OUTPUT"));
     if (!debugOutput.isEmpty()) {
@@ -3229,11 +3232,7 @@ void PartTest::testAnnotWindow()
     latexAnnot->setContents(QStringLiteral("\\LaTeX{}"));
     latexAnnot->setOkularLatex(true);
     part.m_document->addPageAnnotation(0, latexAnnot);
-    QVERIFY(QMetaObject::invokeMethod(part.m_pageView,
-                                      "openAnnotationWindow",
-                                      Qt::DirectConnection,
-                                      Q_ARG(Okular::Annotation *, latexAnnot),
-                                      Q_ARG(int, 0)));
+    QVERIFY(QMetaObject::invokeMethod(part.m_pageView, "openAnnotationWindow", Qt::DirectConnection, Q_ARG(Okular::Annotation *, latexAnnot), Q_ARG(int, 0)));
 
     QTRY_COMPARE(part.m_pageView->findChildren<QFrame *>(QStringLiteral("AnnotWindow")).size(), existingWindows.size() + 1);
     QFrame *latexWindow = nullptr;
@@ -3281,11 +3280,7 @@ void PartTest::testAnnotWindowAppearance()
     part.m_document->addPageAnnotation(0, annotation);
 
     const QList<QFrame *> existingWindows = part.m_pageView->findChildren<QFrame *>(QStringLiteral("AnnotWindow"));
-    QVERIFY(QMetaObject::invokeMethod(part.m_pageView,
-                                      "openAnnotationWindow",
-                                      Qt::DirectConnection,
-                                      Q_ARG(Okular::Annotation *, annotation),
-                                      Q_ARG(int, 0)));
+    QVERIFY(QMetaObject::invokeMethod(part.m_pageView, "openAnnotationWindow", Qt::DirectConnection, Q_ARG(Okular::Annotation *, annotation), Q_ARG(int, 0)));
     QTRY_COMPARE(part.m_pageView->findChildren<QFrame *>(QStringLiteral("AnnotWindow")).size(), existingWindows.size() + 1);
 
     QFrame *window = nullptr;

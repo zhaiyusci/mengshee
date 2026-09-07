@@ -33,6 +33,7 @@ public:
     ~ThumbnailList() override;
 
     void setPageView(PageView *pageView);
+    void setPageReorderingEnabled(bool enabled);
 
     // inherited: create thumbnails ( inherited as a DocumentObserver )
     void notifySetup(const QList<Okular::Page *> &pages, int setupFlags) override;

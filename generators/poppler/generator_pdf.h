@@ -45,12 +45,7 @@ class PopplerAnnotationProxy;
  * contents from out OutputDevs when rendering finishes.
  *
  */
-class PDFGenerator : public Okular::Generator,
-                     public Okular::ConfigInterface,
-                     public Okular::PrintInterface,
-                     public Okular::SaveInterface,
-                     public Okular::PageInsertionInterface,
-                     public Okular::PdfLinkEditingInterface
+class PDFGenerator : public Okular::Generator, public Okular::ConfigInterface, public Okular::PrintInterface, public Okular::SaveInterface, public Okular::PageInsertionInterface, public Okular::PdfLinkEditingInterface
 {
     Q_OBJECT
     Q_INTERFACES(Okular::Generator)
@@ -112,19 +107,10 @@ public:
     bool saveWithBlankPageInsertedAfter(const QString &sourceFileName, const QString &outputFileName, int pageNumber, QString *errorText) override;
     bool saveWithBlankPageInsertedAfter(const QString &sourceFileName, const QString &outputFileName, int pageNumber, double width, double height, QString *errorText) override;
     bool canInsertPageFromPdf() const override;
-    bool saveWithPdfPageInsertedAfter(const QString &sourceFileName,
-                                      const QString &outputFileName,
-                                      int pageNumber,
-                                      const QString &insertedFileName,
-                                      int pageToInsert,
-                                      bool resolveDestinationConflicts,
-                                      QString *errorText) override;
+    bool saveWithPdfPageInsertedAfter(const QString &sourceFileName, const QString &outputFileName, int pageNumber, const QString &insertedFileName, int pageToInsert, bool resolveDestinationConflicts, QString *errorText) override;
     bool canCombinePdfFiles() const override;
     int pdfPageCount(const QString &inputFileName, QString *errorText) override;
-    bool combinePdfFiles(const QStringList &inputFileNames,
-                         const QString &outputFileName,
-                         bool resolveDestinationConflicts,
-                         QString *errorText) override;
+    bool combinePdfFiles(const QStringList &inputFileNames, const QString &outputFileName, bool resolveDestinationConflicts, QString *errorText) override;
     bool canDeletePage() const override;
     bool saveWithPageDeleted(const QString &sourceFileName, const QString &outputFileName, int pageNumber, QString *errorText) override;
     bool canMovePage() const override;
@@ -134,22 +120,9 @@ public:
     bool canRotatePage() const override;
     bool saveWithPageRotated(const QString &sourceFileName, const QString &outputFileName, int pageNumber, int rotationDegrees, QString *errorText) override;
     bool canEditPdfLinks() const override;
-    bool saveWithNamedDestinationAdded(const QString &sourceFileName,
-                                       const QString &outputFileName,
-                                       const QString &name,
-                                       int pageNumber,
-                                       double normalizedX,
-                                       double normalizedY,
-                                       QString *errorText) override;
-    bool saveWithNamedDestinationRenamed(const QString &sourceFileName,
-                                         const QString &outputFileName,
-                                         const QString &oldName,
-                                         const QString &newName,
-                                         QString *errorText) override;
-    bool saveWithNamedDestinationDeleted(const QString &sourceFileName,
-                                         const QString &outputFileName,
-                                         const QString &name,
-                                         QString *errorText) override;
+    bool saveWithNamedDestinationAdded(const QString &sourceFileName, const QString &outputFileName, const QString &name, int pageNumber, double normalizedX, double normalizedY, QString *errorText) override;
+    bool saveWithNamedDestinationRenamed(const QString &sourceFileName, const QString &outputFileName, const QString &oldName, const QString &newName, QString *errorText) override;
+    bool saveWithNamedDestinationDeleted(const QString &sourceFileName, const QString &outputFileName, const QString &name, QString *errorText) override;
     bool saveWithInternalLinkDestinationChanged(const QString &sourceFileName,
                                                 const QString &outputFileName,
                                                 int sourcePageNumber,
@@ -174,6 +147,7 @@ public:
                                      double destinationX,
                                      double destinationY,
                                      QString *errorText) override;
+    bool saveWithPdfLinkDeleted(const QString &sourceFileName, const QString &outputFileName, int sourcePageNumber, double linkLeft, double linkTop, double linkRight, double linkBottom, QString *errorText) override;
 
     bool canSign() const override;
     std::pair<Okular::SigningResult, QString> sign(const Okular::NewSignatureData &oData, const QString &rFilename) override;

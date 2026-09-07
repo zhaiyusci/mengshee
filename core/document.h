@@ -1006,16 +1006,11 @@ public:
      * @p pageToInsert from @p insertedFileName inserted after @p pageNumber.
      * Both page numbers are 1-based except @p pageNumber, where 0 means insert
      * before the first page. Local links are always retained. If
-     * @p resolveDestinationConflicts is true, copied named destinations receive
+     * @p
+     * resolveDestinationConflicts is true, copied named destinations receive
      * a common unique suffix and matching links are rewritten.
      */
-    bool saveWithPdfPageInsertedAfter(const QString &sourceFileName,
-                                      const QString &outputFileName,
-                                      int pageNumber,
-                                      const QString &insertedFileName,
-                                      int pageToInsert,
-                                      bool resolveDestinationConflicts,
-                                      QString *errorText);
+    bool saveWithPdfPageInsertedAfter(const QString &sourceFileName, const QString &outputFileName, int pageNumber, const QString &insertedFileName, int pageToInsert, bool resolveDestinationConflicts, QString *errorText);
 
     /**
      * Returns whether the current document backend can combine complete PDF
@@ -1033,10 +1028,7 @@ public:
      * @p resolveDestinationConflicts is true, every source PDF receives a
      * distinct suffixed named-destination namespace.
      */
-    bool combinePdfFiles(const QStringList &inputFileNames,
-                         const QString &outputFileName,
-                         bool resolveDestinationConflicts,
-                         QString *errorText);
+    bool combinePdfFiles(const QStringList &inputFileNames, const QString &outputFileName, bool resolveDestinationConflicts, QString *errorText);
 
     /**
      * Returns whether the current document backend can write a copy with a page
@@ -1086,26 +1078,13 @@ public:
     bool canEditPdfLinks() const;
 
     /** Writes a copy with a named destination added or replaced. Page numbers are 1-based. */
-    bool saveWithNamedDestinationAdded(const QString &sourceFileName,
-                                       const QString &outputFileName,
-                                       const QString &name,
-                                       int pageNumber,
-                                       double normalizedX,
-                                       double normalizedY,
-                                       QString *errorText);
+    bool saveWithNamedDestinationAdded(const QString &sourceFileName, const QString &outputFileName, const QString &name, int pageNumber, double normalizedX, double normalizedY, QString *errorText);
 
     /** Writes a copy with a named destination renamed and exact internal references updated. */
-    bool saveWithNamedDestinationRenamed(const QString &sourceFileName,
-                                         const QString &outputFileName,
-                                         const QString &oldName,
-                                         const QString &newName,
-                                         QString *errorText);
+    bool saveWithNamedDestinationRenamed(const QString &sourceFileName, const QString &outputFileName, const QString &oldName, const QString &newName, QString *errorText);
 
     /** Writes a copy with a named destination definition removed. References are preserved. */
-    bool saveWithNamedDestinationDeleted(const QString &sourceFileName,
-                                         const QString &outputFileName,
-                                         const QString &name,
-                                         QString *errorText);
+    bool saveWithNamedDestinationDeleted(const QString &sourceFileName, const QString &outputFileName, const QString &name, QString *errorText);
 
     /** Writes a copy with one internal link redirected. Page numbers are 1-based. */
     bool saveWithInternalLinkDestinationChanged(const QString &sourceFileName,
@@ -1134,6 +1113,9 @@ public:
                                      double destinationX,
                                      double destinationY,
                                      QString *errorText);
+
+    /** Writes a copy with one PDF link annotation removed. Page numbers are 1-based. */
+    bool saveWithPdfLinkDeleted(const QString &sourceFileName, const QString &outputFileName, int sourcePageNumber, double linkLeft, double linkTop, double linkRight, double linkBottom, QString *errorText);
 
     /**
      * Sets the history to be clean
