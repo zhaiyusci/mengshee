@@ -45,6 +45,10 @@ the canonical CMake `staging` layout and requires its `runtime\VERSION` to match
 the selected source tree. Old `dist\stemtex-installer` and daemon-static trees
 are not package inputs.
 
+When `STEMTEX_STAGE_ROOT` is omitted, the Windows release pipeline uses only the
+versioned stage at `WORKSPACE_ROOT\stemtex\StemTeX-<version>`. It never falls
+back to a source checkout's development `staging` directory.
+
 For release work, install StemTeX into a fresh, version-specific directory and
 pass both paths to the Mengshee driver:
 

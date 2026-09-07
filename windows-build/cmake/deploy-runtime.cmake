@@ -62,8 +62,6 @@ function(mengshee_find_stemtex_root out_var)
             if(NOT _candidate_version STREQUAL _stage_version)
                 continue()
             endif()
-        elseif(NOT IS_DIRECTORY "${_candidate}/staging/runtime")
-            continue()
         endif()
 
             get_filename_component(_stemtex "${_candidate}" ABSOLUTE)
@@ -103,7 +101,15 @@ function(mengshee_resolve_stemtex_stage out_var root)
     if(DEFINED STEMTEX_STAGE_ROOT AND NOT "${STEMTEX_STAGE_ROOT}" STREQUAL "")
         get_filename_component(_stage "${STEMTEX_STAGE_ROOT}" ABSOLUTE)
     else()
-        get_filename_component(_stage "${root}/staging" ABSOLUTE)
+        file(READ "${root}/VERSION" _source_version)
+        string(STRIP "${_source_version}" _source_version)
+        get_filename_component(_stage "${WORKSPACE_ROOT}/stemtex/StemTeX-${_source_version}" ABSOLUTE)
+        if(NOT IS_DIRECTORY "${_stage}/runtime")
+            message(FATAL_ERROR
+                "Cannot find the versioned StemTeX release stage ${_stage}. "
+                "Build that stage first or pass -DSTEMTEX_STAGE_ROOT=<stage>; "
+                "the Windows release pipeline does not package a source-tree development staging directory.")
+        endif()
     endif()
 
     foreach(_required IN ITEMS
