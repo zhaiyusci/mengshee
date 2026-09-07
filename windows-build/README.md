@@ -179,7 +179,8 @@ of the Windows pipeline.
 - `cmake\build-kf6-module.cmake`
   - CMake-based KF6 module checkout, configure, build, and install driver.
 - `cmake\build-zlib-sdk.cmake`, `cmake\build-freetype-sdk.cmake`,
-  `cmake\build-libintl-shim-sdk.cmake`, `cmake\build-poppler-sdk.cmake`
+  `cmake\build-libintl-shim-sdk.cmake`, `cmake\build-poppler-sdk.cmake`,
+  `cmake\build-tesseract-sdk.cmake`
   - CMake-based support library builders.
 - `cmake\install-gettext-native-sdk.cmake`,
   `cmake\install-winflexbison-sdk.cmake`
@@ -346,6 +347,20 @@ Mengshee PDF generator must be rebuilt together. The generic page-sequence
 editor is compiled into the generator even though the Poppler SDK build uses
 `ENABLE_UTILS=OFF`. Maintenance details are in
 `docs/local-poppler-fork.md`.
+
+Build the cross-platform English OCR runtime and its single bundled model:
+
+```powershell
+& "C:\Qt\Tools\CMake_64\bin\cmake.exe" `
+  -DQT_PREFIX=C:/Qt/6.11.1/msvc2022_64 `
+  -DVCVARS="C:/Program Files/Microsoft Visual Studio/18/Community/VC/Auxiliary/Build/vcvars64.bat" `
+  -DWORKSPACE_ROOT=C:/Users/jairy/Documents/okular/windows_build `
+  -P windows-build/cmake/build-tesseract-sdk.cmake
+```
+
+This builds pinned Tesseract and Leptonica shared libraries with image-file
+codecs disabled (Mengshee supplies rendered page pixels directly), then installs
+only `eng.traineddata`. The same Tesseract API is used on Windows and Linux.
 
 `install-gettext-native-sdk.cmake` installs pinned native Windows
 `gettext-iconv-windows` tools under

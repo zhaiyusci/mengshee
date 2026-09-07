@@ -28,6 +28,7 @@
 #include <QAbstractScrollArea>
 #include <QList>
 #include <QStringList>
+#include <QUrl>
 
 #include "signaturepartutils.h"
 
@@ -76,7 +77,7 @@ public:
     void setAdvancedModeEnabled(bool enabled);
     OKULARPART_EXPORT bool namedDestinationsVisible() const;
     void startNamedDestinationCreation();
-    void startInternalLinkCreation();
+    void startLinkCreation();
 
     // Zoom mode ( last 4 are internally used only! )
     enum ZoomMode { ZoomFixed = 0, ZoomFitWidth = 1, ZoomFitPage = 2, ZoomFitAuto = 3, ZoomIn, ZoomOut, ZoomRefreshCurrent, ZoomActual };
@@ -219,14 +220,14 @@ Q_SIGNALS:
      * possible and otherwise falls back to the destination page number.
      */
     void openInternalLinkInAuxiliaryFrame(const Okular::DocumentViewport &viewport, const QString &title);
-    /** Requests editing the PDF-level destination of an internal link. */
-    void editInternalLinkRequested(int sourcePageNumber, const QRectF &normalizedLinkRectangle, const QString &currentDestinationName, const Okular::DocumentViewport &currentDestination);
+    /** Requests editing the PDF-level target of an internal or external link. */
+    void editPdfLinkRequested(int sourcePageNumber, const QRectF &normalizedLinkRectangle, const QString &currentDestinationName, const Okular::DocumentViewport &currentDestination, const QUrl &currentExternalUrl);
     /** Requests moving a named destination to a point selected in this view. */
     void moveNamedDestinationRequested(const QString &name, int pageNumber, const Okular::NormalizedPoint &position);
     /** Requests creating a named destination at a point selected in this view. */
     void createNamedDestinationRequested(int pageNumber, const Okular::NormalizedPoint &position);
-    /** Requests creating an internal link over a rectangle drawn in this view. */
-    void createInternalLinkRequested(int sourcePageNumber, const QRectF &normalizedLinkRectangle);
+    /** Requests creating an internal or external link over a rectangle drawn in this view. */
+    void createPdfLinkRequested(int sourcePageNumber, const QRectF &normalizedLinkRectangle);
     /** Requests moving or resizing a PDF link annotation in this view. */
     void changePdfLinkRectangleRequested(int sourcePageNumber, const QRectF &oldNormalizedRectangle, const QRectF &newNormalizedRectangle);
     /** Requests deleting the selected PDF link annotation. */

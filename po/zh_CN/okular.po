@@ -6813,6 +6813,9 @@ msgstr "新的目录目标无效。"
 msgid "Drag a rectangle over the area that should become an internal link. Press Esc to cancel."
 msgstr "在要创建内部链接的区域拖出一个矩形。按 Esc 取消。"
 
+msgid "Drag a rectangle over the area that should become a link. Press Esc to cancel."
+msgstr "在要创建链接的区域拖出一个矩形。按 Esc 取消。"
+
 msgid "Show advanced PDF editing tools for pages, contents, links, and named destinations"
 msgstr "显示用于页面、目录、链接和具名目标的高级 PDF 编辑工具"
 
@@ -7126,8 +7129,17 @@ msgstr "无法在此处创建内部链接。"
 msgid "This internal link cannot be edited."
 msgstr "无法编辑此内部链接。"
 
+msgid "A link cannot be created here."
+msgstr "无法在此处创建链接。"
+
+msgid "This link cannot be edited."
+msgstr "无法编辑此链接。"
+
 msgid "Create Internal Link"
 msgstr "创建内部链接"
+
+msgid "Create Link"
+msgstr "创建链接"
 
 msgid "Edit Link Destination"
 msgstr "编辑链接目标"
@@ -7144,6 +7156,9 @@ msgstr "%1 — 第 %2 页"
 
 msgid "Direct page position"
 msgstr "直接页面位置"
+
+msgid "External URL"
+msgstr "外部网址"
 
 msgid "% x"
 msgstr "% x"
@@ -7162,11 +7177,18 @@ msgid "Create Internal Link"
 msgstr "创建内部链接"
 
 msgctxt "Undo action"
+msgid "Create Link"
+msgstr "创建链接"
+
+msgctxt "Undo action"
 msgid "Edit Link Destination"
 msgstr "编辑链接目标"
 
 msgid "Could not create the internal link."
 msgstr "无法创建内部链接。"
+
+msgid "Could not create the link."
+msgstr "无法创建链接。"
 
 msgid "Could not edit the link destination."
 msgstr "无法编辑链接目标。"
@@ -7180,6 +7202,12 @@ msgstr "已创建指向具名目标“%1”的链接。请保存文档以保留�
 
 msgid "Updated the internal link. Save the document to keep this change."
 msgstr "已更新内部链接。请保存文档以保留此更改。"
+
+msgid "Created the external link. Save the document to keep this change."
+msgstr "已创建外部链接。请保存文档以保留此更改。"
+
+msgid "Updated the external link. Save the document to keep this change."
+msgstr "已更新外部链接。请保存文档以保留此更改。"
 
 #, kde-format
 msgid "Linked to named destination '%1'. Save the document to keep this change."
@@ -7207,6 +7235,9 @@ msgstr "在此处添加具名目标..."
 msgid "Create Internal Link..."
 msgstr "创建内部链接..."
 
+msgid "Create Link..."
+msgstr "创建链接..."
+
 msgid "Advanced PDF Editing Toolbar"
 msgstr "高级 PDF 编辑工具栏"
 
@@ -7218,6 +7249,9 @@ msgstr "在页面上单击一个位置以添加具名目标"
 
 msgid "Draw a rectangle on the page to create an internal link"
 msgstr "在页面上拖出矩形以创建内部链接"
+
+msgid "Draw a rectangle on the page to create a link"
+msgstr "在页面上拖出矩形以创建链接"
 
 msgid "Click where the named destination should be placed. Press Esc to cancel."
 msgstr "单击具名目标应放置的位置。按 Esc 取消。"
@@ -7266,3 +7300,109 @@ msgstr "无法在单独进程中打开文档。"
 
 msgid "Could not open the generated PDF in a separate process."
 msgstr "无法在单独进程中打开生成的 PDF。"
+
+msgid "English OCR support is not installed."
+msgstr "未安装英文 OCR 支持。"
+
+msgid "Could not open the PDF for text recognition."
+msgstr "无法打开 PDF 进行文字识别。"
+
+msgid "The selected OCR page range is invalid."
+msgstr "所选 OCR 页码范围无效。"
+
+msgid "The English OCR model could not be loaded."
+msgstr "无法加载英文 OCR 模型。"
+
+#, kde-format
+msgid "Page %1 could not be read for text recognition."
+msgstr "无法读取第 %1 页进行文字识别。"
+
+#, kde-format
+msgid "Page %1 could not be rendered for text recognition."
+msgstr "无法渲染第 %1 页进行文字识别。"
+
+#, kde-format
+msgid "Text recognition failed on page %1."
+msgstr "第 %1 页的文字识别失败。"
+
+#, kde-format
+msgid "Writing the OCR text layer failed: %1"
+msgstr "写入 OCR 文字层失败：%1"
+
+msgid "Writing the OCR text layer failed because of an unknown internal error."
+msgstr "由于未知内部错误，OCR 文字层写入失败。"
+
+msgid "Recognize English Text..."
+msgstr "识别英文文字..."
+
+msgid "Add a searchable English text layer to scanned PDF pages"
+msgstr "为扫描 PDF 页面添加可搜索的英文文字层"
+
+msgid "English text recognition is only available for local PDF files."
+msgstr "英文文字识别仅适用于本地 PDF 文件。"
+
+msgid "Recognize English Text"
+msgstr "识别英文文字"
+
+msgid "Add an invisible, searchable English text layer to scanned pages. The page image is not changed."
+msgstr "为扫描页面添加不可见但可搜索的英文文字层，不会改变页面图像。"
+
+#, kde-format
+msgid "Current page (%1)"
+msgstr "当前页（%1）"
+
+msgid "For example: 1-3, 5, 8-10"
+msgstr "例如：1-3、5、8-10"
+
+msgid "Recognition language: English"
+msgstr "识别语言：英文"
+
+msgid "Skip pages that already contain selectable text"
+msgstr "跳过已经包含可选文字的页面"
+
+msgctxt "@action:button"
+msgid "Recognize"
+msgstr "识别"
+
+#, kde-format
+msgid "Enter a valid page range between 1 and %1."
+msgstr "请输入 1 到 %1 之间的有效页码范围。"
+
+msgid "Could not create the Mengshee OCR working files."
+msgstr "无法创建 Mengshee OCR 工作文件。"
+
+msgid "Could not prepare the current document for text recognition."
+msgstr "无法准备当前文档以进行文字识别。"
+
+#, kde-format
+msgid "Could not prepare the current document for text recognition. %1"
+msgstr "无法准备当前文档以进行文字识别。%1"
+
+msgid "Preparing English text recognition..."
+msgstr "正在准备英文文字识别..."
+
+#, kde-format
+msgid "Recognizing English text on page %1..."
+msgstr "正在识别第 %1 页的英文文字..."
+
+msgid "English text recognition failed."
+msgstr "英文文字识别失败。"
+
+#, kde-format
+msgid "English text recognition failed. %1"
+msgstr "英文文字识别失败。%1"
+
+msgid "All selected pages already contain selectable text."
+msgstr "所有选中的页面都已经包含可选文字。"
+
+msgid "No English text was recognized on the selected pages."
+msgstr "在选中的页面上没有识别出英文文字。"
+
+msgctxt "Undo action"
+msgid "Recognize Text"
+msgstr "识别文字"
+
+#, kde-format
+msgid "Recognized English text on %1 page (%2 words). Save the document to keep this change."
+msgid_plural "Recognized English text on %1 pages (%2 words). Save the document to keep this change."
+msgstr[0] "已在 %1 页上识别出英文文字（%2 个单词）。请保存文档以保留此更改。"

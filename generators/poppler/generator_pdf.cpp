@@ -22,6 +22,7 @@
 
 // qt/kde includes
 #include <QCheckBox>
+#include <QCoreApplication>
 #include <QColor>
 #include <QComboBox>
 #include <QDebug>
@@ -35,6 +36,7 @@
 #include <QPainter>
 #include <QPrinter>
 #include <QStack>
+#include <QStandardPaths>
 #include <QTemporaryFile>
 #include <QTextStream>
 #include <QTimeZone>
@@ -77,6 +79,11 @@
 #include <PDFDoc.h>
 
 #include <functional>
+
+#if HAVE_TESSERACT
+#include <tesseract/baseapi.h>
+#include <tesseract/resultiterator.h>
+#endif
 
 Q_DECLARE_METATYPE(Poppler::Annotation *)
 Q_DECLARE_METATYPE(Poppler::FontInfo)
@@ -3008,6 +3015,41 @@ bool PDFGenerator::saveWithInternalLinkCreated(const QString &sourceFileName,
         errorText);
 }
 
+bool PDFGenerator::saveWithExternalLinkDestinationChanged(const QString &sourceFileName,
+                                                          const QString &outputFileName,
+                                                          int sourcePageNumber,
+                                                          double linkLeft,
+                                                          double linkTop,
+                                                          double linkRight,
+                                                          double linkBottom,
+                                                          const QString &url,
+                                                          QString *errorText)
+{
+    const std::string encodedUrl = url.toUtf8().toStdString();
+    return runPdfPagesOperation(
+        [&] {
+            return PdfPageSequenceEditor::editExternalLinkDestination(
+                pdfPagesFileName(sourceFileName), pdfPagesFileName(outputFileName), sourcePageNumber, linkLeft, linkTop, linkRight, linkBottom, encodedUrl);
+        },
+        errorText);
+}
+
+bool PDFGenerator::saveWithExternalLinkCreated(const QString &sourceFileName,
+                                               const QString &outputFileName,
+                                               int sourcePageNumber,
+                                               double linkLeft,
+                                               double linkTop,
+                                               double linkRight,
+                                               double linkBottom,
+                                               const QString &url,
+                                               QString *errorText)
+{
+    const std::string encodedUrl = url.toUtf8().toStdString();
+    return runPdfPagesOperation(
+        [&] { return PdfPageSequenceEditor::createExternalLink(pdfPagesFileName(sourceFileName), pdfPagesFileName(outputFileName), sourcePageNumber, linkLeft, linkTop, linkRight, linkBottom, encodedUrl); },
+        errorText);
+}
+
 bool PDFGenerator::saveWithPdfLinkRectangleChanged(const QString &sourceFileName,
                                                    const QString &outputFileName,
                                                    int sourcePageNumber,
@@ -3041,6 +3083,188 @@ bool PDFGenerator::saveWithPdfLinkRectangleChanged(const QString &sourceFileName
 bool PDFGenerator::saveWithPdfLinkDeleted(const QString &sourceFileName, const QString &outputFileName, int sourcePageNumber, double linkLeft, double linkTop, double linkRight, double linkBottom, QString *errorText)
 {
     return runPdfPagesOperation([&] { return PdfPageSequenceEditor::deleteLink(pdfPagesFileName(sourceFileName), pdfPagesFileName(outputFileName), sourcePageNumber, linkLeft, linkTop, linkRight, linkBottom); }, errorText);
+}
+
+bool PDFGenerator::canPerformEnglishOcr() const
+{
+#if HAVE_TESSERACT
+    return true;
+#else
+    return false;
+#endif
+}
+
+Okular::OcrResult PDFGenerator::saveWithEnglishOcr(const QString &sourceFileName,
+                                                   const QString &outputFileName,
+                                                   const QList<int> &pageNumbers,
+                                                   bool skipPagesWithText,
+                                                   const Okular::PdfOcrInterface::ProgressCallback &progress)
+{
+    Okular::OcrResult result;
+#if !HAVE_TESSERACT
+    Q_UNUSED(sourceFileName);
+    Q_UNUSED(outputFileName);
+    Q_UNUSED(pageNumbers);
+    Q_UNUSED(skipPagesWithText);
+    Q_UNUSED(progress);
+    result.errorText = i18n("English OCR support is not installed.");
+    return result;
+#else
+    std::unique_ptr<Poppler::Document> document = Poppler::Document::load(sourceFileName, nullptr, nullptr);
+    if (!document || document->isLocked()) {
+        result.errorText = i18n("Could not open the PDF for text recognition.");
+        return result;
+    }
+    document->setRenderHint(Poppler::Document::Antialiasing, true);
+    document->setRenderHint(Poppler::Document::TextAntialiasing, true);
+
+    QList<int> pages = pageNumbers;
+    std::sort(pages.begin(), pages.end());
+    pages.erase(std::unique(pages.begin(), pages.end()), pages.end());
+    if (pages.isEmpty() || pages.constFirst() < 1 || pages.constLast() > document->numPages()) {
+        result.errorText = i18n("The selected OCR page range is invalid.");
+        return result;
+    }
+
+    QString tessdataFile = QStandardPaths::locate(QStandardPaths::GenericDataLocation, QStringLiteral("mengshee/tessdata/eng.traineddata"));
+    const QStringList applicationCandidates = {
+        QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("../share/mengshee/tessdata/eng.traineddata")),
+        QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("data/mengshee/tessdata/eng.traineddata")),
+    };
+    if (tessdataFile.isEmpty()) {
+        for (const QString &candidate : applicationCandidates) {
+            if (QFileInfo::exists(candidate)) {
+                tessdataFile = QFileInfo(candidate).absoluteFilePath();
+                break;
+            }
+        }
+    }
+
+    tesseract::TessBaseAPI engine;
+    const QByteArray tessdataPath = tessdataFile.isEmpty() ? QByteArray() : QFile::encodeName(QFileInfo(tessdataFile).absolutePath());
+    if (engine.Init(tessdataPath.isEmpty() ? nullptr : tessdataPath.constData(), "eng", tesseract::OEM_LSTM_ONLY) != 0) {
+        result.errorText = i18n("The English OCR model could not be loaded.");
+        return result;
+    }
+    engine.SetPageSegMode(tesseract::PSM_AUTO);
+
+    const auto printableEnglish = [](const char *utf8Text) {
+        QString text = QString::fromUtf8(utf8Text ? utf8Text : "").trimmed();
+        text.replace(QChar(0x2018), QLatin1Char('\''));
+        text.replace(QChar(0x2019), QLatin1Char('\''));
+        text.replace(QChar(0x201c), QLatin1Char('"'));
+        text.replace(QChar(0x201d), QLatin1Char('"'));
+        text.replace(QChar(0x2013), QLatin1Char('-'));
+        text.replace(QChar(0x2014), QLatin1Char('-'));
+        text.replace(QChar(0x2026), QStringLiteral("..."));
+        QByteArray ascii;
+        ascii.reserve(text.size());
+        for (const QChar character : std::as_const(text)) {
+            const ushort value = character.unicode();
+            if (value >= 0x20 && value <= 0x7e) {
+                ascii.append(static_cast<char>(value));
+            }
+        }
+        return ascii.trimmed().toStdString();
+    };
+
+    constexpr double dpi = 300.0;
+    std::vector<PdfPageSequenceEditor::OcrPage> recognizedPages;
+    recognizedPages.reserve(pages.size());
+    for (int completed = 0; completed < pages.size(); ++completed) {
+        const int pageNumber = pages.at(completed);
+        if (progress && !progress(completed, pages.size(), pageNumber)) {
+            result.cancelled = true;
+            engine.End();
+            return result;
+        }
+
+        std::unique_ptr<Poppler::Page> page = document->page(pageNumber - 1);
+        if (!page) {
+            result.errorText = i18n("Page %1 could not be read for text recognition.", pageNumber);
+            engine.End();
+            return result;
+        }
+        if (skipPagesWithText) {
+            const auto textBoxes = page->textList();
+            const bool hasSelectableText = std::ranges::any_of(textBoxes, [](const std::unique_ptr<Poppler::TextBox> &box) { return box && !box->text().trimmed().isEmpty(); });
+            if (hasSelectableText) {
+                ++result.skippedPages;
+                continue;
+            }
+        }
+
+        QImage image = page->renderToImage(dpi, dpi).convertToFormat(QImage::Format_Grayscale8);
+        if (image.isNull()) {
+            result.errorText = i18n("Page %1 could not be rendered for text recognition.", pageNumber);
+            engine.End();
+            return result;
+        }
+
+        engine.SetImage(image.bits(), image.width(), image.height(), 1, image.bytesPerLine());
+        engine.SetSourceResolution(static_cast<int>(dpi));
+        if (engine.Recognize(nullptr) != 0) {
+            result.errorText = i18n("Text recognition failed on page %1.", pageNumber);
+            engine.Clear();
+            engine.End();
+            return result;
+        }
+
+        PdfPageSequenceEditor::OcrPage recognizedPage;
+        recognizedPage.pageNumber = pageNumber;
+        if (tesseract::ResultIterator *iterator = engine.GetIterator()) {
+            do {
+                std::unique_ptr<char[]> rawText(iterator->GetUTF8Text(tesseract::RIL_WORD));
+                int left = 0;
+                int top = 0;
+                int right = 0;
+                int bottom = 0;
+                const std::string word = printableEnglish(rawText.get());
+                if (!word.empty() && iterator->BoundingBox(tesseract::RIL_WORD, &left, &top, &right, &bottom) && right > left && bottom > top) {
+                    const double normalizedLeft = std::clamp(static_cast<double>(left) / image.width(), 0.0, 1.0);
+                    const double normalizedTop = std::clamp(static_cast<double>(top) / image.height(), 0.0, 1.0);
+                    const double normalizedRight = std::clamp(static_cast<double>(right) / image.width(), 0.0, 1.0);
+                    const double normalizedBottom = std::clamp(static_cast<double>(bottom) / image.height(), 0.0, 1.0);
+                    recognizedPage.words.push_back({ word, normalizedLeft, normalizedTop, normalizedRight, normalizedBottom });
+                }
+            } while (iterator->Next(tesseract::RIL_WORD));
+        }
+        engine.Clear();
+
+        if (!recognizedPage.words.empty()) {
+            result.recognizedWords += static_cast<int>(recognizedPage.words.size());
+            ++result.recognizedPages;
+            recognizedPages.push_back(std::move(recognizedPage));
+        }
+    }
+    engine.End();
+
+    if (progress && !progress(pages.size(), pages.size(), pages.constLast())) {
+        result.cancelled = true;
+        return result;
+    }
+    if (recognizedPages.empty()) {
+        result.success = true;
+        return result;
+    }
+
+    try {
+        const PdfPageSequenceEditor::Result writeResult = PdfPageSequenceEditor::addOcrTextLayers(pdfPagesFileName(sourceFileName), pdfPagesFileName(outputFileName), recognizedPages);
+        if (!writeResult.ok()) {
+            result.errorText = QString::fromStdString(writeResult.message);
+            return result;
+        }
+    } catch (const std::exception &exception) {
+        result.errorText = i18n("Writing the OCR text layer failed: %1", QString::fromLocal8Bit(exception.what()));
+        return result;
+    } catch (...) {
+        result.errorText = i18n("Writing the OCR text layer failed because of an unknown internal error.");
+        return result;
+    }
+
+    result.success = true;
+    return result;
+#endif
 }
 
 Okular::AnnotationProxy *PDFGenerator::annotationProxy() const

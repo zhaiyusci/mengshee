@@ -445,6 +445,11 @@ public:
     // Keep track of mouse over link object
     const Okular::ObjectRect *mouseOverLinkObject = nullptr;
 
+    // Link hit at the start of the current left click. Link activation must
+    // require both the press and release to hit this same object; the hover
+    // object can otherwise be stale after a context menu closes.
+    const Okular::ObjectRect *mousePressLinkObject = nullptr;
+
     const Okular::ObjectRect *auxiliaryLinkPressObject = nullptr;
     QPoint auxiliaryLinkPressPos;
     QPointF auxiliaryLinkPressGlobalPos;
@@ -755,7 +760,7 @@ void PageView::startNamedDestinationCreation()
     displayMessage(i18n("Click where the named destination should be placed. Press Esc to cancel."));
 }
 
-void PageView::startInternalLinkCreation()
+void PageView::startLinkCreation()
 {
     if (!d->showNamedDestinations || !d->document->canEditPdfLinks()) {
         return;
@@ -772,7 +777,7 @@ void PageView::startInternalLinkCreation()
     d->pdfLinkDragging = false;
     d->scroller->stop();
     setCursor(Qt::CrossCursor);
-    displayMessage(i18n("Drag a rectangle over the area that should become an internal link. Press Esc to cancel."));
+    displayMessage(i18n("Drag a rectangle over the area that should become a link. Press Esc to cancel."));
 }
 
 void PageView::setupViewport(QWidget *viewport)
@@ -3338,6 +3343,11 @@ void PageView::mouseMoveEvent(QMouseEvent *e)
 
 void PageView::mousePressEvent(QMouseEvent *e)
 {
+    // Any new press ends the previous link-click candidate. In particular,
+    // this prevents a link hovered before opening a context menu from being
+    // activated by the click that dismisses that menu elsewhere on the page.
+    d->mousePressLinkObject = nullptr;
+
     // don't perform any mouse action when no document is shown
     if (d->items.isEmpty()) {
         return;
@@ -3349,6 +3359,17 @@ void PageView::mousePressEvent(QMouseEvent *e)
     }
 
     const QPoint eventPos = contentAreaPoint(e->pos());
+
+    if (e->button() == Qt::LeftButton) {
+        const PageViewItem *pageItem = pickItemOnPoint(eventPos.x(), eventPos.y());
+        if (pageItem) {
+            d->mousePressLinkObject = pageItem->page()->objectRect(Okular::ObjectRect::Action,
+                                                                   pageItem->absToPageX(eventPos.x()),
+                                                                   pageItem->absToPageY(eventPos.y()),
+                                                                   pageItem->uncroppedWidth(),
+                                                                   pageItem->uncroppedHeight());
+        }
+    }
 
     if (d->creatingNamedDestination) {
         if (e->button() == Qt::RightButton) {
@@ -3750,6 +3771,24 @@ void PageView::mouseReleaseEvent(QMouseEvent *e)
 
     const QPoint eventPos = contentAreaPoint(e->pos());
 
+    const Okular::ObjectRect *clickedLinkObject = nullptr;
+    if (leftButton && d->mousePressLinkObject) {
+        const PageViewItem *pageItem = pickItemOnPoint(eventPos.x(), eventPos.y());
+        if (pageItem) {
+            const Okular::ObjectRect *releaseLinkObject = pageItem->page()->objectRect(Okular::ObjectRect::Action,
+                                                                                       pageItem->absToPageX(eventPos.x()),
+                                                                                       pageItem->absToPageY(eventPos.y()),
+                                                                                       pageItem->uncroppedWidth(),
+                                                                                       pageItem->uncroppedHeight());
+            if (releaseLinkObject == d->mousePressLinkObject) {
+                clickedLinkObject = releaseLinkObject;
+            }
+        }
+    }
+    if (leftButton) {
+        d->mousePressLinkObject = nullptr;
+    }
+
     if (leftButton && d->pdfLinkDragging) {
         const int sourcePageNumber = d->selectedPdfLinkPage;
         const QRectF oldRectangle = d->selectedPdfLinkOriginalRect;
@@ -3785,7 +3824,7 @@ void PageView::mouseReleaseEvent(QMouseEvent *e)
             d->internalLinkCreationRect = QRect();
             viewport()->update();
             updateCursor();
-            Q_EMIT createInternalLinkRequested(sourcePageNumber, normalizedLinkRectangle.normalized());
+            Q_EMIT createPdfLinkRequested(sourcePageNumber, normalizedLinkRectangle.normalized());
         } else {
             d->internalLinkCreationDragging = false;
             d->internalLinkCreationPage = -1;
@@ -3883,7 +3922,7 @@ void PageView::mouseReleaseEvent(QMouseEvent *e)
                     return;
                 }
             }
-            if (!mouseReleaseOverLink(d->mouseOverLinkObject) && (e->modifiers() == Qt::ShiftModifier)) {
+            if (!mouseReleaseOverLink(clickedLinkObject) && (e->modifiers() == Qt::ShiftModifier)) {
                 const double nX = pageItem->absToPageX(eventPos.x());
                 const double nY = pageItem->absToPageY(eventPos.y());
                 const Okular::ObjectRect *rect;
@@ -3989,7 +4028,7 @@ void PageView::mouseReleaseEvent(QMouseEvent *e)
 
     case Okular::Settings::EnumMouseMode::TrimSelect: {
         // if it is a left release checks if is over a previous link press
-        if (leftButton && mouseReleaseOverLink(d->mouseOverLinkObject)) {
+        if (leftButton && mouseReleaseOverLink(clickedLinkObject)) {
             selectionClear();
             break;
         }
@@ -4047,7 +4086,7 @@ void PageView::mouseReleaseEvent(QMouseEvent *e)
     }
     case Okular::Settings::EnumMouseMode::RectSelect: {
         // if it is a left release checks if is over a previous link press
-        if (leftButton && mouseReleaseOverLink(d->mouseOverLinkObject)) {
+        if (leftButton && mouseReleaseOverLink(clickedLinkObject)) {
             selectionClear();
             break;
         }
@@ -4223,7 +4262,7 @@ void PageView::mouseReleaseEvent(QMouseEvent *e)
 
     case Okular::Settings::EnumMouseMode::TableSelect: {
         // if it is a left release checks if is over a previous link press
-        if (leftButton && mouseReleaseOverLink(d->mouseOverLinkObject)) {
+        if (leftButton && mouseReleaseOverLink(clickedLinkObject)) {
             selectionClear();
             break;
         }
@@ -4305,7 +4344,7 @@ void PageView::mouseReleaseEvent(QMouseEvent *e)
 
     case Okular::Settings::EnumMouseMode::TextSelect:
         // if it is a left release checks if is over a previous link press
-        if (leftButton && mouseReleaseOverLink(d->mouseOverLinkObject)) {
+        if (leftButton && mouseReleaseOverLink(clickedLinkObject)) {
             selectionClear();
             break;
         }
@@ -5849,6 +5888,9 @@ QMenu *PageView::createProcessLinkMenu(PageViewItem *item, const QPoint eventPos
         }
 
         QMenu *menu = new QMenu(this);
+        // A click outside a native popup closes it. Do not replay that same
+        // click to the PDF page underneath, where it could follow this link.
+        menu->setAttribute(Qt::WA_NoMouseReplay);
 
         // creating the menu and its actions
         QAction *processLink = menu->addAction(i18n("Follow This Link"));
@@ -5857,19 +5899,21 @@ QMenu *PageView::createProcessLinkMenu(PageViewItem *item, const QPoint eventPos
         const bool hasResolvedInternalTarget = viewportForInternalGotoLink(d->document, rect, &target);
         const auto *gotoAction = link->actionType() == Okular::Action::Goto ? static_cast<const Okular::GotoAction *>(link) : nullptr;
         const bool isInternalGoto = gotoAction && !gotoAction->isExternal();
+        const auto *browseAction = dynamic_cast<const Okular::BrowseAction *>(link);
         if (hasResolvedInternalTarget) {
             QAction *openInAuxiliaryFrame = menu->addAction(QIcon::fromTheme(QStringLiteral("view-right-new")), i18n("Open in Auxiliary Frame"));
             openInAuxiliaryFrame->setObjectName(QStringLiteral("OpenLinkInAuxiliaryFrameAction"));
             connect(openInAuxiliaryFrame, &QAction::triggered, this, [this, rect, eventPos]() { requestInternalLinkInAuxiliaryFrame(rect, eventPos); });
         }
-        if (isInternalGoto && d->showNamedDestinations) {
+        if ((isInternalGoto || browseAction) && d->showNamedDestinations && d->document->canEditPdfLinks()) {
             const int sourcePageNumber = item->pageNumber();
             const QRectF normalizedLinkRectangle = rect->region().boundingRect();
-            const QString currentDestinationName = gotoAction->destinationName();
+            const QString currentDestinationName = isInternalGoto ? gotoAction->destinationName() : QString();
+            const QUrl currentExternalUrl = browseAction ? browseAction->url() : QUrl();
             QAction *editLink = menu->addAction(QIcon::fromTheme(QStringLiteral("edit-link"), QIcon::fromTheme(QStringLiteral("document-edit"))), i18n("Edit Link Destination..."));
-            editLink->setObjectName(QStringLiteral("EditInternalLinkAction"));
-            connect(editLink, &QAction::triggered, this, [this, sourcePageNumber, normalizedLinkRectangle, currentDestinationName, target]() {
-                Q_EMIT editInternalLinkRequested(sourcePageNumber, normalizedLinkRectangle, currentDestinationName, target);
+            editLink->setObjectName(QStringLiteral("EditPdfLinkAction"));
+            connect(editLink, &QAction::triggered, this, [this, sourcePageNumber, normalizedLinkRectangle, currentDestinationName, target, currentExternalUrl]() {
+                Q_EMIT editPdfLinkRequested(sourcePageNumber, normalizedLinkRectangle, currentDestinationName, target, currentExternalUrl);
             });
         }
         if (d->showNamedDestinations && d->document->canEditPdfLinks()) {
@@ -5887,15 +5931,14 @@ QMenu *PageView::createProcessLinkMenu(PageViewItem *item, const QPoint eventPos
             }
         }
 
-        if (dynamic_cast<const Okular::BrowseAction *>(link)) {
+        if (browseAction) {
             QAction *actCopyLinkLocation = menu->addAction(QIcon::fromTheme(QStringLiteral("edit-copy")), i18n("Copy Link Address"));
             actCopyLinkLocation->setObjectName(QStringLiteral("CopyLinkLocationAction"));
-            connect(actCopyLinkLocation, &QAction::triggered, menu, [link]() {
-                const Okular::BrowseAction *browseLink = static_cast<const Okular::BrowseAction *>(link);
+            connect(actCopyLinkLocation, &QAction::triggered, menu, [browseAction]() {
                 QClipboard *cb = QApplication::clipboard();
-                cb->setText(browseLink->url().toDisplayString(), QClipboard::Clipboard);
+                cb->setText(browseAction->url().toDisplayString(), QClipboard::Clipboard);
                 if (cb->supportsSelection()) {
-                    cb->setText(browseLink->url().toDisplayString(), QClipboard::Selection);
+                    cb->setText(browseAction->url().toDisplayString(), QClipboard::Selection);
                 }
             });
         }

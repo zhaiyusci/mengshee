@@ -28,6 +28,7 @@
 
 // qt/kde includes
 #include <QApplication>
+#include <QCheckBox>
 #include <QComboBox>
 #include <QContextMenuEvent>
 #include <QCursor>
@@ -43,6 +44,8 @@
 #include <QFileIconProvider>
 #include <QFileInfo>
 #include <QFormLayout>
+#include <QFutureWatcher>
+#include <QGroupBox>
 #include <QHBoxLayout>
 #include <QInputDialog>
 #include <QJsonArray>
@@ -54,9 +57,11 @@
 #include <QMenuBar>
 #include <QMimeDatabase>
 #include <QPainter>
+#include <QPageRanges>
 #include <QPrintDialog>
 #include <QPrintPreviewDialog>
 #include <QPrinter>
+#include <QProgressDialog>
 #include <QPushButton>
 #include <QRadioButton>
 #include <QScopedValueRollback>
@@ -71,7 +76,10 @@
 #include <QVBoxLayout>
 #include <QWidgetAction>
 
+#include <QtConcurrent/QtConcurrentRun>
+
 #include <algorithm>
+#include <atomic>
 #include <exception>
 #include <memory>
 #include <optional>
@@ -972,6 +980,13 @@ void Part::setupViewerActions()
     m_combinePdfFiles->setEnabled(true);
     connect(m_combinePdfFiles, &QAction::triggered, this, &Part::slotCombinePdfFiles);
 
+    m_recognizeEnglishText = ac->addAction(QStringLiteral("tools_recognize_english_text"));
+    m_recognizeEnglishText->setText(i18n("Recognize English Text..."));
+    m_recognizeEnglishText->setIcon(QIcon::fromTheme(QStringLiteral("accessories-character-map"), QIcon::fromTheme(QStringLiteral("edit-find"))));
+    m_recognizeEnglishText->setToolTip(i18n("Add a searchable English text layer to scanned PDF pages"));
+    m_recognizeEnglishText->setEnabled(false);
+    connect(m_recognizeEnglishText, &QAction::triggered, this, &Part::slotRecognizeEnglishText);
+
     m_addCurrentPageToContents = ac->addAction(QStringLiteral("tools_add_current_page_to_contents"));
     m_addCurrentPageToContents->setText(i18n("Add Current Page to Contents"));
     m_addCurrentPageToContents->setIcon(QIcon::fromTheme(QStringLiteral("list-add")));
@@ -989,14 +1004,14 @@ void Part::setupViewerActions()
         }
     });
 
-    m_createInternalLink = ac->addAction(QStringLiteral("advanced_create_internal_link"));
-    m_createInternalLink->setText(i18n("Create Internal Link"));
-    m_createInternalLink->setIcon(QIcon::fromTheme(QStringLiteral("insert-link")));
-    m_createInternalLink->setToolTip(i18n("Draw a rectangle on the page to create an internal link"));
-    m_createInternalLink->setEnabled(false);
-    connect(m_createInternalLink, &QAction::triggered, this, [this] {
+    m_createLink = ac->addAction(QStringLiteral("advanced_create_internal_link"));
+    m_createLink->setText(i18n("Create Link"));
+    m_createLink->setIcon(QIcon::fromTheme(QStringLiteral("insert-link")));
+    m_createLink->setToolTip(i18n("Draw a rectangle on the page to create a link"));
+    m_createLink->setEnabled(false);
+    connect(m_createLink, &QAction::triggered, this, [this] {
         if (PageView *view = workspaceActivePageView()) {
-            view->startInternalLinkCreation();
+            view->startLinkCreation();
         }
     });
 
@@ -1292,9 +1307,9 @@ PageView *Part::workspaceActivePageView() const
 void Part::connectWorkspacePageView(PageView *view)
 {
     connect(view, &PageView::rightClick, this, &Part::slotShowMenu);
-    connect(view, &PageView::editInternalLinkRequested, this, &Part::editInternalLink);
+    connect(view, &PageView::editPdfLinkRequested, this, &Part::editPdfLink);
     connect(view, &PageView::createNamedDestinationRequested, this, &Part::addNamedDestination);
-    connect(view, &PageView::createInternalLinkRequested, this, &Part::createInternalLink);
+    connect(view, &PageView::createPdfLinkRequested, this, &Part::createPdfLink);
     connect(view, &PageView::changePdfLinkRectangleRequested, this, &Part::changePdfLinkRectangle);
     connect(view, &PageView::deletePdfLinkRequested, this, &Part::deletePdfLink);
     connect(view, &PageView::advancedModeChanged, this, &Part::setAdvancedModeEnabled);
@@ -3328,6 +3343,27 @@ static QTemporaryFile *createClosedTemporaryPdfFile(const QString &prefix, bool 
     return temporaryFile.release();
 }
 
+static QTemporaryFile *createClosedOcrTemporaryPdfFile(const QString &prefix)
+{
+    const QString dataRoot = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
+    if (dataRoot.isEmpty()) {
+        return nullptr;
+    }
+
+    const QString jobsDirectory = QDir(dataRoot).filePath(QStringLiteral("ocr/jobs"));
+    if (!QDir().mkpath(jobsDirectory)) {
+        return nullptr;
+    }
+
+    auto temporaryFile = std::make_unique<QTemporaryFile>(QDir(jobsDirectory).filePath(prefix + QStringLiteral("-XXXXXX.pdf")));
+    temporaryFile->setAutoRemove(true);
+    if (!temporaryFile->open()) {
+        return nullptr;
+    }
+    temporaryFile->close();
+    return temporaryFile.release();
+}
+
 enum class PageEditSourceSnapshotResult {
     Success,
     TemporaryFileError,
@@ -3947,6 +3983,9 @@ void Part::updatePageEditActions()
     if (m_combinePdfFiles) {
         m_combinePdfFiles->setEnabled(!m_document->isOpened() || m_document->canCombinePdfFiles());
     }
+    if (m_recognizeEnglishText) {
+        m_recognizeEnglishText->setEnabled(canEditPages && m_document->canPerformEnglishOcr());
+    }
     if (m_addCurrentPageToContents) {
         m_addCurrentPageToContents->setVisible(showAdvancedActions);
         m_addCurrentPageToContents->setEnabled(showAdvancedActions && canEditPages);
@@ -3955,9 +3994,9 @@ void Part::updatePageEditActions()
         m_addNamedDestination->setVisible(showAdvancedActions);
         m_addNamedDestination->setEnabled(canEditLinks);
     }
-    if (m_createInternalLink) {
-        m_createInternalLink->setVisible(showAdvancedActions);
-        m_createInternalLink->setEnabled(canEditLinks);
+    if (m_createLink) {
+        m_createLink->setVisible(showAdvancedActions);
+        m_createLink->setEnabled(canEditLinks);
     }
     if (m_insertPage) {
         m_insertPage->setVisible(showAdvancedActions);
@@ -4064,6 +4103,194 @@ void Part::setAdvancedModeEnabled(bool enabled)
     }
     updatePageEditActions();
     updateToolBars();
+}
+
+void Part::slotRecognizeEnglishText()
+{
+    if (!canUsePageLevelEditing() || !m_document->canPerformEnglishOcr()) {
+        KMessageBox::information(widget(), i18n("English text recognition is only available for local PDF files."));
+        return;
+    }
+
+    const int pageCount = static_cast<int>(m_document->pages());
+    const int currentPage = qBound(0, workspaceActivePageNumber(), std::max(0, pageCount - 1));
+    if (pageCount <= 0) {
+        return;
+    }
+
+    QDialog dialog(widget());
+    dialog.setWindowTitle(i18n("Recognize English Text"));
+    auto *layout = new QVBoxLayout(&dialog);
+
+    auto *description = new QLabel(i18n("Add an invisible, searchable English text layer to scanned pages. The page image is not changed."), &dialog);
+    description->setWordWrap(true);
+    layout->addWidget(description);
+
+    auto *pagesGroup = new QGroupBox(i18n("Pages"), &dialog);
+    auto *pagesLayout = new QVBoxLayout(pagesGroup);
+    auto *allPages = new QRadioButton(i18n("All pages"), pagesGroup);
+    auto *currentPageOnly = new QRadioButton(i18n("Current page (%1)", currentPage + 1), pagesGroup);
+    auto *pageRange = new QRadioButton(i18n("Pages:"), pagesGroup);
+    auto *rangeEdit = new QLineEdit(pagesGroup);
+    rangeEdit->setPlaceholderText(i18n("For example: 1-3, 5, 8-10"));
+    rangeEdit->setEnabled(false);
+    currentPageOnly->setChecked(true);
+    pagesLayout->addWidget(allPages);
+    pagesLayout->addWidget(currentPageOnly);
+    auto *rangeRow = new QHBoxLayout;
+    rangeRow->addWidget(pageRange);
+    rangeRow->addWidget(rangeEdit, 1);
+    pagesLayout->addLayout(rangeRow);
+    layout->addWidget(pagesGroup);
+
+    auto *languageLabel = new QLabel(i18n("Recognition language: English"), &dialog);
+    layout->addWidget(languageLabel);
+    auto *skipExistingText = new QCheckBox(i18n("Skip pages that already contain selectable text"), &dialog);
+    skipExistingText->setChecked(true);
+    layout->addWidget(skipExistingText);
+
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Cancel, &dialog);
+    auto *recognizeButton = buttons->addButton(i18nc("@action:button", "Recognize"), QDialogButtonBox::AcceptRole);
+    recognizeButton->setIcon(QIcon::fromTheme(QStringLiteral("edit-find")));
+    layout->addWidget(buttons);
+
+    connect(pageRange, &QRadioButton::toggled, rangeEdit, &QWidget::setEnabled);
+    connect(pageRange, &QRadioButton::toggled, &dialog, [=](bool enabled) {
+        if (enabled) {
+            rangeEdit->setFocus();
+        }
+    });
+    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+
+    QList<int> selectedPages;
+    while (selectedPages.isEmpty()) {
+        if (dialog.exec() != QDialog::Accepted) {
+            return;
+        }
+        if (allPages->isChecked()) {
+            selectedPages.reserve(pageCount);
+            for (int page = 1; page <= pageCount; ++page) {
+                selectedPages.append(page);
+            }
+        } else if (currentPageOnly->isChecked()) {
+            selectedPages.append(currentPage + 1);
+        } else {
+            const QPageRanges ranges = QPageRanges::fromString(rangeEdit->text());
+            if (!ranges.isEmpty() && ranges.firstPage() >= 1 && ranges.lastPage() <= pageCount) {
+                for (const QPageRanges::Range &range : ranges.toRangeList()) {
+                    for (int page = range.from; page <= range.to; ++page) {
+                        selectedPages.append(page);
+                    }
+                }
+            }
+            if (selectedPages.isEmpty()) {
+                KMessageBox::information(&dialog, i18n("Enter a valid page range between 1 and %1.", pageCount));
+            }
+        }
+    }
+
+    const QUrl documentUrl = url();
+    std::unique_ptr<QTemporaryFile> sourceFile(createClosedOcrTemporaryPdfFile(QStringLiteral("source")));
+    std::unique_ptr<QTemporaryFile> outputFile(createClosedOcrTemporaryPdfFile(QStringLiteral("output")));
+    if (!sourceFile || !outputFile) {
+        KMessageBox::information(widget(), i18n("Could not create the Mengshee OCR working files."));
+        return;
+    }
+
+    QString snapshotError;
+    if (!m_document->saveChanges(sourceFile->fileName(), &snapshotError)) {
+        KMessageBox::information(widget(), snapshotError.isEmpty() ? i18n("Could not prepare the current document for text recognition.") : i18n("Could not prepare the current document for text recognition. %1", snapshotError));
+        return;
+    }
+
+    QProgressDialog progressDialog(i18n("Preparing English text recognition..."), i18n("Cancel"), 0, selectedPages.size(), widget());
+    progressDialog.setWindowTitle(i18n("Recognize English Text"));
+    progressDialog.setWindowModality(Qt::ApplicationModal);
+    progressDialog.setMinimumDuration(0);
+    progressDialog.setAutoClose(false);
+    progressDialog.setAutoReset(false);
+
+    std::atomic_bool cancelRequested = false;
+    bool userCancelled = false;
+    connect(&progressDialog, &QProgressDialog::canceled, &dialog, [&cancelRequested, &userCancelled] {
+        userCancelled = true;
+        cancelRequested.store(true);
+    });
+
+    const QString sourceFileName = sourceFile->fileName();
+    const QString outputFileName = outputFile->fileName();
+    QPointer<QProgressDialog> progressPointer(&progressDialog);
+    QFutureWatcher<Okular::OcrResult> watcher;
+    const QFuture<Okular::OcrResult> future = QtConcurrent::run([document = m_document,
+                                                                 sourceFileName,
+                                                                 outputFileName,
+                                                                 selectedPages,
+                                                                 skipExisting = skipExistingText->isChecked(),
+                                                                 &cancelRequested,
+                                                                 progressPointer] {
+        return document->saveWithEnglishOcr(sourceFileName, outputFileName, selectedPages, skipExisting, [&cancelRequested, progressPointer](int completed, int total, int currentPageNumber) {
+            if (progressPointer) {
+                QMetaObject::invokeMethod(
+                    progressPointer,
+                    [progressPointer, completed, total, currentPageNumber] {
+                        if (progressPointer) {
+                            progressPointer->setMaximum(total);
+                            progressPointer->setValue(completed);
+                            progressPointer->setLabelText(i18n("Recognizing English text on page %1...", currentPageNumber));
+                        }
+                    },
+                    Qt::QueuedConnection);
+            }
+            return !cancelRequested.load();
+        });
+    });
+    connect(&watcher, &QFutureWatcher<Okular::OcrResult>::finished, &progressDialog, &QDialog::accept);
+    watcher.setFuture(future);
+    progressDialog.exec();
+    if (watcher.isRunning()) {
+        userCancelled = true;
+        cancelRequested.store(true);
+        watcher.waitForFinished();
+    }
+
+    const Okular::OcrResult ocrResult = watcher.result();
+    if (ocrResult.cancelled || userCancelled) {
+        return;
+    }
+    if (!ocrResult.success) {
+        KMessageBox::information(widget(), ocrResult.errorText.isEmpty() ? i18n("English text recognition failed.") : i18n("English text recognition failed. %1", ocrResult.errorText));
+        return;
+    }
+    if (ocrResult.recognizedPages == 0) {
+        const QString message = ocrResult.skippedPages > 0 ? i18n("All selected pages already contain selectable text.") : i18n("No English text was recognized on the selected pages.");
+        KMessageBox::information(widget(), message);
+        return;
+    }
+
+    setUrl(documentUrl);
+    KParts::OpenUrlArguments args = arguments();
+    args.setMimeType(QStringLiteral("application/pdf"));
+    setArguments(args);
+
+    const QString editedFileName = outputFile->fileName();
+    auto command = std::make_unique<PageBackingFileCommand>(this,
+                                                            i18nc("Undo action", "Recognize Text"),
+                                                            std::move(sourceFile),
+                                                            sourceFileName,
+                                                            std::move(outputFile),
+                                                            editedFileName,
+                                                            currentPage,
+                                                            currentPage,
+                                                            true,
+                                                            true);
+    m_document->pushUndoCommand(command.release());
+    if (PageView *view = workspaceActivePageView()) {
+        view->displayMessage(i18np("Recognized English text on %1 page (%2 words). Save the document to keep this change.",
+                                   "Recognized English text on %1 pages (%2 words). Save the document to keep this change.",
+                                   ocrResult.recognizedPages,
+                                   ocrResult.recognizedWords));
+    }
 }
 
 void Part::slotCombinePdfFiles()
@@ -4896,14 +5123,14 @@ void Part::moveNamedDestination(const QString &name, int pageNumber, const Okula
     }
 }
 
-void Part::editInternalLink(int sourcePageNumber, const QRectF &normalizedLinkRectangle, const QString &currentDestinationName, const Okular::DocumentViewport &currentDestination)
+void Part::editPdfLink(int sourcePageNumber, const QRectF &normalizedLinkRectangle, const QString &currentDestinationName, const Okular::DocumentViewport &currentDestination, const QUrl &currentExternalUrl)
 {
-    configureInternalLink(sourcePageNumber, normalizedLinkRectangle, currentDestinationName, currentDestination, false);
+    configurePdfLink(sourcePageNumber, normalizedLinkRectangle, currentDestinationName, currentDestination, currentExternalUrl, false);
 }
 
-void Part::createInternalLink(int sourcePageNumber, const QRectF &normalizedLinkRectangle)
+void Part::createPdfLink(int sourcePageNumber, const QRectF &normalizedLinkRectangle)
 {
-    configureInternalLink(sourcePageNumber, normalizedLinkRectangle, QString(), Okular::DocumentViewport(), true);
+    configurePdfLink(sourcePageNumber, normalizedLinkRectangle, QString(), Okular::DocumentViewport(), QUrl(), true);
 }
 
 void Part::changePdfLinkRectangle(int sourcePageNumber, const QRectF &oldNormalizedRectangle, const QRectF &newNormalizedRectangle)
@@ -4959,10 +5186,10 @@ void Part::deletePdfLink(int sourcePageNumber, const QRectF &normalizedLinkRecta
     }
 }
 
-void Part::configureInternalLink(int sourcePageNumber, const QRectF &normalizedLinkRectangle, const QString &currentDestinationName, const Okular::DocumentViewport &currentDestination, bool creating)
+void Part::configurePdfLink(int sourcePageNumber, const QRectF &normalizedLinkRectangle, const QString &currentDestinationName, const Okular::DocumentViewport &currentDestination, const QUrl &currentExternalUrl, bool creating)
 {
     if (!m_advancedModeEnabled || !m_document->canEditPdfLinks() || sourcePageNumber < 0 || sourcePageNumber >= static_cast<int>(m_document->pages())) {
-        KMessageBox::information(widget(), creating ? i18n("An internal link cannot be created here.") : i18n("This internal link cannot be edited."));
+        KMessageBox::information(widget(), creating ? i18n("A link cannot be created here.") : i18n("This link cannot be edited."));
         return;
     }
 
@@ -4991,8 +5218,8 @@ void Part::configureInternalLink(int sourcePageNumber, const QRectF &normalizedL
     }
 
     QDialog dialog(widget());
-    dialog.setObjectName(creating ? QStringLiteral("CreateInternalLinkDialog") : QStringLiteral("EditLinkDestinationDialog"));
-    dialog.setWindowTitle(creating ? i18n("Create Internal Link") : i18n("Edit Link Destination"));
+    dialog.setObjectName(creating ? QStringLiteral("CreateLinkDialog") : QStringLiteral("EditLinkDestinationDialog"));
+    dialog.setWindowTitle(creating ? i18n("Create Link") : i18n("Edit Link Destination"));
     auto *layout = new QVBoxLayout(&dialog);
     auto *form = new QFormLayout;
     layout->addLayout(form);
@@ -5063,7 +5290,17 @@ void Part::configureInternalLink(int sourcePageNumber, const QRectF &normalizedL
     directLayout->addWidget(verticalSpin);
     form->addRow(directRadio, directControls);
 
-    if ((creating && !destinations.isEmpty()) || currentNamedIndex >= 0 || (currentDestinationName.isEmpty() && matchingNamedIndex >= 0)) {
+    auto *externalRadio = new QRadioButton(i18n("External URL"), &dialog);
+    auto *externalUrlEdit = new QLineEdit(&dialog);
+    externalUrlEdit->setObjectName(QStringLiteral("ExternalLinkUrl"));
+    externalUrlEdit->setPlaceholderText(QStringLiteral("https://example.com"));
+    externalUrlEdit->setClearButtonEnabled(true);
+    externalUrlEdit->setText(currentExternalUrl.toDisplayString());
+    form->addRow(externalRadio, externalUrlEdit);
+
+    if (!currentExternalUrl.isEmpty()) {
+        externalRadio->setChecked(true);
+    } else if ((creating && !destinations.isEmpty()) || currentNamedIndex >= 0 || (currentDestinationName.isEmpty() && matchingNamedIndex >= 0)) {
         namedRadio->setChecked(true);
     } else {
         directRadio->setChecked(true);
@@ -5075,11 +5312,13 @@ void Part::configureInternalLink(int sourcePageNumber, const QRectF &normalizedL
     }
 
     const auto updateControls = [=]() {
-        namedControls->setEnabled(!destinations.isEmpty());
+        namedControls->setEnabled(namedRadio->isChecked() && !destinations.isEmpty());
         directControls->setEnabled(directRadio->isChecked());
+        externalUrlEdit->setEnabled(externalRadio->isChecked());
     };
     connect(namedRadio, &QRadioButton::toggled, &dialog, updateControls);
     connect(directRadio, &QRadioButton::toggled, &dialog, updateControls);
+    connect(externalRadio, &QRadioButton::toggled, &dialog, updateControls);
     connect(destinationList, &QListWidget::itemClicked, &dialog, [namedRadio](QListWidgetItem *) { namedRadio->setChecked(true); });
     connect(destinationList, &QListWidget::itemDoubleClicked, &dialog, [&dialog, namedRadio](QListWidgetItem *) {
         namedRadio->setChecked(true);
@@ -5104,13 +5343,25 @@ void Part::configureInternalLink(int sourcePageNumber, const QRectF &normalizedL
     layout->addWidget(buttons);
     connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
     connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    const auto externalUrl = [externalUrlEdit]() {
+        const QString text = externalUrlEdit->text().trimmed();
+        QUrl url(text, QUrl::StrictMode);
+        if (url.scheme().isEmpty()) {
+            url = QUrl::fromUserInput(text);
+        }
+        return url;
+    };
     const auto updateAcceptButton = [=]() {
         const bool namedChoiceValid = !namedRadio->isChecked() || (destinationList->currentItem() && !destinationList->currentItem()->isHidden());
-        buttons->button(QDialogButtonBox::Ok)->setEnabled(namedChoiceValid);
+        const QUrl url = externalUrl();
+        const bool externalChoiceValid = !externalRadio->isChecked() || (!url.isEmpty() && url.isValid() && !url.scheme().isEmpty());
+        buttons->button(QDialogButtonBox::Ok)->setEnabled(namedChoiceValid && externalChoiceValid);
     };
     connect(namedRadio, &QRadioButton::toggled, &dialog, updateAcceptButton);
+    connect(externalRadio, &QRadioButton::toggled, &dialog, updateAcceptButton);
     connect(destinationList, &QListWidget::currentItemChanged, &dialog, [updateAcceptButton](QListWidgetItem *, QListWidgetItem *) { updateAcceptButton(); });
     connect(destinationSearch, &QLineEdit::textChanged, &dialog, [updateAcceptButton](const QString &) { updateAcceptButton(); });
+    connect(externalUrlEdit, &QLineEdit::textChanged, &dialog, [updateAcceptButton](const QString &) { updateAcceptButton(); });
     updateControls();
     updateAcceptButton();
     if (dialog.exec() != QDialog::Accepted) {
@@ -5121,6 +5372,8 @@ void Part::configureInternalLink(int sourcePageNumber, const QRectF &normalizedL
     int destinationPageNumber = pageSpin->value();
     double destinationX = horizontalSpin->value() / 100.0;
     double destinationY = verticalSpin->value() / 100.0;
+    const bool externalTarget = externalRadio->isChecked();
+    const QString externalUrlText = externalTarget ? QString::fromLatin1(externalUrl().toEncoded(QUrl::FullyEncoded)) : QString();
     if (namedRadio->isChecked() && destinationList->currentItem()) {
         destinationName = destinationList->currentItem()->data(Qt::UserRole).toString();
         const int destinationIndex = destinationList->currentItem()->data(Qt::UserRole + 1).toInt();
@@ -5131,10 +5384,34 @@ void Part::configureInternalLink(int sourcePageNumber, const QRectF &normalizedL
     }
 
     const bool edited =
-        applyPdfLinkEdit(creating ? i18nc("Undo action", "Create Internal Link") : i18nc("Undo action", "Edit Link Destination"),
-                         creating ? i18n("Could not create the internal link.") : i18n("Could not edit the link destination."),
+        applyPdfLinkEdit(creating ? i18nc("Undo action", "Create Link") : i18nc("Undo action", "Edit Link Destination"),
+                         creating ? i18n("Could not create the link.") : i18n("Could not edit the link destination."),
                          sourcePageNumber,
-                         [this, creating, sourcePageNumber, normalizedLinkRectangle, destinationName, destinationPageNumber, destinationX, destinationY](const QString &sourceFileName, const QString &outputFileName, QString *errorText) {
+                         [this, creating, sourcePageNumber, normalizedLinkRectangle, externalTarget, externalUrlText, destinationName, destinationPageNumber, destinationX, destinationY](const QString &sourceFileName,
+                                                                                                                                                                                                const QString &outputFileName,
+                                                                                                                                                                                                QString *errorText) {
+                             if (externalTarget) {
+                                 if (creating) {
+                                     return m_document->saveWithExternalLinkCreated(sourceFileName,
+                                                                                    outputFileName,
+                                                                                    sourcePageNumber + 1,
+                                                                                    normalizedLinkRectangle.left(),
+                                                                                    normalizedLinkRectangle.top(),
+                                                                                    normalizedLinkRectangle.right(),
+                                                                                    normalizedLinkRectangle.bottom(),
+                                                                                    externalUrlText,
+                                                                                    errorText);
+                                 }
+                                 return m_document->saveWithExternalLinkDestinationChanged(sourceFileName,
+                                                                                            outputFileName,
+                                                                                            sourcePageNumber + 1,
+                                                                                            normalizedLinkRectangle.left(),
+                                                                                            normalizedLinkRectangle.top(),
+                                                                                            normalizedLinkRectangle.right(),
+                                                                                            normalizedLinkRectangle.bottom(),
+                                                                                            externalUrlText,
+                                                                                            errorText);
+                             }
                              if (creating) {
                                  return m_document->saveWithInternalLinkCreated(sourceFileName,
                                                                                 outputFileName,
@@ -5164,7 +5441,9 @@ void Part::configureInternalLink(int sourcePageNumber, const QRectF &normalizedL
                          });
     if (edited) {
         if (PageView *view = workspaceActivePageView()) {
-            if (creating) {
+            if (externalTarget) {
+                view->displayMessage(creating ? i18n("Created the external link. Save the document to keep this change.") : i18n("Updated the external link. Save the document to keep this change."));
+            } else if (creating) {
                 view->displayMessage(destinationName.isEmpty() ? i18n("Created the internal link. Save the document to keep this change.")
                                                                : i18n("Created a link to named destination '%1'. Save the document to keep this change.", destinationName));
             } else {
@@ -5806,7 +6085,7 @@ void Part::showMenu(const Okular::Page *page, const QPoint point, const QString 
     const QAction *removeBookmark = nullptr;
     const QAction *fitPageWidth = nullptr;
     const QAction *addNamedDestinationAction = nullptr;
-    const QAction *createInternalLinkAction = nullptr;
+    const QAction *createLinkAction = nullptr;
     const QAction *insertPageAction = nullptr;
     const QAction *insertPageFromTemplateAction = nullptr;
     const QAction *insertBlankPageAfterPageAction = nullptr;
@@ -5866,7 +6145,7 @@ void Part::showMenu(const Okular::Page *page, const QPoint point, const QString 
             if (hasNamedDestinationPoint && clickedNamedDestinations.isEmpty()) {
                 addNamedDestinationAction = popup.addAction(QIcon::fromTheme(QStringLiteral("bookmark-new"), QIcon::fromTheme(QStringLiteral("list-add"))), i18n("Add Named Destination Here..."));
             }
-            createInternalLinkAction = popup.addAction(QIcon::fromTheme(QStringLiteral("insert-link")), i18n("Create Internal Link..."));
+            createLinkAction = popup.addAction(QIcon::fromTheme(QStringLiteral("insert-link")), i18n("Create Link..."));
         }
         bool addedPageEditAction = false;
         if (m_advancedModeEnabled && canEditPages && (m_document->canInsertBlankPage() || m_document->canInsertPageFromPdf())) {
@@ -5956,8 +6235,8 @@ void Part::showMenu(const Okular::Page *page, const QPoint point, const QString 
                 }
             } else if (res == addNamedDestinationAction && hasNamedDestinationPoint) {
                 addNamedDestination(pageEditTargetPage, namedDestinationPoint);
-            } else if (res == createInternalLinkAction && contextView) {
-                contextView->startInternalLinkCreation();
+            } else if (res == createLinkAction && contextView) {
+                contextView->startLinkCreation();
             } else if (res == insertPageAction) {
                 insertPageWithDialog(pageEditTargetPage);
             } else if (res == insertPageFromTemplateAction) {

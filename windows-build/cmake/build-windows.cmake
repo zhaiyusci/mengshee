@@ -182,6 +182,9 @@ foreach(_required IN ITEMS
     "lib/cmake/KF6Parts/KF6PartsConfig.cmake"
     "lib/poppler.lib"
     "lib/poppler-qt6.lib"
+    "lib/tesseract55.lib"
+    "include/tesseract/baseapi.h"
+    "share/tessdata/eng.traineddata"
 )
     if(NOT EXISTS "${SDK_PREFIX}/${_required}")
         message(FATAL_ERROR "Standalone SDK is missing ${_required} in ${SDK_PREFIX}.")
@@ -217,6 +220,7 @@ if(NOT DEFINED SKIP_BUILD OR NOT SKIP_BUILD)
         "-DCMAKE_PREFIX_PATH=\"${_cmake_prefix_path}\""
         "-DGETTEXT_MSGFMT_EXECUTABLE=\"${MSGFMT}\""
         "-DMENGSHEE_QSCINTILLA_ROOT=\"${QSCINTILLA_ROOT_RESOLVED}\""
+        "-DMENGSHEE_BUNDLED_TESSDATA_DIR=\"${SDK_PREFIX}/share/tessdata\""
         -DBUILD_TESTING=OFF
         -DOKULAR_PDF_ONLY=ON
         -DCMAKE_DISABLE_FIND_PACKAGE_KF6DocTools=ON

@@ -13,6 +13,9 @@
 /* Defines if QJSEngine is available*/
 #cmakedefine01 HAVE_JS
 
+/* Defines if the cross-platform English OCR backend is available */
+#cmakedefine01 HAVE_TESSERACT
+
 /* Defines whether the malloc_trim method from malloc.h is available */
 #cmakedefine01 HAVE_MALLOC_TRIM
 

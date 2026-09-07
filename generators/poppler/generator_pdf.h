@@ -45,7 +45,7 @@ class PopplerAnnotationProxy;
  * contents from out OutputDevs when rendering finishes.
  *
  */
-class PDFGenerator : public Okular::Generator, public Okular::ConfigInterface, public Okular::PrintInterface, public Okular::SaveInterface, public Okular::PageInsertionInterface, public Okular::PdfLinkEditingInterface
+class PDFGenerator : public Okular::Generator, public Okular::ConfigInterface, public Okular::PrintInterface, public Okular::SaveInterface, public Okular::PageInsertionInterface, public Okular::PdfLinkEditingInterface, public Okular::PdfOcrInterface
 {
     Q_OBJECT
     Q_INTERFACES(Okular::Generator)
@@ -147,6 +147,24 @@ public:
                                      double destinationX,
                                      double destinationY,
                                      QString *errorText) override;
+    bool saveWithExternalLinkDestinationChanged(const QString &sourceFileName,
+                                                const QString &outputFileName,
+                                                int sourcePageNumber,
+                                                double linkLeft,
+                                                double linkTop,
+                                                double linkRight,
+                                                double linkBottom,
+                                                const QString &url,
+                                                QString *errorText) override;
+    bool saveWithExternalLinkCreated(const QString &sourceFileName,
+                                     const QString &outputFileName,
+                                     int sourcePageNumber,
+                                     double linkLeft,
+                                     double linkTop,
+                                     double linkRight,
+                                     double linkBottom,
+                                     const QString &url,
+                                     QString *errorText) override;
     bool saveWithPdfLinkRectangleChanged(const QString &sourceFileName,
                                          const QString &outputFileName,
                                          int sourcePageNumber,
@@ -160,6 +178,12 @@ public:
                                          double newLinkBottom,
                                          QString *errorText) override;
     bool saveWithPdfLinkDeleted(const QString &sourceFileName, const QString &outputFileName, int sourcePageNumber, double linkLeft, double linkTop, double linkRight, double linkBottom, QString *errorText) override;
+    bool canPerformEnglishOcr() const override;
+    Okular::OcrResult saveWithEnglishOcr(const QString &sourceFileName,
+                                         const QString &outputFileName,
+                                         const QList<int> &pageNumbers,
+                                         bool skipPagesWithText,
+                                         const Okular::PdfOcrInterface::ProgressCallback &progress) override;
 
     bool canSign() const override;
     std::pair<Okular::SigningResult, QString> sign(const Okular::NewSignatureData &oData, const QString &rFilename) override;

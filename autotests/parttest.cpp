@@ -92,6 +92,7 @@ private Q_SLOTS:
     void testContentsEntryWithFitWidthNamedDestination();
     void testAddNamedDestinationToEmptyContents();
     void testEditPdfNamedDestinationAndLink();
+    void testEditExternalPdfLink();
     void testOpenAuxiliaryViewWithoutLink();
     void testAuxiliaryDocumentWorkspace();
     void testFindBarDoesNotConsumeWorkspaceHeight();
@@ -121,6 +122,7 @@ private Q_SLOTS:
     void testCombinePdfFilesPreservesSourceLinkNamespaces();
     void testMouseMoveOverLinkWhileInSelectionMode();
     void testClickUrlLinkWhileInSelectionMode();
+    void testClickBlankAfterHoveringLinkDoesNotFollowStaleLink();
     void testeTextSelectionOverAndAcrossLinks_data();
     void testeTextSelectionOverAndAcrossLinks();
     void testClickUrlLinkWhileLinkTextIsSelected();
@@ -336,8 +338,14 @@ static bool linkEditorOpensForView(PageView *view, const Okular::DocumentViewpor
         }
     });
     dialogCloser.start(0);
-    const bool invoked =
-        QMetaObject::invokeMethod(view, "editInternalLinkRequested", Qt::DirectConnection, Q_ARG(int, 0), Q_ARG(QRectF, QRectF(0.1, 0.1, 0.1, 0.1)), Q_ARG(QString, QStringLiteral("subsection.2.1")), Q_ARG(Okular::DocumentViewport, target));
+    const bool invoked = QMetaObject::invokeMethod(view,
+                                                   "editPdfLinkRequested",
+                                                   Qt::DirectConnection,
+                                                   Q_ARG(int, 0),
+                                                   Q_ARG(QRectF, QRectF(0.1, 0.1, 0.1, 0.1)),
+                                                   Q_ARG(QString, QStringLiteral("subsection.2.1")),
+                                                   Q_ARG(Okular::DocumentViewport, target),
+                                                   Q_ARG(QUrl, QUrl()));
     dialogCloser.stop();
     return invoked && editorShown;
 }
@@ -2415,6 +2423,44 @@ void PartTest::testDeletePagePreservesInternalLinks()
     QCOMPARE(internalLinkTarget.pageNumber, 1);
 }
 
+void PartTest::testClickBlankAfterHoveringLinkDoesNotFollowStaleLink()
+{
+    QVariantList dummyArgs;
+    Okular::Part part(nullptr, dummyArgs);
+    QVERIFY(openDocument(&part, QStringLiteral(KDESRCDIR "data/pdf_with_links.pdf")));
+    part.widget()->resize(800, 600);
+    part.widget()->show();
+    if (qgetenv("KDECI_CANNOT_CREATE_WINDOWS") == "1") {
+        QSKIP("KDE CI can't create a window on this platform, skipping some gui tests");
+    }
+
+    QVERIFY(QTest::qWaitForWindowExposed(part.widget()));
+    part.m_document->setViewportPage(0);
+    QTRY_VERIFY(part.m_document->page(0)->hasPixmap(part.m_pageView));
+
+    QAction *advancedMode = part.actionCollection()->action(QStringLiteral("view_toggle_named_destinations"));
+    QVERIFY(advancedMode);
+    advancedMode->setChecked(true);
+    QVERIFY(part.m_pageView->advancedModeEnabled());
+
+    const int width = part.m_pageView->horizontalScrollBar()->maximum() + part.m_pageView->viewport()->width();
+    const int height = part.m_pageView->verticalScrollBar()->maximum() + part.m_pageView->viewport()->height();
+    const QPoint linkPosition(width * 0.250, height * 0.127);
+    const QPoint blankPosition(width * 0.75, height * 0.75);
+
+    QDesktopServices::setUrlHandler(QStringLiteral("mailto"), this, "urlHandler");
+    QSignalSpy openUrlSignalSpy(this, &PartTest::urlHandler);
+
+    // Keep the hover state on the link, just as it is while its context menu
+    // is open, then deliver a click elsewhere without an intervening move.
+    QTest::mouseMove(part.m_pageView->viewport(), linkPosition);
+    QTRY_COMPARE(part.m_pageView->cursor().shape(), Qt::SizeAllCursor);
+    QTest::mouseClick(part.m_pageView->viewport(), Qt::LeftButton, Qt::NoModifier, blankPosition);
+    QTest::qWait(100);
+
+    QCOMPARE(openUrlSignalSpy.count(), 0);
+}
+
 void PartTest::testContentsEntryWithFitWidthNamedDestination()
 {
     QTemporaryDir tempDir;
@@ -2746,6 +2792,128 @@ void PartTest::testEditPdfNamedDestinationAndLink()
     }
     QVERIFY(preservedUnresolvedLink);
     deletedPart.closeUrl();
+}
+
+void PartTest::testEditExternalPdfLink()
+{
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+    const QString workingFile = tempDir.filePath(QStringLiteral("external-link-source.pdf"));
+    const QString createdFile = tempDir.filePath(QStringLiteral("external-link-created.pdf"));
+    const QString editedFile = tempDir.filePath(QStringLiteral("external-link-edited.pdf"));
+    const QString internalFile = tempDir.filePath(QStringLiteral("external-link-made-internal.pdf"));
+    const QString externalAgainFile = tempDir.filePath(QStringLiteral("external-link-made-external.pdf"));
+    const QString deletedFile = tempDir.filePath(QStringLiteral("external-link-deleted.pdf"));
+    QVERIFY(QFile::copy(QStringLiteral(KDESRCDIR "data/pdf_with_internal_links.pdf"), workingFile));
+
+    const QRectF linkRectangle(0.70, 0.08, 0.18, 0.07);
+    const QString firstUrl = QStringLiteral("https://example.com/first?from=mengshee");
+    const QString secondUrl = QStringLiteral("https://example.org/second#target");
+    const auto externalUrlAtRectangle = [&linkRectangle](Document *document) {
+        for (const Okular::ObjectRect *rect : document->page(0)->objectRects()) {
+            if (!rect || rect->objectType() != Okular::ObjectRect::Action || !rect->object() || !rect->region().boundingRect().intersects(linkRectangle)) {
+                continue;
+            }
+            const auto *action = static_cast<const Okular::Action *>(rect->object());
+            if (action->actionType() == Okular::Action::Browse) {
+                return static_cast<const Okular::BrowseAction *>(action)->url();
+            }
+        }
+        return QUrl();
+    };
+
+    QString errorText;
+    Okular::Part sourcePart(nullptr, {});
+    QVERIFY(openDocument(&sourcePart, workingFile));
+    QVERIFY2(sourcePart.m_document->saveWithExternalLinkCreated(workingFile,
+                                                                createdFile,
+                                                                1,
+                                                                linkRectangle.left(),
+                                                                linkRectangle.top(),
+                                                                linkRectangle.right(),
+                                                                linkRectangle.bottom(),
+                                                                firstUrl,
+                                                                &errorText),
+             qPrintable(errorText));
+    sourcePart.closeUrl();
+
+    Okular::Part createdPart(nullptr, {});
+    QVERIFY(openDocument(&createdPart, createdFile));
+    QCOMPARE(externalUrlAtRectangle(createdPart.m_document), QUrl(firstUrl));
+    QVERIFY2(createdPart.m_document->saveWithExternalLinkDestinationChanged(createdFile,
+                                                                            editedFile,
+                                                                            1,
+                                                                            linkRectangle.left(),
+                                                                            linkRectangle.top(),
+                                                                            linkRectangle.right(),
+                                                                            linkRectangle.bottom(),
+                                                                            secondUrl,
+                                                                            &errorText),
+             qPrintable(errorText));
+    createdPart.closeUrl();
+
+    Okular::Part editedPart(nullptr, {});
+    QVERIFY(openDocument(&editedPart, editedFile));
+    QCOMPARE(externalUrlAtRectangle(editedPart.m_document), QUrl(secondUrl));
+    QVERIFY2(editedPart.m_document->saveWithInternalLinkDestinationChanged(editedFile,
+                                                                           internalFile,
+                                                                           1,
+                                                                           linkRectangle.left(),
+                                                                           linkRectangle.top(),
+                                                                           linkRectangle.right(),
+                                                                           linkRectangle.bottom(),
+                                                                           QString(),
+                                                                           2,
+                                                                           0.2,
+                                                                           0.3,
+                                                                           &errorText),
+             qPrintable(errorText));
+    editedPart.closeUrl();
+
+    Okular::Part internalPart(nullptr, {});
+    QVERIFY(openDocument(&internalPart, internalFile));
+    QVERIFY(externalUrlAtRectangle(internalPart.m_document).isEmpty());
+    bool foundInternalLink = false;
+    for (const Okular::ObjectRect *rect : internalPart.m_document->page(0)->objectRects()) {
+        if (!rect || rect->objectType() != Okular::ObjectRect::Action || !rect->object() || !rect->region().boundingRect().intersects(linkRectangle)) {
+            continue;
+        }
+        const auto *action = static_cast<const Okular::Action *>(rect->object());
+        foundInternalLink = action->actionType() == Okular::Action::Goto && !static_cast<const Okular::GotoAction *>(action)->isExternal();
+        if (foundInternalLink) {
+            break;
+        }
+    }
+    QVERIFY(foundInternalLink);
+    QVERIFY2(internalPart.m_document->saveWithExternalLinkDestinationChanged(internalFile,
+                                                                             externalAgainFile,
+                                                                             1,
+                                                                             linkRectangle.left(),
+                                                                             linkRectangle.top(),
+                                                                             linkRectangle.right(),
+                                                                             linkRectangle.bottom(),
+                                                                             firstUrl,
+                                                                             &errorText),
+             qPrintable(errorText));
+    internalPart.closeUrl();
+
+    Okular::Part externalAgainPart(nullptr, {});
+    QVERIFY(openDocument(&externalAgainPart, externalAgainFile));
+    QCOMPARE(externalUrlAtRectangle(externalAgainPart.m_document), QUrl(firstUrl));
+    QVERIFY2(externalAgainPart.m_document->saveWithPdfLinkDeleted(externalAgainFile,
+                                                                  deletedFile,
+                                                                  1,
+                                                                  linkRectangle.left(),
+                                                                  linkRectangle.top(),
+                                                                  linkRectangle.right(),
+                                                                  linkRectangle.bottom(),
+                                                                  &errorText),
+             qPrintable(errorText));
+    externalAgainPart.closeUrl();
+
+    Okular::Part deletedPart(nullptr, {});
+    QVERIFY(openDocument(&deletedPart, deletedFile));
+    QVERIFY(externalUrlAtRectangle(deletedPart.m_document).isEmpty());
 }
 
 void PartTest::testDuplicatePagePreservesInternalLinks()

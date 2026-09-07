@@ -105,7 +105,7 @@ ecm_setup_version(${PROJECT_VERSION}
                   VERSION_HEADER "${CMAKE_CURRENT_BINARY_DIR}/core/version.h"
                   PACKAGE_VERSION_FILE "${CMAKE_CURRENT_BINARY_DIR}/Okular6ConfigVersion.cmake")
 
-find_package(Qt6 ${QT_REQUIRED_VERSION} CONFIG REQUIRED COMPONENTS Core Test Widgets PrintSupport Svg Xml)
+find_package(Qt6 ${QT_REQUIRED_VERSION} CONFIG REQUIRED COMPONENTS Core Test Widgets PrintSupport Svg Xml Concurrent)
 
 set(MENGSHEE_STEMTEX_ROOT
     "${CMAKE_CURRENT_SOURCE_DIR}/external/stemtex"
@@ -265,6 +265,35 @@ find_package(ZLIB REQUIRED)
 find_package(Poppler "24.08.0" COMPONENTS Qt6)
 set_okular_optional_package_properties(Poppler PROPERTIES
         PURPOSE "Support for PDF files in okular.")
+
+option(MENGSHEE_ENABLE_OCR "Enable English OCR for PDF documents" ON)
+if(MENGSHEE_ENABLE_OCR)
+    find_package(Tesseract 5.0 CONFIG QUIET)
+    if(Tesseract_FOUND AND TARGET Tesseract::libtesseract)
+        # Tesseract's installed config target does not currently propagate its
+        # public include directory.  Wrap it so consumers get a complete,
+        # platform-independent interface.
+        add_library(Tesseract::Tesseract INTERFACE IMPORTED)
+        set_target_properties(Tesseract::Tesseract PROPERTIES
+            INTERFACE_INCLUDE_DIRECTORIES "${Tesseract_INCLUDE_DIRS}"
+            INTERFACE_LINK_LIBRARIES Tesseract::libtesseract
+        )
+    else()
+        find_package(Tesseract 5.0 MODULE REQUIRED)
+    endif()
+    set(HAVE_TESSERACT 1)
+else()
+    set(HAVE_TESSERACT 0)
+endif()
+
+set(MENGSHEE_BUNDLED_TESSDATA_DIR "" CACHE PATH "Optional tessdata directory containing the English OCR model to install")
+if(MENGSHEE_BUNDLED_TESSDATA_DIR)
+    if(NOT EXISTS "${MENGSHEE_BUNDLED_TESSDATA_DIR}/eng.traineddata")
+        message(FATAL_ERROR "MENGSHEE_BUNDLED_TESSDATA_DIR does not contain eng.traineddata: ${MENGSHEE_BUNDLED_TESSDATA_DIR}")
+    endif()
+    install(FILES "${MENGSHEE_BUNDLED_TESSDATA_DIR}/eng.traineddata"
+            DESTINATION "${KDE_INSTALL_DATADIR}/mengshee/tessdata")
+endif()
 
 find_package(Freetype)
 set_okular_optional_package_properties(Freetype PROPERTIES
@@ -635,6 +664,7 @@ target_link_libraries(okularpart okularcore
     ${MATH_LIB}
     Poppler::Qt6
     Qt6::Svg
+    Qt6::Concurrent
     KF6::Archive
     KF6::Bookmarks
     KF6::I18n

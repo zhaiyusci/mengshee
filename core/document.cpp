@@ -6150,6 +6150,46 @@ bool Document::saveWithInternalLinkCreated(const QString &sourceFileName,
     return editor->saveWithInternalLinkCreated(sourceFileName, outputFileName, sourcePageNumber, linkLeft, linkTop, linkRight, linkBottom, destinationName, destinationPageNumber, destinationX, destinationY, errorText);
 }
 
+bool Document::saveWithExternalLinkDestinationChanged(const QString &sourceFileName,
+                                                      const QString &outputFileName,
+                                                      int sourcePageNumber,
+                                                      double linkLeft,
+                                                      double linkTop,
+                                                      double linkRight,
+                                                      double linkBottom,
+                                                      const QString &url,
+                                                      QString *errorText)
+{
+    auto editor = dynamic_cast<PdfLinkEditingInterface *>(d->m_generator);
+    if (!editor || sourceFileName.isEmpty() || outputFileName.isEmpty() || url.isEmpty()) {
+        if (errorText) {
+            errorText->clear();
+        }
+        return false;
+    }
+    return editor->saveWithExternalLinkDestinationChanged(sourceFileName, outputFileName, sourcePageNumber, linkLeft, linkTop, linkRight, linkBottom, url, errorText);
+}
+
+bool Document::saveWithExternalLinkCreated(const QString &sourceFileName,
+                                           const QString &outputFileName,
+                                           int sourcePageNumber,
+                                           double linkLeft,
+                                           double linkTop,
+                                           double linkRight,
+                                           double linkBottom,
+                                           const QString &url,
+                                           QString *errorText)
+{
+    auto editor = dynamic_cast<PdfLinkEditingInterface *>(d->m_generator);
+    if (!editor || sourceFileName.isEmpty() || outputFileName.isEmpty() || url.isEmpty()) {
+        if (errorText) {
+            errorText->clear();
+        }
+        return false;
+    }
+    return editor->saveWithExternalLinkCreated(sourceFileName, outputFileName, sourcePageNumber, linkLeft, linkTop, linkRight, linkBottom, url, errorText);
+}
+
 bool Document::saveWithPdfLinkRectangleChanged(const QString &sourceFileName,
                                                const QString &outputFileName,
                                                int sourcePageNumber,
@@ -6194,6 +6234,27 @@ bool Document::saveWithPdfLinkDeleted(const QString &sourceFileName, const QStri
         return false;
     }
     return editor->saveWithPdfLinkDeleted(sourceFileName, outputFileName, sourcePageNumber, linkLeft, linkTop, linkRight, linkBottom, errorText);
+}
+
+bool Document::canPerformEnglishOcr() const
+{
+    const auto ocr = dynamic_cast<const PdfOcrInterface *>(d->m_generator);
+    return ocr && ocr->canPerformEnglishOcr();
+}
+
+OcrResult Document::saveWithEnglishOcr(const QString &sourceFileName,
+                                       const QString &outputFileName,
+                                       const QList<int> &pageNumbers,
+                                       bool skipPagesWithText,
+                                       const std::function<bool(int, int, int)> &progress)
+{
+    auto ocr = dynamic_cast<PdfOcrInterface *>(d->m_generator);
+    if (!ocr || sourceFileName.isEmpty() || outputFileName.isEmpty() || pageNumbers.isEmpty()) {
+        OcrResult result;
+        result.errorText = QStringLiteral("English OCR is not available for this document.");
+        return result;
+    }
+    return ocr->saveWithEnglishOcr(sourceFileName, outputFileName, pageNumbers, skipPagesWithText, progress);
 }
 
 void Document::setHistoryClean(bool clean)

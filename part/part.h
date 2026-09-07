@@ -349,11 +349,11 @@ private:
     void renameNamedDestination(const QString &oldName);
     void deleteNamedDestination(const QString &name);
     void moveNamedDestination(const QString &name, int pageNumber, const Okular::NormalizedPoint &position);
-    void editInternalLink(int sourcePageNumber, const QRectF &normalizedLinkRectangle, const QString &currentDestinationName, const Okular::DocumentViewport &currentDestination);
-    void createInternalLink(int sourcePageNumber, const QRectF &normalizedLinkRectangle);
+    void editPdfLink(int sourcePageNumber, const QRectF &normalizedLinkRectangle, const QString &currentDestinationName, const Okular::DocumentViewport &currentDestination, const QUrl &currentExternalUrl);
+    void createPdfLink(int sourcePageNumber, const QRectF &normalizedLinkRectangle);
     void changePdfLinkRectangle(int sourcePageNumber, const QRectF &oldNormalizedRectangle, const QRectF &newNormalizedRectangle);
     void deletePdfLink(int sourcePageNumber, const QRectF &normalizedLinkRectangle);
-    void configureInternalLink(int sourcePageNumber, const QRectF &normalizedLinkRectangle, const QString &currentDestinationName, const Okular::DocumentViewport &currentDestination, bool creating);
+    void configurePdfLink(int sourcePageNumber, const QRectF &normalizedLinkRectangle, const QString &currentDestinationName, const Okular::DocumentViewport &currentDestination, const QUrl &currentExternalUrl, bool creating);
     bool applyPdfLinkEdit(const QString &undoText, const QString &failureText, int pageNumber, const std::function<bool(const QString &, const QString &, QString *)> &operation);
     QString pageTemplateFileName() const;
     void setPageTemplateFileName(const QString &fileName);
@@ -510,9 +510,10 @@ private:
     QAction *m_aboutBackend;
     QAction *m_reload;
     QAction *m_combinePdfFiles = nullptr;
+    QAction *m_recognizeEnglishText = nullptr;
     QAction *m_addCurrentPageToContents = nullptr;
     QAction *m_addNamedDestination = nullptr;
-    QAction *m_createInternalLink = nullptr;
+    QAction *m_createLink = nullptr;
     QAction *m_insertPage = nullptr;
     QAction *m_setPageTemplate = nullptr;
     QAction *m_insertPageFromTemplate = nullptr;
@@ -567,6 +568,7 @@ private:
 
 private Q_SLOTS:
     void slotCombinePdfFiles();
+    void slotRecognizeEnglishText();
     void slotInsertPage();
     void slotSetPageTemplate();
     void slotInsertPageFromTemplate();

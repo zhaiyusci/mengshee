@@ -27,6 +27,7 @@
 #include <QUrl>
 #include <QVariant>
 
+#include <functional>
 #include <memory>
 
 class KConfigDialog;
@@ -66,6 +67,7 @@ class SourceReference;
 class View;
 class VisiblePageRect;
 class SignatureInfo;
+struct OcrResult;
 
 /** IDs for searches. Globally defined here. **/
 #define PART_SEARCH_ID 1
@@ -1114,6 +1116,28 @@ public:
                                      double destinationY,
                                      QString *errorText);
 
+    /** Writes a copy with one link changed to an external URL. Page numbers are 1-based. */
+    bool saveWithExternalLinkDestinationChanged(const QString &sourceFileName,
+                                                const QString &outputFileName,
+                                                int sourcePageNumber,
+                                                double linkLeft,
+                                                double linkTop,
+                                                double linkRight,
+                                                double linkBottom,
+                                                const QString &url,
+                                                QString *errorText);
+
+    /** Writes a copy with one external URL link annotation added. Page numbers are 1-based. */
+    bool saveWithExternalLinkCreated(const QString &sourceFileName,
+                                     const QString &outputFileName,
+                                     int sourcePageNumber,
+                                     double linkLeft,
+                                     double linkTop,
+                                     double linkRight,
+                                     double linkBottom,
+                                     const QString &url,
+                                     QString *errorText);
+
     /** Writes a copy with one PDF link annotation moved or resized. Page numbers are 1-based. */
     bool saveWithPdfLinkRectangleChanged(const QString &sourceFileName,
                                          const QString &outputFileName,
@@ -1130,6 +1154,16 @@ public:
 
     /** Writes a copy with one PDF link annotation removed. Page numbers are 1-based. */
     bool saveWithPdfLinkDeleted(const QString &sourceFileName, const QString &outputFileName, int sourcePageNumber, double linkLeft, double linkTop, double linkRight, double linkBottom, QString *errorText);
+
+    /** Returns whether the current backend can add an English OCR text layer. */
+    bool canPerformEnglishOcr() const;
+
+    /** Writes a copy with an invisible English OCR text layer on selected 1-based pages. */
+    OcrResult saveWithEnglishOcr(const QString &sourceFileName,
+                                 const QString &outputFileName,
+                                 const QList<int> &pageNumbers,
+                                 bool skipPagesWithText,
+                                 const std::function<bool(int, int, int)> &progress);
 
     /**
      * Sets the history to be clean

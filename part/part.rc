@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <!DOCTYPE gui SYSTEM "kpartgui.dtd">
-<gui name="okular_part" version="71">
+<gui name="okular_part" version="72">
 <MenuBar>
   <Menu name="file"><text>&amp;File</text>
     <Action name="get_new_stuff" group="file_open"/>
@@ -85,6 +85,7 @@
     <Action name="mouse_magnifier"/>
     <Separator/>
     <Action name="add_digital_signature"/>
+    <Action name="tools_recognize_english_text"/>
     <Action name="tools_add_current_page_to_contents"/>
     <Separator/>
     <Action name="speak_document"/>

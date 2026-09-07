@@ -70,6 +70,10 @@ target_include_directories(okularGenerator_poppler PRIVATE
     ${MENGSHEE_POPPLER_PRIVATE_BUILD_DIR}/poppler
 )
 target_link_libraries(okularGenerator_poppler okularcore KF6::I18n KF6::Completion KF6::KIOWidgets Poppler::Core Poppler::Qt6 Qt6::Xml pdf_page_sequence_editor)
+if(HAVE_TESSERACT)
+    target_compile_definitions(okularGenerator_poppler PRIVATE HAVE_TESSERACT=1)
+    target_link_libraries(okularGenerator_poppler Tesseract::Tesseract)
+endif()
 if(POPPLER_QT6_HAS_ANNOTATION_CUSTOM_SCALAR_PROPERTIES)
     target_compile_definitions(okularGenerator_poppler PRIVATE POPPLER_QT6_HAS_ANNOTATION_CUSTOM_SCALAR_PROPERTIES)
 endif()

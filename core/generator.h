@@ -28,6 +28,8 @@
 #include <QStringList>
 #include <QVariant>
 
+#include <functional>
+
 #include <KPluginFactory>
 #include <QMimeType>
 
@@ -295,7 +297,7 @@ public:
 
 /**
  * Optional interface implemented by PDF generators that can edit named
- * destinations and internal link annotations in a copied document.
+ * destinations and link annotations in a copied document.
  */
 class OKULARCORE_EXPORT PdfLinkEditingInterface
 {
@@ -351,6 +353,28 @@ public:
                                              double destinationY,
                                              QString *errorText) = 0;
 
+    /** Writes a copy with the selected link changed to an external URL. */
+    virtual bool saveWithExternalLinkDestinationChanged(const QString &sourceFileName,
+                                                        const QString &outputFileName,
+                                                        int sourcePageNumber,
+                                                        double linkLeft,
+                                                        double linkTop,
+                                                        double linkRight,
+                                                        double linkBottom,
+                                                        const QString &url,
+                                                        QString *errorText) = 0;
+
+    /** Writes a copy with a new external URL link annotation. */
+    virtual bool saveWithExternalLinkCreated(const QString &sourceFileName,
+                                             const QString &outputFileName,
+                                             int sourcePageNumber,
+                                             double linkLeft,
+                                             double linkTop,
+                                             double linkRight,
+                                             double linkBottom,
+                                             const QString &url,
+                                             QString *errorText) = 0;
+
     /** Writes a copy with the selected PDF link annotation moved or resized. */
     virtual bool saveWithPdfLinkRectangleChanged(const QString &sourceFileName,
                                                  const QString &outputFileName,
@@ -367,6 +391,33 @@ public:
 
     /** Writes a copy with the selected PDF link annotation removed. */
     virtual bool saveWithPdfLinkDeleted(const QString &sourceFileName, const QString &outputFileName, int sourcePageNumber, double linkLeft, double linkTop, double linkRight, double linkBottom, QString *errorText) = 0;
+};
+
+/** Result of adding an OCR text layer to a PDF. */
+struct OKULARCORE_EXPORT OcrResult
+{
+    bool success = false;
+    bool cancelled = false;
+    int recognizedPages = 0;
+    int skippedPages = 0;
+    int recognizedWords = 0;
+    QString errorText;
+};
+
+/** Optional interface implemented by PDF generators that support OCR. */
+class OKULARCORE_EXPORT PdfOcrInterface
+{
+public:
+    using ProgressCallback = std::function<bool(int completedPages, int totalPages, int currentPageNumber)>;
+
+    virtual ~PdfOcrInterface() = default;
+
+    virtual bool canPerformEnglishOcr() const = 0;
+    virtual OcrResult saveWithEnglishOcr(const QString &sourceFileName,
+                                         const QString &outputFileName,
+                                         const QList<int> &pageNumbers,
+                                         bool skipPagesWithText,
+                                         const ProgressCallback &progress) = 0;
 };
 
 /**
