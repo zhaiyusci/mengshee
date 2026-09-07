@@ -147,6 +147,18 @@ public:
                                      double destinationX,
                                      double destinationY,
                                      QString *errorText) override;
+    bool saveWithPdfLinkRectangleChanged(const QString &sourceFileName,
+                                         const QString &outputFileName,
+                                         int sourcePageNumber,
+                                         double oldLinkLeft,
+                                         double oldLinkTop,
+                                         double oldLinkRight,
+                                         double oldLinkBottom,
+                                         double newLinkLeft,
+                                         double newLinkTop,
+                                         double newLinkRight,
+                                         double newLinkBottom,
+                                         QString *errorText) override;
     bool saveWithPdfLinkDeleted(const QString &sourceFileName, const QString &outputFileName, int sourcePageNumber, double linkLeft, double linkTop, double linkRight, double linkBottom, QString *errorText) override;
 
     bool canSign() const override;

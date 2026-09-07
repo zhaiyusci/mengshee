@@ -1222,6 +1222,7 @@ void Part::connectWorkspacePageView(PageView *view)
     connect(view, &PageView::rightClick, this, &Part::slotShowMenu);
     connect(view, &PageView::editInternalLinkRequested, this, &Part::editInternalLink);
     connect(view, &PageView::createInternalLinkRequested, this, &Part::createInternalLink);
+    connect(view, &PageView::changePdfLinkRectangleRequested, this, &Part::changePdfLinkRectangle);
     connect(view, &PageView::deletePdfLinkRequested, this, &Part::deletePdfLink);
     connect(view, &PageView::advancedModeChanged, this, &Part::setAdvancedModeEnabled);
     connect(view, &PageView::moveNamedDestinationRequested, this, [this](const QString &name, int pageNumber, const Okular::NormalizedPoint &position) { moveNamedDestination(name, pageNumber, position); });
@@ -4764,6 +4765,35 @@ void Part::editInternalLink(int sourcePageNumber, const QRectF &normalizedLinkRe
 void Part::createInternalLink(int sourcePageNumber, const QRectF &normalizedLinkRectangle)
 {
     configureInternalLink(sourcePageNumber, normalizedLinkRectangle, QString(), Okular::DocumentViewport(), true);
+}
+
+void Part::changePdfLinkRectangle(int sourcePageNumber, const QRectF &oldNormalizedRectangle, const QRectF &newNormalizedRectangle)
+{
+    if (!m_advancedModeEnabled || !m_document->canEditPdfLinks() || sourcePageNumber < 0 || sourcePageNumber >= static_cast<int>(m_document->pages()) || !oldNormalizedRectangle.isValid() || !newNormalizedRectangle.isValid()) {
+        KMessageBox::information(widget(), i18n("This link cannot be resized."));
+        return;
+    }
+
+    const bool edited = applyPdfLinkEdit(
+        i18nc("Undo action", "Resize Link"), i18n("Could not resize the link."), sourcePageNumber, [this, sourcePageNumber, oldNormalizedRectangle, newNormalizedRectangle](const QString &sourceFileName, const QString &outputFileName, QString *errorText) {
+            return m_document->saveWithPdfLinkRectangleChanged(sourceFileName,
+                                                               outputFileName,
+                                                               sourcePageNumber + 1,
+                                                               oldNormalizedRectangle.left(),
+                                                               oldNormalizedRectangle.top(),
+                                                               oldNormalizedRectangle.right(),
+                                                               oldNormalizedRectangle.bottom(),
+                                                               newNormalizedRectangle.left(),
+                                                               newNormalizedRectangle.top(),
+                                                               newNormalizedRectangle.right(),
+                                                               newNormalizedRectangle.bottom(),
+                                                               errorText);
+        });
+    if (edited) {
+        if (PageView *view = workspaceActivePageView()) {
+            view->displayMessage(i18n("Updated the link area. Save the document to keep this change."));
+        }
+    }
 }
 
 void Part::deletePdfLink(int sourcePageNumber, const QRectF &normalizedLinkRectangle)

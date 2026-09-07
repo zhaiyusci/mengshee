@@ -351,6 +351,20 @@ public:
                                              double destinationY,
                                              QString *errorText) = 0;
 
+    /** Writes a copy with the selected PDF link annotation moved or resized. */
+    virtual bool saveWithPdfLinkRectangleChanged(const QString &sourceFileName,
+                                                 const QString &outputFileName,
+                                                 int sourcePageNumber,
+                                                 double oldLinkLeft,
+                                                 double oldLinkTop,
+                                                 double oldLinkRight,
+                                                 double oldLinkBottom,
+                                                 double newLinkLeft,
+                                                 double newLinkTop,
+                                                 double newLinkRight,
+                                                 double newLinkBottom,
+                                                 QString *errorText) = 0;
+
     /** Writes a copy with the selected PDF link annotation removed. */
     virtual bool saveWithPdfLinkDeleted(const QString &sourceFileName, const QString &outputFileName, int sourcePageNumber, double linkLeft, double linkTop, double linkRight, double linkBottom, QString *errorText) = 0;
 };

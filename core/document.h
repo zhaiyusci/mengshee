@@ -1114,6 +1114,20 @@ public:
                                      double destinationY,
                                      QString *errorText);
 
+    /** Writes a copy with one PDF link annotation moved or resized. Page numbers are 1-based. */
+    bool saveWithPdfLinkRectangleChanged(const QString &sourceFileName,
+                                         const QString &outputFileName,
+                                         int sourcePageNumber,
+                                         double oldLinkLeft,
+                                         double oldLinkTop,
+                                         double oldLinkRight,
+                                         double oldLinkBottom,
+                                         double newLinkLeft,
+                                         double newLinkTop,
+                                         double newLinkRight,
+                                         double newLinkBottom,
+                                         QString *errorText);
+
     /** Writes a copy with one PDF link annotation removed. Page numbers are 1-based. */
     bool saveWithPdfLinkDeleted(const QString &sourceFileName, const QString &outputFileName, int sourcePageNumber, double linkLeft, double linkTop, double linkRight, double linkBottom, QString *errorText);
 

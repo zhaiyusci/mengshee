@@ -2421,6 +2421,7 @@ void PartTest::testEditPdfNamedDestinationAndLink()
     const QString destinationFile = tempDir.filePath(QStringLiteral("link-edit-destination.pdf"));
     const QString movedDestinationFile = tempDir.filePath(QStringLiteral("link-edit-destination-moved.pdf"));
     const QString createdLinkFile = tempDir.filePath(QStringLiteral("link-created-result.pdf"));
+    const QString resizedLinkFile = tempDir.filePath(QStringLiteral("link-resized-result.pdf"));
     const QString deletedLinkFile = tempDir.filePath(QStringLiteral("link-deleted-result.pdf"));
     const QString editedLinkFile = tempDir.filePath(QStringLiteral("link-edit-result.pdf"));
     const QString renamedDestinationFile = tempDir.filePath(QStringLiteral("link-edit-renamed.pdf"));
@@ -2507,9 +2508,48 @@ void PartTest::testEditPdfNamedDestinationAndLink()
     }
     QVERIFY(foundCreatedLink);
 
-    QVERIFY2(createdLinkPart.m_document->saveWithPdfLinkDeleted(createdLinkFile, deletedLinkFile, 1, createdLinkRectangle.left(), createdLinkRectangle.top(), createdLinkRectangle.right(), createdLinkRectangle.bottom(), &errorText),
+    const QRectF resizedLinkRectangle(0.35, 0.1, 0.16, 0.09);
+    QVERIFY2(createdLinkPart.m_document->saveWithPdfLinkRectangleChanged(createdLinkFile,
+                                                                         resizedLinkFile,
+                                                                         1,
+                                                                         createdLinkRectangle.left(),
+                                                                         createdLinkRectangle.top(),
+                                                                         createdLinkRectangle.right(),
+                                                                         createdLinkRectangle.bottom(),
+                                                                         resizedLinkRectangle.left(),
+                                                                         resizedLinkRectangle.top(),
+                                                                         resizedLinkRectangle.right(),
+                                                                         resizedLinkRectangle.bottom(),
+                                                                         &errorText),
              qPrintable(errorText));
     createdLinkPart.closeUrl();
+
+    Okular::Part resizedLinkPart(nullptr, {});
+    QVERIFY(openDocument(&resizedLinkPart, resizedLinkFile));
+    resizedLinkPart.widget()->show();
+    QVERIFY(QTest::qWaitForWindowExposed(resizedLinkPart.widget()));
+    resizedLinkPart.m_document->setViewportPage(0);
+    QTRY_VERIFY(resizedLinkPart.m_document->page(0)->hasPixmap(resizedLinkPart.m_pageView));
+    bool foundResizedLink = false;
+    bool foundLinkAtOldRectangle = false;
+    for (const Okular::ObjectRect *rect : resizedLinkPart.m_document->page(0)->objectRects()) {
+        if (!rect || rect->objectType() != Okular::ObjectRect::Action || !rect->object()) {
+            continue;
+        }
+        const auto *action = static_cast<const Okular::Action *>(rect->object());
+        if (action->actionType() != Okular::Action::Goto || static_cast<const Okular::GotoAction *>(action)->destinationName() != destinationName) {
+            continue;
+        }
+        const QRectF rectangle = rect->region().boundingRect();
+        foundResizedLink = foundResizedLink || rectangle.intersects(resizedLinkRectangle);
+        foundLinkAtOldRectangle = foundLinkAtOldRectangle || rectangle.intersects(createdLinkRectangle);
+    }
+    QVERIFY(foundResizedLink);
+    QVERIFY(!foundLinkAtOldRectangle);
+
+    QVERIFY2(resizedLinkPart.m_document->saveWithPdfLinkDeleted(resizedLinkFile, deletedLinkFile, 1, resizedLinkRectangle.left(), resizedLinkRectangle.top(), resizedLinkRectangle.right(), resizedLinkRectangle.bottom(), &errorText),
+             qPrintable(errorText));
+    resizedLinkPart.closeUrl();
 
     Okular::Part deletedLinkPart(nullptr, {});
     QVERIFY(openDocument(&deletedLinkPart, deletedLinkFile));

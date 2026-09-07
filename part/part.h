@@ -350,6 +350,7 @@ private:
     void moveNamedDestination(const QString &name, int pageNumber, const Okular::NormalizedPoint &position);
     void editInternalLink(int sourcePageNumber, const QRectF &normalizedLinkRectangle, const QString &currentDestinationName, const Okular::DocumentViewport &currentDestination);
     void createInternalLink(int sourcePageNumber, const QRectF &normalizedLinkRectangle);
+    void changePdfLinkRectangle(int sourcePageNumber, const QRectF &oldNormalizedRectangle, const QRectF &newNormalizedRectangle);
     void deletePdfLink(int sourcePageNumber, const QRectF &normalizedLinkRectangle);
     void configureInternalLink(int sourcePageNumber, const QRectF &normalizedLinkRectangle, const QString &currentDestinationName, const Okular::DocumentViewport &currentDestination, bool creating);
     bool applyPdfLinkEdit(const QString &undoText, const QString &failureText, int pageNumber, const std::function<bool(const QString &, const QString &, QString *)> &operation);

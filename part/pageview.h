@@ -225,6 +225,8 @@ Q_SIGNALS:
     void moveNamedDestinationRequested(const QString &name, int pageNumber, const Okular::NormalizedPoint &position);
     /** Requests creating an internal link over a rectangle drawn in this view. */
     void createInternalLinkRequested(int sourcePageNumber, const QRectF &normalizedLinkRectangle);
+    /** Requests moving or resizing a PDF link annotation in this view. */
+    void changePdfLinkRectangleRequested(int sourcePageNumber, const QRectF &oldNormalizedRectangle, const QRectF &newNormalizedRectangle);
     /** Requests deleting the selected PDF link annotation. */
     void deletePdfLinkRequested(int sourcePageNumber, const QRectF &normalizedLinkRectangle);
 

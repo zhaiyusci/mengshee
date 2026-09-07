@@ -6150,6 +6150,40 @@ bool Document::saveWithInternalLinkCreated(const QString &sourceFileName,
     return editor->saveWithInternalLinkCreated(sourceFileName, outputFileName, sourcePageNumber, linkLeft, linkTop, linkRight, linkBottom, destinationName, destinationPageNumber, destinationX, destinationY, errorText);
 }
 
+bool Document::saveWithPdfLinkRectangleChanged(const QString &sourceFileName,
+                                               const QString &outputFileName,
+                                               int sourcePageNumber,
+                                               double oldLinkLeft,
+                                               double oldLinkTop,
+                                               double oldLinkRight,
+                                               double oldLinkBottom,
+                                               double newLinkLeft,
+                                               double newLinkTop,
+                                               double newLinkRight,
+                                               double newLinkBottom,
+                                               QString *errorText)
+{
+    auto editor = dynamic_cast<PdfLinkEditingInterface *>(d->m_generator);
+    if (!editor || sourceFileName.isEmpty() || outputFileName.isEmpty()) {
+        if (errorText) {
+            errorText->clear();
+        }
+        return false;
+    }
+    return editor->saveWithPdfLinkRectangleChanged(sourceFileName,
+                                                   outputFileName,
+                                                   sourcePageNumber,
+                                                   oldLinkLeft,
+                                                   oldLinkTop,
+                                                   oldLinkRight,
+                                                   oldLinkBottom,
+                                                   newLinkLeft,
+                                                   newLinkTop,
+                                                   newLinkRight,
+                                                   newLinkBottom,
+                                                   errorText);
+}
+
 bool Document::saveWithPdfLinkDeleted(const QString &sourceFileName, const QString &outputFileName, int sourcePageNumber, double linkLeft, double linkTop, double linkRight, double linkBottom, QString *errorText)
 {
     auto editor = dynamic_cast<PdfLinkEditingInterface *>(d->m_generator);

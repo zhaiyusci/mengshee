@@ -182,6 +182,97 @@ struct NamedDestinationHitRegion {
     QRectF rect;
 };
 
+enum class PdfLinkHandle {
+    None,
+    Move,
+    TopLeft,
+    Top,
+    TopRight,
+    Right,
+    BottomRight,
+    Bottom,
+    BottomLeft,
+    Left,
+};
+
+static constexpr qreal pdfLinkHandleSize = 8.0;
+
+static QRectF pdfLinkContentRect(const PageViewItem *item, const QRectF &normalizedRect)
+{
+    if (!item || !normalizedRect.isValid()) {
+        return {};
+    }
+    return QRectF(item->uncroppedGeometry().left() + normalizedRect.left() * item->uncroppedWidth(),
+                  item->uncroppedGeometry().top() + normalizedRect.top() * item->uncroppedHeight(),
+                  normalizedRect.width() * item->uncroppedWidth(),
+                  normalizedRect.height() * item->uncroppedHeight());
+}
+
+static QRectF pdfLinkHandleRect(const QPointF &center)
+{
+    const qreal half = pdfLinkHandleSize / 2.0;
+    return QRectF(center.x() - half, center.y() - half, pdfLinkHandleSize, pdfLinkHandleSize);
+}
+
+static PdfLinkHandle pdfLinkHandleAt(const QRectF &rect, const QPointF &point)
+{
+    if (!rect.isValid()) {
+        return PdfLinkHandle::None;
+    }
+
+    const QPointF topLeft = rect.topLeft();
+    const QPointF top(rect.center().x(), rect.top());
+    const QPointF topRight = rect.topRight();
+    const QPointF right(rect.right(), rect.center().y());
+    const QPointF bottomRight = rect.bottomRight();
+    const QPointF bottom(rect.center().x(), rect.bottom());
+    const QPointF bottomLeft = rect.bottomLeft();
+    const QPointF left(rect.left(), rect.center().y());
+    const std::array<std::pair<PdfLinkHandle, QPointF>, 8> handles {{{PdfLinkHandle::TopLeft, topLeft},
+                                                                    {PdfLinkHandle::Top, top},
+                                                                    {PdfLinkHandle::TopRight, topRight},
+                                                                    {PdfLinkHandle::Right, right},
+                                                                    {PdfLinkHandle::BottomRight, bottomRight},
+                                                                    {PdfLinkHandle::Bottom, bottom},
+                                                                    {PdfLinkHandle::BottomLeft, bottomLeft},
+                                                                    {PdfLinkHandle::Left, left}}};
+    for (const auto &[handle, center] : handles) {
+        if (pdfLinkHandleRect(center).contains(point)) {
+            return handle;
+        }
+    }
+    return rect.contains(point) ? PdfLinkHandle::Move : PdfLinkHandle::None;
+}
+
+static Qt::CursorShape pdfLinkCursor(PdfLinkHandle handle)
+{
+    switch (handle) {
+    case PdfLinkHandle::TopLeft:
+    case PdfLinkHandle::BottomRight:
+        return Qt::SizeFDiagCursor;
+    case PdfLinkHandle::TopRight:
+    case PdfLinkHandle::BottomLeft:
+        return Qt::SizeBDiagCursor;
+    case PdfLinkHandle::Top:
+    case PdfLinkHandle::Bottom:
+        return Qt::SizeVerCursor;
+    case PdfLinkHandle::Left:
+    case PdfLinkHandle::Right:
+        return Qt::SizeHorCursor;
+    case PdfLinkHandle::Move:
+        return Qt::SizeAllCursor;
+    case PdfLinkHandle::None:
+        return Qt::ArrowCursor;
+    }
+    return Qt::ArrowCursor;
+}
+
+static bool samePdfLinkRectangle(const QRectF &first, const QRectF &second)
+{
+    constexpr qreal tolerance = 0.0001;
+    return std::abs(first.left() - second.left()) < tolerance && std::abs(first.top() - second.top()) < tolerance && std::abs(first.right() - second.right()) < tolerance && std::abs(first.bottom() - second.bottom()) < tolerance;
+}
+
 TableSelectionPart::TableSelectionPart(PageViewItem *item_p, const Okular::NormalizedRect &rectInItem_p, const Okular::NormalizedRect &rectInSelection_p)
     : item(item_p)
     , rectInItem(rectInItem_p)
@@ -223,6 +314,13 @@ public:
     int internalLinkCreationPage = -1;
     QPoint internalLinkCreationStart;
     QRect internalLinkCreationRect;
+    int selectedPdfLinkPage = -1;
+    QRectF selectedPdfLinkOriginalRect;
+    QRectF selectedPdfLinkRect;
+    PdfLinkHandle pdfLinkDragHandle = PdfLinkHandle::None;
+    bool pdfLinkDragging = false;
+    QPoint pdfLinkDragStart;
+    QRectF pdfLinkDragStartRect;
 
     // view layout (columns in Settings), zoom and mouse
     PageView::ZoomMode zoomMode = PageView::ZoomFitWidth;
@@ -645,6 +743,11 @@ void PageView::startInternalLinkCreation()
     d->internalLinkCreationDragging = false;
     d->internalLinkCreationPage = -1;
     d->internalLinkCreationRect = QRect();
+    d->selectedPdfLinkPage = -1;
+    d->selectedPdfLinkOriginalRect = QRectF();
+    d->selectedPdfLinkRect = QRectF();
+    d->pdfLinkDragHandle = PdfLinkHandle::None;
+    d->pdfLinkDragging = false;
     d->scroller->stop();
     setCursor(Qt::CrossCursor);
     displayMessage(i18n("Drag a rectangle over the area that should become an internal link. Press Esc to cancel."));
@@ -791,6 +894,11 @@ void PageView::setupViewerActions(KActionCollection *ac)
             d->internalLinkCreationDragging = false;
             d->internalLinkCreationPage = -1;
             d->internalLinkCreationRect = QRect();
+            d->selectedPdfLinkPage = -1;
+            d->selectedPdfLinkOriginalRect = QRectF();
+            d->selectedPdfLinkRect = QRectF();
+            d->pdfLinkDragHandle = PdfLinkHandle::None;
+            d->pdfLinkDragging = false;
             updateCursor();
         }
         if (checked && !d->namedDestinationsLoaded) {
@@ -1491,6 +1599,11 @@ void PageView::notifySetup(const QList<Okular::Page *> &pageSet, int setupFlags)
     if (setupFlags & (Okular::DocumentObserver::DocumentChanged | Okular::DocumentObserver::UrlChanged)) {
         d->namedDestinationsByPage.clear();
         d->namedDestinationsLoaded = false;
+        d->selectedPdfLinkPage = -1;
+        d->selectedPdfLinkOriginalRect = QRectF();
+        d->selectedPdfLinkRect = QRectF();
+        d->pdfLinkDragHandle = PdfLinkHandle::None;
+        d->pdfLinkDragging = false;
     }
 
     bool documentChanged = setupFlags & Okular::DocumentObserver::DocumentChanged;
@@ -2399,23 +2512,63 @@ void PageView::drawLinkHighlights(const QRect &contentsRect, QPainter *p)
     p->setPen(borderPen);
     p->setBrush(fillColor);
 
-    for (const PageViewItem *item : std::as_const(d->items)) {
-        if (!item->isVisible() || !item->croppedGeometry().intersects(contentsRect)) {
+    for (const PageViewItem *item : std::as_const(d->visibleItems)) {
+        if (!item->croppedGeometry().intersects(contentsRect)) {
             continue;
         }
 
-        const QRect visiblePageRect = item->croppedGeometry().intersected(contentsRect);
+        p->save();
+        p->setClipRect(item->croppedGeometry(), Qt::IntersectClip);
         for (const Okular::ObjectRect *objectRect : item->page()->objectRects()) {
             if (!objectRect || objectRect->objectType() != Okular::ObjectRect::Action || !objectRect->object()) {
                 continue;
             }
 
             const QRectF normalizedRect = objectRect->region().boundingRect();
-            QRectF highlightRect(normalizedRect.left() * item->uncroppedWidth(), normalizedRect.top() * item->uncroppedHeight(), normalizedRect.width() * item->uncroppedWidth(), normalizedRect.height() * item->uncroppedHeight());
-            highlightRect.translate(item->uncroppedGeometry().topLeft());
-            const QRectF clippedRect = highlightRect.intersected(QRectF(visiblePageRect));
-            if (!clippedRect.isEmpty()) {
-                p->drawRoundedRect(clippedRect.adjusted(0.75, 0.75, -0.75, -0.75), 2.0, 2.0);
+            const bool selected = item->pageNumber() == d->selectedPdfLinkPage && samePdfLinkRectangle(normalizedRect, d->selectedPdfLinkOriginalRect);
+            const QRectF highlightRect = pdfLinkContentRect(item, selected ? d->selectedPdfLinkRect : normalizedRect);
+            if (highlightRect.intersects(contentsRect)) {
+                p->setPen(borderPen);
+                p->setBrush(fillColor);
+                p->drawRoundedRect(highlightRect.adjusted(0.75, 0.75, -0.75, -0.75), 2.0, 2.0);
+            }
+        }
+        p->restore();
+    }
+
+    if (d->selectedPdfLinkPage >= 0 && d->selectedPdfLinkRect.isValid()) {
+        const PageViewItem *selectedItem = nullptr;
+        for (const PageViewItem *item : std::as_const(d->visibleItems)) {
+            if (item->pageNumber() == d->selectedPdfLinkPage) {
+                selectedItem = item;
+                break;
+            }
+        }
+        if (selectedItem) {
+            const QRectF selectionRect = pdfLinkContentRect(selectedItem, d->selectedPdfLinkRect);
+            if (selectionRect.adjusted(-pdfLinkHandleSize, -pdfLinkHandleSize, pdfLinkHandleSize, pdfLinkHandleSize).intersects(contentsRect)) {
+                p->save();
+                p->setClipRect(selectedItem->croppedGeometry().adjusted(-qCeil(pdfLinkHandleSize), -qCeil(pdfLinkHandleSize), qCeil(pdfLinkHandleSize), qCeil(pdfLinkHandleSize)), Qt::IntersectClip);
+                QPen selectionPen(QColor::fromHsvF(0, 0, 0.75, 0.9), 2.0, Qt::SolidLine, Qt::SquareCap, Qt::BevelJoin);
+                selectionPen.setCosmetic(true);
+                p->setPen(selectionPen);
+                p->setBrush(Qt::NoBrush);
+                p->drawRect(selectionRect);
+
+                const std::array<QPointF, 8> centers {selectionRect.topLeft(),
+                                                     QPointF(selectionRect.center().x(), selectionRect.top()),
+                                                     selectionRect.topRight(),
+                                                     QPointF(selectionRect.right(), selectionRect.center().y()),
+                                                     selectionRect.bottomRight(),
+                                                     QPointF(selectionRect.center().x(), selectionRect.bottom()),
+                                                     selectionRect.bottomLeft(),
+                                                     QPointF(selectionRect.left(), selectionRect.center().y())};
+                p->setPen(QColor::fromHsvF(0, 0, 1.0));
+                p->setBrush(QColor::fromHsvF(0, 0, 0.75, 0.9));
+                for (const QPointF &center : centers) {
+                    p->drawRect(pdfLinkHandleRect(center));
+                }
+                p->restore();
             }
         }
     }
@@ -2704,6 +2857,18 @@ void PageView::resizeEvent(QResizeEvent *e)
 
 void PageView::keyPressEvent(QKeyEvent *e)
 {
+    if (e->key() == Qt::Key_Escape && d->selectedPdfLinkPage >= 0) {
+        d->selectedPdfLinkPage = -1;
+        d->selectedPdfLinkOriginalRect = QRectF();
+        d->selectedPdfLinkRect = QRectF();
+        d->pdfLinkDragHandle = PdfLinkHandle::None;
+        d->pdfLinkDragging = false;
+        viewport()->update();
+        updateCursor();
+        e->accept();
+        return;
+    }
+
     if (e->key() == Qt::Key_Escape && d->creatingInternalLink) {
         d->creatingInternalLink = false;
         d->internalLinkCreationDragging = false;
@@ -2967,6 +3132,66 @@ void PageView::mouseMoveEvent(QMouseEvent *e)
         return;
     }
 
+    if (d->pdfLinkDragging && d->selectedPdfLinkPage >= 0) {
+        if (e->buttons() & Qt::LeftButton) {
+            PageViewItem *selectedItem = d->selectedPdfLinkPage < d->items.size() ? d->items.at(d->selectedPdfLinkPage) : nullptr;
+            if (selectedItem) {
+                const QRectF previousContentRect = pdfLinkContentRect(selectedItem, d->selectedPdfLinkRect);
+                const QPointF start(selectedItem->absToPageX(d->pdfLinkDragStart.x()), selectedItem->absToPageY(d->pdfLinkDragStart.y()));
+                const QPointF current(qBound(0.0, selectedItem->absToPageX(eventPos.x()), 1.0), qBound(0.0, selectedItem->absToPageY(eventPos.y()), 1.0));
+                QRectF updated = d->pdfLinkDragStartRect;
+                const qreal minimumWidth = qMin(1.0, 4.0 / selectedItem->uncroppedWidth());
+                const qreal minimumHeight = qMin(1.0, 4.0 / selectedItem->uncroppedHeight());
+
+                switch (d->pdfLinkDragHandle) {
+                case PdfLinkHandle::Move: {
+                    const qreal dx = qBound(-updated.left(), current.x() - start.x(), 1.0 - updated.right());
+                    const qreal dy = qBound(-updated.top(), current.y() - start.y(), 1.0 - updated.bottom());
+                    updated.translate(dx, dy);
+                    break;
+                }
+                case PdfLinkHandle::TopLeft:
+                    updated.setLeft(qMin(current.x(), updated.right() - minimumWidth));
+                    updated.setTop(qMin(current.y(), updated.bottom() - minimumHeight));
+                    break;
+                case PdfLinkHandle::Top:
+                    updated.setTop(qMin(current.y(), updated.bottom() - minimumHeight));
+                    break;
+                case PdfLinkHandle::TopRight:
+                    updated.setRight(qMax(current.x(), updated.left() + minimumWidth));
+                    updated.setTop(qMin(current.y(), updated.bottom() - minimumHeight));
+                    break;
+                case PdfLinkHandle::Right:
+                    updated.setRight(qMax(current.x(), updated.left() + minimumWidth));
+                    break;
+                case PdfLinkHandle::BottomRight:
+                    updated.setRight(qMax(current.x(), updated.left() + minimumWidth));
+                    updated.setBottom(qMax(current.y(), updated.top() + minimumHeight));
+                    break;
+                case PdfLinkHandle::Bottom:
+                    updated.setBottom(qMax(current.y(), updated.top() + minimumHeight));
+                    break;
+                case PdfLinkHandle::BottomLeft:
+                    updated.setLeft(qMin(current.x(), updated.right() - minimumWidth));
+                    updated.setBottom(qMax(current.y(), updated.top() + minimumHeight));
+                    break;
+                case PdfLinkHandle::Left:
+                    updated.setLeft(qMin(current.x(), updated.right() - minimumWidth));
+                    break;
+                case PdfLinkHandle::None:
+                    break;
+                }
+
+                d->selectedPdfLinkRect = updated;
+                const QRectF changed = previousContentRect.united(pdfLinkContentRect(selectedItem, updated)).adjusted(-pdfLinkHandleSize, -pdfLinkHandleSize, pdfLinkHandleSize, pdfLinkHandleSize);
+                viewport()->update(changed.translated(-contentAreaPosition()).toAlignedRect());
+                setCursor(pdfLinkCursor(d->pdfLinkDragHandle));
+            }
+        }
+        e->accept();
+        return;
+    }
+
     // if we're editing an annotation, dispatch event to it
     if (d->annotator && d->annotator->active()) {
         if (d->annotator->pageView() == this) {
@@ -3129,6 +3354,48 @@ void PageView::mousePressEvent(QMouseEvent *e)
             setCursor(Qt::SizeAllCursor);
             e->accept();
             return;
+        }
+    }
+
+    if (e->button() == Qt::LeftButton && e->modifiers() == Qt::NoModifier && d->showNamedDestinations && d->document->canEditPdfLinks() && d->mouseMode == Okular::Settings::EnumMouseMode::Browse) {
+        PageViewItem *pageItem = pickItemOnPoint(eventPos.x(), eventPos.y());
+        PdfLinkHandle handle = PdfLinkHandle::None;
+        if (pageItem && pageItem->pageNumber() == d->selectedPdfLinkPage) {
+            handle = pdfLinkHandleAt(pdfLinkContentRect(pageItem, d->selectedPdfLinkRect), eventPos);
+        }
+
+        const Okular::ObjectRect *linkObject = nullptr;
+        if (pageItem && handle == PdfLinkHandle::None) {
+            linkObject = pageItem->page()->objectRect(Okular::ObjectRect::Action, pageItem->absToPageX(eventPos.x()), pageItem->absToPageY(eventPos.y()), pageItem->uncroppedWidth(), pageItem->uncroppedHeight());
+        }
+
+        if (pageItem && (handle != PdfLinkHandle::None || linkObject)) {
+            if (linkObject) {
+                d->selectedPdfLinkPage = pageItem->pageNumber();
+                d->selectedPdfLinkOriginalRect = linkObject->region().boundingRect();
+                d->selectedPdfLinkRect = d->selectedPdfLinkOriginalRect;
+                handle = PdfLinkHandle::Move;
+            }
+            d->pdfLinkDragHandle = handle;
+            d->pdfLinkDragging = true;
+            d->pdfLinkDragStart = eventPos;
+            d->pdfLinkDragStartRect = d->selectedPdfLinkRect;
+            d->scroller->stop();
+            d->dragScrollTimer.stop();
+            d->mouseGrabOffset = QPoint();
+            viewport()->update();
+            setCursor(pdfLinkCursor(handle));
+            e->accept();
+            return;
+        }
+
+        if (d->selectedPdfLinkPage >= 0) {
+            d->selectedPdfLinkPage = -1;
+            d->selectedPdfLinkOriginalRect = QRectF();
+            d->selectedPdfLinkRect = QRectF();
+            d->pdfLinkDragHandle = PdfLinkHandle::None;
+            d->pdfLinkDragging = false;
+            viewport()->update();
         }
     }
 
@@ -3422,6 +3689,22 @@ void PageView::mouseReleaseEvent(QMouseEvent *e)
     }
 
     const QPoint eventPos = contentAreaPoint(e->pos());
+
+    if (leftButton && d->pdfLinkDragging) {
+        const int sourcePageNumber = d->selectedPdfLinkPage;
+        const QRectF oldRectangle = d->selectedPdfLinkOriginalRect;
+        const QRectF newRectangle = d->selectedPdfLinkRect;
+        d->pdfLinkDragging = false;
+        d->pdfLinkDragHandle = PdfLinkHandle::None;
+        d->selectedPdfLinkOriginalRect = newRectangle;
+        viewport()->update();
+        updateCursor();
+        if (!samePdfLinkRectangle(oldRectangle, newRectangle)) {
+            Q_EMIT changePdfLinkRectangleRequested(sourcePageNumber, oldRectangle, newRectangle);
+        }
+        e->accept();
+        return;
+    }
 
     if (leftButton && d->creatingInternalLink && d->internalLinkCreationDragging) {
         PageViewItem *sourceItem = nullptr;
@@ -5237,6 +5520,15 @@ void PageView::updateCursor(const QPoint p)
             return;
         }
 
+        if (pageItem->pageNumber() == d->selectedPdfLinkPage) {
+            const PdfLinkHandle handle = pdfLinkHandleAt(pdfLinkContentRect(pageItem, d->selectedPdfLinkRect), p);
+            if (handle != PdfLinkHandle::None) {
+                d->mouseOnRect = true;
+                setCursor(pdfLinkCursor(handle));
+                return;
+            }
+        }
+
         double nX = pageItem->absToPageX(p.x());
         double nY = pageItem->absToPageY(p.y());
         Qt::CursorShape cursorShapeFallback;
@@ -5280,7 +5572,7 @@ void PageView::updateCursor(const QPoint p)
         if (linkobj) {
             d->mouseOverLinkObject = linkobj;
             d->mouseOnRect = true;
-            setCursor(Qt::PointingHandCursor);
+            setCursor(d->showNamedDestinations && d->document->canEditPdfLinks() && d->mouseMode == Okular::Settings::EnumMouseMode::Browse ? Qt::SizeAllCursor : Qt::PointingHandCursor);
         } else {
             setCursor(cursorShapeFallback);
         }

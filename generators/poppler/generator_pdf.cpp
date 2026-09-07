@@ -2970,6 +2970,36 @@ bool PDFGenerator::saveWithInternalLinkCreated(const QString &sourceFileName,
         errorText);
 }
 
+bool PDFGenerator::saveWithPdfLinkRectangleChanged(const QString &sourceFileName,
+                                                   const QString &outputFileName,
+                                                   int sourcePageNumber,
+                                                   double oldLinkLeft,
+                                                   double oldLinkTop,
+                                                   double oldLinkRight,
+                                                   double oldLinkBottom,
+                                                   double newLinkLeft,
+                                                   double newLinkTop,
+                                                   double newLinkRight,
+                                                   double newLinkBottom,
+                                                   QString *errorText)
+{
+    return runPdfPagesOperation(
+        [&] {
+            return PdfPageSequenceEditor::editLinkRectangle(pdfPagesFileName(sourceFileName),
+                                                            pdfPagesFileName(outputFileName),
+                                                            sourcePageNumber,
+                                                            oldLinkLeft,
+                                                            oldLinkTop,
+                                                            oldLinkRight,
+                                                            oldLinkBottom,
+                                                            newLinkLeft,
+                                                            newLinkTop,
+                                                            newLinkRight,
+                                                            newLinkBottom);
+        },
+        errorText);
+}
+
 bool PDFGenerator::saveWithPdfLinkDeleted(const QString &sourceFileName, const QString &outputFileName, int sourcePageNumber, double linkLeft, double linkTop, double linkRight, double linkBottom, QString *errorText)
 {
     return runPdfPagesOperation([&] { return PdfPageSequenceEditor::deleteLink(pdfPagesFileName(sourceFileName), pdfPagesFileName(outputFileName), sourcePageNumber, linkLeft, linkTop, linkRight, linkBottom); }, errorText);
