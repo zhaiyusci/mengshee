@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <!DOCTYPE gui SYSTEM "kpartgui.dtd">
-<gui name="okular_part" version="67">
+<gui name="okular_part" version="71">
 <MenuBar>
   <Menu name="file"><text>&amp;File</text>
     <Action name="get_new_stuff" group="file_open"/>
@@ -84,8 +84,6 @@
     <Action name="mouse_tableselect"/>
     <Action name="mouse_magnifier"/>
     <Separator/>
-    <Action name="mouse_toggle_annotate"/>
-    <Separator/>
     <Action name="add_digital_signature"/>
     <Action name="tools_add_current_page_to_contents"/>
     <Separator/>
@@ -120,9 +118,10 @@
   <Action name="mouse_drag"/>
   <Action name="mouse_selecttools"/>
   <Action name="annotation_favorites"/>
-  <Separator/>
   <Action name="hamburger_menu"/>
   <Action name="open_auxiliary_view"/>
+  <Separator/>
+  <Action name="view_toggle_named_destinations"/>
 </ToolBar>
 <ActionProperties scheme="Default">
   <Action priority="0" name="show_leftpanel"/>
@@ -130,7 +129,13 @@
   <Action priority="0" name="view_zoom_in"/>
   <Action priority="0" name="open_auxiliary_view"/>
 </ActionProperties>
-<ToolBar name="annotationToolBar" iconText="icononly" newline="true" hidden="true"><text>Annotation Toolbar</text>
+<ToolBar name="advancedToolBar" iconText="icononly" newline="true" hidden="true"><text>Advanced PDF Editing Toolbar</text>
+  <Action name="advanced_add_named_destination"/>
+  <Action name="advanced_create_internal_link"/>
+  <Separator/>
+  <Action name="tools_add_current_page_to_contents"/>
+</ToolBar>
+<ToolBar name="annotationToolBar" iconText="icononly" newline="true"><text>Annotation Toolbar</text>
   <Action name="annotation_highlighter"/>
   <Action name="annotation_underline"/>
   <Action name="annotation_squiggle"/>
@@ -158,8 +163,6 @@
   <Separator/>
   <Action name="annotation_bookmark"/>
   <Action name="annotation_settings_pin"/>
-  <Spacer/>
-  <Action name="hide_annotation_toolbar"/>
 </ToolBar>
 <ToolBar name="quickAnnotationToolBar" iconText="icononly" newline="true" hidden="true" position="right" iconSize="32"><text>Quick Annotation Toolbar</text>
     <Action name="quick_annotation_action_bar"/>

@@ -6799,3 +6799,470 @@ msgstr "向右旋转"
 #: part/part.cpp
 msgid "Reset Orientation"
 msgstr "恢复默认方向"
+
+# Mengshee advanced PDF editing additions
+msgid "Advanced Mode"
+msgstr "高级模式"
+
+msgid "Only PDF contents entries that point to document pages can be edited."
+msgstr "只能编辑指向文档页面的 PDF 目录项。"
+
+msgid "The new contents destination is invalid."
+msgstr "新的目录目标无效。"
+
+msgid "Drag a rectangle over the area that should become an internal link. Press Esc to cancel."
+msgstr "在要创建内部链接的区域拖出一个矩形。按 Esc 取消。"
+
+msgid "Show advanced PDF editing tools for pages, contents, links, and named destinations"
+msgstr "显示用于页面、目录、链接和具名目标的高级 PDF 编辑工具"
+
+#, kde-format
+msgid "Move '%1' to the new position and release the mouse button."
+msgstr "将“%1”移动到新位置，然后松开鼠标按钮。"
+
+msgid "The link area is too small. Drag a larger rectangle, or press Esc to cancel."
+msgstr "链接区域太小。请拖出更大的矩形，或按 Esc 取消。"
+
+#, kde-format
+msgctxt "@info:tooltip Internal PDF link destination"
+msgid "Destination: page %1"
+msgstr "目标：第 %1 页"
+
+#, kde-format
+msgctxt "@info:tooltip Internal PDF named link destination and resolved page"
+msgid ""
+"Named destination: %1\n"
+"Resolved page: %2"
+msgstr ""
+"具名目标：%1\n"
+"解析到页面：第 %2 页"
+
+#, kde-format
+msgctxt "@info:tooltip Internal PDF named link that cannot be resolved"
+msgid ""
+"Named destination: %1\n"
+"Status: unresolved"
+msgstr ""
+"具名目标：%1\n"
+"状态：无法解析"
+
+msgctxt "@info:tooltip Internal PDF link that cannot be resolved"
+msgid "Destination: unresolved"
+msgstr "目标：无法解析"
+
+msgctxt "@info:tooltip Shown when hovering an internal PDF link; describes mouse shortcuts."
+msgid "Middle-click or Ctrl+left-click to open in an auxiliary frame."
+msgstr "单击鼠标中键或按住 Ctrl 单击左键可在辅助窗格中打开。"
+
+msgid "Open in Auxiliary Frame"
+msgstr "在辅助窗格中打开"
+
+msgid "Edit Link Destination..."
+msgstr "编辑链接目标..."
+
+msgid "Delete Link"
+msgstr "删除链接"
+
+msgid ""
+"The copied page may contain named destinations that already exist in this document.\n"
+"\n"
+"Add a suffix to give the copied destinations their own names and update matching links, or keep the original names as they are. All links are retained in either mode."
+msgstr ""
+"复制的页面可能包含此文档中已经存在的具名目标。\n"
+"\n"
+"可以添加后缀，为复制的目标赋予独立名称并更新对应链接；也可以保持原名称不变。两种方式都会保留所有链接。"
+
+msgid "Named Destination Conflicts"
+msgstr "具名目标冲突"
+
+msgctxt "@action:button"
+msgid "Add Suffixes"
+msgstr "添加后缀"
+
+msgctxt "@action:button"
+msgid "Keep Names As Is"
+msgstr "保持名称不变"
+
+msgid "Open Current View in Auxiliary Frame"
+msgstr "在辅助窗格中打开当前视图"
+
+msgctxt "@action:button"
+msgid "Auxiliary"
+msgstr "辅助窗格"
+
+#, kde-format
+msgctxt "@title Auxiliary document frame"
+msgid "Page %1"
+msgstr "第 %1 页"
+
+msgid "Combine PDF Files..."
+msgstr "合并 PDF 文件..."
+
+msgid "The current PDF file could not be found on disk."
+msgstr "在磁盘上找不到当前 PDF 文件。"
+
+msgid "Combine PDF Files"
+msgstr "合并 PDF 文件"
+
+msgid "Arrange the PDF files in the order they should appear in the new document."
+msgstr "请按 PDF 文件在新文档中的先后顺序排列。"
+
+msgid "Add Files..."
+msgstr "添加文件..."
+
+msgid "Remove"
+msgstr "移除"
+
+msgid "Move Left"
+msgstr "左移"
+
+msgid "Move Right"
+msgstr "右移"
+
+msgid "Named destinations:"
+msgstr "具名目标："
+
+msgid "Add a separate suffix for each PDF"
+msgstr "为每个 PDF 添加独立后缀"
+
+msgid "Keep destination names as they are"
+msgstr "保持目标名称原样"
+
+msgid "All links are retained. Adding suffixes isolates each PDF's named destinations and rewrites its matching internal links."
+msgstr "所有链接都会保留。添加后缀会隔离每个 PDF 的具名目标，并改写其中对应的内部链接。"
+
+msgctxt "@action:button"
+msgid "Combine"
+msgstr "合并"
+
+msgid "The file no longer exists."
+msgstr "文件已不存在。"
+
+msgid "The PDF is password-protected."
+msgstr "PDF 受密码保护。"
+
+msgid "The PDF backend could not open the file."
+msgstr "PDF 后端无法打开此文件。"
+
+msgid "The selected file is not supported by the PDF combine backend."
+msgstr "PDF 合并后端不支持所选文件。"
+
+#, kde-format
+msgid "Could not add %1. %2"
+msgstr "无法添加 %1。%2"
+
+msgid "The file could not be read as a PDF."
+msgstr "无法将此文件作为 PDF 读取。"
+
+#, kde-format
+msgid ""
+"%2\n"
+"%1 page"
+msgid_plural ""
+"%2\n"
+"%1 pages"
+msgstr[0] ""
+"%2\n"
+"%1 页"
+
+msgid "Add PDF Files"
+msgstr "添加 PDF 文件"
+
+msgid "PDF Documents (*.pdf)"
+msgstr "PDF 文档 (*.pdf)"
+
+msgid "Save Combined PDF"
+msgstr "保存合并后的 PDF"
+
+msgid "The combined PDF must be saved to a different file from every input PDF."
+msgstr "合并后的 PDF 必须保存为不同于所有输入 PDF 的文件。"
+
+msgid "Could not create a snapshot of the current PDF."
+msgstr "无法为当前 PDF 创建快照。"
+
+#, kde-format
+msgid "Could not prepare the current PDF for combining. %1"
+msgstr "无法准备当前 PDF 以进行合并。%1"
+
+msgid "Could not combine the selected PDF files."
+msgstr "无法合并所选 PDF 文件。"
+
+#, kde-format
+msgid "Could not combine the selected PDF files. %1"
+msgstr "无法合并所选 PDF 文件。%1"
+
+msgid "Links and named destinations can only be edited in local PDF files."
+msgstr "只能在本地 PDF 文件中编辑链接和具名目标。"
+
+msgid "Could not create a temporary file for PDF editing."
+msgstr "无法为 PDF 编辑创建临时文件。"
+
+msgid "Could not prepare the current document for PDF editing."
+msgstr "无法准备当前文档以进行 PDF 编辑。"
+
+#, kde-format
+msgid "Could not prepare the current document for PDF editing. %1"
+msgstr "无法准备当前文档以进行 PDF 编辑。%1"
+
+#, kde-format
+msgid "%1 %2"
+msgstr "%1 %2"
+
+msgid "A named destination cannot be added here."
+msgstr "无法在此处添加具名目标。"
+
+msgid "Add Named Destination"
+msgstr "添加具名目标"
+
+#, kde-format
+msgid "A named destination called '%1' already exists. Replace it?"
+msgstr "名为“%1”的具名目标已存在。要替换它吗？"
+
+msgid "Replace Named Destination"
+msgstr "替换具名目标"
+
+msgid "Replace"
+msgstr "替换"
+
+msgctxt "Undo action"
+msgid "Add Named Destination"
+msgstr "添加具名目标"
+
+msgid "Could not add the named destination."
+msgstr "无法添加具名目标。"
+
+#, kde-format
+msgid "Added named destination '%1'. Save the document to keep this change."
+msgstr "已添加具名目标“%1”。请保存文档以保留此更改。"
+
+msgid "This named destination cannot be edited."
+msgstr "无法编辑此具名目标。"
+
+msgid "Rename Named Destination"
+msgstr "重命名具名目标"
+
+msgid "New name:"
+msgstr "新名称："
+
+#, kde-format
+msgid "A named destination called '%1' already exists. Replacing it will make references to both names point to this destination. Continue?"
+msgstr "名为“%1”的具名目标已存在。替换后，两个名称的引用都会指向此目标。要继续吗？"
+
+msgctxt "Undo action"
+msgid "Rename Named Destination"
+msgstr "重命名具名目标"
+
+msgid "Could not rename the named destination."
+msgstr "无法重命名具名目标。"
+
+#, kde-format
+msgid "Renamed named destination '%1' to '%2'. Save the document to keep this change."
+msgstr "已将具名目标“%1”重命名为“%2”。请保存文档以保留此更改。"
+
+#, kde-format
+msgid "Delete the named destination '%1'? Existing links that refer to this name will be kept, but they will no longer resolve unless another destination with this name is added later."
+msgstr "要删除具名目标“%1”吗？引用此名称的现有链接会被保留，但除非以后添加同名目标，否则这些链接将无法解析。"
+
+msgid "Delete Named Destination"
+msgstr "删除具名目标"
+
+msgctxt "Undo action"
+msgid "Delete Named Destination"
+msgstr "删除具名目标"
+
+msgid "Could not delete the named destination."
+msgstr "无法删除具名目标。"
+
+#, kde-format
+msgid "Deleted named destination '%1'. Existing references were left unchanged. Save the document to keep this change."
+msgstr "已删除具名目标“%1”。现有引用保持不变。请保存文档以保留此更改。"
+
+msgid "This named destination cannot be moved here."
+msgstr "无法将此具名目标移动到这里。"
+
+msgctxt "Undo action"
+msgid "Move Named Destination"
+msgstr "移动具名目标"
+
+msgid "Could not move the named destination."
+msgstr "无法移动具名目标。"
+
+#, kde-format
+msgid "Moved named destination '%1'. Save the document to keep this change."
+msgstr "已移动具名目标“%1”。请保存文档以保留此更改。"
+
+msgid "This link cannot be resized."
+msgstr "无法调整此链接的大小。"
+
+msgctxt "Undo action"
+msgid "Resize Link"
+msgstr "调整链接大小"
+
+msgid "Could not resize the link."
+msgstr "无法调整链接大小。"
+
+msgid "Updated the link area. Save the document to keep this change."
+msgstr "已更新链接区域。请保存文档以保留此更改。"
+
+msgid "This link cannot be deleted."
+msgstr "无法删除此链接。"
+
+msgid "Delete this link?"
+msgstr "要删除此链接吗？"
+
+msgctxt "Undo action"
+msgid "Delete Link"
+msgstr "删除链接"
+
+msgid "Could not delete the link."
+msgstr "无法删除链接。"
+
+msgid "Deleted the link. Save the document to keep this change."
+msgstr "已删除链接。请保存文档以保留此更改。"
+
+msgid "An internal link cannot be created here."
+msgstr "无法在此处创建内部链接。"
+
+msgid "This internal link cannot be edited."
+msgstr "无法编辑此内部链接。"
+
+msgid "Create Internal Link"
+msgstr "创建内部链接"
+
+msgid "Edit Link Destination"
+msgstr "编辑链接目标"
+
+msgid "Named destination (preferred)"
+msgstr "具名目标（推荐）"
+
+msgid "Search by name or page..."
+msgstr "按名称或页码搜索..."
+
+#, kde-format
+msgid "%1 — page %2"
+msgstr "%1 — 第 %2 页"
+
+msgid "Direct page position"
+msgstr "直接页面位置"
+
+msgid "% x"
+msgstr "% x"
+
+msgid "% y"
+msgstr "% y"
+
+msgid "Page:"
+msgstr "页码："
+
+msgid "Create a named destination from the page context menu to use a stable, readable link target."
+msgstr "请从页面右键菜单创建具名目标，以使用稳定且易读的链接目标。"
+
+msgctxt "Undo action"
+msgid "Create Internal Link"
+msgstr "创建内部链接"
+
+msgctxt "Undo action"
+msgid "Edit Link Destination"
+msgstr "编辑链接目标"
+
+msgid "Could not create the internal link."
+msgstr "无法创建内部链接。"
+
+msgid "Could not edit the link destination."
+msgstr "无法编辑链接目标。"
+
+msgid "Created the internal link. Save the document to keep this change."
+msgstr "已创建内部链接。请保存文档以保留此更改。"
+
+#, kde-format
+msgid "Created a link to named destination '%1'. Save the document to keep this change."
+msgstr "已创建指向具名目标“%1”的链接。请保存文档以保留此更改。"
+
+msgid "Updated the internal link. Save the document to keep this change."
+msgstr "已更新内部链接。请保存文档以保留此更改。"
+
+#, kde-format
+msgid "Linked to named destination '%1'. Save the document to keep this change."
+msgstr "已链接到具名目标“%1”。请保存文档以保留此更改。"
+
+#, kde-format
+msgid "Named Destination: %1"
+msgstr "具名目标：%1"
+
+msgid "Add to Contents"
+msgstr "添加到目录"
+
+msgid "Rename..."
+msgstr "重命名..."
+
+msgid "Delete"
+msgstr "删除"
+
+msgid "Named Destinations"
+msgstr "具名目标"
+
+msgid "Add Named Destination Here..."
+msgstr "在此处添加具名目标..."
+
+msgid "Create Internal Link..."
+msgstr "创建内部链接..."
+
+msgid "Advanced PDF Editing Toolbar"
+msgstr "高级 PDF 编辑工具栏"
+
+msgid "Page Tools"
+msgstr "页面工具"
+
+msgid "Click a position on the page to add a named destination"
+msgstr "在页面上单击一个位置以添加具名目标"
+
+msgid "Draw a rectangle on the page to create an internal link"
+msgstr "在页面上拖出矩形以创建内部链接"
+
+msgid "Click where the named destination should be placed. Press Esc to cancel."
+msgstr "单击具名目标应放置的位置。按 Esc 取消。"
+
+msgid "Rotate Current Page"
+msgstr "旋转当前页"
+
+msgid "Insert Page..."
+msgstr "插入页面..."
+
+msgid "Insert Blank Page After Current Page"
+msgstr "在当前页后插入空白页"
+
+msgid "Duplicate Current Page"
+msgstr "复制当前页"
+
+msgid "Set Page Template PDF..."
+msgstr "设置页面模板 PDF..."
+
+msgid "Insert Page From Template..."
+msgstr "从模板插入页面..."
+
+msgid "Delete Current Page"
+msgstr "删除当前页"
+
+msgid "Insert Page After This Page..."
+msgstr "在此页后插入页面..."
+
+msgid "Insert Page From Template After This Page..."
+msgstr "在此页后从模板插入页面..."
+
+msgid "Insert Blank Page After This Page"
+msgstr "在此页后插入空白页"
+
+msgid "Duplicate This Page"
+msgstr "复制此页"
+
+msgid "Delete This Page"
+msgstr "删除此页"
+
+msgid "Open documents in a separate process"
+msgstr "在单独进程中打开文档"
+
+msgid "Could not open the document in a separate process."
+msgstr "无法在单独进程中打开文档。"
+
+msgid "Could not open the generated PDF in a separate process."
+msgstr "无法在单独进程中打开生成的 PDF。"

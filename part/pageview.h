@@ -75,6 +75,7 @@ public:
     OKULARPART_EXPORT bool advancedModeEnabled() const;
     void setAdvancedModeEnabled(bool enabled);
     OKULARPART_EXPORT bool namedDestinationsVisible() const;
+    void startNamedDestinationCreation();
     void startInternalLinkCreation();
 
     // Zoom mode ( last 4 are internally used only! )
@@ -100,7 +101,6 @@ public:
     void setupBaseActions(KActionCollection *ac);
     void setupViewerActions(KActionCollection *ac);
     void setupActions(KActionCollection *ac, PageViewAnnotator *sharedAnnotator = nullptr);
-    void setupActionsPostGUIActivated();
     void updateActionState(bool docHasPages, bool docHasFormWidgets);
 
     // misc methods (from RMB menu/children)
@@ -223,6 +223,8 @@ Q_SIGNALS:
     void editInternalLinkRequested(int sourcePageNumber, const QRectF &normalizedLinkRectangle, const QString &currentDestinationName, const Okular::DocumentViewport &currentDestination);
     /** Requests moving a named destination to a point selected in this view. */
     void moveNamedDestinationRequested(const QString &name, int pageNumber, const Okular::NormalizedPoint &position);
+    /** Requests creating a named destination at a point selected in this view. */
+    void createNamedDestinationRequested(int pageNumber, const Okular::NormalizedPoint &position);
     /** Requests creating an internal link over a rectangle drawn in this view. */
     void createInternalLinkRequested(int sourcePageNumber, const QRectF &normalizedLinkRectangle);
     /** Requests moving or resizing a PDF link annotation in this view. */

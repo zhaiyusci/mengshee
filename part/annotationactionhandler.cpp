@@ -35,9 +35,7 @@
 #include <KActionCollection>
 #include <KLocalizedString>
 #include <KMessageBox>
-#include <KParts/MainWindow>
 #include <KSelectAction>
-#include <KToolBar>
 #include <kwidgetsaddons_version.h>
 
 // local includes
@@ -136,9 +134,6 @@ public:
         , aOpacity(nullptr)
         , aFont(nullptr)
         , aAdvancedSettings(nullptr)
-        , aHideToolBar(nullptr)
-        , aShowToolBar(nullptr)
-        , aToolBarVisibility(nullptr)
         , aCustomStamp(nullptr)
         , aCustomWidth(nullptr)
         , aCustomOpacity(nullptr)
@@ -192,8 +187,6 @@ public:
     void slotSelectAnnotationFont();
     bool isQuickToolAction(QAction *aTool);
     bool isQuickToolStamp(int toolId);
-    void assertToolBarExists(KParts::MainWindow *mw, const QString &toolBarName);
-
     AnnotationActionHandler *q;
 
     PageViewAnnotator *annotator;
@@ -225,10 +218,6 @@ public:
     KSelectAction *aOpacity;
     QAction *aFont;
     QAction *aAdvancedSettings;
-    QAction *aHideToolBar;
-    QAction *aShowToolBar;
-    KToggleAction *aToolBarVisibility;
-
     QAction *aCustomStamp;
     QAction *aCustomWidth;
     QAction *aCustomOpacity;
@@ -654,16 +643,13 @@ void AnnotationActionHandlerPrivate::populateQuickAnnotations()
     }
     aQuickToolsBar->recreateWidgets();
 
-    // set the default action
+    // The full annotation toolbar is owned by the current mode, so the quick
+    // annotation button never acts as a toolbar visibility switch.
     if (quickTools.isEmpty()) {
-        aShowToolBar->setVisible(false);
-        aQuickTools->addAction(aToolBarVisibility);
-        aQuickTools->setDefaultAction(aToolBarVisibility);
+        aQuickTools->setDefaultAction(aQuickTools);
         Okular::Settings::setQuickAnnotationDefaultAction(0);
         Okular::Settings::self()->save();
     } else {
-        aShowToolBar->setVisible(true);
-        aQuickTools->removeAction(aToolBarVisibility);
         aQuickTools->setDefaultAction(aQuickTools);
         int defaultAction = Okular::Settings::quickAnnotationDefaultAction();
         if (isFirstTimePopulated && defaultAction < quickTools.count()) {
@@ -912,24 +898,12 @@ bool AnnotationActionHandlerPrivate::isQuickToolStamp(int toolId)
     return annotType == QStringLiteral("stamp");
 }
 
-void AnnotationActionHandlerPrivate::assertToolBarExists(KParts::MainWindow *mw, const QString &toolBarName)
-{
-    QList<KToolBar *> toolbars = mw->toolBars();
-    auto itToolBar = std::find_if(toolbars.begin(), toolbars.end(), [&](const KToolBar *toolBar) { return toolBar->objectName() == toolBarName; });
-    Q_ASSERT(itToolBar != toolbars.end());
-}
-
 // TODO: icon names should match getAnnotationInfo in gui/guiutils.cpp
 AnnotationActionHandler::AnnotationActionHandler(PageViewAnnotator *parent, KActionCollection *ac)
     : QObject(parent)
     , d(new AnnotationActionHandlerPrivate(this))
 {
     d->annotator = parent;
-
-    // toolbar visibility actions
-    d->aToolBarVisibility = new KToggleAction(d->mengsheeIcon(QStringLiteral("annotation-freehand.svg")), i18n("&Annotations"), this);
-    d->aHideToolBar = new QAction(QIcon::fromTheme(QStringLiteral("dialog-close")), i18nc("@action:intoolbar Hide the toolbar", "Hide"), this);
-    d->aShowToolBar = new QAction(d->mengsheeIcon(QStringLiteral("annotation-freehand.svg")), i18nc("@action:intoolbar Show the builtin annotation toolbar", "Show more annotation tools"), this);
 
     // Text markup actions
     KToggleAction *aHighlighter = new KToggleAction(d->mengsheeIcon(QStringLiteral("annotation-highlight.svg")), i18nc("@action:intoolbar Annotation tool", "Highlighter"), this);
@@ -1046,7 +1020,6 @@ AnnotationActionHandler::AnnotationActionHandler(PageViewAnnotator *parent, KAct
     QAction *aQuickToolsSeparator = new QAction(this);
     aQuickToolsSeparator->setSeparator(true);
     d->aQuickTools->addAction(aQuickToolsSeparator);
-    d->aQuickTools->addAction(d->aShowToolBar);
     QAction *aConfigAnnotation = ac->action(QStringLiteral("options_configure_annotations"));
     if (aConfigAnnotation) {
         d->aQuickTools->addAction(aConfigAnnotation);
@@ -1118,15 +1091,9 @@ AnnotationActionHandler::AnnotationActionHandler(PageViewAnnotator *parent, KAct
             d->selectTool(-1);
         } else {
             d->agLastAction = action;
-            // Show the annotation toolbar whenever builtin tool actions are triggered (e.g using shortcuts)
-            if (!d->isQuickToolAction(action)) {
-                d->aToolBarVisibility->setChecked(true);
-            }
         }
     });
 
-    ac->addAction(QStringLiteral("mouse_toggle_annotate"), d->aToolBarVisibility);
-    ac->addAction(QStringLiteral("hide_annotation_toolbar"), d->aHideToolBar);
     ac->addAction(QStringLiteral("quick_annotation_action_bar"), d->aQuickToolsBar);
     ac->addAction(QStringLiteral("annotation_highlighter"), aHighlighter);
     ac->addAction(QStringLiteral("annotation_underline"), aUnderline);
@@ -1161,7 +1128,6 @@ AnnotationActionHandler::AnnotationActionHandler(PageViewAnnotator *parent, KAct
     ac->addAction(QStringLiteral("annotation_settings_font"), d->aFont);
     ac->addAction(QStringLiteral("annotation_settings_advanced"), d->aAdvancedSettings);
 
-    ac->setDefaultShortcut(d->aToolBarVisibility, Qt::Key_F6);
     ac->setDefaultShortcut(aHighlighter, Qt::ALT | Qt::Key_1);
     ac->setDefaultShortcut(aUnderline, Qt::ALT | Qt::Key_2);
     ac->setDefaultShortcut(aSquiggle, Qt::ALT | Qt::Key_3);
@@ -1175,44 +1141,12 @@ AnnotationActionHandler::AnnotationActionHandler(PageViewAnnotator *parent, KAct
     ac->setDefaultShortcut(d->aAddToQuickTools, QKeySequence((Qt::CTRL | Qt::SHIFT) | Qt::Key_B));
     d->updateConfigActions();
 
-    connect(Okular::Settings::self(), &Okular::Settings::primaryAnnotationToolBarChanged, this, &AnnotationActionHandler::setupAnnotationToolBarVisibilityAction);
 }
 
 AnnotationActionHandler::~AnnotationActionHandler()
 {
     // delete the private data storage structure
     delete d;
-}
-
-void AnnotationActionHandler::setupAnnotationToolBarVisibilityAction()
-{
-    // find the main window associated to the toggle toolbar action
-    QList<QObject *> objects = d->aToolBarVisibility->associatedObjects();
-    auto itMainWindow = std::find_if(objects.begin(), objects.end(), [](const QObject *object) { return qobject_cast<const KParts::MainWindow *>(object) != nullptr; });
-    Q_ASSERT(itMainWindow != objects.end());
-    KParts::MainWindow *mw = qobject_cast<KParts::MainWindow *>(*itMainWindow);
-
-    // ensure that the annotation toolbars have been created
-    d->assertToolBarExists(mw, QStringLiteral("annotationToolBar"));
-    d->assertToolBarExists(mw, QStringLiteral("quickAnnotationToolBar"));
-
-    KToolBar *annotationToolBar = mw->toolBar(QStringLiteral("annotationToolBar"));
-    connect(annotationToolBar, &QToolBar::visibilityChanged, this, &AnnotationActionHandler::slotAnnotationToolBarVisibilityChanged, Qt::UniqueConnection);
-    // show action
-    connect(d->aShowToolBar, &QAction::triggered, annotationToolBar, &KToolBar::show, Qt::UniqueConnection);
-    // hide action
-    connect(d->aHideToolBar, &QAction::triggered, annotationToolBar, &KToolBar::hide, Qt::UniqueConnection);
-
-    KToolBar *primaryAnnotationToolBar = annotationToolBar;
-    if (Okular::Settings::primaryAnnotationToolBar() == Okular::Settings::EnumPrimaryAnnotationToolBar::QuickAnnotationToolBar) {
-        primaryAnnotationToolBar = mw->toolBar(QStringLiteral("quickAnnotationToolBar"));
-    }
-    d->aToolBarVisibility->setChecked(false);
-    d->aToolBarVisibility->disconnect(primaryAnnotationToolBar);
-    d->aToolBarVisibility->setChecked(primaryAnnotationToolBar->isVisible());
-    connect(primaryAnnotationToolBar, &QToolBar::visibilityChanged, d->aToolBarVisibility, &QAction::setChecked, Qt::UniqueConnection);
-    connect(d->aToolBarVisibility, &QAction::toggled, primaryAnnotationToolBar, &KToolBar::setVisible, Qt::UniqueConnection);
-    d->aShowToolBar->setEnabled(!primaryAnnotationToolBar->isVisible());
 }
 
 void AnnotationActionHandler::reparseBuiltinToolsConfig()
@@ -1259,14 +1193,6 @@ void AnnotationActionHandler::deselectAllAnnotationActions()
     if (checkedAction) {
         d->agLastAction = checkedAction;
         checkedAction->trigger(); // action group workaround: using trigger instead of setChecked
-    }
-}
-
-void AnnotationActionHandler::slotAnnotationToolBarVisibilityChanged(bool visible)
-{
-    d->aShowToolBar->setEnabled(!visible);
-    if (!visible && !d->isQuickToolAction(d->agTools->checkedAction())) {
-        deselectAllAnnotationActions();
     }
 }
 

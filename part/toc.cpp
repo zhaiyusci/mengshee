@@ -7,10 +7,12 @@
 #include "toc.h"
 
 // qt/kde includes
+#include <algorithm>
 #include <QContextMenuEvent>
 #include <QHeaderView>
 #include <QInputDialog>
 #include <QLayout>
+#include <QSet>
 #include <QTreeView>
 #include <qdom.h>
 
@@ -251,12 +253,75 @@ static QDomElement childElementAt(QDomNode parent, int row)
     return QDomElement();
 }
 
+static QString namedDestinationAtViewport(Okular::Document *document, const Okular::DocumentViewport &viewport)
+{
+    if (!viewport.isValid() || !viewport.rePos.enabled) {
+        return QString();
+    }
+
+    const QVariantList destinations = document->metaData(QStringLiteral("NamedViewports")).toList();
+    for (const QVariant &value : destinations) {
+        const QVariantMap destination = value.toMap();
+        const Okular::DocumentViewport candidate(destination.value(QStringLiteral("viewport")).toString());
+        if (candidate.pageNumber == viewport.pageNumber && candidate.rePos.enabled && qAbs(candidate.rePos.normalizedX - viewport.rePos.normalizedX) < 0.002 && qAbs(candidate.rePos.normalizedY - viewport.rePos.normalizedY) < 0.002) {
+            return destination.value(QStringLiteral("name")).toString();
+        }
+    }
+    return QString();
+}
+
+static QString uniqueContentsDestinationName(Okular::Document *document, const QString &title)
+{
+    QSet<QString> existingNames;
+    const QVariantList destinations = document->metaData(QStringLiteral("NamedViewports")).toList();
+    for (const QVariant &value : destinations) {
+        existingNames.insert(value.toMap().value(QStringLiteral("name")).toString());
+    }
+
+    QString baseName;
+    bool lastWasSeparator = false;
+    for (const QChar character : title.trimmed()) {
+        const ushort value = character.unicode();
+        const bool isAsciiLetterOrNumber = (value >= 'a' && value <= 'z') || (value >= 'A' && value <= 'Z') || (value >= '0' && value <= '9');
+        if (isAsciiLetterOrNumber || character == QLatin1Char('.') || character == QLatin1Char('_') || character == QLatin1Char('-')) {
+            baseName.append(character);
+            lastWasSeparator = false;
+        } else if (!baseName.isEmpty() && !lastWasSeparator) {
+            baseName.append(QLatin1Char('-'));
+            lastWasSeparator = true;
+        }
+        if (baseName.size() >= 32) {
+            break;
+        }
+    }
+    while (baseName.endsWith(QLatin1Char('-'))) {
+        baseName.chop(1);
+    }
+    if (baseName.isEmpty()) {
+        baseName = QStringLiteral("toc");
+    }
+    if (!existingNames.contains(baseName)) {
+        return baseName;
+    }
+    for (int suffix = 2;; ++suffix) {
+        const QString candidate = baseName + QLatin1Char('.') + QString::number(suffix);
+        if (!existingNames.contains(candidate)) {
+            return candidate;
+        }
+    }
+}
+
 QDomElement TOC::synopsisElementForIndex(QDomDocument &document, const QModelIndex &index) const
 {
     QDomElement element = document.createElement(m_model->data(index, Qt::DisplayRole).toString());
-    const Okular::DocumentViewport viewport = m_model->viewportForIndex(index);
-    if (viewport.isValid()) {
-        element.setAttribute(QStringLiteral("Viewport"), viewport.toString());
+    const QString viewportName = m_model->viewportNameForIndex(index);
+    if (!viewportName.isEmpty()) {
+        element.setAttribute(QStringLiteral("ViewportName"), viewportName);
+    } else {
+        const Okular::DocumentViewport viewport = m_model->viewportForIndex(index);
+        if (viewport.isValid()) {
+            element.setAttribute(QStringLiteral("Viewport"), viewport.toString());
+        }
     }
     const QString externalFileName = m_model->externalFileNameForIndex(index);
     if (!externalFileName.isEmpty()) {
@@ -328,7 +393,32 @@ void TOC::addCurrentPageEntry()
 
     Okular::DocumentSynopsis synopsis = synopsisFromModel();
     QDomElement element = synopsis.createElement(title.trimmed());
-    element.setAttribute(QStringLiteral("Viewport"), viewport.toString());
+    QString destinationName = namedDestinationAtViewport(m_document, viewport);
+    if (destinationName.isEmpty()) {
+        destinationName = uniqueContentsDestinationName(m_document, title);
+        element.setAttribute(QStringLiteral("Viewport"), viewport.toString());
+        element.setAttribute(QStringLiteral("CreateViewportName"), QStringLiteral("true"));
+    }
+    element.setAttribute(QStringLiteral("ViewportName"), destinationName);
+    synopsis.appendChild(element);
+    applySynopsis(synopsis);
+}
+
+void TOC::addNamedDestinationEntry(const QString &name)
+{
+    if (!m_editingEnabled || !m_document->isOpened() || name.isEmpty()) {
+        return;
+    }
+
+    const QVariantList destinations = m_document->metaData(QStringLiteral("NamedViewports")).toList();
+    const bool destinationExists = std::ranges::any_of(destinations, [&name](const QVariant &value) { return value.toMap().value(QStringLiteral("name")).toString() == name; });
+    if (!destinationExists) {
+        return;
+    }
+
+    Okular::DocumentSynopsis synopsis = synopsisFromModel();
+    QDomElement element = synopsis.createElement(name);
+    element.setAttribute(QStringLiteral("ViewportName"), name);
     synopsis.appendChild(element);
     applySynopsis(synopsis);
 }

@@ -146,8 +146,12 @@ void AnnotationToolBarTest::testAnnotationToolBar()
     Okular::Part *part = dynamic_cast<Okular::Part *>(s->m_tabs[tabIndex].part);
     QVERIFY(part);
 
+    QToolBar *mainToolBar = s->findChild<QToolBar *>(QStringLiteral("mainToolBar"));
     QToolBar *annToolBar = s->findChild<QToolBar *>(QStringLiteral("annotationToolBar"));
+    QToolBar *advancedToolBar = s->findChild<QToolBar *>(QStringLiteral("advancedToolBar"));
+    QVERIFY(mainToolBar);
     QVERIFY(annToolBar);
+    QVERIFY(advancedToolBar);
 
     // Check config action default enabled states
     QAction *aQuickTools = part->actionCollection()->action(QStringLiteral("annotation_favorites"));
@@ -155,6 +159,8 @@ void AnnotationToolBarTest::testAnnotationToolBar()
     QAction *aAdvancedSettings = part->actionCollection()->action(QStringLiteral("annotation_settings_advanced"));
     QAction *aContinuousMode = part->actionCollection()->action(QStringLiteral("annotation_settings_pin"));
     QVERIFY(aQuickTools->isEnabled());
+    QVERIFY(mainToolBar->actions().contains(aQuickTools));
+    QVERIFY(!annToolBar->actions().contains(aQuickTools));
     QVERIFY(!aAddToQuickTools->isEnabled());
     QVERIFY(!aAdvancedSettings->isEnabled());
     QVERIFY(aContinuousMode->isEnabled());
@@ -163,31 +169,27 @@ void AnnotationToolBarTest::testAnnotationToolBar()
     // (at least the 'Configure Annotations...' action must be present)
     QVERIFY(!aQuickTools->menu()->actions().isEmpty());
 
-    // Test annotation toolbar visibility triggers
-    QAction *toggleAnnotationToolBar = part->actionCollection()->action(QStringLiteral("mouse_toggle_annotate"));
-    QAction *aHideToolBar = part->actionCollection()->action(QStringLiteral("hide_annotation_toolbar"));
-    QVERIFY(toggleAnnotationToolBar);
-    QVERIFY(aHideToolBar);
-    toggleAnnotationToolBar->setChecked(false);
-    QTRY_VERIFY(!annToolBar->isVisible());
-    toggleAnnotationToolBar->trigger();
-    QTRY_VERIFY2(annToolBar->isVisible(), "Annotation action failed to show.");
-    toggleAnnotationToolBar->trigger();
-    QTRY_VERIFY2(!annToolBar->isVisible(), "Annotation action failed to hide.");
-
-    toggleAnnotationToolBar->setChecked(true);
+    // The current mode owns its toolbar. Users cannot hide either mode toolbar.
+    QVERIFY(!part->actionCollection()->action(QStringLiteral("mouse_toggle_annotate")));
+    QVERIFY(!part->actionCollection()->action(QStringLiteral("hide_annotation_toolbar")));
     QTRY_VERIFY(annToolBar->isVisible());
-    aHideToolBar->trigger();
-    QTRY_VERIFY2(!annToolBar->isVisible(), "Hide toolbar action failed to hide.");
+    QTRY_VERIFY(!advancedToolBar->isVisible());
+    QVERIFY(annToolBar->geometry().top() > mainToolBar->geometry().top());
+    QCOMPARE(annToolBar->contextMenuPolicy(), Qt::PreventContextMenu);
+    QVERIFY(!annToolBar->toggleViewAction()->isVisible());
 
-    toggleAnnotationToolBar->setChecked(false);
-    QTRY_VERIFY(!annToolBar->isVisible());
-    QTest::keyClick(part->widget(), Qt::Key_1, Qt::AltModifier);
-    QTRY_VERIFY2(annToolBar->isVisible(), "ToolBar not shown when triggering annotation using shortcut.");
-    toggleAnnotationToolBar->setChecked(false);
-    QTRY_VERIFY(!annToolBar->isVisible());
-    QTest::keyClick(part->widget(), Qt::Key_3);
-    QTRY_VERIFY2(!annToolBar->isVisible(), "ToolBar shown when triggering quick annotation using shortcut.");
+    QAction *advancedMode = part->actionCollection()->action(QStringLiteral("view_toggle_named_destinations"));
+    QVERIFY(advancedMode);
+    advancedMode->setChecked(true);
+    QTRY_VERIFY(annToolBar->isVisible());
+    QTRY_VERIFY(advancedToolBar->isVisible());
+    QVERIFY(advancedToolBar->geometry().top() > mainToolBar->geometry().top());
+    QCOMPARE(advancedToolBar->geometry().top(), annToolBar->geometry().top());
+    QCOMPARE(advancedToolBar->contextMenuPolicy(), Qt::PreventContextMenu);
+    QVERIFY(!advancedToolBar->toggleViewAction()->isVisible());
+    advancedMode->setChecked(false);
+    QTRY_VERIFY(annToolBar->isVisible());
+    QTRY_VERIFY(!advancedToolBar->isVisible());
 
     // set mouse mode to browse before starting the tests on the annotation actions
     QAction *aMouseNormal = part->actionCollection()->action(QStringLiteral("mouse_drag"));

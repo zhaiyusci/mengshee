@@ -445,7 +445,8 @@ Part::Part(QObject *parent, const QVariantList &args)
     thumbsBox->layout()->addWidget(m_searchWidget);
     m_thumbnailList = new ThumbnailList(thumbsBox, m_document);
     thumbsBox->layout()->addWidget(m_thumbnailList);
-    //	ThumbnailController * m_tc = new ThumbnailController( thumbsBox, m_thumbnailList );
+    m_thumbnailController = new ThumbnailController(thumbsBox, m_thumbnailList);
+    thumbsBox->layout()->addWidget(m_thumbnailController);
     connect(m_thumbnailList.data(), &ThumbnailList::rightClick, this, &Part::slotShowMenu);
     connect(m_thumbnailList.data(), &ThumbnailList::pageMoveRequested, this, &Part::movePageFromThumbnail);
     m_sidebar->addItem(thumbsBox, QIcon::fromTheme(QStringLiteral("view-preview")), i18n("Thumbnails"));
@@ -666,6 +667,7 @@ Part::Part(QObject *parent, const QVariantList &args)
         m_signaturePanel->setPageView(view);
         routeWorkspacePageViewActions(view);
         updateViewActions();
+        updatePageEditActions();
     });
     connect(m_documentWorkspace, &DocumentWorkspace::auxiliaryViewAboutToClose, this, [this](PageView *view) {
         PageView *fallback = m_documentWorkspace ? m_documentWorkspace->mainView() : m_pageView.data();
@@ -976,6 +978,28 @@ void Part::setupViewerActions()
     m_addCurrentPageToContents->setEnabled(false);
     connect(m_addCurrentPageToContents, &QAction::triggered, m_toc.data(), &TOC::addCurrentPageEntry);
 
+    m_addNamedDestination = ac->addAction(QStringLiteral("advanced_add_named_destination"));
+    m_addNamedDestination->setText(i18n("Add Named Destination"));
+    m_addNamedDestination->setIcon(QIcon::fromTheme(QStringLiteral("bookmark-new"), QIcon::fromTheme(QStringLiteral("list-add"))));
+    m_addNamedDestination->setToolTip(i18n("Click a position on the page to add a named destination"));
+    m_addNamedDestination->setEnabled(false);
+    connect(m_addNamedDestination, &QAction::triggered, this, [this] {
+        if (PageView *view = workspaceActivePageView()) {
+            view->startNamedDestinationCreation();
+        }
+    });
+
+    m_createInternalLink = ac->addAction(QStringLiteral("advanced_create_internal_link"));
+    m_createInternalLink->setText(i18n("Create Internal Link"));
+    m_createInternalLink->setIcon(QIcon::fromTheme(QStringLiteral("insert-link")));
+    m_createInternalLink->setToolTip(i18n("Draw a rectangle on the page to create an internal link"));
+    m_createInternalLink->setEnabled(false);
+    connect(m_createInternalLink, &QAction::triggered, this, [this] {
+        if (PageView *view = workspaceActivePageView()) {
+            view->startInternalLinkCreation();
+        }
+    });
+
     m_insertPage = ac->addAction(QStringLiteral("tools_insert_page"));
     m_insertPage->setText(i18n("Insert Page..."));
     m_insertPage->setIcon(QIcon::fromTheme(QStringLiteral("document-new")));
@@ -1005,11 +1029,59 @@ void Part::setupViewerActions()
     m_duplicateCurrentPage->setEnabled(false);
     connect(m_duplicateCurrentPage, &QAction::triggered, this, &Part::slotDuplicateCurrentPage);
 
+    m_rotateCurrentPage = ac->addAction(QStringLiteral("tools_rotate_current_page"));
+    m_rotateCurrentPage->setText(i18n("Rotate Current Page"));
+    m_rotateCurrentPage->setIcon(QIcon::fromTheme(QStringLiteral("object-rotate-right")));
+    m_rotateCurrentPage->setEnabled(false);
+
+    auto *rotateCurrentPageMenu = new QMenu(widget());
+    m_rotateCurrentPageLeft = ac->addAction(QStringLiteral("tools_rotate_current_page_left"));
+    m_rotateCurrentPageLeft->setText(i18n("Rotate Left"));
+    m_rotateCurrentPageLeft->setIcon(QIcon::fromTheme(QStringLiteral("object-rotate-left")));
+    connect(m_rotateCurrentPageLeft, &QAction::triggered, this, [this] {
+        const int pageNumber = workspaceActivePageNumber();
+        const Okular::Page *page = m_document->page(pageNumber);
+        if (page) {
+            setPageRotation(pageNumber, (static_cast<int>(page->orientation()) + 3) % 4 * 90);
+        }
+    });
+    rotateCurrentPageMenu->addAction(m_rotateCurrentPageLeft);
+
+    m_rotateCurrentPageRight = ac->addAction(QStringLiteral("tools_rotate_current_page_right"));
+    m_rotateCurrentPageRight->setText(i18n("Rotate Right"));
+    m_rotateCurrentPageRight->setIcon(QIcon::fromTheme(QStringLiteral("object-rotate-right")));
+    connect(m_rotateCurrentPageRight, &QAction::triggered, this, [this] {
+        const int pageNumber = workspaceActivePageNumber();
+        const Okular::Page *page = m_document->page(pageNumber);
+        if (page) {
+            setPageRotation(pageNumber, (static_cast<int>(page->orientation()) + 1) % 4 * 90);
+        }
+    });
+    rotateCurrentPageMenu->addAction(m_rotateCurrentPageRight);
+
+    m_resetCurrentPageRotation = ac->addAction(QStringLiteral("tools_reset_current_page_rotation"));
+    m_resetCurrentPageRotation->setText(i18n("Reset Orientation"));
+    m_resetCurrentPageRotation->setIcon(QIcon::fromTheme(QStringLiteral("document-revert")));
+    connect(m_resetCurrentPageRotation, &QAction::triggered, this, [this] { setPageRotation(workspaceActivePageNumber(), 0); });
+    rotateCurrentPageMenu->addAction(m_resetCurrentPageRotation);
+    m_rotateCurrentPage->setMenu(rotateCurrentPageMenu);
+
     m_deleteCurrentPage = ac->addAction(QStringLiteral("tools_delete_current_page"));
     m_deleteCurrentPage->setText(i18n("Delete Current Page"));
     m_deleteCurrentPage->setIcon(QIcon::fromTheme(QStringLiteral("edit-delete")));
     m_deleteCurrentPage->setEnabled(false);
     connect(m_deleteCurrentPage, &QAction::triggered, this, &Part::slotDeleteCurrentPage);
+
+    m_thumbnailController->setPageEditActions({m_insertPage,
+                                               m_insertBlankPageAfterCurrentPage,
+                                               nullptr,
+                                               m_duplicateCurrentPage,
+                                               m_rotateCurrentPage,
+                                               nullptr,
+                                               m_setPageTemplate,
+                                               m_insertPageFromTemplate,
+                                               nullptr,
+                                               m_deleteCurrentPage});
 
     m_closeFindBar = ac->addAction(QStringLiteral("close_find_bar"), this, SLOT(slotHideFindBar()));
     m_closeFindBar->setText(i18n("Close &Find Bar"));
@@ -1221,6 +1293,7 @@ void Part::connectWorkspacePageView(PageView *view)
 {
     connect(view, &PageView::rightClick, this, &Part::slotShowMenu);
     connect(view, &PageView::editInternalLinkRequested, this, &Part::editInternalLink);
+    connect(view, &PageView::createNamedDestinationRequested, this, &Part::addNamedDestination);
     connect(view, &PageView::createInternalLinkRequested, this, &Part::createInternalLink);
     connect(view, &PageView::changePdfLinkRectangleRequested, this, &Part::changePdfLinkRectangle);
     connect(view, &PageView::deletePdfLinkRequested, this, &Part::deletePdfLink);
@@ -1239,6 +1312,7 @@ void Part::connectWorkspacePageView(PageView *view)
     connect(view, &PageView::viewportStateChanged, this, [this, view] {
         if (workspaceActivePageView() == view) {
             updateViewActions();
+            updatePageEditActions();
         }
     });
 #if HAVE_NEW_SIGNATURE_API
@@ -2491,7 +2565,7 @@ void Part::guiActivateEvent(KParts::GUIActivateEvent *event)
     setWindowTitleFromDocument();
 
     if (event->activated()) {
-        m_pageView->setupActionsPostGUIActivated();
+        setAdvancedModeEnabled(m_advancedModeEnabled);
         rebuildBookmarkMenu();
     }
 }
@@ -3866,12 +3940,24 @@ void Part::updatePageEditActions()
 {
     const bool canEditPages = canUsePageLevelEditing();
     const bool showAdvancedActions = m_advancedModeEnabled;
+    const bool canEditLinks = showAdvancedActions && canEditPages && m_document->canEditPdfLinks();
+    const int currentPageNumber = workspaceActivePageNumber();
+    const Okular::Page *currentPage = currentPageNumber >= 0 && currentPageNumber < static_cast<int>(m_document->pages()) ? m_document->page(currentPageNumber) : nullptr;
+    const bool canRotateCurrentPage = showAdvancedActions && canEditPages && currentPage && m_document->canRotatePage();
     if (m_combinePdfFiles) {
         m_combinePdfFiles->setEnabled(!m_document->isOpened() || m_document->canCombinePdfFiles());
     }
     if (m_addCurrentPageToContents) {
         m_addCurrentPageToContents->setVisible(showAdvancedActions);
         m_addCurrentPageToContents->setEnabled(showAdvancedActions && canEditPages);
+    }
+    if (m_addNamedDestination) {
+        m_addNamedDestination->setVisible(showAdvancedActions);
+        m_addNamedDestination->setEnabled(canEditLinks);
+    }
+    if (m_createInternalLink) {
+        m_createInternalLink->setVisible(showAdvancedActions);
+        m_createInternalLink->setEnabled(canEditLinks);
     }
     if (m_insertPage) {
         m_insertPage->setVisible(showAdvancedActions);
@@ -3893,6 +3979,19 @@ void Part::updatePageEditActions()
         m_duplicateCurrentPage->setVisible(showAdvancedActions);
         m_duplicateCurrentPage->setEnabled(showAdvancedActions && canEditPages && m_document->canInsertPageFromPdf());
     }
+    if (m_rotateCurrentPage) {
+        m_rotateCurrentPage->setVisible(showAdvancedActions);
+        m_rotateCurrentPage->setEnabled(canRotateCurrentPage);
+    }
+    if (m_rotateCurrentPageLeft) {
+        m_rotateCurrentPageLeft->setEnabled(canRotateCurrentPage);
+    }
+    if (m_rotateCurrentPageRight) {
+        m_rotateCurrentPageRight->setEnabled(canRotateCurrentPage);
+    }
+    if (m_resetCurrentPageRotation) {
+        m_resetCurrentPageRotation->setEnabled(canRotateCurrentPage && currentPage->orientation() != Okular::Rotation0);
+    }
     if (m_deleteCurrentPage) {
         m_deleteCurrentPage->setVisible(showAdvancedActions);
         m_deleteCurrentPage->setEnabled(showAdvancedActions && canEditPages && m_document->canDeletePage() && m_document->pages() > 1);
@@ -3903,11 +4002,50 @@ void Part::updatePageEditActions()
     if (m_thumbnailList) {
         m_thumbnailList->setPageReorderingEnabled(showAdvancedActions && canEditPages && m_document->canMovePage() && m_document->pages() > 1);
     }
+    if (m_thumbnailController) {
+        m_thumbnailController->setAdvancedModeEnabled(showAdvancedActions);
+    }
 }
 
 void Part::setAdvancedModeEnabled(bool enabled)
 {
+    const auto updateToolBars = [this, enabled] {
+        if (m_thumbnailController) {
+            m_thumbnailController->setAdvancedModeEnabled(enabled);
+        }
+        if (auto *mainWindow = findMainWindow()) {
+            const auto configureModeToolBar = [](KToolBar *toolBar, bool visible) {
+                if (!toolBar) {
+                    return;
+                }
+                toolBar->setMovable(false);
+                toolBar->setFloatable(false);
+                toolBar->setContextMenuPolicy(Qt::PreventContextMenu);
+                toolBar->toggleViewAction()->setVisible(false);
+                toolBar->toggleViewAction()->setEnabled(false);
+                toolBar->setVisible(visible);
+            };
+            KToolBar *annotationToolBar = mainWindow->toolBar(QStringLiteral("annotationToolBar"));
+            KToolBar *advancedToolBar = mainWindow->toolBar(QStringLiteral("advancedToolBar"));
+
+            mainWindow->removeToolBarBreak(annotationToolBar);
+            mainWindow->removeToolBarBreak(advancedToolBar);
+            if (annotationToolBar) {
+                mainWindow->addToolBar(Qt::TopToolBarArea, annotationToolBar);
+                mainWindow->insertToolBarBreak(annotationToolBar);
+            }
+            if (advancedToolBar) {
+                mainWindow->addToolBar(Qt::TopToolBarArea, advancedToolBar);
+            }
+
+            configureModeToolBar(annotationToolBar, true);
+            configureModeToolBar(advancedToolBar, enabled);
+            configureModeToolBar(mainWindow->toolBar(QStringLiteral("quickAnnotationToolBar")), false);
+        }
+    };
+
     if (m_advancedModeEnabled == enabled) {
+        updateToolBars();
         return;
     }
 
@@ -3925,6 +4063,7 @@ void Part::setAdvancedModeEnabled(bool enabled)
         view->setAdvancedModeEnabled(enabled);
     }
     updatePageEditActions();
+    updateToolBars();
 }
 
 void Part::slotCombinePdfFiles()
@@ -5684,6 +5823,7 @@ void Part::showMenu(const Okular::Page *page, const QPoint point, const QString 
     Okular::NormalizedPoint namedDestinationPoint;
     QHash<const QAction *, QString> renameNamedDestinationActions;
     QHash<const QAction *, QString> deleteNamedDestinationActions;
+    QHash<const QAction *, QString> addNamedDestinationToContentsActions;
     const QStringList clickedNamedDestinations = contextView ? contextView->namedDestinationsAtGlobalPos(point) : QStringList();
     if (page) {
         pageEditTargetPage = page->number();
@@ -5692,12 +5832,14 @@ void Part::showMenu(const Okular::Page *page, const QPoint point, const QString 
             if (clickedNamedDestinations.size() == 1) {
                 const QString &name = clickedNamedDestinations.constFirst();
                 popup.addAction(new OKMenuTitle(&popup, i18n("Named Destination: %1", name)));
+                addNamedDestinationToContentsActions.insert(popup.addAction(QIcon::fromTheme(QStringLiteral("list-add")), i18n("Add to Contents")), name);
                 renameNamedDestinationActions.insert(popup.addAction(QIcon::fromTheme(QStringLiteral("edit-rename")), i18n("Rename...")), name);
                 deleteNamedDestinationActions.insert(popup.addAction(QIcon::fromTheme(QStringLiteral("edit-delete")), i18n("Delete")), name);
             } else {
                 popup.addAction(new OKMenuTitle(&popup, i18n("Named Destinations")));
                 for (const QString &name : clickedNamedDestinations) {
                     QMenu *destinationMenu = popup.addMenu(QIcon::fromTheme(QStringLiteral("insert-link")), name);
+                    addNamedDestinationToContentsActions.insert(destinationMenu->addAction(QIcon::fromTheme(QStringLiteral("list-add")), i18n("Add to Contents")), name);
                     renameNamedDestinationActions.insert(destinationMenu->addAction(QIcon::fromTheme(QStringLiteral("edit-rename")), i18n("Rename...")), name);
                     deleteNamedDestinationActions.insert(destinationMenu->addAction(QIcon::fromTheme(QStringLiteral("edit-delete")), i18n("Delete")), name);
                 }
@@ -5788,7 +5930,9 @@ void Part::showMenu(const Okular::Page *page, const QPoint point, const QString 
     if (reallyShow) {
         const QAction *res = popup.exec(point);
         if (res) {
-            if (renameNamedDestinationActions.contains(res)) {
+            if (addNamedDestinationToContentsActions.contains(res)) {
+                m_toc->addNamedDestinationEntry(addNamedDestinationToContentsActions.value(res));
+            } else if (renameNamedDestinationActions.contains(res)) {
                 renameNamedDestination(renameNamedDestinationActions.value(res));
             } else if (deleteNamedDestinationActions.contains(res)) {
                 deleteNamedDestination(deleteNamedDestinationActions.value(res));
@@ -5953,9 +6097,6 @@ void Part::slotUpdateHamburgerMenu()
     menu->addAction(m_copyWithoutLineBreaks);
     menu->addAction(m_find);
     menu->addAction(m_showLeftPanel);
-    if (!visibleMainToolbar || visibleMainToolbar->actions().contains(ac->action(QStringLiteral("annotation_favorites")))) {
-        menu->addAction(ac->action(QStringLiteral("mouse_toggle_annotate")));
-    }
     menu->addAction(ac->action(KStandardAction::name(KStandardAction::Undo)));
     menu->addAction(ac->action(KStandardAction::name(KStandardAction::Redo)));
     menu->addSeparator();

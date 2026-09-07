@@ -309,6 +309,7 @@ public:
     QPointF namedDestinationDragStartGlobal;
     QPoint namedDestinationDragContentPosition;
     bool namedDestinationDragging = false;
+    bool creatingNamedDestination = false;
     bool creatingInternalLink = false;
     bool internalLinkCreationDragging = false;
     int internalLinkCreationPage = -1;
@@ -734,11 +735,32 @@ void PageView::setAdvancedModeEnabled(bool enabled)
     d->showNamedDestinations = enabled;
 }
 
+void PageView::startNamedDestinationCreation()
+{
+    if (!d->showNamedDestinations || !d->document->canEditPdfLinks()) {
+        return;
+    }
+    d->creatingNamedDestination = true;
+    d->creatingInternalLink = false;
+    d->internalLinkCreationDragging = false;
+    d->internalLinkCreationPage = -1;
+    d->internalLinkCreationRect = QRect();
+    d->selectedPdfLinkPage = -1;
+    d->selectedPdfLinkOriginalRect = QRectF();
+    d->selectedPdfLinkRect = QRectF();
+    d->pdfLinkDragHandle = PdfLinkHandle::None;
+    d->pdfLinkDragging = false;
+    d->scroller->stop();
+    setCursor(Qt::CrossCursor);
+    displayMessage(i18n("Click where the named destination should be placed. Press Esc to cancel."));
+}
+
 void PageView::startInternalLinkCreation()
 {
     if (!d->showNamedDestinations || !d->document->canEditPdfLinks()) {
         return;
     }
+    d->creatingNamedDestination = false;
     d->creatingInternalLink = true;
     d->internalLinkCreationDragging = false;
     d->internalLinkCreationPage = -1;
@@ -890,6 +912,7 @@ void PageView::setupViewerActions(KActionCollection *ac)
         if (!checked) {
             d->draggedNamedDestination.clear();
             d->namedDestinationDragging = false;
+            d->creatingNamedDestination = false;
             d->creatingInternalLink = false;
             d->internalLinkCreationDragging = false;
             d->internalLinkCreationPage = -1;
@@ -1599,6 +1622,11 @@ void PageView::notifySetup(const QList<Okular::Page *> &pageSet, int setupFlags)
     if (setupFlags & (Okular::DocumentObserver::DocumentChanged | Okular::DocumentObserver::UrlChanged)) {
         d->namedDestinationsByPage.clear();
         d->namedDestinationsLoaded = false;
+        d->creatingNamedDestination = false;
+        d->creatingInternalLink = false;
+        d->internalLinkCreationDragging = false;
+        d->internalLinkCreationPage = -1;
+        d->internalLinkCreationRect = QRect();
         d->selectedPdfLinkPage = -1;
         d->selectedPdfLinkOriginalRect = QRectF();
         d->selectedPdfLinkRect = QRectF();
@@ -1833,11 +1861,6 @@ void PageView::updateActionState(bool haspages, bool hasformwidgets)
     if (d->aFitWindowToPage) {
         d->aFitWindowToPage->setEnabled(haspages && !getContinuousMode());
     }
-}
-
-void PageView::setupActionsPostGUIActivated()
-{
-    d->annotator->setupActionsPostGUIActivated();
 }
 
 bool PageView::areSourceLocationsShownGraphically() const
@@ -2658,8 +2681,8 @@ void PageView::drawNamedDestinations(const QRect &contentsRect, QPainter *p)
     p->setFont(labelFont);
     const QFontMetricsF metrics(labelFont);
 
-    const QColor markerColor(QStringLiteral("#0078d4"));
-    const QColor labelBackground(232, 246, 255, 238);
+    const QColor markerColor(QStringLiteral("#168344"));
+    const QColor labelBackground(232, 248, 237, 238);
     const QColor labelText(15, 32, 45);
 
     for (const PageViewItem *item : std::as_const(d->items)) {
@@ -2787,7 +2810,7 @@ void PageView::drawNamedDestinations(const QRect &contentsRect, QPainter *p)
         const QPointF target = d->namedDestinationDragContentPosition;
         QPen dragPen(markerColor, 2.0, Qt::DashLine);
         p->setPen(dragPen);
-        p->setBrush(QColor(232, 246, 255, 180));
+        p->setBrush(QColor(232, 248, 237, 180));
         p->drawEllipse(target, 8.0, 8.0);
         p->drawLine(target + QPointF(-12.0, 0.0), target + QPointF(12.0, 0.0));
         p->drawLine(target + QPointF(0.0, -12.0), target + QPointF(0.0, 12.0));
@@ -2863,6 +2886,14 @@ void PageView::keyPressEvent(QKeyEvent *e)
         d->selectedPdfLinkRect = QRectF();
         d->pdfLinkDragHandle = PdfLinkHandle::None;
         d->pdfLinkDragging = false;
+        viewport()->update();
+        updateCursor();
+        e->accept();
+        return;
+    }
+
+    if (e->key() == Qt::Key_Escape && d->creatingNamedDestination) {
+        d->creatingNamedDestination = false;
         viewport()->update();
         updateCursor();
         e->accept();
@@ -3095,6 +3126,12 @@ void PageView::mouseMoveEvent(QMouseEvent *e)
 
     const QPoint eventPos = contentAreaPoint(e->pos());
 
+    if (d->creatingNamedDestination) {
+        setCursor(Qt::CrossCursor);
+        e->accept();
+        return;
+    }
+
     if (d->creatingInternalLink) {
         if (d->internalLinkCreationDragging && (e->buttons() & Qt::LeftButton)) {
             PageViewItem *sourceItem = nullptr;
@@ -3312,6 +3349,29 @@ void PageView::mousePressEvent(QMouseEvent *e)
     }
 
     const QPoint eventPos = contentAreaPoint(e->pos());
+
+    if (d->creatingNamedDestination) {
+        if (e->button() == Qt::RightButton) {
+            d->creatingNamedDestination = false;
+            viewport()->update();
+            updateCursor();
+            e->accept();
+            return;
+        }
+        if (e->button() == Qt::LeftButton) {
+            PageViewItem *pageItem = pickItemOnPoint(eventPos.x(), eventPos.y());
+            if (pageItem) {
+                const int pageNumber = pageItem->pageNumber();
+                const Okular::NormalizedPoint position(pageItem->absToPageX(eventPos.x()), pageItem->absToPageY(eventPos.y()));
+                d->creatingNamedDestination = false;
+                viewport()->update();
+                updateCursor();
+                e->accept();
+                Q_EMIT createNamedDestinationRequested(pageNumber, position);
+                return;
+            }
+        }
+    }
 
     if (d->creatingInternalLink) {
         if (e->button() == Qt::RightButton) {
@@ -5484,7 +5544,7 @@ void PageView::updateCursor()
 
 void PageView::updateCursor(const QPoint p)
 {
-    if (d->creatingInternalLink) {
+    if (d->creatingNamedDestination || d->creatingInternalLink) {
         setCursor(Qt::CrossCursor);
         return;
     }

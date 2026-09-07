@@ -89,6 +89,8 @@ private Q_SLOTS:
     void testRemoveLineBreaks();
     void testClickInternalLink();
     void testNamedDestinationOverlay();
+    void testContentsEntryWithFitWidthNamedDestination();
+    void testAddNamedDestinationToEmptyContents();
     void testEditPdfNamedDestinationAndLink();
     void testOpenAuxiliaryViewWithoutLink();
     void testAuxiliaryDocumentWorkspace();
@@ -2411,6 +2413,88 @@ void PartTest::testDeletePagePreservesInternalLinks()
     QVERIFY(findVisibleInternalGotoLink(reopenedPart.m_pageView, reopenedPart.m_document, 0, 1, expectedLinkTitle, &internalLinkPosition, &internalLinkTarget, &internalLinkTitle));
     QCOMPARE(internalLinkTitle, expectedLinkTitle);
     QCOMPARE(internalLinkTarget.pageNumber, 1);
+}
+
+void PartTest::testContentsEntryWithFitWidthNamedDestination()
+{
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+    const QString workingFile = tempDir.filePath(QStringLiteral("contents-source.pdf"));
+    const QString outputFile = tempDir.filePath(QStringLiteral("contents-result.pdf"));
+    QVERIFY(QFile::copy(QStringLiteral(KDESRCDIR "data/pdf_with_internal_links.pdf"), workingFile));
+
+    Okular::Part part(nullptr, {});
+    QVERIFY(openDocument(&part, workingFile));
+
+    DocumentViewport target(1);
+    target.rePos.enabled = true;
+    target.rePos.normalizedX = 0.5;
+    target.rePos.normalizedY = 0.37;
+    target.rePos.pos = DocumentViewport::TopLeft;
+
+    DocumentSynopsis synopsis;
+    QDomElement entry = synopsis.createElement(QStringLiteral("New section"));
+    entry.setAttribute(QStringLiteral("ViewportName"), QStringLiteral("New-section"));
+    entry.setAttribute(QStringLiteral("Viewport"), target.toString());
+    entry.setAttribute(QStringLiteral("CreateViewportName"), QStringLiteral("true"));
+    synopsis.appendChild(entry);
+
+    QString errorText;
+    QVERIFY2(part.m_document->setDocumentSynopsis(synopsis, &errorText), qPrintable(errorText));
+    QVERIFY2(part.m_document->saveChanges(outputFile, &errorText), qPrintable(errorText));
+
+    QFile output(outputFile);
+    QVERIFY(output.open(QIODevice::ReadOnly));
+    QVERIFY(output.readAll().contains("/FitH"));
+
+    Okular::Part reopenedPart(nullptr, {});
+    QVERIFY(openDocument(&reopenedPart, outputFile));
+    const DocumentViewport destination(reopenedPart.m_document->metaData(QStringLiteral("NamedViewport"), QStringLiteral("New-section")).toString());
+    QVERIFY(destination.isValid());
+    QCOMPARE(destination.pageNumber, 1);
+    QVERIFY(destination.rePos.enabled);
+    QVERIFY(qAbs(destination.rePos.normalizedY - 0.37) < 0.01);
+
+    const DocumentSynopsis *reopenedSynopsis = reopenedPart.m_document->documentSynopsis();
+    QVERIFY(reopenedSynopsis);
+    const QDomElement reopenedEntry = reopenedSynopsis->firstChildElement();
+    QCOMPARE(reopenedEntry.tagName(), QStringLiteral("New section"));
+    QCOMPARE(reopenedEntry.attribute(QStringLiteral("ViewportName")), QStringLiteral("New-section"));
+    QVERIFY(!reopenedEntry.hasAttribute(QStringLiteral("Viewport")));
+
+    const DocumentSynopsis roundTrippedSynopsis = reopenedPart.m_toc->synopsisFromModel();
+    QCOMPARE(roundTrippedSynopsis.firstChildElement().attribute(QStringLiteral("ViewportName")), QStringLiteral("New-section"));
+}
+
+void PartTest::testAddNamedDestinationToEmptyContents()
+{
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+    const QString workingFile = tempDir.filePath(QStringLiteral("empty-contents-source.pdf"));
+    const QString destinationFile = tempDir.filePath(QStringLiteral("empty-contents-with-destination.pdf"));
+    QVERIFY(QFile::copy(QStringLiteral(KDESRCDIR "data/file1.pdf"), workingFile));
+
+    Okular::Part sourcePart(nullptr, {});
+    QVERIFY(openDocument(&sourcePart, workingFile));
+    QString errorText;
+    QVERIFY2(sourcePart.m_document->saveWithNamedDestinationAdded(workingFile, destinationFile, QStringLiteral("chapter-one"), 1, 0.2, 0.3, &errorText), qPrintable(errorText));
+
+    Okular::Part part(nullptr, {});
+    QVERIFY(openDocument(&part, destinationFile));
+    const DocumentSynopsis *initialSynopsis = part.m_document->documentSynopsis();
+    QVERIFY(!initialSynopsis || initialSynopsis->firstChildElement().isNull());
+    QVERIFY(!part.m_tocEnabled);
+
+    part.m_toc->setEditingEnabled(true);
+    part.m_toc->addNamedDestinationEntry(QStringLiteral("chapter-one"));
+
+    const DocumentSynopsis *updatedSynopsis = part.m_document->documentSynopsis();
+    QVERIFY(updatedSynopsis);
+    const QDomElement entry = updatedSynopsis->firstChildElement();
+    QCOMPARE(entry.tagName(), QStringLiteral("chapter-one"));
+    QCOMPARE(entry.attribute(QStringLiteral("ViewportName")), QStringLiteral("chapter-one"));
+    QVERIFY(!entry.hasAttribute(QStringLiteral("Viewport")));
+    QVERIFY(part.m_tocEnabled);
 }
 
 void PartTest::testEditPdfNamedDestinationAndLink()

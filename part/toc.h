@@ -41,6 +41,7 @@ public:
 
     void setPageView(PageView *pageView);
     void setEditingEnabled(bool enabled);
+    void addNamedDestinationEntry(const QString &name);
 
     // inherited from DocumentObserver
     void notifySetup(const QList<Okular::Page *> &pages, int setupFlags) override;

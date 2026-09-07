@@ -68,6 +68,7 @@ class GUIActivateEvent;
 
 class FindBar;
 class ThumbnailList;
+class ThumbnailController;
 class PageSizeLabel;
 class PageView;
 class PresentationWidget;
@@ -422,6 +423,7 @@ private:
     QPointer<PageView> m_signingPageView;
 #endif
     QPointer<ThumbnailList> m_thumbnailList;
+    QPointer<ThumbnailController> m_thumbnailController;
     QPointer<PageView> m_pageView;
     QPointer<DocumentWorkspace> m_documentWorkspace;
     QPointer<PageView> m_workspaceActionOwner;
@@ -509,11 +511,17 @@ private:
     QAction *m_reload;
     QAction *m_combinePdfFiles = nullptr;
     QAction *m_addCurrentPageToContents = nullptr;
+    QAction *m_addNamedDestination = nullptr;
+    QAction *m_createInternalLink = nullptr;
     QAction *m_insertPage = nullptr;
     QAction *m_setPageTemplate = nullptr;
     QAction *m_insertPageFromTemplate = nullptr;
     QAction *m_insertBlankPageAfterCurrentPage = nullptr;
     QAction *m_duplicateCurrentPage = nullptr;
+    QAction *m_rotateCurrentPage = nullptr;
+    QAction *m_rotateCurrentPageLeft = nullptr;
+    QAction *m_rotateCurrentPageRight = nullptr;
+    QAction *m_resetCurrentPageRotation = nullptr;
     QAction *m_deleteCurrentPage = nullptr;
     bool m_advancedModeEnabled = false;
     QMenu *m_exportAsMenu;

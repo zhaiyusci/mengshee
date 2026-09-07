@@ -14,6 +14,8 @@
 
 class ThumbnailListPrivate;
 class PageView;
+class QAction;
+class QMenu;
 
 namespace Okular
 {
@@ -100,6 +102,11 @@ class ThumbnailController : public QToolBar
 
 public:
     ThumbnailController(QWidget *parent, ThumbnailList *thumbnailList);
+    void setPageEditActions(const QList<QAction *> &actions);
+    void setAdvancedModeEnabled(bool enabled);
+
+private:
+    QMenu *m_pageToolsMenu = nullptr;
 };
 
 #endif

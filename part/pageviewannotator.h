@@ -97,8 +97,6 @@ public:
 
     // methods related to the annotation actions
     void setupActions(KActionCollection *ac);
-    // setup those actions that first require the GUI is fully created
-    void setupActionsPostGUIActivated();
     // @return Is continuous mode active (pin annotation)?
     bool continuousMode();
     /**

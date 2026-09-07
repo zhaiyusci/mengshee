@@ -1242,29 +1242,27 @@ bool synopsisElementToOutlineNode(const QDomElement &element, Outline::OutlineTr
         }
         return false;
     }
-    if (element.hasAttribute(QStringLiteral("ViewportName"))) {
-        if (errorText) {
-            *errorText = i18n("PDF contents entries that use named destinations cannot be edited yet.");
-        }
-        return false;
-    }
-    if (!element.hasAttribute(QStringLiteral("Viewport"))) {
+    const QString destinationName = element.attribute(QStringLiteral("ViewportName"));
+    if (!destinationName.isEmpty()) {
+        node->destinationName = destinationName.toUtf8().toStdString();
+        node->destPageNum = 0;
+    } else if (!element.hasAttribute(QStringLiteral("Viewport"))) {
         if (errorText) {
             *errorText = i18n("Only PDF contents entries that point to document pages can be edited.");
         }
         return false;
-    }
-
-    const Okular::DocumentViewport viewport(element.attribute(QStringLiteral("Viewport")));
-    if (!viewport.isValid() || viewport.pageNumber < 0) {
-        if (errorText) {
-            *errorText = i18n("Only PDF contents entries that point to document pages can be edited.");
+    } else {
+        const Okular::DocumentViewport viewport(element.attribute(QStringLiteral("Viewport")));
+        if (!viewport.isValid() || viewport.pageNumber < 0) {
+            if (errorText) {
+                *errorText = i18n("Only PDF contents entries that point to document pages can be edited.");
+            }
+            return false;
         }
-        return false;
+        node->destPageNum = viewport.pageNumber + 1;
     }
 
     node->title = pdfTextString(element.tagName());
-    node->destPageNum = viewport.pageNumber + 1;
 
     for (QDomNode child = element.firstChild(); !child.isNull(); child = child.nextSibling()) {
         const QDomElement childElement = child.toElement();
@@ -1276,6 +1274,43 @@ bool synopsisElementToOutlineNode(const QDomElement &element, Outline::OutlineTr
             return false;
         }
         node->children.push_back(std::move(childNode));
+    }
+    return true;
+}
+
+bool createPendingSynopsisDestinations(const QDomNode &parent, PDFDoc *document, QString *errorText)
+{
+    for (QDomNode child = parent.firstChild(); !child.isNull(); child = child.nextSibling()) {
+        const QDomElement element = child.toElement();
+        if (element.isNull()) {
+            continue;
+        }
+
+        const QString destinationName = element.attribute(QStringLiteral("ViewportName"));
+        if (!destinationName.isEmpty() && element.attribute(QStringLiteral("CreateViewportName")) == QLatin1String("true")) {
+            const Okular::DocumentViewport viewport(element.attribute(QStringLiteral("Viewport")));
+            if (!viewport.isValid() || viewport.pageNumber < 0) {
+                if (errorText) {
+                    *errorText = i18n("The new contents destination is invalid.");
+                }
+                return false;
+            }
+            const double normalizedX = viewport.rePos.enabled ? viewport.rePos.normalizedX : 0.0;
+            const double normalizedY = viewport.rePos.enabled ? viewport.rePos.normalizedY : 0.0;
+            const QByteArray encodedName = destinationName.toUtf8();
+            const PdfPageSequenceEditor::Result result = PdfPageSequenceEditor::setNamedDestination(
+                document, encodedName.toStdString(), viewport.pageNumber + 1, normalizedX, normalizedY, PdfPageSequenceEditor::NamedDestinationView::FitWidth);
+            if (!result.ok()) {
+                if (errorText) {
+                    *errorText = QString::fromStdString(result.message);
+                }
+                return false;
+            }
+        }
+
+        if (!createPendingSynopsisDestinations(element, document, errorText)) {
+            return false;
+        }
     }
     return true;
 }
@@ -1304,11 +1339,6 @@ bool PDFGenerator::setDocumentSynopsis(const Okular::DocumentSynopsis &synopsis,
         return false;
     }
 
-    std::vector<Outline::OutlineTreeNode> outlineTree;
-    if (!synopsisToOutlineTree(synopsis, &outlineTree, errorText)) {
-        return false;
-    }
-
     PDFDoc *coreDocument = popplerCoreDocument(pdfdoc.get());
     if (!coreDocument || !coreDocument->getOutline()) {
         if (errorText) {
@@ -1317,7 +1347,15 @@ bool PDFGenerator::setDocumentSynopsis(const Okular::DocumentSynopsis &synopsis,
         return false;
     }
 
+    std::vector<Outline::OutlineTreeNode> outlineTree;
+    if (!synopsisToOutlineTree(synopsis, &outlineTree, errorText)) {
+        return false;
+    }
+
     QMutexLocker locker(userMutex());
+    if (!createPendingSynopsisDestinations(synopsis, coreDocument, errorText)) {
+        return false;
+    }
     coreDocument->getOutline()->setOutline(outlineTree);
     docSyn = Okular::DocumentSynopsis(synopsis);
     docSynopsisDirty = false;

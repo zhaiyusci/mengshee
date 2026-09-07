@@ -230,6 +230,8 @@ The deployed install tree and stage must contain:
 - `bin\data\mengshee\drawingtools.xml`
 - `bin\data\mengshee\pics\annotation-*.svg`
 - `bin\data\locale\<lang>\LC_MESSAGES\okular*.mo`
+- non-empty KF6 interface catalogs under `bin\data\locale\zh_CN\LC_MESSAGES`,
+  including `kconfigwidgets6.mo` and `kxmlgui6.mo` for standard actions and menus
 - `share\poppler\cMap\...`
 - `share\poppler\cidToUnicode\...`
 - `StemTeX\runtime\bin`

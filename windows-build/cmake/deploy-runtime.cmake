@@ -181,6 +181,31 @@ if(NOT DEFINED MENGSHEE_RUNTIME_LOCALES OR "${MENGSHEE_RUNTIME_LOCALES}" STREQUA
     set(MENGSHEE_RUNTIME_LOCALES zh_CN)
 endif()
 
+if("zh_CN" IN_LIST MENGSHEE_RUNTIME_LOCALES)
+    foreach(_catalog IN ITEMS
+        kcolorscheme6.mo
+        kconfigwidgets6.mo
+        ki18n6.mo
+        kiconthemes6.mo
+        kio6.mo
+        kparts6.mo
+        kservice6.mo
+        ktextwidgets6.mo
+        kxmlgui6.mo
+    )
+        set(_catalog_path "${SDK_PREFIX}/bin/data/locale/zh_CN/LC_MESSAGES/${_catalog}")
+        if(NOT EXISTS "${_catalog_path}")
+            message(FATAL_ERROR "Missing required KF6 Simplified Chinese catalog: ${_catalog_path}")
+        endif()
+        file(SIZE "${_catalog_path}" _catalog_size)
+        if(_catalog_size LESS_EQUAL 28)
+            message(FATAL_ERROR
+                "Required KF6 Simplified Chinese catalog is empty: ${_catalog_path}. "
+                "Rebuild the corresponding KF6 SDK module with the native GNU msgfmt tool.")
+        endif()
+    endforeach()
+endif()
+
 function(mengshee_prune_locale_tree locale_root allowed_root)
     if(NOT IS_DIRECTORY "${locale_root}")
         return()

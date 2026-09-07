@@ -269,7 +269,20 @@ Shell::Shell(const QString &serializedOptions)
         setupActions();
         connect(QCoreApplication::instance(), &QCoreApplication::aboutToQuit, this, &QObject::deleteLater);
         // and integrate the part's GUI with the shell's
-        setupGUI(Keys | ToolBar | Save);
+        setStandardToolBarMenuEnabled(false);
+        setupGUI(Keys | Save);
+
+        // The main toolbar is part of the Mengshee window, not optional
+        // window chrome. Keep it stable and leave mode-specific toolbar
+        // visibility to Okular::Part.
+        if (auto *mainToolBar = toolBar()) {
+            mainToolBar->setMovable(false);
+            mainToolBar->setFloatable(false);
+            mainToolBar->setContextMenuPolicy(Qt::PreventContextMenu);
+            mainToolBar->toggleViewAction()->setVisible(false);
+            mainToolBar->toggleViewAction()->setEnabled(false);
+            mainToolBar->show();
+        }
 
         // NOTE : apply default sidebar width only after calling setupGUI(...)
         resizeDocks({m_sidebar}, {200}, Qt::Horizontal);

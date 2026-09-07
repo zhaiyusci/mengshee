@@ -2542,11 +2542,6 @@ void PageViewAnnotator::setupActions(KActionCollection *ac)
     }
 }
 
-void PageViewAnnotator::setupActionsPostGUIActivated()
-{
-    m_actionHandler->setupAnnotationToolBarVisibilityAction();
-}
-
 bool PageViewAnnotator::continuousMode()
 {
     return m_continuousMode;

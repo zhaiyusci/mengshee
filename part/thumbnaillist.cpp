@@ -11,6 +11,7 @@
 #include <QApplication>
 #include <QIcon>
 #include <QMetaObject>
+#include <QMenu>
 #include <QPainter>
 #include <QPointer>
 #include <QResizeEvent>
@@ -19,6 +20,7 @@
 #include <QStyle>
 #include <QStyleOption>
 #include <QTimer>
+#include <QToolButton>
 #include <QVBoxLayout>
 
 #include <KActionCollection>
@@ -1279,26 +1281,47 @@ void ThumbnailWidget::paint(QPainter &p, const QRect _clipRect)
 
 /** ThumbnailsController implementation **/
 
-#define FILTERB_ID 1
-
-ThumbnailController::ThumbnailController(QWidget *parent, ThumbnailList *list)
+ThumbnailController::ThumbnailController(QWidget *parent, ThumbnailList *)
     : QToolBar(parent)
 {
     setObjectName(QStringLiteral("ThumbsControlBar"));
-    // change toolbar appearance
     setIconSize(QSize(16, 16));
     setMovable(false);
+    setFloatable(false);
     QSizePolicy sp = sizePolicy();
     sp.setVerticalPolicy(QSizePolicy::Minimum);
     setSizePolicy(sp);
 
-    // insert a togglebutton [show only bookmarked pages]
-    // insertSeparator();
-    QAction *showBoomarkOnlyAction = addAction(QIcon::fromTheme(QStringLiteral("bookmarks")), i18n("Show bookmarked pages only"));
-    showBoomarkOnlyAction->setCheckable(true);
-    connect(showBoomarkOnlyAction, &QAction::toggled, list, &ThumbnailList::slotFilterBookmarks);
-    showBoomarkOnlyAction->setChecked(Okular::Settings::filterBookmarks());
-    // insertLineSeparator();
+    auto *pageToolsButton = new QToolButton(this);
+    pageToolsButton->setAutoRaise(true);
+    pageToolsButton->setIcon(QIcon::fromTheme(QStringLiteral("document-edit")));
+    pageToolsButton->setText(i18n("Page Tools"));
+    pageToolsButton->setToolTip(i18n("Page Tools"));
+    pageToolsButton->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    pageToolsButton->setPopupMode(QToolButton::InstantPopup);
+    pageToolsButton->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+
+    m_pageToolsMenu = new QMenu(pageToolsButton);
+    pageToolsButton->setMenu(m_pageToolsMenu);
+    addWidget(pageToolsButton);
+    setVisible(false);
+}
+
+void ThumbnailController::setPageEditActions(const QList<QAction *> &actions)
+{
+    m_pageToolsMenu->clear();
+    for (QAction *action : actions) {
+        if (action) {
+            m_pageToolsMenu->addAction(action);
+        } else if (!m_pageToolsMenu->actions().isEmpty() && !m_pageToolsMenu->actions().constLast()->isSeparator()) {
+            m_pageToolsMenu->addSeparator();
+        }
+    }
+}
+
+void ThumbnailController::setAdvancedModeEnabled(bool enabled)
+{
+    setVisible(enabled);
 }
 
 #include "thumbnaillist.moc"

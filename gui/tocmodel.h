@@ -54,6 +54,7 @@ public:
     TOCModel *clearOldModelData() const;
 
     QString externalFileNameForIndex(const QModelIndex &index) const;
+    QString viewportNameForIndex(const QModelIndex &index) const;
     Okular::DocumentViewport viewportForIndex(const QModelIndex &index) const;
     QString urlForIndex(const QModelIndex &index) const;
 

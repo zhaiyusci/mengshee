@@ -191,6 +191,8 @@ foreach(_required IN ITEMS
     "bin/data/mengshee/drawingtools.xml"
     "bin/data/mengshee/pics/annotation-latex-note.svg"
     "bin/data/locale/zh_CN/LC_MESSAGES/okular.mo"
+    "bin/data/locale/zh_CN/LC_MESSAGES/kconfigwidgets6.mo"
+    "bin/data/locale/zh_CN/LC_MESSAGES/kxmlgui6.mo"
     "share/poppler/cMap/Adobe-GB1/UniGB-UTF16-H"
     "share/poppler/cidToUnicode/Adobe-GB1"
 )

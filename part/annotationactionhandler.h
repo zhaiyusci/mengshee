@@ -35,15 +35,11 @@ public:
      * page, a tool is modified using the "advanced settings" action, a quick annotation is
      * selected, an annotation property (line width, colors, opacity, font) is modified.
      */
-    void setupAnnotationToolBarVisibilityAction();
     void reparseBuiltinToolsConfig();
     void reparseQuickToolsConfig();
     void setToolsEnabled(bool on);
     void setTextToolsEnabled(bool on);
     void deselectAllAnnotationActions();
-
-private Q_SLOTS:
-    void slotAnnotationToolBarVisibilityChanged(bool visible);
 
 private:
     class AnnotationActionHandlerPrivate *d;

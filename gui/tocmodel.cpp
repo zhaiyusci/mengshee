@@ -28,6 +28,7 @@ struct TOCItem {
 
     QString text;
     Okular::DocumentViewport viewport;
+    QString viewportName;
     QString extFileName;
     QString url;
     bool highlight : 1;
@@ -73,13 +74,13 @@ TOCItem::TOCItem(TOCItem *_parent, const QDomElement &e)
     text = e.tagName();
 
     // viewport loading
+    viewportName = e.attribute(QStringLiteral("ViewportName"));
     if (e.hasAttribute(QStringLiteral("Viewport"))) {
         // if the node has a viewport, set it
         viewport = Okular::DocumentViewport(e.attribute(QStringLiteral("Viewport")));
-    } else if (e.hasAttribute(QStringLiteral("ViewportName"))) {
+    } else if (!viewportName.isEmpty()) {
         // if the node references a viewport, get the reference and set it
-        const QString &page = e.attribute(QStringLiteral("ViewportName"));
-        QString viewport_string = model->document->metaData(QStringLiteral("NamedViewport"), page).toString();
+        QString viewport_string = model->document->metaData(QStringLiteral("NamedViewport"), viewportName).toString();
         if (!viewport_string.isEmpty()) {
             viewport = Okular::DocumentViewport(viewport_string);
         }
@@ -451,6 +452,16 @@ QString TOCModel::externalFileNameForIndex(const QModelIndex &index) const
 
     const TOCItem *item = static_cast<TOCItem *>(index.internalPointer());
     return item->extFileName;
+}
+
+QString TOCModel::viewportNameForIndex(const QModelIndex &index) const
+{
+    if (!index.isValid()) {
+        return QString();
+    }
+
+    const TOCItem *item = static_cast<TOCItem *>(index.internalPointer());
+    return item->viewportName;
 }
 
 Okular::DocumentViewport TOCModel::viewportForIndex(const QModelIndex &index) const
