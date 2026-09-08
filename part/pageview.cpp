@@ -310,6 +310,7 @@ public:
     QPoint namedDestinationDragContentPosition;
     bool namedDestinationDragging = false;
     bool creatingNamedDestination = false;
+    bool creatingNamedDestinationsContinuously = false;
     bool creatingInternalLink = false;
     bool internalLinkCreationDragging = false;
     int internalLinkCreationPage = -1;
@@ -725,6 +726,40 @@ OKULARPART_EXPORT bool PageView::namedDestinationsVisible() const
     return d->showNamedDestinations;
 }
 
+void PageView::refreshNamedDestinations()
+{
+    if (!d->showNamedDestinations) {
+        d->namedDestinationsLoaded = false;
+        return;
+    }
+    loadNamedDestinations();
+    viewport()->update();
+}
+
+void PageView::removeNamedDestinationMarker(const QString &name)
+{
+    if (!d->namedDestinationsLoaded) {
+        loadNamedDestinations();
+    }
+    for (auto destinations = d->namedDestinationsByPage.begin(); destinations != d->namedDestinationsByPage.end();) {
+        destinations.value().removeIf([&name](const NamedDestinationMarker &marker) { return marker.name == name; });
+        if (destinations.value().isEmpty()) {
+            destinations = d->namedDestinationsByPage.erase(destinations);
+        } else {
+            ++destinations;
+        }
+    }
+    d->namedDestinationHitRegions.removeIf([&name](const NamedDestinationHitRegion &region) { return region.name == name; });
+    viewport()->update();
+}
+
+void PageView::setNamedDestinationMarker(const QString &name, int pageNumber, const Okular::NormalizedPoint &position)
+{
+    removeNamedDestinationMarker(name);
+    d->namedDestinationsByPage[pageNumber].append(NamedDestinationMarker {name, position.x, position.y});
+    viewport()->update();
+}
+
 OKULARPART_EXPORT bool PageView::advancedModeEnabled() const
 {
     return d->showNamedDestinations;
@@ -740,12 +775,13 @@ void PageView::setAdvancedModeEnabled(bool enabled)
     d->showNamedDestinations = enabled;
 }
 
-void PageView::startNamedDestinationCreation()
+void PageView::startNamedDestinationCreation(bool continuous)
 {
     if (!d->showNamedDestinations || !d->document->canEditPdfLinks()) {
         return;
     }
     d->creatingNamedDestination = true;
+    d->creatingNamedDestinationsContinuously = continuous;
     d->creatingInternalLink = false;
     d->internalLinkCreationDragging = false;
     d->internalLinkCreationPage = -1;
@@ -757,7 +793,19 @@ void PageView::startNamedDestinationCreation()
     d->pdfLinkDragging = false;
     d->scroller->stop();
     setCursor(Qt::CrossCursor);
-    displayMessage(i18n("Click where the named destination should be placed. Press Esc to cancel."));
+    displayMessage(continuous ? i18n("Click repeatedly to place named destinations. Press Esc or right-click to finish.") : i18n("Click where the named destination should be placed. Press Esc to cancel."));
+}
+
+void PageView::cancelNamedDestinationCreation()
+{
+    if (!d->creatingNamedDestination) {
+        return;
+    }
+    d->creatingNamedDestination = false;
+    d->creatingNamedDestinationsContinuously = false;
+    viewport()->update();
+    updateCursor();
+    Q_EMIT namedDestinationCreationCancelled();
 }
 
 void PageView::startLinkCreation()
@@ -765,7 +813,12 @@ void PageView::startLinkCreation()
     if (!d->showNamedDestinations || !d->document->canEditPdfLinks()) {
         return;
     }
+    const bool cancelledNamedDestinationCreation = d->creatingNamedDestination;
     d->creatingNamedDestination = false;
+    d->creatingNamedDestinationsContinuously = false;
+    if (cancelledNamedDestinationCreation) {
+        Q_EMIT namedDestinationCreationCancelled();
+    }
     d->creatingInternalLink = true;
     d->internalLinkCreationDragging = false;
     d->internalLinkCreationPage = -1;
@@ -915,9 +968,11 @@ void PageView::setupViewerActions(KActionCollection *ac)
     connect(d->aToggleNamedDestinations, &QAction::toggled, this, [this](bool checked) {
         d->showNamedDestinations = checked;
         if (!checked) {
+            const bool cancelledNamedDestinationCreation = d->creatingNamedDestination;
             d->draggedNamedDestination.clear();
             d->namedDestinationDragging = false;
             d->creatingNamedDestination = false;
+            d->creatingNamedDestinationsContinuously = false;
             d->creatingInternalLink = false;
             d->internalLinkCreationDragging = false;
             d->internalLinkCreationPage = -1;
@@ -928,6 +983,9 @@ void PageView::setupViewerActions(KActionCollection *ac)
             d->pdfLinkDragHandle = PdfLinkHandle::None;
             d->pdfLinkDragging = false;
             updateCursor();
+            if (cancelledNamedDestinationCreation) {
+                Q_EMIT namedDestinationCreationCancelled();
+            }
         }
         if (checked && !d->namedDestinationsLoaded) {
             loadNamedDestinations();
@@ -1984,6 +2042,19 @@ void PageView::notifyPageChanged(int pageNumber, int changedFlags)
             return;
         }
 
+        if (d->selectedPdfLinkPage == pageNumber) {
+            const bool selectedLinkStillExists = std::ranges::any_of(page->objectRects(), [this](const Okular::ObjectRect *rect) {
+                return rect && rect->objectType() == Okular::ObjectRect::Action && samePdfLinkRectangle(rect->region().boundingRect(), d->selectedPdfLinkOriginalRect);
+            });
+            if (!selectedLinkStillExists) {
+                d->selectedPdfLinkPage = -1;
+                d->selectedPdfLinkOriginalRect = QRectF();
+                d->selectedPdfLinkRect = QRectF();
+                d->pdfLinkDragHandle = PdfLinkHandle::None;
+                d->pdfLinkDragging = false;
+            }
+        }
+
         const QList<Okular::Annotation *> annots = page->annotations();
         const QList<Okular::Annotation *>::ConstIterator annItEnd = annots.end();
         QSet<AnnotWindow *>::Iterator it = d->m_annowindows.begin();
@@ -2899,8 +2970,10 @@ void PageView::keyPressEvent(QKeyEvent *e)
 
     if (e->key() == Qt::Key_Escape && d->creatingNamedDestination) {
         d->creatingNamedDestination = false;
+        d->creatingNamedDestinationsContinuously = false;
         viewport()->update();
         updateCursor();
+        Q_EMIT namedDestinationCreationCancelled();
         e->accept();
         return;
     }
@@ -3374,8 +3447,10 @@ void PageView::mousePressEvent(QMouseEvent *e)
     if (d->creatingNamedDestination) {
         if (e->button() == Qt::RightButton) {
             d->creatingNamedDestination = false;
+            d->creatingNamedDestinationsContinuously = false;
             viewport()->update();
             updateCursor();
+            Q_EMIT namedDestinationCreationCancelled();
             e->accept();
             return;
         }
@@ -3384,7 +3459,9 @@ void PageView::mousePressEvent(QMouseEvent *e)
             if (pageItem) {
                 const int pageNumber = pageItem->pageNumber();
                 const Okular::NormalizedPoint position(pageItem->absToPageX(eventPos.x()), pageItem->absToPageY(eventPos.y()));
-                d->creatingNamedDestination = false;
+                if (!d->creatingNamedDestinationsContinuously) {
+                    d->creatingNamedDestination = false;
+                }
                 viewport()->update();
                 updateCursor();
                 e->accept();
@@ -5900,6 +5977,8 @@ QMenu *PageView::createProcessLinkMenu(PageViewItem *item, const QPoint eventPos
         const auto *gotoAction = link->actionType() == Okular::Action::Goto ? static_cast<const Okular::GotoAction *>(link) : nullptr;
         const bool isInternalGoto = gotoAction && !gotoAction->isExternal();
         const auto *browseAction = dynamic_cast<const Okular::BrowseAction *>(link);
+        const QString currentDestinationName = isInternalGoto ? gotoAction->destinationName() : QString();
+        const QUrl currentExternalUrl = browseAction ? browseAction->url() : QUrl();
         if (hasResolvedInternalTarget) {
             QAction *openInAuxiliaryFrame = menu->addAction(QIcon::fromTheme(QStringLiteral("view-right-new")), i18n("Open in Auxiliary Frame"));
             openInAuxiliaryFrame->setObjectName(QStringLiteral("OpenLinkInAuxiliaryFrameAction"));
@@ -5908,20 +5987,20 @@ QMenu *PageView::createProcessLinkMenu(PageViewItem *item, const QPoint eventPos
         if ((isInternalGoto || browseAction) && d->showNamedDestinations && d->document->canEditPdfLinks()) {
             const int sourcePageNumber = item->pageNumber();
             const QRectF normalizedLinkRectangle = rect->region().boundingRect();
-            const QString currentDestinationName = isInternalGoto ? gotoAction->destinationName() : QString();
-            const QUrl currentExternalUrl = browseAction ? browseAction->url() : QUrl();
             QAction *editLink = menu->addAction(QIcon::fromTheme(QStringLiteral("edit-link"), QIcon::fromTheme(QStringLiteral("document-edit"))), i18n("Edit Link Destination..."));
             editLink->setObjectName(QStringLiteral("EditPdfLinkAction"));
             connect(editLink, &QAction::triggered, this, [this, sourcePageNumber, normalizedLinkRectangle, currentDestinationName, target, currentExternalUrl]() {
                 Q_EMIT editPdfLinkRequested(sourcePageNumber, normalizedLinkRectangle, currentDestinationName, target, currentExternalUrl);
             });
         }
-        if (d->showNamedDestinations && d->document->canEditPdfLinks()) {
+        if ((isInternalGoto || browseAction) && d->showNamedDestinations && d->document->canEditPdfLinks()) {
             const int sourcePageNumber = item->pageNumber();
             const QRectF normalizedLinkRectangle = rect->region().boundingRect();
             QAction *deleteLink = menu->addAction(QIcon::fromTheme(QStringLiteral("edit-delete")), i18n("Delete Link"));
             deleteLink->setObjectName(QStringLiteral("DeletePdfLinkAction"));
-            connect(deleteLink, &QAction::triggered, this, [this, sourcePageNumber, normalizedLinkRectangle]() { Q_EMIT deletePdfLinkRequested(sourcePageNumber, normalizedLinkRectangle); });
+            connect(deleteLink, &QAction::triggered, this, [this, sourcePageNumber, normalizedLinkRectangle, currentDestinationName, target, currentExternalUrl]() {
+                Q_EMIT deletePdfLinkRequested(sourcePageNumber, normalizedLinkRectangle, currentDestinationName, target, currentExternalUrl);
+            });
         }
         if (link->actionType() == Okular::Action::Sound) {
             processLink->setText(i18n("Play this Sound"));

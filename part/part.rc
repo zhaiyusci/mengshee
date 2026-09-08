@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <!DOCTYPE gui SYSTEM "kpartgui.dtd">
-<gui name="okular_part" version="72">
+<gui name="okular_part" version="73">
 <MenuBar>
   <Menu name="file"><text>&amp;File</text>
     <Action name="get_new_stuff" group="file_open"/>
@@ -132,6 +132,7 @@
 </ActionProperties>
 <ToolBar name="advancedToolBar" iconText="icononly" newline="true" hidden="true"><text>Advanced PDF Editing Toolbar</text>
   <Action name="advanced_add_named_destination"/>
+  <Action name="advanced_add_named_destinations_from_template"/>
   <Action name="advanced_create_internal_link"/>
   <Separator/>
   <Action name="tools_add_current_page_to_contents"/>

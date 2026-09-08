@@ -817,6 +817,8 @@ Okular::Document::OpenResult PDFGenerator::init(QList<Okular::Page *> &pagesVect
     pagesVector.resize(pageCount);
     rectsGenerated.fill(false, pageCount);
     m_pageOrder.clear();
+    m_livePageStates.clear();
+    m_nextLivePageEditId = 1;
     m_pageOrder.reserve(pageCount);
     for (int pageIndex = 0; pageIndex < pageCount; ++pageIndex) {
         m_pageOrder.append(pageIndex);
@@ -868,6 +870,85 @@ std::vector<int> PDFGenerator::oneBasedPageOrder() const
         pageOrder.push_back(nativePage + 1);
     }
     return pageOrder;
+}
+
+Okular::Page *PDFGenerator::createPageModel(int logicalPageNumber)
+{
+    std::unique_ptr<Poppler::Page> popplerPage = pdfdoc ? pdfdoc->page(nativePageForLogicalPage(logicalPageNumber)) : nullptr;
+    if (!popplerPage) {
+        return new Okular::Page(logicalPageNumber, defaultPageWidth, defaultPageHeight, Okular::Rotation0);
+    }
+
+    const QSizeF pageSize = popplerPage->pageSizeF();
+    const double width = pageSize.width() / 72.0 * dpi().width();
+    const double height = pageSize.height() / 72.0 * dpi().height();
+    Okular::Rotation orientation = Okular::Rotation0;
+    switch (popplerPage->orientation()) {
+    case Poppler::Page::Landscape:
+        orientation = Okular::Rotation90;
+        break;
+    case Poppler::Page::UpsideDown:
+        orientation = Okular::Rotation180;
+        break;
+    case Poppler::Page::Seascape:
+        orientation = Okular::Rotation270;
+        break;
+    case Poppler::Page::Portrait:
+        break;
+    }
+
+    auto *page = new Okular::Page(logicalPageNumber, width, height, orientation);
+    addTransition(popplerPage.get(), page);
+    addAnnotations(popplerPage.get(), page);
+    std::unique_ptr<Poppler::Link> action = popplerPage->action(Poppler::Page::Opening);
+    if (action) {
+        page->setPageAction(Okular::Page::Opening, createLinkFromPopplerLink(std::move(action)));
+    }
+    action = popplerPage->action(Poppler::Page::Closing);
+    if (action) {
+        page->setPageAction(Okular::Page::Closing, createLinkFromPopplerLink(std::move(action)));
+    }
+    page->setDuration(popplerPage->duration());
+    page->setLabel(popplerPage->label());
+    const QList<Okular::FormField *> formFields = getFormFields(popplerPage.get());
+    if (!formFields.isEmpty()) {
+        page->setFormFields(formFields);
+    }
+    return page;
+}
+
+void PDFGenerator::forgetPageModel(Okular::Page *page)
+{
+    if (!page) {
+        return;
+    }
+    const QList<Okular::Annotation *> annotations = page->annotations();
+    for (Okular::Annotation *annotation : annotations) {
+        annotationsOnOpenHash.remove(annotation);
+    }
+}
+
+void PDFGenerator::resetPageTopologyCaches()
+{
+    const int pageCount = pdfdoc ? pdfdoc->numPages() : 0;
+    rectsGenerated.fill(false, pageCount);
+    m_pageOrder.resize(pageCount);
+    for (int pageIndex = 0; pageIndex < pageCount; ++pageIndex) {
+        m_pageOrder[pageIndex] = pageIndex;
+    }
+    docSynopsisDirty = true;
+    docSyn.clear();
+    docEmbeddedFilesDirty = true;
+}
+
+quint64 PDFGenerator::rememberLivePageState(const std::shared_ptr<void> &state)
+{
+    quint64 id = m_nextLivePageEditId++;
+    if (id == 0) {
+        id = m_nextLivePageEditId++;
+    }
+    m_livePageStates.insert(id, state);
+    return id;
 }
 
 void PDFGenerator::setAdditionalDocumentAction(Okular::Document::DocumentAdditionalActionType type, Okular::Action *action)
@@ -1019,6 +1100,7 @@ bool PDFGenerator::doCloseDocument()
     nextFontPage = 0;
     rectsGenerated.clear();
     m_pageOrder.clear();
+    m_livePageStates.clear();
 
     return true;
 }
@@ -2839,14 +2921,21 @@ static std::string pdfPagesFileName(const QString &fileName)
     return QFile::encodeName(QDir::toNativeSeparators(fileName)).toStdString();
 }
 
-bool PDFGenerator::saveWithBlankPageInsertedAfter(const QString &sourceFileName, const QString &outputFileName, int pageNumber, QString *errorText)
+bool PDFGenerator::insertBlankPageInDocument(int insertAfterPageNumber, double width, double height, Okular::Page **insertedPage, quint64 *editId, QString *errorText)
 {
-    return runPdfPagesOperation([&] { return PdfPageSequenceEditor::insertBlankPageAfter(pdfPagesFileName(sourceFileName), pdfPagesFileName(outputFileName), pageNumber); }, errorText);
-}
-
-bool PDFGenerator::saveWithBlankPageInsertedAfter(const QString &sourceFileName, const QString &outputFileName, int pageNumber, double width, double height, QString *errorText)
-{
-    return runPdfPagesOperation([&] { return PdfPageSequenceEditor::insertBlankPageAfter(pdfPagesFileName(sourceFileName), pdfPagesFileName(outputFileName), pageNumber, width, height); }, errorText);
+    if (!insertedPage || !editId) {
+        return false;
+    }
+    QMutexLocker locker(userMutex());
+    PdfPageSequenceEditor::LivePageStatePtr state;
+    PDFDoc *document = popplerCoreDocument(pdfdoc.get());
+    if (!runPdfPagesOperation([&] { return PdfPageSequenceEditor::insertBlankPageAfter(document, insertAfterPageNumber + 1, width, height, &state); }, errorText)) {
+        return false;
+    }
+    resetPageTopologyCaches();
+    *insertedPage = createPageModel(insertAfterPageNumber + 1);
+    *editId = rememberLivePageState(state);
+    return true;
 }
 
 bool PDFGenerator::canInsertPageFromPdf() const
@@ -2854,11 +2943,46 @@ bool PDFGenerator::canInsertPageFromPdf() const
     return true;
 }
 
-bool PDFGenerator::saveWithPdfPageInsertedAfter(const QString &sourceFileName, const QString &outputFileName, int pageNumber, const QString &insertedFileName, int pageToInsert, bool resolveDestinationConflicts, QString *errorText)
+bool PDFGenerator::duplicatePageInDocument(int pageNumber, bool resolveDestinationConflicts, Okular::Page **insertedPage, quint64 *editId, QString *errorText)
 {
-    const auto conflictPolicy = resolveDestinationConflicts ? PdfPageSequenceEditor::NamedDestinationConflictPolicy::AddSuffixes : PdfPageSequenceEditor::NamedDestinationConflictPolicy::KeepNames;
-    return runPdfPagesOperation([&] { return PdfPageSequenceEditor::insertPdfPageAfter(pdfPagesFileName(sourceFileName), pdfPagesFileName(outputFileName), pageNumber, pdfPagesFileName(insertedFileName), pageToInsert, conflictPolicy); },
-                                errorText);
+    if (!insertedPage || !editId) {
+        return false;
+    }
+    QMutexLocker locker(userMutex());
+    PdfPageSequenceEditor::LivePageStatePtr state;
+    PDFDoc *document = popplerCoreDocument(pdfdoc.get());
+    const auto policy = resolveDestinationConflicts ? PdfPageSequenceEditor::NamedDestinationConflictPolicy::AddSuffixes : PdfPageSequenceEditor::NamedDestinationConflictPolicy::KeepNames;
+    if (!runPdfPagesOperation([&] { return PdfPageSequenceEditor::duplicatePageAfter(document, pageNumber + 1, pageNumber + 1, policy, &state); }, errorText)) {
+        return false;
+    }
+    resetPageTopologyCaches();
+    *insertedPage = createPageModel(pageNumber + 1);
+    *editId = rememberLivePageState(state);
+    return true;
+}
+
+bool PDFGenerator::insertPdfPageInDocument(int insertAfterPageNumber,
+                                           const QString &insertedFileName,
+                                           int pageToInsert,
+                                           bool resolveDestinationConflicts,
+                                           Okular::Page **insertedPage,
+                                           quint64 *editId,
+                                           QString *errorText)
+{
+    if (!insertedPage || !editId) {
+        return false;
+    }
+    QMutexLocker locker(userMutex());
+    PdfPageSequenceEditor::LivePageStatePtr state;
+    PDFDoc *document = popplerCoreDocument(pdfdoc.get());
+    const auto policy = resolveDestinationConflicts ? PdfPageSequenceEditor::NamedDestinationConflictPolicy::AddSuffixes : PdfPageSequenceEditor::NamedDestinationConflictPolicy::KeepNames;
+    if (!runPdfPagesOperation([&] { return PdfPageSequenceEditor::insertPdfPageAfter(document, insertAfterPageNumber + 1, pdfPagesFileName(insertedFileName), pageToInsert, policy, &state); }, errorText)) {
+        return false;
+    }
+    resetPageTopologyCaches();
+    *insertedPage = createPageModel(insertAfterPageNumber + 1);
+    *editId = rememberLivePageState(state);
+    return true;
 }
 
 bool PDFGenerator::canCombinePdfFiles() const
@@ -2892,9 +3016,58 @@ bool PDFGenerator::canDeletePage() const
     return true;
 }
 
-bool PDFGenerator::saveWithPageDeleted(const QString &sourceFileName, const QString &outputFileName, int pageNumber, QString *errorText)
+bool PDFGenerator::detachPageInDocument(Okular::Page *page, int pageNumber, quint64 *editId, QString *errorText)
 {
-    return runPdfPagesOperation([&] { return PdfPageSequenceEditor::deletePage(pdfPagesFileName(sourceFileName), pdfPagesFileName(outputFileName), pageNumber); }, errorText);
+    if (!editId) {
+        return false;
+    }
+    QMutexLocker locker(userMutex());
+    PdfPageSequenceEditor::LivePageStatePtr state;
+    PDFDoc *document = popplerCoreDocument(pdfdoc.get());
+    if (!runPdfPagesOperation([&] { return PdfPageSequenceEditor::detachPage(document, pageNumber + 1, &state); }, errorText)) {
+        return false;
+    }
+    forgetPageModel(page);
+    resetPageTopologyCaches();
+    *editId = rememberLivePageState(state);
+    return true;
+}
+
+bool PDFGenerator::detachPageInDocument(Okular::Page *page, int pageNumber, quint64 editId, QString *errorText)
+{
+    const auto stored = m_livePageStates.value(editId);
+    const auto state = std::static_pointer_cast<PdfPageSequenceEditor::LivePageState>(stored);
+    if (!state) {
+        return false;
+    }
+    QMutexLocker locker(userMutex());
+    PDFDoc *document = popplerCoreDocument(pdfdoc.get());
+    if (!runPdfPagesOperation([&] { return PdfPageSequenceEditor::detachPage(document, pageNumber + 1, state); }, errorText)) {
+        return false;
+    }
+    forgetPageModel(page);
+    resetPageTopologyCaches();
+    return true;
+}
+
+bool PDFGenerator::attachPageInDocument(int insertAfterPageNumber, quint64 editId, Okular::Page **insertedPage, QString *errorText)
+{
+    if (!insertedPage) {
+        return false;
+    }
+    const auto stored = m_livePageStates.value(editId);
+    const auto state = std::static_pointer_cast<PdfPageSequenceEditor::LivePageState>(stored);
+    if (!state) {
+        return false;
+    }
+    QMutexLocker locker(userMutex());
+    PDFDoc *document = popplerCoreDocument(pdfdoc.get());
+    if (!runPdfPagesOperation([&] { return PdfPageSequenceEditor::attachPageAfter(document, insertAfterPageNumber + 1, state); }, errorText)) {
+        return false;
+    }
+    resetPageTopologyCaches();
+    *insertedPage = createPageModel(insertAfterPageNumber + 1);
+    return true;
 }
 
 bool PDFGenerator::canMovePage() const
@@ -2909,32 +3082,13 @@ bool PDFGenerator::canMovePageInDocument() const
 
 bool PDFGenerator::movePageInDocument(int sourcePageNumber, int destinationPageNumber, QString *errorText)
 {
-    if (sourcePageNumber < 0 || sourcePageNumber >= m_pageOrder.size() || destinationPageNumber < 0 || destinationPageNumber >= m_pageOrder.size()) {
-        if (errorText) {
-            *errorText = QStringLiteral("The page move source or destination is outside the document page range.");
-        }
-        return false;
+    QMutexLocker locker(userMutex());
+    PDFDoc *document = popplerCoreDocument(pdfdoc.get());
+    const bool moved = runPdfPagesOperation([&] { return PdfPageSequenceEditor::movePage(document, sourcePageNumber + 1, destinationPageNumber + 1); }, errorText);
+    if (moved) {
+        resetPageTopologyCaches();
     }
-    if (sourcePageNumber == destinationPageNumber) {
-        if (errorText) {
-            errorText->clear();
-        }
-        return true;
-    }
-
-    QVector<int> updatedPageOrder = m_pageOrder;
-    const int nativePage = updatedPageOrder.takeAt(sourcePageNumber);
-    updatedPageOrder.insert(destinationPageNumber, nativePage);
-    m_pageOrder.swap(updatedPageOrder);
-    if (errorText) {
-        errorText->clear();
-    }
-    return true;
-}
-
-bool PDFGenerator::saveWithPageMoved(const QString &sourceFileName, const QString &outputFileName, int sourcePageNumber, int destinationPageNumber, QString *errorText)
-{
-    return runPdfPagesOperation([&] { return PdfPageSequenceEditor::movePage(pdfPagesFileName(sourceFileName), pdfPagesFileName(outputFileName), sourcePageNumber, destinationPageNumber); }, errorText);
+    return moved;
 }
 
 bool PDFGenerator::canRotatePage() const
@@ -2942,9 +3096,20 @@ bool PDFGenerator::canRotatePage() const
     return true;
 }
 
-bool PDFGenerator::saveWithPageRotated(const QString &sourceFileName, const QString &outputFileName, int pageNumber, int rotationDegrees, QString *errorText)
+bool PDFGenerator::rotatePageInDocument(Okular::Page *page, int pageNumber, int rotationDegrees, Okular::Page **replacementPage, QString *errorText)
 {
-    return runPdfPagesOperation([&] { return PdfPageSequenceEditor::rotatePage(pdfPagesFileName(sourceFileName), pdfPagesFileName(outputFileName), pageNumber, rotationDegrees); }, errorText);
+    if (!replacementPage) {
+        return false;
+    }
+    QMutexLocker locker(userMutex());
+    PDFDoc *document = popplerCoreDocument(pdfdoc.get());
+    if (!runPdfPagesOperation([&] { return PdfPageSequenceEditor::rotatePage(document, pageNumber + 1, rotationDegrees); }, errorText)) {
+        return false;
+    }
+    resetPageTopologyCaches();
+    *replacementPage = createPageModel(pageNumber);
+    forgetPageModel(page);
+    return true;
 }
 
 bool PDFGenerator::canEditPdfLinks() const
@@ -2952,50 +3117,59 @@ bool PDFGenerator::canEditPdfLinks() const
     return true;
 }
 
-bool PDFGenerator::saveWithNamedDestinationAdded(const QString &sourceFileName, const QString &outputFileName, const QString &name, int pageNumber, double normalizedX, double normalizedY, QString *errorText)
+bool PDFGenerator::setNamedDestination(const QString &name, int pageNumber, double normalizedX, double normalizedY, QString *errorText)
 {
+    QMutexLocker locker(userMutex());
+    PDFDoc *document = popplerCoreDocument(pdfdoc.get());
+    const int nativePageNumber = nativePageForLogicalPage(pageNumber - 1) + 1;
     const std::string encodedName = name.toUtf8().toStdString();
-    return runPdfPagesOperation([&] { return PdfPageSequenceEditor::addNamedDestination(pdfPagesFileName(sourceFileName), pdfPagesFileName(outputFileName), encodedName, pageNumber, normalizedX, normalizedY); }, errorText);
+    return runPdfPagesOperation([&] { return PdfPageSequenceEditor::setNamedDestination(document, encodedName, nativePageNumber, normalizedX, normalizedY); }, errorText);
 }
 
-bool PDFGenerator::saveWithNamedDestinationRenamed(const QString &sourceFileName, const QString &outputFileName, const QString &oldName, const QString &newName, QString *errorText)
+bool PDFGenerator::renameNamedDestination(const QString &oldName, const QString &newName, QString *errorText)
 {
+    QMutexLocker locker(userMutex());
+    PDFDoc *document = popplerCoreDocument(pdfdoc.get());
     const std::string encodedOldName = oldName.toUtf8().toStdString();
     const std::string encodedNewName = newName.toUtf8().toStdString();
-    return runPdfPagesOperation([&] { return PdfPageSequenceEditor::renameNamedDestination(pdfPagesFileName(sourceFileName), pdfPagesFileName(outputFileName), encodedOldName, encodedNewName); }, errorText);
+    const bool changed = runPdfPagesOperation([&] { return PdfPageSequenceEditor::renameNamedDestination(document, encodedOldName, encodedNewName); }, errorText);
+    if (changed) {
+        rectsGenerated.fill(false);
+    }
+    return changed;
 }
 
-bool PDFGenerator::saveWithNamedDestinationDeleted(const QString &sourceFileName, const QString &outputFileName, const QString &name, QString *errorText)
+bool PDFGenerator::deleteNamedDestination(const QString &name, QString *errorText)
 {
+    QMutexLocker locker(userMutex());
+    PDFDoc *document = popplerCoreDocument(pdfdoc.get());
     const std::string encodedName = name.toUtf8().toStdString();
-    return runPdfPagesOperation([&] { return PdfPageSequenceEditor::deleteNamedDestination(pdfPagesFileName(sourceFileName), pdfPagesFileName(outputFileName), encodedName); }, errorText);
+    return runPdfPagesOperation([&] { return PdfPageSequenceEditor::deleteNamedDestination(document, encodedName); }, errorText);
 }
 
-bool PDFGenerator::saveWithInternalLinkDestinationChanged(const QString &sourceFileName,
-                                                          const QString &outputFileName,
-                                                          int sourcePageNumber,
-                                                          double linkLeft,
-                                                          double linkTop,
-                                                          double linkRight,
-                                                          double linkBottom,
-                                                          const QString &destinationName,
-                                                          int destinationPageNumber,
-                                                          double destinationX,
-                                                          double destinationY,
-                                                          QString *errorText)
+bool PDFGenerator::refreshPdfLinkObjects(Okular::Page *sourcePage, int nativePageNumber, QString *errorText)
 {
-    const std::string encodedName = destinationName.toUtf8().toStdString();
-    return runPdfPagesOperation(
-        [&] {
-            return PdfPageSequenceEditor::editInternalLinkDestination(
-                pdfPagesFileName(sourceFileName), pdfPagesFileName(outputFileName), sourcePageNumber, linkLeft, linkTop, linkRight, linkBottom, encodedName, destinationPageNumber, destinationX, destinationY);
-        },
-        errorText);
+    if (!pdfdoc || !sourcePage || nativePageNumber < 0 || nativePageNumber >= pdfdoc->numPages() || nativePageNumber >= rectsGenerated.size()) {
+        if (errorText) {
+            *errorText = i18n("Could not refresh the edited link page.");
+        }
+        return false;
+    }
+
+    std::unique_ptr<Poppler::Page> page = pdfdoc->page(nativePageNumber);
+    if (!page) {
+        if (errorText) {
+            *errorText = i18n("Could not refresh the edited link page.");
+        }
+        return false;
+    }
+    sourcePage->setObjectRects(generateLinks(page->links()));
+    rectsGenerated[nativePageNumber] = true;
+    resolveMediaLinkReferences(sourcePage);
+    return true;
 }
 
-bool PDFGenerator::saveWithInternalLinkCreated(const QString &sourceFileName,
-                                               const QString &outputFileName,
-                                               int sourcePageNumber,
+bool PDFGenerator::editInternalLinkDestination(Okular::Page *sourcePage,
                                                double linkLeft,
                                                double linkTop,
                                                double linkRight,
@@ -3006,83 +3180,107 @@ bool PDFGenerator::saveWithInternalLinkCreated(const QString &sourceFileName,
                                                double destinationY,
                                                QString *errorText)
 {
+    QMutexLocker locker(userMutex());
+    PDFDoc *document = popplerCoreDocument(pdfdoc.get());
+    const int nativeSourcePageNumber = nativePageForLogicalPage(sourcePage ? sourcePage->number() : -1) + 1;
+    const int nativeDestinationPageNumber = destinationName.isEmpty() ? nativePageForLogicalPage(destinationPageNumber - 1) + 1 : destinationPageNumber;
     const std::string encodedName = destinationName.toUtf8().toStdString();
-    return runPdfPagesOperation(
-        [&] {
-            return PdfPageSequenceEditor::createInternalLink(
-                pdfPagesFileName(sourceFileName), pdfPagesFileName(outputFileName), sourcePageNumber, linkLeft, linkTop, linkRight, linkBottom, encodedName, destinationPageNumber, destinationX, destinationY);
-        },
-        errorText);
+    if (!runPdfPagesOperation(
+            [&] {
+                return PdfPageSequenceEditor::editInternalLinkDestination(
+                    document, nativeSourcePageNumber, linkLeft, linkTop, linkRight, linkBottom, encodedName, nativeDestinationPageNumber, destinationX, destinationY);
+            },
+            errorText)) {
+        return false;
+    }
+    return refreshPdfLinkObjects(sourcePage, nativeSourcePageNumber - 1, errorText);
 }
 
-bool PDFGenerator::saveWithExternalLinkDestinationChanged(const QString &sourceFileName,
-                                                          const QString &outputFileName,
-                                                          int sourcePageNumber,
-                                                          double linkLeft,
-                                                          double linkTop,
-                                                          double linkRight,
-                                                          double linkBottom,
-                                                          const QString &url,
-                                                          QString *errorText)
+bool PDFGenerator::createInternalLink(Okular::Page *sourcePage,
+                                      double linkLeft,
+                                      double linkTop,
+                                      double linkRight,
+                                      double linkBottom,
+                                      const QString &destinationName,
+                                      int destinationPageNumber,
+                                      double destinationX,
+                                      double destinationY,
+                                      QString *errorText)
 {
+    QMutexLocker locker(userMutex());
+    PDFDoc *document = popplerCoreDocument(pdfdoc.get());
+    const int nativeSourcePageNumber = nativePageForLogicalPage(sourcePage ? sourcePage->number() : -1) + 1;
+    const int nativeDestinationPageNumber = destinationName.isEmpty() ? nativePageForLogicalPage(destinationPageNumber - 1) + 1 : destinationPageNumber;
+    const std::string encodedName = destinationName.toUtf8().toStdString();
+    if (!runPdfPagesOperation(
+            [&] {
+                return PdfPageSequenceEditor::createInternalLink(
+                    document, nativeSourcePageNumber, linkLeft, linkTop, linkRight, linkBottom, encodedName, nativeDestinationPageNumber, destinationX, destinationY);
+            },
+            errorText)) {
+        return false;
+    }
+    return refreshPdfLinkObjects(sourcePage, nativeSourcePageNumber - 1, errorText);
+}
+
+bool PDFGenerator::editExternalLinkDestination(Okular::Page *sourcePage, double linkLeft, double linkTop, double linkRight, double linkBottom, const QString &url, QString *errorText)
+{
+    QMutexLocker locker(userMutex());
+    PDFDoc *document = popplerCoreDocument(pdfdoc.get());
+    const int nativeSourcePageNumber = nativePageForLogicalPage(sourcePage ? sourcePage->number() : -1) + 1;
     const std::string encodedUrl = url.toUtf8().toStdString();
-    return runPdfPagesOperation(
-        [&] {
-            return PdfPageSequenceEditor::editExternalLinkDestination(
-                pdfPagesFileName(sourceFileName), pdfPagesFileName(outputFileName), sourcePageNumber, linkLeft, linkTop, linkRight, linkBottom, encodedUrl);
-        },
-        errorText);
+    if (!runPdfPagesOperation([&] { return PdfPageSequenceEditor::editExternalLinkDestination(document, nativeSourcePageNumber, linkLeft, linkTop, linkRight, linkBottom, encodedUrl); }, errorText)) {
+        return false;
+    }
+    return refreshPdfLinkObjects(sourcePage, nativeSourcePageNumber - 1, errorText);
 }
 
-bool PDFGenerator::saveWithExternalLinkCreated(const QString &sourceFileName,
-                                               const QString &outputFileName,
-                                               int sourcePageNumber,
-                                               double linkLeft,
-                                               double linkTop,
-                                               double linkRight,
-                                               double linkBottom,
-                                               const QString &url,
-                                               QString *errorText)
+bool PDFGenerator::createExternalLink(Okular::Page *sourcePage, double linkLeft, double linkTop, double linkRight, double linkBottom, const QString &url, QString *errorText)
 {
+    QMutexLocker locker(userMutex());
+    PDFDoc *document = popplerCoreDocument(pdfdoc.get());
+    const int nativeSourcePageNumber = nativePageForLogicalPage(sourcePage ? sourcePage->number() : -1) + 1;
     const std::string encodedUrl = url.toUtf8().toStdString();
-    return runPdfPagesOperation(
-        [&] { return PdfPageSequenceEditor::createExternalLink(pdfPagesFileName(sourceFileName), pdfPagesFileName(outputFileName), sourcePageNumber, linkLeft, linkTop, linkRight, linkBottom, encodedUrl); },
-        errorText);
+    if (!runPdfPagesOperation([&] { return PdfPageSequenceEditor::createExternalLink(document, nativeSourcePageNumber, linkLeft, linkTop, linkRight, linkBottom, encodedUrl); }, errorText)) {
+        return false;
+    }
+    return refreshPdfLinkObjects(sourcePage, nativeSourcePageNumber - 1, errorText);
 }
 
-bool PDFGenerator::saveWithPdfLinkRectangleChanged(const QString &sourceFileName,
-                                                   const QString &outputFileName,
-                                                   int sourcePageNumber,
-                                                   double oldLinkLeft,
-                                                   double oldLinkTop,
-                                                   double oldLinkRight,
-                                                   double oldLinkBottom,
-                                                   double newLinkLeft,
-                                                   double newLinkTop,
-                                                   double newLinkRight,
-                                                   double newLinkBottom,
-                                                   QString *errorText)
+bool PDFGenerator::editPdfLinkRectangle(Okular::Page *sourcePage,
+                                        double oldLinkLeft,
+                                        double oldLinkTop,
+                                        double oldLinkRight,
+                                        double oldLinkBottom,
+                                        double newLinkLeft,
+                                        double newLinkTop,
+                                        double newLinkRight,
+                                        double newLinkBottom,
+                                        QString *errorText)
 {
-    return runPdfPagesOperation(
-        [&] {
-            return PdfPageSequenceEditor::editLinkRectangle(pdfPagesFileName(sourceFileName),
-                                                            pdfPagesFileName(outputFileName),
-                                                            sourcePageNumber,
-                                                            oldLinkLeft,
-                                                            oldLinkTop,
-                                                            oldLinkRight,
-                                                            oldLinkBottom,
-                                                            newLinkLeft,
-                                                            newLinkTop,
-                                                            newLinkRight,
-                                                            newLinkBottom);
-        },
-        errorText);
+    QMutexLocker locker(userMutex());
+    PDFDoc *document = popplerCoreDocument(pdfdoc.get());
+    const int nativeSourcePageNumber = nativePageForLogicalPage(sourcePage ? sourcePage->number() : -1) + 1;
+    if (!runPdfPagesOperation(
+            [&] {
+                return PdfPageSequenceEditor::editLinkRectangle(
+                    document, nativeSourcePageNumber, oldLinkLeft, oldLinkTop, oldLinkRight, oldLinkBottom, newLinkLeft, newLinkTop, newLinkRight, newLinkBottom);
+            },
+            errorText)) {
+        return false;
+    }
+    return refreshPdfLinkObjects(sourcePage, nativeSourcePageNumber - 1, errorText);
 }
 
-bool PDFGenerator::saveWithPdfLinkDeleted(const QString &sourceFileName, const QString &outputFileName, int sourcePageNumber, double linkLeft, double linkTop, double linkRight, double linkBottom, QString *errorText)
+bool PDFGenerator::deletePdfLink(Okular::Page *sourcePage, double linkLeft, double linkTop, double linkRight, double linkBottom, QString *errorText)
 {
-    return runPdfPagesOperation([&] { return PdfPageSequenceEditor::deleteLink(pdfPagesFileName(sourceFileName), pdfPagesFileName(outputFileName), sourcePageNumber, linkLeft, linkTop, linkRight, linkBottom); }, errorText);
+    QMutexLocker locker(userMutex());
+    PDFDoc *document = popplerCoreDocument(pdfdoc.get());
+    const int nativeSourcePageNumber = nativePageForLogicalPage(sourcePage ? sourcePage->number() : -1) + 1;
+    if (!runPdfPagesOperation([&] { return PdfPageSequenceEditor::deleteLink(document, nativeSourcePageNumber, linkLeft, linkTop, linkRight, linkBottom); }, errorText)) {
+        return false;
+    }
+    return refreshPdfLinkObjects(sourcePage, nativeSourcePageNumber - 1, errorText);
 }
 
 bool PDFGenerator::canPerformEnglishOcr() const

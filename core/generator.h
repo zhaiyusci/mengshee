@@ -182,20 +182,8 @@ public:
      */
     virtual bool canInsertBlankPage() const = 0;
 
-    /**
-     * Writes @p outputFileName as a copy of @p sourceFileName with one blank
-     * page inserted after @p pageNumber. @p pageNumber is 1-based; 0 means
-     * insert before the first page.
-     */
-    virtual bool saveWithBlankPageInsertedAfter(const QString &sourceFileName, const QString &outputFileName, int pageNumber, QString *errorText) = 0;
-
-    /**
-     * Writes @p outputFileName as a copy of @p sourceFileName with one blank
-     * page inserted after @p pageNumber. @p pageNumber is 1-based; 0 means
-     * insert before the first page. @p width and @p height are PDF points.
-
-     */
-    virtual bool saveWithBlankPageInsertedAfter(const QString &sourceFileName, const QString &outputFileName, int pageNumber, double width, double height, QString *errorText) = 0;
+    /** Inserts a blank page in the open document without writing it. */
+    virtual bool insertBlankPageInDocument(int insertAfterPageNumber, double width, double height, Page **insertedPage, quint64 *editId, QString *errorText) = 0;
 
     /**
      * Returns whether this generator can write a copy of the document with a
@@ -203,16 +191,17 @@ public:
      */
     virtual bool canInsertPageFromPdf() const = 0;
 
-    /**
-     * Writes @p outputFileName as a copy of @p sourceFileName with page
-     * @p pageToInsert from @p insertedFileName inserted after @p pageNumber.
-     * Both page numbers are 1-based except @p pageNumber, where 0 means insert
+    /** Duplicates one page in the open document without writing it. */
+    virtual bool duplicatePageInDocument(int pageNumber, bool resolveDestinationConflicts, Page **insertedPage, quint64 *editId, QString *errorText) = 0;
 
-     * * before the first page. Local links are always retained. If
-     * @p resolveDestinationConflicts is true, named destinations copied with
-     * the page receive a common unique suffix and matching links are rewritten.
-     */
-    virtual bool saveWithPdfPageInsertedAfter(const QString &sourceFileName, const QString &outputFileName, int pageNumber, const QString &insertedFileName, int pageToInsert, bool resolveDestinationConflicts, QString *errorText) = 0;
+    /** Imports one page into the open document without writing it. */
+    virtual bool insertPdfPageInDocument(int insertAfterPageNumber,
+                                         const QString &insertedFileName,
+                                         int pageToInsert,
+                                         bool resolveDestinationConflicts,
+                                         Page **insertedPage,
+                                         quint64 *editId,
+                                         QString *errorText) = 0;
 
     /**
      * Returns whether this generator can combine complete PDF files.
@@ -239,11 +228,14 @@ public:
      */
     virtual bool canDeletePage() const = 0;
 
-    /**
-     * Writes @p outputFileName as a copy of @p sourceFileName with page
-     * @p pageNumber removed. @p pageNumber is 1-based.
-     */
-    virtual bool saveWithPageDeleted(const QString &sourceFileName, const QString &outputFileName, int pageNumber, QString *errorText) = 0;
+    /** Detaches a page from the open document and records undo state. */
+    virtual bool detachPageInDocument(Page *page, int pageNumber, quint64 *editId, QString *errorText) = 0;
+
+    /** Detaches a previously inserted or restored page. */
+    virtual bool detachPageInDocument(Page *page, int pageNumber, quint64 editId, QString *errorText) = 0;
+
+    /** Restores a detached page after the given page (-1 means first). */
+    virtual bool attachPageInDocument(int insertAfterPageNumber, quint64 editId, Page **insertedPage, QString *errorText) = 0;
 
     /**
      * Returns whether this generator can write a copy of the document with a
@@ -275,24 +267,13 @@ public:
     }
 
     /**
-     * Writes @p outputFileName as a copy of @p sourceFileName with page
-     * @p sourcePageNumber moved to final position @p destinationPageNumber.
-     * Both page numbers are 1-based.
-     */
-    virtual bool saveWithPageMoved(const QString &sourceFileName, const QString &outputFileName, int sourcePageNumber, int destinationPageNumber, QString *errorText) = 0;
-
-    /**
      * Returns whether this generator can write a copy with one page assigned
      * an explicit clockwise rotation.
      */
     virtual bool canRotatePage() const = 0;
 
-    /**
-     * Writes @p outputFileName as a copy of @p sourceFileName with page
-     * @p pageNumber rotated to @p rotationDegrees clockwise. The page number
-     * is 1-based and the rotation must be 0, 90, 180, or 270 degrees.
-     */
-    virtual bool saveWithPageRotated(const QString &sourceFileName, const QString &outputFileName, int pageNumber, int rotationDegrees, QString *errorText) = 0;
+    /** Assigns an explicit clockwise rotation and returns its replacement model page. */
+    virtual bool rotatePageInDocument(Page *page, int pageNumber, int rotationDegrees, Page **replacementPage, QString *errorText) = 0;
 };
 
 /**
@@ -306,43 +287,17 @@ public:
 
     virtual bool canEditPdfLinks() const = 0;
 
-    /**
-     * Writes a copy with @p name pointing to the normalized position on the
-     * 1-based @p pageNumber. An existing destination with the same name is
-     * replaced.
-     */
-    virtual bool saveWithNamedDestinationAdded(const QString &sourceFileName, const QString &outputFileName, const QString &name, int pageNumber, double normalizedX, double normalizedY, QString *errorText) = 0;
+    /** Updates the currently open document without writing or reopening it. */
+    virtual bool setNamedDestination(const QString &name, int pageNumber, double normalizedX, double normalizedY, QString *errorText) = 0;
 
-    /** Writes a copy with a named destination renamed and exact internal references updated. */
-    virtual bool saveWithNamedDestinationRenamed(const QString &sourceFileName, const QString &outputFileName, const QString &oldName, const QString &newName, QString *errorText) = 0;
+    /** Renames a destination in the currently open document and updates exact references. */
+    virtual bool renameNamedDestination(const QString &oldName, const QString &newName, QString *errorText) = 0;
 
-    /** Writes a copy with a named destination definition removed. References are preserved. */
-    virtual bool saveWithNamedDestinationDeleted(const QString &sourceFileName, const QString &outputFileName, const QString &name, QString *errorText) = 0;
+    /** Removes a destination from the currently open document. References are preserved. */
+    virtual bool deleteNamedDestination(const QString &name, QString *errorText) = 0;
 
-    /**
-     * Writes a copy with the selected internal link redirected. The source
-     * page is 1-based and the link rectangle is normalized. A non-empty
-     * @p destinationName is preferred and stored directly; otherwise the
-     *
-     * 1-based destination page and normalized position are stored explicitly.
-     */
-    virtual bool saveWithInternalLinkDestinationChanged(const QString &sourceFileName,
-                                                        const QString &outputFileName,
-                                                        int sourcePageNumber,
-                                                        double linkLeft,
-                                                        double linkTop,
-                                                        double linkRight,
-                                                        double linkBottom,
-                                                        const QString &destinationName,
-                                                        int destinationPageNumber,
-                                                        double destinationX,
-                                                        double destinationY,
-                                                        QString *errorText) = 0;
-
-    /** Writes a copy with a new internal link annotation. */
-    virtual bool saveWithInternalLinkCreated(const QString &sourceFileName,
-                                             const QString &outputFileName,
-                                             int sourcePageNumber,
+    /** Updates one internal link in the open document and refreshes its page objects. */
+    virtual bool editInternalLinkDestination(Page *sourcePage,
                                              double linkLeft,
                                              double linkTop,
                                              double linkRight,
@@ -353,44 +308,39 @@ public:
                                              double destinationY,
                                              QString *errorText) = 0;
 
-    /** Writes a copy with the selected link changed to an external URL. */
-    virtual bool saveWithExternalLinkDestinationChanged(const QString &sourceFileName,
-                                                        const QString &outputFileName,
-                                                        int sourcePageNumber,
-                                                        double linkLeft,
-                                                        double linkTop,
-                                                        double linkRight,
-                                                        double linkBottom,
-                                                        const QString &url,
-                                                        QString *errorText) = 0;
+    /** Adds one internal link to the open document and refreshes its page objects. */
+    virtual bool createInternalLink(Page *sourcePage,
+                                    double linkLeft,
+                                    double linkTop,
+                                    double linkRight,
+                                    double linkBottom,
+                                    const QString &destinationName,
+                                    int destinationPageNumber,
+                                    double destinationX,
+                                    double destinationY,
+                                    QString *errorText) = 0;
 
-    /** Writes a copy with a new external URL link annotation. */
-    virtual bool saveWithExternalLinkCreated(const QString &sourceFileName,
-                                             const QString &outputFileName,
-                                             int sourcePageNumber,
-                                             double linkLeft,
-                                             double linkTop,
-                                             double linkRight,
-                                             double linkBottom,
-                                             const QString &url,
-                                             QString *errorText) = 0;
+    /** Changes one link in the open document to an external URL. */
+    virtual bool editExternalLinkDestination(Page *sourcePage, double linkLeft, double linkTop, double linkRight, double linkBottom, const QString &url, QString *errorText) = 0;
 
-    /** Writes a copy with the selected PDF link annotation moved or resized. */
-    virtual bool saveWithPdfLinkRectangleChanged(const QString &sourceFileName,
-                                                 const QString &outputFileName,
-                                                 int sourcePageNumber,
-                                                 double oldLinkLeft,
-                                                 double oldLinkTop,
-                                                 double oldLinkRight,
-                                                 double oldLinkBottom,
-                                                 double newLinkLeft,
-                                                 double newLinkTop,
-                                                 double newLinkRight,
-                                                 double newLinkBottom,
-                                                 QString *errorText) = 0;
+    /** Adds one external URL link to the open document. */
+    virtual bool createExternalLink(Page *sourcePage, double linkLeft, double linkTop, double linkRight, double linkBottom, const QString &url, QString *errorText) = 0;
 
-    /** Writes a copy with the selected PDF link annotation removed. */
-    virtual bool saveWithPdfLinkDeleted(const QString &sourceFileName, const QString &outputFileName, int sourcePageNumber, double linkLeft, double linkTop, double linkRight, double linkBottom, QString *errorText) = 0;
+    /** Moves or resizes one link in the open document. */
+    virtual bool editPdfLinkRectangle(Page *sourcePage,
+                                      double oldLinkLeft,
+                                      double oldLinkTop,
+                                      double oldLinkRight,
+                                      double oldLinkBottom,
+                                      double newLinkLeft,
+                                      double newLinkTop,
+                                      double newLinkRight,
+                                      double newLinkBottom,
+                                      QString *errorText) = 0;
+
+    /** Removes one link from the open document. */
+    virtual bool deletePdfLink(Page *sourcePage, double linkLeft, double linkTop, double linkRight, double linkBottom, QString *errorText) = 0;
+
 };
 
 /** Result of adding an OCR text layer to a PDF. */

@@ -28,6 +28,7 @@
 #include <interfaces/printinterface.h>
 #include <interfaces/saveinterface.h>
 
+#include <memory>
 #include <unordered_map>
 
 class PDFOptionsPage;
@@ -104,40 +105,33 @@ public:
     bool save(const QString &fileName, SaveOptions options, QString *errorText) override;
     Okular::AnnotationProxy *annotationProxy() const override;
     bool canInsertBlankPage() const override;
-    bool saveWithBlankPageInsertedAfter(const QString &sourceFileName, const QString &outputFileName, int pageNumber, QString *errorText) override;
-    bool saveWithBlankPageInsertedAfter(const QString &sourceFileName, const QString &outputFileName, int pageNumber, double width, double height, QString *errorText) override;
+    bool insertBlankPageInDocument(int insertAfterPageNumber, double width, double height, Okular::Page **insertedPage, quint64 *editId, QString *errorText) override;
     bool canInsertPageFromPdf() const override;
-    bool saveWithPdfPageInsertedAfter(const QString &sourceFileName, const QString &outputFileName, int pageNumber, const QString &insertedFileName, int pageToInsert, bool resolveDestinationConflicts, QString *errorText) override;
+    bool duplicatePageInDocument(int pageNumber, bool resolveDestinationConflicts, Okular::Page **insertedPage, quint64 *editId, QString *errorText) override;
+    bool insertPdfPageInDocument(int insertAfterPageNumber,
+                                 const QString &insertedFileName,
+                                 int pageToInsert,
+                                 bool resolveDestinationConflicts,
+                                 Okular::Page **insertedPage,
+                                 quint64 *editId,
+                                 QString *errorText) override;
     bool canCombinePdfFiles() const override;
     int pdfPageCount(const QString &inputFileName, QString *errorText) override;
     bool combinePdfFiles(const QStringList &inputFileNames, const QString &outputFileName, bool resolveDestinationConflicts, QString *errorText) override;
     bool canDeletePage() const override;
-    bool saveWithPageDeleted(const QString &sourceFileName, const QString &outputFileName, int pageNumber, QString *errorText) override;
+    bool detachPageInDocument(Okular::Page *page, int pageNumber, quint64 *editId, QString *errorText) override;
+    bool detachPageInDocument(Okular::Page *page, int pageNumber, quint64 editId, QString *errorText) override;
+    bool attachPageInDocument(int insertAfterPageNumber, quint64 editId, Okular::Page **insertedPage, QString *errorText) override;
     bool canMovePage() const override;
     bool canMovePageInDocument() const override;
     bool movePageInDocument(int sourcePageNumber, int destinationPageNumber, QString *errorText) override;
-    bool saveWithPageMoved(const QString &sourceFileName, const QString &outputFileName, int sourcePageNumber, int destinationPageNumber, QString *errorText) override;
     bool canRotatePage() const override;
-    bool saveWithPageRotated(const QString &sourceFileName, const QString &outputFileName, int pageNumber, int rotationDegrees, QString *errorText) override;
+    bool rotatePageInDocument(Okular::Page *page, int pageNumber, int rotationDegrees, Okular::Page **replacementPage, QString *errorText) override;
     bool canEditPdfLinks() const override;
-    bool saveWithNamedDestinationAdded(const QString &sourceFileName, const QString &outputFileName, const QString &name, int pageNumber, double normalizedX, double normalizedY, QString *errorText) override;
-    bool saveWithNamedDestinationRenamed(const QString &sourceFileName, const QString &outputFileName, const QString &oldName, const QString &newName, QString *errorText) override;
-    bool saveWithNamedDestinationDeleted(const QString &sourceFileName, const QString &outputFileName, const QString &name, QString *errorText) override;
-    bool saveWithInternalLinkDestinationChanged(const QString &sourceFileName,
-                                                const QString &outputFileName,
-                                                int sourcePageNumber,
-                                                double linkLeft,
-                                                double linkTop,
-                                                double linkRight,
-                                                double linkBottom,
-                                                const QString &destinationName,
-                                                int destinationPageNumber,
-                                                double destinationX,
-                                                double destinationY,
-                                                QString *errorText) override;
-    bool saveWithInternalLinkCreated(const QString &sourceFileName,
-                                     const QString &outputFileName,
-                                     int sourcePageNumber,
+    bool setNamedDestination(const QString &name, int pageNumber, double normalizedX, double normalizedY, QString *errorText) override;
+    bool renameNamedDestination(const QString &oldName, const QString &newName, QString *errorText) override;
+    bool deleteNamedDestination(const QString &name, QString *errorText) override;
+    bool editInternalLinkDestination(Okular::Page *sourcePage,
                                      double linkLeft,
                                      double linkTop,
                                      double linkRight,
@@ -147,37 +141,29 @@ public:
                                      double destinationX,
                                      double destinationY,
                                      QString *errorText) override;
-    bool saveWithExternalLinkDestinationChanged(const QString &sourceFileName,
-                                                const QString &outputFileName,
-                                                int sourcePageNumber,
-                                                double linkLeft,
-                                                double linkTop,
-                                                double linkRight,
-                                                double linkBottom,
-                                                const QString &url,
-                                                QString *errorText) override;
-    bool saveWithExternalLinkCreated(const QString &sourceFileName,
-                                     const QString &outputFileName,
-                                     int sourcePageNumber,
-                                     double linkLeft,
-                                     double linkTop,
-                                     double linkRight,
-                                     double linkBottom,
-                                     const QString &url,
-                                     QString *errorText) override;
-    bool saveWithPdfLinkRectangleChanged(const QString &sourceFileName,
-                                         const QString &outputFileName,
-                                         int sourcePageNumber,
-                                         double oldLinkLeft,
-                                         double oldLinkTop,
-                                         double oldLinkRight,
-                                         double oldLinkBottom,
-                                         double newLinkLeft,
-                                         double newLinkTop,
-                                         double newLinkRight,
-                                         double newLinkBottom,
-                                         QString *errorText) override;
-    bool saveWithPdfLinkDeleted(const QString &sourceFileName, const QString &outputFileName, int sourcePageNumber, double linkLeft, double linkTop, double linkRight, double linkBottom, QString *errorText) override;
+    bool createInternalLink(Okular::Page *sourcePage,
+                            double linkLeft,
+                            double linkTop,
+                            double linkRight,
+                            double linkBottom,
+                            const QString &destinationName,
+                            int destinationPageNumber,
+                            double destinationX,
+                            double destinationY,
+                            QString *errorText) override;
+    bool editExternalLinkDestination(Okular::Page *sourcePage, double linkLeft, double linkTop, double linkRight, double linkBottom, const QString &url, QString *errorText) override;
+    bool createExternalLink(Okular::Page *sourcePage, double linkLeft, double linkTop, double linkRight, double linkBottom, const QString &url, QString *errorText) override;
+    bool editPdfLinkRectangle(Okular::Page *sourcePage,
+                              double oldLinkLeft,
+                              double oldLinkTop,
+                              double oldLinkRight,
+                              double oldLinkBottom,
+                              double newLinkLeft,
+                              double newLinkTop,
+                              double newLinkRight,
+                              double newLinkBottom,
+                              QString *errorText) override;
+    bool deletePdfLink(Okular::Page *sourcePage, double linkLeft, double linkTop, double linkRight, double linkBottom, QString *errorText) override;
     bool canPerformEnglishOcr() const override;
     Okular::OcrResult saveWithEnglishOcr(const QString &sourceFileName,
                                          const QString &outputFileName,
@@ -213,6 +199,11 @@ private:
     int nativePageForLogicalPage(int logicalPage) const;
     bool pageOrderIsIdentity() const;
     std::vector<int> oneBasedPageOrder() const;
+    Okular::Page *createPageModel(int logicalPageNumber);
+    void forgetPageModel(Okular::Page *page);
+    void resetPageTopologyCaches();
+    quint64 rememberLivePageState(const std::shared_ptr<void> &state);
+    bool refreshPdfLinkObjects(Okular::Page *sourcePage, int nativePageNumber, QString *errorText);
 
     // create the document synopsis hierarchy
     void addSynopsisChildren(const QList<Poppler::OutlineItem> &outlineItems, QDomNode *parentDestination);
@@ -252,6 +243,8 @@ private:
 
     QBitArray rectsGenerated;
     QVector<int> m_pageOrder;
+    quint64 m_nextLivePageEditId = 1;
+    QHash<quint64, std::shared_ptr<void>> m_livePageStates;
 
     QPointer<PDFOptionsPage> pdfOptionsPage;
 

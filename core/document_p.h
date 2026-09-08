@@ -244,6 +244,7 @@ public:
     void loadSyncFile(const QString &filePath);
 
     void clearAndWaitForRequests();
+    void publishPageTopologyChange(Page *retiredPage = nullptr);
 
     OKULARCORE_EXPORT static QString evaluateKeystrokeEventChange(const QString &oldVal, const QString &newVal, int selStart, int selEnd);
 

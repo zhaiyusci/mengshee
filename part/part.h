@@ -33,6 +33,7 @@
 #include <QUrl>
 
 #include <functional>
+#include <optional>
 
 #include <KCompressionDevice>
 #include <KIO/Job>
@@ -129,6 +130,10 @@ class OKULARPART_EXPORT Part : public KParts::ReadWritePart, public Okular::Docu
     friend class PartTest;
     friend class PageBackingFileCommand;
     friend class LivePageMoveCommand;
+    friend class LivePageAttachmentCommand;
+    friend class LivePageRotationCommand;
+    friend class LiveNamedDestinationCommand;
+    friend class LiveNamedDestinationRenameCommand;
 
 public:
     // Default constructor
@@ -336,6 +341,9 @@ private:
     void checkNativeSaveDataLoss(bool *out_wontSaveForms, bool *out_wontSaveAnnotations) const;
     bool applyPageEditBackingFile(const QString &fileName, int pageNumber, bool forcePageTopologyChanged = false, bool preserveViewport = false);
     bool applyLivePageMove(int sourcePage, int destinationPage);
+    bool applyLivePageAttachment(bool attach, int insertAfterPage, quint64 editId);
+    bool applyLivePageRotation(int pageNumber, int rotationDegrees);
+    bool applyLiveNamedDestination(const QString &name, const std::optional<DocumentViewport> &destination, QString *errorText = nullptr);
     bool canUsePageLevelEditing() const;
     void setAdvancedModeEnabled(bool enabled);
     void updatePageEditActions();
@@ -346,15 +354,21 @@ private:
     void insertBlankPageAfterPage(int pageNumber);
     void duplicatePage(int pageNumber);
     void addNamedDestination(int pageNumber, const Okular::NormalizedPoint &position);
+    void startBatchNamedDestinationCreation();
+    bool addNamedDestinationWithName(int pageNumber, const Okular::NormalizedPoint &position, const QString &name, bool replaceExistingWithoutPrompt);
     void renameNamedDestination(const QString &oldName);
     void deleteNamedDestination(const QString &name);
     void moveNamedDestination(const QString &name, int pageNumber, const Okular::NormalizedPoint &position);
     void editPdfLink(int sourcePageNumber, const QRectF &normalizedLinkRectangle, const QString &currentDestinationName, const Okular::DocumentViewport &currentDestination, const QUrl &currentExternalUrl);
     void createPdfLink(int sourcePageNumber, const QRectF &normalizedLinkRectangle);
     void changePdfLinkRectangle(int sourcePageNumber, const QRectF &oldNormalizedRectangle, const QRectF &newNormalizedRectangle);
-    void deletePdfLink(int sourcePageNumber, const QRectF &normalizedLinkRectangle);
+    void deletePdfLink(int sourcePageNumber,
+                       const QRectF &normalizedLinkRectangle,
+                       const QString &currentDestinationName,
+                       const Okular::DocumentViewport &currentDestination,
+                       const QUrl &currentExternalUrl);
     void configurePdfLink(int sourcePageNumber, const QRectF &normalizedLinkRectangle, const QString &currentDestinationName, const Okular::DocumentViewport &currentDestination, const QUrl &currentExternalUrl, bool creating);
-    bool applyPdfLinkEdit(const QString &undoText, const QString &failureText, int pageNumber, const std::function<bool(const QString &, const QString &, QString *)> &operation);
+    bool applyLiveNamedDestinationRename(const QString &oldName, const QString &newName, QString *errorText);
     QString pageTemplateFileName() const;
     void setPageTemplateFileName(const QString &fileName);
     void deletePage(int pageNumber);
@@ -513,6 +527,7 @@ private:
     QAction *m_recognizeEnglishText = nullptr;
     QAction *m_addCurrentPageToContents = nullptr;
     QAction *m_addNamedDestination = nullptr;
+    QAction *m_addNamedDestinationsFromTemplate = nullptr;
     QAction *m_createLink = nullptr;
     QAction *m_insertPage = nullptr;
     QAction *m_setPageTemplate = nullptr;
@@ -525,6 +540,11 @@ private:
     QAction *m_resetCurrentPageRotation = nullptr;
     QAction *m_deleteCurrentPage = nullptr;
     bool m_advancedModeEnabled = false;
+    bool m_batchNamedDestinationCreationActive = false;
+    bool m_batchNamedDestinationReplaceConflicts = false;
+    QString m_batchNamedDestinationTemplate = QStringLiteral("eq-{x}");
+    int m_batchNamedDestinationNextNumber = 1;
+    QHash<QString, QString> m_batchNamedDestinationExistingViewports;
     QMenu *m_exportAsMenu;
 #if HAVE_PURPOSE
     Purpose::Menu *m_shareMenu;

@@ -2562,6 +2562,48 @@ void DocumentPrivate::clearAndWaitForRequests()
     } while (startEventLoop);
 }
 
+void DocumentPrivate::publishPageTopologyChange(Page *retiredPage)
+{
+    for (int pageIndex = 0; pageIndex < m_pagesVector.size(); ++pageIndex) {
+        Page *page = m_pagesVector.at(pageIndex);
+        page->d->m_number = pageIndex;
+        page->d->m_doc = this;
+        // Link destinations contain page indices. Force their lightweight
+        // object rectangles to be regenerated after any topology change.
+        page->setObjectRects({});
+    }
+
+    bool undoReferencesValid = true;
+    for (int i = 0; i < m_undoStack->count(); ++i) {
+        QUndoCommand *command = const_cast<QUndoCommand *>(m_undoStack->command(i));
+        if (auto *okularCommand = dynamic_cast<OkularUndoCommand *>(command)) {
+            if (!okularCommand->refreshInternalPageReferences(m_pagesVector)) {
+                undoReferencesValid = false;
+            }
+        }
+    }
+    delete retiredPage;
+    if (!undoReferencesValid) {
+        QMetaObject::invokeMethod(m_parent, [this] { m_undoStack->clear(); }, Qt::QueuedConnection);
+    }
+
+    m_documentInfo = DocumentInfo();
+    m_documentInfoAskedKeys.clear();
+    ++m_documentGeneration;
+    const QList<int> searchIDs = m_searches.keys();
+    for (Page *page : std::as_const(m_pagesVector)) {
+        for (int searchID : searchIDs) {
+            page->d->deleteHighlights(searchID);
+        }
+    }
+    qDeleteAll(m_searches);
+    m_searches.clear();
+
+    for (DocumentObserver *observer : std::as_const(m_observers)) {
+        observer->notifySetup(m_pagesVector, DocumentObserver::DocumentChanged);
+    }
+}
+
 int DocumentPrivate::findFieldPageNumber(Okular::FormField *field)
 {
     // Lookup the page of the FormField
@@ -5769,30 +5811,20 @@ bool Document::canInsertBlankPage() const
     return pageInsertion && pageInsertion->canInsertBlankPage();
 }
 
-bool Document::saveWithBlankPageInsertedAfter(const QString &sourceFileName, const QString &outputFileName, int pageNumber, QString *errorText)
+bool Document::insertBlankPage(int insertAfterPageNumber, double width, double height, quint64 *editId, QString *errorText)
 {
     auto pageInsertion = dynamic_cast<PageInsertionInterface *>(d->m_generator);
-    if (!pageInsertion || sourceFileName.isEmpty() || outputFileName.isEmpty()) {
-        if (errorText) {
-            *errorText = QString();
-        }
+    if (!pageInsertion || !editId || insertAfterPageNumber < -1 || insertAfterPageNumber >= d->m_pagesVector.size()) {
         return false;
     }
-
-    return pageInsertion->saveWithBlankPageInsertedAfter(sourceFileName, outputFileName, pageNumber, errorText);
-}
-
-bool Document::saveWithBlankPageInsertedAfter(const QString &sourceFileName, const QString &outputFileName, int pageNumber, double width, double height, QString *errorText)
-{
-    auto pageInsertion = dynamic_cast<PageInsertionInterface *>(d->m_generator);
-    if (!pageInsertion || sourceFileName.isEmpty() || outputFileName.isEmpty()) {
-        if (errorText) {
-            *errorText = QString();
-        }
+    d->clearAndWaitForRequests();
+    Page *insertedPage = nullptr;
+    if (!pageInsertion->insertBlankPageInDocument(insertAfterPageNumber, width, height, &insertedPage, editId, errorText) || !insertedPage) {
         return false;
     }
-
-    return pageInsertion->saveWithBlankPageInsertedAfter(sourceFileName, outputFileName, pageNumber, width, height, errorText);
+    d->m_pagesVector.insert(insertAfterPageNumber + 1, insertedPage);
+    d->publishPageTopologyChange();
+    return true;
 }
 
 bool Document::canInsertPageFromPdf() const
@@ -5801,17 +5833,36 @@ bool Document::canInsertPageFromPdf() const
     return pageInsertion && pageInsertion->canInsertPageFromPdf();
 }
 
-bool Document::saveWithPdfPageInsertedAfter(const QString &sourceFileName, const QString &outputFileName, int pageNumber, const QString &insertedFileName, int pageToInsert, bool resolveDestinationConflicts, QString *errorText)
+bool Document::duplicatePage(int pageNumber, bool resolveDestinationConflicts, quint64 *editId, QString *errorText)
 {
     auto pageInsertion = dynamic_cast<PageInsertionInterface *>(d->m_generator);
-    if (!pageInsertion || sourceFileName.isEmpty() || outputFileName.isEmpty() || insertedFileName.isEmpty()) {
-        if (errorText) {
-            *errorText = QString();
-        }
+    if (!pageInsertion || !editId || pageNumber < 0 || pageNumber >= d->m_pagesVector.size()) {
         return false;
     }
+    d->clearAndWaitForRequests();
+    Page *insertedPage = nullptr;
+    if (!pageInsertion->duplicatePageInDocument(pageNumber, resolveDestinationConflicts, &insertedPage, editId, errorText) || !insertedPage) {
+        return false;
+    }
+    d->m_pagesVector.insert(pageNumber + 1, insertedPage);
+    d->publishPageTopologyChange();
+    return true;
+}
 
-    return pageInsertion->saveWithPdfPageInsertedAfter(sourceFileName, outputFileName, pageNumber, insertedFileName, pageToInsert, resolveDestinationConflicts, errorText);
+bool Document::insertPdfPage(int insertAfterPageNumber, const QString &insertedFileName, int pageToInsert, bool resolveDestinationConflicts, quint64 *editId, QString *errorText)
+{
+    auto pageInsertion = dynamic_cast<PageInsertionInterface *>(d->m_generator);
+    if (!pageInsertion || !editId || insertedFileName.isEmpty() || insertAfterPageNumber < -1 || insertAfterPageNumber >= d->m_pagesVector.size()) {
+        return false;
+    }
+    d->clearAndWaitForRequests();
+    Page *insertedPage = nullptr;
+    if (!pageInsertion->insertPdfPageInDocument(insertAfterPageNumber, insertedFileName, pageToInsert, resolveDestinationConflicts, &insertedPage, editId, errorText) || !insertedPage) {
+        return false;
+    }
+    d->m_pagesVector.insert(insertAfterPageNumber + 1, insertedPage);
+    d->publishPageTopologyChange();
+    return true;
 }
 
 bool Document::canCombinePdfFiles() const
@@ -5852,17 +5903,52 @@ bool Document::canDeletePage() const
     return pageInsertion && pageInsertion->canDeletePage();
 }
 
-bool Document::saveWithPageDeleted(const QString &sourceFileName, const QString &outputFileName, int pageNumber, QString *errorText)
+bool Document::detachPage(int pageNumber, quint64 *editId, QString *errorText)
 {
     auto pageInsertion = dynamic_cast<PageInsertionInterface *>(d->m_generator);
-    if (!pageInsertion || sourceFileName.isEmpty() || outputFileName.isEmpty()) {
-        if (errorText) {
-            *errorText = QString();
-        }
+    if (!pageInsertion || !editId || d->m_pagesVector.size() <= 1 || pageNumber < 0 || pageNumber >= d->m_pagesVector.size()) {
         return false;
     }
+    d->clearAndWaitForRequests();
+    Page *retiredPage = d->m_pagesVector.at(pageNumber);
+    if (!pageInsertion->detachPageInDocument(retiredPage, pageNumber, editId, errorText)) {
+        return false;
+    }
+    d->m_pagesVector.removeAt(pageNumber);
+    d->publishPageTopologyChange(retiredPage);
+    return true;
+}
 
-    return pageInsertion->saveWithPageDeleted(sourceFileName, outputFileName, pageNumber, errorText);
+bool Document::detachPage(int pageNumber, quint64 editId, QString *errorText)
+{
+    auto pageInsertion = dynamic_cast<PageInsertionInterface *>(d->m_generator);
+    if (!pageInsertion || editId == 0 || d->m_pagesVector.size() <= 1 || pageNumber < 0 || pageNumber >= d->m_pagesVector.size()) {
+        return false;
+    }
+    d->clearAndWaitForRequests();
+    Page *retiredPage = d->m_pagesVector.at(pageNumber);
+    if (!pageInsertion->detachPageInDocument(retiredPage, pageNumber, editId, errorText)) {
+        return false;
+    }
+    d->m_pagesVector.removeAt(pageNumber);
+    d->publishPageTopologyChange(retiredPage);
+    return true;
+}
+
+bool Document::attachPage(int insertAfterPageNumber, quint64 editId, QString *errorText)
+{
+    auto pageInsertion = dynamic_cast<PageInsertionInterface *>(d->m_generator);
+    if (!pageInsertion || editId == 0 || insertAfterPageNumber < -1 || insertAfterPageNumber >= d->m_pagesVector.size()) {
+        return false;
+    }
+    d->clearAndWaitForRequests();
+    Page *insertedPage = nullptr;
+    if (!pageInsertion->attachPageInDocument(insertAfterPageNumber, editId, &insertedPage, errorText) || !insertedPage) {
+        return false;
+    }
+    d->m_pagesVector.insert(insertAfterPageNumber + 1, insertedPage);
+    d->publishPageTopologyChange();
+    return true;
 }
 
 bool Document::canMovePage() const
@@ -5907,6 +5993,7 @@ bool Document::movePage(int sourcePageNumber, int destinationPageNumber, QString
             if (page) {
                 page->d->m_number = pageIndex;
                 page->d->m_doc = d;
+                page->setObjectRects({});
             }
         }
     };
@@ -6030,36 +6117,27 @@ bool Document::movePage(int sourcePageNumber, int destinationPageNumber, QString
     return true;
 }
 
-bool Document::saveWithPageMoved(const QString &sourceFileName, const QString &outputFileName, int sourcePageNumber, int destinationPageNumber, QString *errorText)
-{
-    auto pageInsertion = dynamic_cast<PageInsertionInterface *>(d->m_generator);
-    if (!pageInsertion || sourceFileName.isEmpty() || outputFileName.isEmpty()) {
-        if (errorText) {
-            *errorText = QString();
-        }
-        return false;
-    }
-
-    return pageInsertion->saveWithPageMoved(sourceFileName, outputFileName, sourcePageNumber, destinationPageNumber, errorText);
-}
-
 bool Document::canRotatePage() const
 {
     const auto pageInsertion = dynamic_cast<PageInsertionInterface *>(d->m_generator);
     return pageInsertion && pageInsertion->canRotatePage();
 }
 
-bool Document::saveWithPageRotated(const QString &sourceFileName, const QString &outputFileName, int pageNumber, int rotationDegrees, QString *errorText)
+bool Document::rotatePage(int pageNumber, int rotationDegrees, QString *errorText)
 {
     auto pageInsertion = dynamic_cast<PageInsertionInterface *>(d->m_generator);
-    if (!pageInsertion || sourceFileName.isEmpty() || outputFileName.isEmpty()) {
-        if (errorText) {
-            errorText->clear();
-        }
+    if (!pageInsertion || pageNumber < 0 || pageNumber >= d->m_pagesVector.size()) {
         return false;
     }
-
-    return pageInsertion->saveWithPageRotated(sourceFileName, outputFileName, pageNumber, rotationDegrees, errorText);
+    d->clearAndWaitForRequests();
+    Page *retiredPage = d->m_pagesVector.at(pageNumber);
+    Page *replacementPage = nullptr;
+    if (!pageInsertion->rotatePageInDocument(retiredPage, pageNumber, rotationDegrees, &replacementPage, errorText) || !replacementPage) {
+        return false;
+    }
+    d->m_pagesVector[pageNumber] = replacementPage;
+    d->publishPageTopologyChange(retiredPage);
+    return true;
 }
 
 bool Document::canEditPdfLinks() const
@@ -6068,68 +6146,52 @@ bool Document::canEditPdfLinks() const
     return editor && editor->canEditPdfLinks();
 }
 
-bool Document::saveWithNamedDestinationAdded(const QString &sourceFileName, const QString &outputFileName, const QString &name, int pageNumber, double normalizedX, double normalizedY, QString *errorText)
+bool Document::setNamedDestination(const QString &name, int pageNumber, double normalizedX, double normalizedY, QString *errorText)
 {
     auto editor = dynamic_cast<PdfLinkEditingInterface *>(d->m_generator);
-    if (!editor || sourceFileName.isEmpty() || outputFileName.isEmpty() || name.isEmpty()) {
+    if (!editor || name.isEmpty()) {
         if (errorText) {
             errorText->clear();
         }
         return false;
     }
-    return editor->saveWithNamedDestinationAdded(sourceFileName, outputFileName, name, pageNumber, normalizedX, normalizedY, errorText);
+    return editor->setNamedDestination(name, pageNumber, normalizedX, normalizedY, errorText);
 }
 
-bool Document::saveWithNamedDestinationRenamed(const QString &sourceFileName, const QString &outputFileName, const QString &oldName, const QString &newName, QString *errorText)
+bool Document::renameNamedDestination(const QString &oldName, const QString &newName, QString *errorText)
 {
     auto editor = dynamic_cast<PdfLinkEditingInterface *>(d->m_generator);
-    if (!editor || sourceFileName.isEmpty() || outputFileName.isEmpty() || oldName.isEmpty() || newName.isEmpty()) {
+    if (!editor || oldName.isEmpty() || newName.isEmpty()) {
         if (errorText) {
             errorText->clear();
         }
         return false;
     }
-    return editor->saveWithNamedDestinationRenamed(sourceFileName, outputFileName, oldName, newName, errorText);
+    const bool changed = editor->renameNamedDestination(oldName, newName, errorText);
+    if (changed) {
+        for (Page *page : std::as_const(d->m_pagesVector)) {
+            page->setObjectRects({});
+        }
+        for (DocumentObserver *observer : std::as_const(d->m_observers)) {
+            observer->notifySetup(d->m_pagesVector, DocumentObserver::DocumentChanged);
+        }
+    }
+    return changed;
 }
 
-bool Document::saveWithNamedDestinationDeleted(const QString &sourceFileName, const QString &outputFileName, const QString &name, QString *errorText)
+bool Document::deleteNamedDestination(const QString &name, QString *errorText)
 {
     auto editor = dynamic_cast<PdfLinkEditingInterface *>(d->m_generator);
-    if (!editor || sourceFileName.isEmpty() || outputFileName.isEmpty() || name.isEmpty()) {
+    if (!editor || name.isEmpty()) {
         if (errorText) {
             errorText->clear();
         }
         return false;
     }
-    return editor->saveWithNamedDestinationDeleted(sourceFileName, outputFileName, name, errorText);
+    return editor->deleteNamedDestination(name, errorText);
 }
 
-bool Document::saveWithInternalLinkDestinationChanged(const QString &sourceFileName,
-                                                      const QString &outputFileName,
-                                                      int sourcePageNumber,
-                                                      double linkLeft,
-                                                      double linkTop,
-                                                      double linkRight,
-                                                      double linkBottom,
-                                                      const QString &destinationName,
-                                                      int destinationPageNumber,
-                                                      double destinationX,
-                                                      double destinationY,
-                                                      QString *errorText)
-{
-    auto editor = dynamic_cast<PdfLinkEditingInterface *>(d->m_generator);
-    if (!editor || sourceFileName.isEmpty() || outputFileName.isEmpty()) {
-        if (errorText) {
-            errorText->clear();
-        }
-        return false;
-    }
-    return editor->saveWithInternalLinkDestinationChanged(sourceFileName, outputFileName, sourcePageNumber, linkLeft, linkTop, linkRight, linkBottom, destinationName, destinationPageNumber, destinationX, destinationY, errorText);
-}
-
-bool Document::saveWithInternalLinkCreated(const QString &sourceFileName,
-                                           const QString &outputFileName,
-                                           int sourcePageNumber,
+bool Document::editInternalLinkDestination(int sourcePageNumber,
                                            double linkLeft,
                                            double linkTop,
                                            double linkRight,
@@ -6141,99 +6203,121 @@ bool Document::saveWithInternalLinkCreated(const QString &sourceFileName,
                                            QString *errorText)
 {
     auto editor = dynamic_cast<PdfLinkEditingInterface *>(d->m_generator);
-    if (!editor || sourceFileName.isEmpty() || outputFileName.isEmpty()) {
+    Page *sourcePage = d->m_pagesVector.value(sourcePageNumber - 1, nullptr);
+    if (!editor || !sourcePage) {
         if (errorText) {
             errorText->clear();
         }
         return false;
     }
-    return editor->saveWithInternalLinkCreated(sourceFileName, outputFileName, sourcePageNumber, linkLeft, linkTop, linkRight, linkBottom, destinationName, destinationPageNumber, destinationX, destinationY, errorText);
+    const bool changed = editor->editInternalLinkDestination(sourcePage, linkLeft, linkTop, linkRight, linkBottom, destinationName, destinationPageNumber, destinationX, destinationY, errorText);
+    if (changed) {
+        d->notifyAnnotationChanges(sourcePageNumber - 1);
+    }
+    return changed;
 }
 
-bool Document::saveWithExternalLinkDestinationChanged(const QString &sourceFileName,
-                                                      const QString &outputFileName,
-                                                      int sourcePageNumber,
-                                                      double linkLeft,
-                                                      double linkTop,
-                                                      double linkRight,
-                                                      double linkBottom,
-                                                      const QString &url,
-                                                      QString *errorText)
+bool Document::createInternalLink(int sourcePageNumber,
+                                  double linkLeft,
+                                  double linkTop,
+                                  double linkRight,
+                                  double linkBottom,
+                                  const QString &destinationName,
+                                  int destinationPageNumber,
+                                  double destinationX,
+                                  double destinationY,
+                                  QString *errorText)
 {
     auto editor = dynamic_cast<PdfLinkEditingInterface *>(d->m_generator);
-    if (!editor || sourceFileName.isEmpty() || outputFileName.isEmpty() || url.isEmpty()) {
+    Page *sourcePage = d->m_pagesVector.value(sourcePageNumber - 1, nullptr);
+    if (!editor || !sourcePage) {
         if (errorText) {
             errorText->clear();
         }
         return false;
     }
-    return editor->saveWithExternalLinkDestinationChanged(sourceFileName, outputFileName, sourcePageNumber, linkLeft, linkTop, linkRight, linkBottom, url, errorText);
+    const bool changed = editor->createInternalLink(sourcePage, linkLeft, linkTop, linkRight, linkBottom, destinationName, destinationPageNumber, destinationX, destinationY, errorText);
+    if (changed) {
+        d->notifyAnnotationChanges(sourcePageNumber - 1);
+    }
+    return changed;
 }
 
-bool Document::saveWithExternalLinkCreated(const QString &sourceFileName,
-                                           const QString &outputFileName,
-                                           int sourcePageNumber,
-                                           double linkLeft,
-                                           double linkTop,
-                                           double linkRight,
-                                           double linkBottom,
-                                           const QString &url,
-                                           QString *errorText)
+bool Document::editExternalLinkDestination(int sourcePageNumber, double linkLeft, double linkTop, double linkRight, double linkBottom, const QString &url, QString *errorText)
 {
     auto editor = dynamic_cast<PdfLinkEditingInterface *>(d->m_generator);
-    if (!editor || sourceFileName.isEmpty() || outputFileName.isEmpty() || url.isEmpty()) {
+    Page *sourcePage = d->m_pagesVector.value(sourcePageNumber - 1, nullptr);
+    if (!editor || !sourcePage || url.isEmpty()) {
         if (errorText) {
             errorText->clear();
         }
         return false;
     }
-    return editor->saveWithExternalLinkCreated(sourceFileName, outputFileName, sourcePageNumber, linkLeft, linkTop, linkRight, linkBottom, url, errorText);
+    const bool changed = editor->editExternalLinkDestination(sourcePage, linkLeft, linkTop, linkRight, linkBottom, url, errorText);
+    if (changed) {
+        d->notifyAnnotationChanges(sourcePageNumber - 1);
+    }
+    return changed;
 }
 
-bool Document::saveWithPdfLinkRectangleChanged(const QString &sourceFileName,
-                                               const QString &outputFileName,
-                                               int sourcePageNumber,
-                                               double oldLinkLeft,
-                                               double oldLinkTop,
-                                               double oldLinkRight,
-                                               double oldLinkBottom,
-                                               double newLinkLeft,
-                                               double newLinkTop,
-                                               double newLinkRight,
-                                               double newLinkBottom,
-                                               QString *errorText)
+bool Document::createExternalLink(int sourcePageNumber, double linkLeft, double linkTop, double linkRight, double linkBottom, const QString &url, QString *errorText)
 {
     auto editor = dynamic_cast<PdfLinkEditingInterface *>(d->m_generator);
-    if (!editor || sourceFileName.isEmpty() || outputFileName.isEmpty()) {
+    Page *sourcePage = d->m_pagesVector.value(sourcePageNumber - 1, nullptr);
+    if (!editor || !sourcePage || url.isEmpty()) {
         if (errorText) {
             errorText->clear();
         }
         return false;
     }
-    return editor->saveWithPdfLinkRectangleChanged(sourceFileName,
-                                                   outputFileName,
-                                                   sourcePageNumber,
-                                                   oldLinkLeft,
-                                                   oldLinkTop,
-                                                   oldLinkRight,
-                                                   oldLinkBottom,
-                                                   newLinkLeft,
-                                                   newLinkTop,
-                                                   newLinkRight,
-                                                   newLinkBottom,
-                                                   errorText);
+    const bool changed = editor->createExternalLink(sourcePage, linkLeft, linkTop, linkRight, linkBottom, url, errorText);
+    if (changed) {
+        d->notifyAnnotationChanges(sourcePageNumber - 1);
+    }
+    return changed;
 }
 
-bool Document::saveWithPdfLinkDeleted(const QString &sourceFileName, const QString &outputFileName, int sourcePageNumber, double linkLeft, double linkTop, double linkRight, double linkBottom, QString *errorText)
+bool Document::editPdfLinkRectangle(int sourcePageNumber,
+                                    double oldLinkLeft,
+                                    double oldLinkTop,
+                                    double oldLinkRight,
+                                    double oldLinkBottom,
+                                    double newLinkLeft,
+                                    double newLinkTop,
+                                    double newLinkRight,
+                                    double newLinkBottom,
+                                    QString *errorText)
 {
     auto editor = dynamic_cast<PdfLinkEditingInterface *>(d->m_generator);
-    if (!editor || sourceFileName.isEmpty() || outputFileName.isEmpty()) {
+    Page *sourcePage = d->m_pagesVector.value(sourcePageNumber - 1, nullptr);
+    if (!editor || !sourcePage) {
         if (errorText) {
             errorText->clear();
         }
         return false;
     }
-    return editor->saveWithPdfLinkDeleted(sourceFileName, outputFileName, sourcePageNumber, linkLeft, linkTop, linkRight, linkBottom, errorText);
+    const bool changed = editor->editPdfLinkRectangle(sourcePage, oldLinkLeft, oldLinkTop, oldLinkRight, oldLinkBottom, newLinkLeft, newLinkTop, newLinkRight, newLinkBottom, errorText);
+    if (changed) {
+        d->notifyAnnotationChanges(sourcePageNumber - 1);
+    }
+    return changed;
+}
+
+bool Document::deletePdfLink(int sourcePageNumber, double linkLeft, double linkTop, double linkRight, double linkBottom, QString *errorText)
+{
+    auto editor = dynamic_cast<PdfLinkEditingInterface *>(d->m_generator);
+    Page *sourcePage = d->m_pagesVector.value(sourcePageNumber - 1, nullptr);
+    if (!editor || !sourcePage) {
+        if (errorText) {
+            errorText->clear();
+        }
+        return false;
+    }
+    const bool changed = editor->deletePdfLink(sourcePage, linkLeft, linkTop, linkRight, linkBottom, errorText);
+    if (changed) {
+        d->notifyAnnotationChanges(sourcePageNumber - 1);
+    }
+    return changed;
 }
 
 bool Document::canPerformEnglishOcr() const

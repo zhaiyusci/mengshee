@@ -7017,6 +7017,50 @@ msgstr "无法在此处添加具名目标。"
 msgid "Add Named Destination"
 msgstr "添加具名目标"
 
+msgid "Add Named Destinations from Template"
+msgstr "按模板批量添加具名目标"
+
+msgid "Place a numbered sequence of named destinations using a template such as eq-{x}"
+msgstr "使用 eq-{x} 之类的模板连续放置一组编号具名目标"
+
+msgid "Click repeatedly to place named destinations. Press Esc or right-click to finish."
+msgstr "连续点击以放置具名目标。按 Esc 或右键结束。"
+
+msgid "Named destinations cannot be added to this document."
+msgstr "无法向此文档添加具名目标。"
+
+msgid "Name template:"
+msgstr "名称模板："
+
+msgid "First number:"
+msgstr "起始编号："
+
+msgid "Use exactly one {x} placeholder. Each page click replaces it with the next number."
+msgstr "请仅使用一个 {x} 占位符。每次点击页面时，它都会替换为下一个编号。"
+
+#, kde-format
+msgid " and %1 more"
+msgstr "，以及另外 %1 个"
+
+#, kde-format
+msgid "This sequence conflicts with an existing named destination: %2\n\nContinuing will replace it when that number is placed."
+msgid_plural "This sequence conflicts with %1 existing named destinations: %2\n\nContinuing will replace them when those numbers are placed."
+msgstr[0] "此序列与 %1 个现有具名目标冲突：%2\n\n继续后，放置相应编号时将替换这些目标。"
+
+msgid "Replace on Conflict"
+msgstr "冲突时替换"
+
+msgid "Change Template"
+msgstr "修改模板"
+
+#, kde-format
+msgid "Click to place '%1'. Each further click uses the next number; press Esc or right-click to finish."
+msgstr "点击以放置“%1”。之后每次点击使用下一个编号；按 Esc 或右键结束。"
+
+#, kde-format
+msgid "Added '%1'. Next: '%2'. Press Esc or right-click to finish."
+msgstr "已添加“%1”。下一个：“%2”。按 Esc 或右键结束。"
+
 #, kde-format
 msgid "A named destination called '%1' already exists. Replace it?"
 msgstr "名为“%1”的具名目标已存在。要替换它吗？"

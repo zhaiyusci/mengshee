@@ -76,7 +76,11 @@ public:
     OKULARPART_EXPORT bool advancedModeEnabled() const;
     void setAdvancedModeEnabled(bool enabled);
     OKULARPART_EXPORT bool namedDestinationsVisible() const;
-    void startNamedDestinationCreation();
+    void refreshNamedDestinations();
+    void setNamedDestinationMarker(const QString &name, int pageNumber, const Okular::NormalizedPoint &position);
+    void removeNamedDestinationMarker(const QString &name);
+    void startNamedDestinationCreation(bool continuous = false);
+    void cancelNamedDestinationCreation();
     void startLinkCreation();
 
     // Zoom mode ( last 4 are internally used only! )
@@ -226,12 +230,18 @@ Q_SIGNALS:
     void moveNamedDestinationRequested(const QString &name, int pageNumber, const Okular::NormalizedPoint &position);
     /** Requests creating a named destination at a point selected in this view. */
     void createNamedDestinationRequested(int pageNumber, const Okular::NormalizedPoint &position);
+    /** Reports that named-destination placement was cancelled with Esc, right-click, or another tool. */
+    void namedDestinationCreationCancelled();
     /** Requests creating an internal or external link over a rectangle drawn in this view. */
     void createPdfLinkRequested(int sourcePageNumber, const QRectF &normalizedLinkRectangle);
     /** Requests moving or resizing a PDF link annotation in this view. */
     void changePdfLinkRectangleRequested(int sourcePageNumber, const QRectF &oldNormalizedRectangle, const QRectF &newNormalizedRectangle);
     /** Requests deleting the selected PDF link annotation. */
-    void deletePdfLinkRequested(int sourcePageNumber, const QRectF &normalizedLinkRectangle);
+    void deletePdfLinkRequested(int sourcePageNumber,
+                                const QRectF &normalizedLinkRectangle,
+                                const QString &currentDestinationName,
+                                const Okular::DocumentViewport &currentDestination,
+                                const QUrl &currentExternalUrl);
 
 protected:
     bool event(QEvent *event) override;

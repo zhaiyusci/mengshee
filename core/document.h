@@ -983,19 +983,8 @@ public:
      */
     bool canInsertBlankPage() const;
 
-    /**
-     * Writes @p outputFileName as a copy of @p sourceFileName with one blank
-     * page inserted after @p pageNumber. @p pageNumber is 1-based; 0 means
-     * insert before the first page.
-     */
-    bool saveWithBlankPageInsertedAfter(const QString &sourceFileName, const QString &outputFileName, int pageNumber, QString *errorText);
-
-    /**
-     * Writes @p outputFileName as a copy of @p sourceFileName with one blank
-     * page inserted after @p pageNumber. @p pageNumber is 1-based; 0 means
-     * insert before the first page. @p width and @p height are PDF points.
-     */
-    bool saveWithBlankPageInsertedAfter(const QString &sourceFileName, const QString &outputFileName, int pageNumber, double width, double height, QString *errorText);
+    /** Inserts a blank page in the open document and returns its undo token. */
+    bool insertBlankPage(int insertAfterPageNumber, double width, double height, quint64 *editId, QString *errorText);
 
     /**
      * Returns whether the current document backend can write a copy with a page
@@ -1003,16 +992,11 @@ public:
      */
     bool canInsertPageFromPdf() const;
 
-    /**
-     * Writes @p outputFileName as a copy of @p sourceFileName with page
-     * @p pageToInsert from @p insertedFileName inserted after @p pageNumber.
-     * Both page numbers are 1-based except @p pageNumber, where 0 means insert
-     * before the first page. Local links are always retained. If
-     * @p
-     * resolveDestinationConflicts is true, copied named destinations receive
-     * a common unique suffix and matching links are rewritten.
-     */
-    bool saveWithPdfPageInsertedAfter(const QString &sourceFileName, const QString &outputFileName, int pageNumber, const QString &insertedFileName, int pageToInsert, bool resolveDestinationConflicts, QString *errorText);
+    /** Duplicates one 0-based page in the open document. */
+    bool duplicatePage(int pageNumber, bool resolveDestinationConflicts, quint64 *editId, QString *errorText);
+
+    /** Imports one 1-based source page into the open document. */
+    bool insertPdfPage(int insertAfterPageNumber, const QString &insertedFileName, int pageToInsert, bool resolveDestinationConflicts, quint64 *editId, QString *errorText);
 
     /**
      * Returns whether the current document backend can combine complete PDF
@@ -1038,11 +1022,14 @@ public:
      */
     bool canDeletePage() const;
 
-    /**
-     * Writes @p outputFileName as a copy of @p sourceFileName with page
-     * @p pageNumber removed. @p pageNumber is 1-based.
-     */
-    bool saveWithPageDeleted(const QString &sourceFileName, const QString &outputFileName, int pageNumber, QString *errorText);
+    /** Detaches a page and creates an undo token. */
+    bool detachPage(int pageNumber, quint64 *editId, QString *errorText);
+
+    /** Detaches a page represented by an existing undo token. */
+    bool detachPage(int pageNumber, quint64 editId, QString *errorText);
+
+    /** Restores a detached page after the given page (-1 means first). */
+    bool attachPage(int insertAfterPageNumber, quint64 editId, QString *errorText);
 
     /**
      * Returns whether the current document backend can write a copy with a page
@@ -1057,55 +1044,28 @@ public:
     bool movePage(int sourcePageNumber, int destinationPageNumber, QString *errorText);
 
     /**
-     * Writes @p outputFileName as a copy of @p sourceFileName with page
-     * @p sourcePageNumber moved to final position @p destinationPageNumber.
-     * Both page numbers are 1-based.
-     */
-    bool saveWithPageMoved(const QString &sourceFileName, const QString &outputFileName, int sourcePageNumber, int destinationPageNumber, QString *errorText);
-
-    /**
      * Returns whether the current document backend can write a copy with one
      * page assigned an explicit rotation.
      */
     bool canRotatePage() const;
 
-    /**
-     * Writes @p outputFileName as a copy of @p sourceFileName with page
-     * @p pageNumber rotated to @p rotationDegrees clockwise. The page number
-     * is 1-based and the rotation must be 0, 90, 180, or 270 degrees.
-     */
-    bool saveWithPageRotated(const QString &sourceFileName, const QString &outputFileName, int pageNumber, int rotationDegrees, QString *errorText);
+    /** Assigns an explicit clockwise rotation to a 0-based page. */
+    bool rotatePage(int pageNumber, int rotationDegrees, QString *errorText);
 
     /** Returns whether the current backend can edit PDF named destinations and internal links. */
     bool canEditPdfLinks() const;
 
-    /** Writes a copy with a named destination added or replaced. Page numbers are 1-based. */
-    bool saveWithNamedDestinationAdded(const QString &sourceFileName, const QString &outputFileName, const QString &name, int pageNumber, double normalizedX, double normalizedY, QString *errorText);
+    /** Adds or replaces a named destination in the open document without writing it. Page numbers are 1-based. */
+    bool setNamedDestination(const QString &name, int pageNumber, double normalizedX, double normalizedY, QString *errorText);
 
-    /** Writes a copy with a named destination renamed and exact internal references updated. */
-    bool saveWithNamedDestinationRenamed(const QString &sourceFileName, const QString &outputFileName, const QString &oldName, const QString &newName, QString *errorText);
+    /** Renames a named destination in the open document and updates exact references. */
+    bool renameNamedDestination(const QString &oldName, const QString &newName, QString *errorText);
 
-    /** Writes a copy with a named destination definition removed. References are preserved. */
-    bool saveWithNamedDestinationDeleted(const QString &sourceFileName, const QString &outputFileName, const QString &name, QString *errorText);
+    /** Removes a named destination from the open document. References are preserved. */
+    bool deleteNamedDestination(const QString &name, QString *errorText);
 
-    /** Writes a copy with one internal link redirected. Page numbers are 1-based. */
-    bool saveWithInternalLinkDestinationChanged(const QString &sourceFileName,
-                                                const QString &outputFileName,
-                                                int sourcePageNumber,
-                                                double linkLeft,
-                                                double linkTop,
-                                                double linkRight,
-                                                double linkBottom,
-                                                const QString &destinationName,
-                                                int destinationPageNumber,
-                                                double destinationX,
-                                                double destinationY,
-                                                QString *errorText);
-
-    /** Writes a copy with a new internal link annotation. Page numbers are 1-based. */
-    bool saveWithInternalLinkCreated(const QString &sourceFileName,
-                                     const QString &outputFileName,
-                                     int sourcePageNumber,
+    /** Changes one internal link in the open document. Page numbers are 1-based. */
+    bool editInternalLinkDestination(int sourcePageNumber,
                                      double linkLeft,
                                      double linkTop,
                                      double linkRight,
@@ -1116,44 +1076,38 @@ public:
                                      double destinationY,
                                      QString *errorText);
 
-    /** Writes a copy with one link changed to an external URL. Page numbers are 1-based. */
-    bool saveWithExternalLinkDestinationChanged(const QString &sourceFileName,
-                                                const QString &outputFileName,
-                                                int sourcePageNumber,
-                                                double linkLeft,
-                                                double linkTop,
-                                                double linkRight,
-                                                double linkBottom,
-                                                const QString &url,
-                                                QString *errorText);
+    /** Adds one internal link to the open document. Page numbers are 1-based. */
+    bool createInternalLink(int sourcePageNumber,
+                            double linkLeft,
+                            double linkTop,
+                            double linkRight,
+                            double linkBottom,
+                            const QString &destinationName,
+                            int destinationPageNumber,
+                            double destinationX,
+                            double destinationY,
+                            QString *errorText);
 
-    /** Writes a copy with one external URL link annotation added. Page numbers are 1-based. */
-    bool saveWithExternalLinkCreated(const QString &sourceFileName,
-                                     const QString &outputFileName,
-                                     int sourcePageNumber,
-                                     double linkLeft,
-                                     double linkTop,
-                                     double linkRight,
-                                     double linkBottom,
-                                     const QString &url,
-                                     QString *errorText);
+    /** Changes one link in the open document to an external URL. */
+    bool editExternalLinkDestination(int sourcePageNumber, double linkLeft, double linkTop, double linkRight, double linkBottom, const QString &url, QString *errorText);
 
-    /** Writes a copy with one PDF link annotation moved or resized. Page numbers are 1-based. */
-    bool saveWithPdfLinkRectangleChanged(const QString &sourceFileName,
-                                         const QString &outputFileName,
-                                         int sourcePageNumber,
-                                         double oldLinkLeft,
-                                         double oldLinkTop,
-                                         double oldLinkRight,
-                                         double oldLinkBottom,
-                                         double newLinkLeft,
-                                         double newLinkTop,
-                                         double newLinkRight,
-                                         double newLinkBottom,
-                                         QString *errorText);
+    /** Adds one external URL link to the open document. */
+    bool createExternalLink(int sourcePageNumber, double linkLeft, double linkTop, double linkRight, double linkBottom, const QString &url, QString *errorText);
 
-    /** Writes a copy with one PDF link annotation removed. Page numbers are 1-based. */
-    bool saveWithPdfLinkDeleted(const QString &sourceFileName, const QString &outputFileName, int sourcePageNumber, double linkLeft, double linkTop, double linkRight, double linkBottom, QString *errorText);
+    /** Moves or resizes one link in the open document. */
+    bool editPdfLinkRectangle(int sourcePageNumber,
+                              double oldLinkLeft,
+                              double oldLinkTop,
+                              double oldLinkRight,
+                              double oldLinkBottom,
+                              double newLinkLeft,
+                              double newLinkTop,
+                              double newLinkRight,
+                              double newLinkBottom,
+                              QString *errorText);
+
+    /** Removes one link from the open document. */
+    bool deletePdfLink(int sourcePageNumber, double linkLeft, double linkTop, double linkRight, double linkBottom, QString *errorText);
 
     /** Returns whether the current backend can add an English OCR text layer. */
     bool canPerformEnglishOcr() const;
