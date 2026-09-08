@@ -71,7 +71,6 @@ void DocumentItem::openUrl(const QUrl &url, const QString &password)
 
     m_tocModel->clear();
     m_tocModel->fill(m_document->documentSynopsis());
-    m_tocModel->setCurrentViewport(m_document->viewport());
 
     m_matchingPages.clear();
     for (uint i = 0; i < m_document->pages(); ++i) {
@@ -126,7 +125,6 @@ QUrl DocumentItem::url() const
 void DocumentItem::setCurrentPage(int page)
 {
     m_document->setViewportPage(page);
-    m_tocModel->setCurrentViewport(m_document->viewport());
     Q_EMIT currentPageChanged();
 }
 

@@ -9,6 +9,9 @@
 
 #include <QAbstractItemModel>
 #include <QList>
+#include <QStringList>
+
+class QMimeData;
 
 namespace Okular
 {
@@ -28,7 +31,7 @@ class TOCModel : public QAbstractItemModel
     Q_PROPERTY(int count READ count NOTIFY countChanged)
 
 public:
-    enum Roles { PageRole = 0x000f0001, PageLabelRole, HighlightRole, HighlightedParentRole };
+    enum Roles { PageRole = 0x000f0001, PageLabelRole };
 
     explicit TOCModel(Okular::Document *document, QObject *parent = nullptr);
     ~TOCModel() override;
@@ -42,10 +45,15 @@ public:
     QModelIndex index(int row, int column, const QModelIndex &parent = QModelIndex()) const override;
     QModelIndex parent(const QModelIndex &index) const override;
     int rowCount(const QModelIndex &parent = QModelIndex()) const override;
+    Qt::ItemFlags flags(const QModelIndex &index) const override;
+    Qt::DropActions supportedDropActions() const override;
+    QStringList mimeTypes() const override;
+    QMimeData *mimeData(const QModelIndexList &indexes) const override;
+    bool dropMimeData(const QMimeData *data, Qt::DropAction action, int row, int column, const QModelIndex &parent) override;
 
     void fill(const Okular::DocumentSynopsis *toc);
     void clear();
-    void setCurrentViewport(const Okular::DocumentViewport &viewport);
+    void setEditingEnabled(bool enabled);
 
     bool isEmpty() const;
     bool equals(const TOCModel *model) const;
@@ -65,6 +73,7 @@ public:
 
 Q_SIGNALS:
     void countChanged();
+    void structureChanged();
 
 private:
     // storage

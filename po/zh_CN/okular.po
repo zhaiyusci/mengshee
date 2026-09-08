@@ -7201,6 +7201,15 @@ msgstr "%1 — 第 %2 页"
 msgid "Direct page position"
 msgstr "直接页面位置"
 
+msgid "Direct page position (creates a named destination)"
+msgstr "直接页面位置（将创建具名目标）"
+
+msgid "Edit Contents Destination"
+msgstr "编辑目录目标"
+
+msgid "Edit Contents Destination..."
+msgstr "编辑目录目标..."
+
 msgid "External URL"
 msgstr "外部网址"
 

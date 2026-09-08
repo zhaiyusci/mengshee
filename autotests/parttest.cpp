@@ -19,6 +19,7 @@
 #include "../core/form.h"
 #include "../core/misc.h"
 #include "../core/page.h"
+#include "../gui/tocmodel.h"
 #include "../part/documentworkspace.h"
 #include "../part/findbar.h"
 #include "../part/pageview.h"
@@ -46,6 +47,7 @@
 #include <QMenu>
 #include <QMessageBox>
 #include <QMimeDatabase>
+#include <QMimeData>
 #include <QPageRanges>
 #include <QPrinter>
 #include <QPushButton>
@@ -59,6 +61,8 @@
 #include <QToolTip>
 #include <QTreeView>
 #include <QUrl>
+
+#include <limits>
 
 namespace Okular
 {
@@ -90,9 +94,13 @@ private Q_SLOTS:
     void testClickInternalLink();
     void testNamedDestinationOverlay();
     void testContentsEntryWithFitWidthNamedDestination();
+    void testContentsDoesNotExposeInferredCurrentItem();
+    void testEditableContentsTree();
     void testAddNamedDestinationToEmptyContents();
     void testLiveNamedDestinationEditing();
+    void testNamedDestinationDragDoesNotStartTextSelection();
     void testLivePdfLinkEditing();
+    void testLiveLinkSurvivesNamedDestinationUpdate();
     void testEditPdfNamedDestinationAndLink();
     void testEditExternalPdfLink();
     void testOpenAuxiliaryViewWithoutLink();
@@ -2523,6 +2531,98 @@ void PartTest::testContentsEntryWithFitWidthNamedDestination()
     QCOMPARE(roundTrippedSynopsis.firstChildElement().attribute(QStringLiteral("ViewportName")), QStringLiteral("New-section"));
 }
 
+void PartTest::testContentsDoesNotExposeInferredCurrentItem()
+{
+    Okular::Document document(nullptr);
+    TOC contents(nullptr, &document);
+    const QList<QByteArray> roleNames = contents.m_model->roleNames().values();
+    QVERIFY(!roleNames.contains(QByteArrayLiteral("highlight")));
+    QVERIFY(!roleNames.contains(QByteArrayLiteral("highlightedParent")));
+}
+
+void PartTest::testEditableContentsTree()
+{
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+    const QString workingFile = tempDir.filePath(QStringLiteral("editable-contents.pdf"));
+    QVERIFY(QFile::copy(QStringLiteral(KDESRCDIR "data/file1.pdf"), workingFile));
+
+    Okular::Part part(nullptr, {});
+    QVERIFY(openDocument(&part, workingFile));
+    QString errorText;
+    QVERIFY2(part.m_document->setNamedDestination(QStringLiteral("target-a"), 1, 0.1, 0.2, &errorText), qPrintable(errorText));
+    QVERIFY2(part.m_document->setNamedDestination(QStringLiteral("target-b"), 1, 0.3, 0.4, &errorText), qPrintable(errorText));
+
+    DocumentSynopsis synopsis;
+    for (const QString &title : {QStringLiteral("A"), QStringLiteral("B"), QStringLiteral("C")}) {
+        QDomElement entry = synopsis.createElement(title);
+        entry.setAttribute(QStringLiteral("ViewportName"), QStringLiteral("target-a"));
+        synopsis.appendChild(entry);
+    }
+    QVERIFY2(part.m_document->setDocumentSynopsis(synopsis, &errorText), qPrintable(errorText));
+
+    part.setAdvancedModeEnabled(true);
+    TOCModel *model = part.m_toc->m_model;
+    QCOMPARE(model->rowCount(), 3);
+    QSignalSpy modifiedSpy(part.m_toc.data(), &TOC::contentsModified);
+
+    const QModelIndex firstEntry = model->index(0, 0);
+    const QModelIndex secondEntry = model->index(1, 0);
+    std::unique_ptr<QMimeData> nestMime(model->mimeData({secondEntry}));
+    QVERIFY(nestMime);
+    QVERIFY(model->dropMimeData(nestMime.get(), Qt::MoveAction, -1, 0, firstEntry));
+    const QModelIndex nestedBeforeCommit = model->index(0, 0, model->index(0, 0));
+    part.m_toc->m_treeView->expand(model->index(0, 0));
+    part.m_toc->m_treeView->setCurrentIndex(nestedBeforeCommit);
+    QTRY_COMPARE(modifiedSpy.count(), 1);
+    model = part.m_toc->m_model;
+    QVERIFY(part.m_toc->m_treeView->isExpanded(model->index(0, 0)));
+    QCOMPARE(part.m_toc->m_treeView->currentIndex().data(Qt::DisplayRole).toString(), QStringLiteral("B"));
+
+    const DocumentSynopsis *nestedSynopsis = part.m_document->documentSynopsis();
+    QVERIFY(nestedSynopsis);
+    const QDomElement nestedA = nestedSynopsis->firstChildElement();
+    QCOMPARE(nestedA.tagName(), QStringLiteral("A"));
+    QCOMPARE(nestedA.firstChildElement().tagName(), QStringLiteral("B"));
+    QCOMPARE(nestedA.nextSiblingElement().tagName(), QStringLiteral("C"));
+
+    const QModelIndex refreshedA = model->index(0, 0);
+    const QModelIndex nestedB = model->index(0, 0, refreshedA);
+    std::unique_ptr<QMimeData> unnestMime(model->mimeData({nestedB}));
+    QVERIFY(unnestMime);
+    QVERIFY(model->dropMimeData(unnestMime.get(), Qt::MoveAction, 2, 0, QModelIndex()));
+    QTRY_COMPARE(modifiedSpy.count(), 2);
+    model = part.m_toc->m_model;
+
+    const DocumentSynopsis *reorderedSynopsis = part.m_document->documentSynopsis();
+    QVERIFY(reorderedSynopsis);
+    QCOMPARE(reorderedSynopsis->firstChildElement().tagName(), QStringLiteral("A"));
+    QCOMPARE(reorderedSynopsis->firstChildElement().nextSiblingElement().tagName(), QStringLiteral("C"));
+    QCOMPARE(reorderedSynopsis->firstChildElement().nextSiblingElement().nextSiblingElement().tagName(), QStringLiteral("B"));
+
+    const QModelIndex refreshedB = model->index(2, 0);
+    QVERIFY(part.m_toc->setEntryDestination(refreshedB, QStringLiteral("target-b"), std::nullopt));
+    const DocumentSynopsis *retargetedSynopsis = part.m_document->documentSynopsis();
+    QVERIFY(retargetedSynopsis);
+    const QDomElement retargetedB = retargetedSynopsis->firstChildElement().nextSiblingElement().nextSiblingElement();
+    QCOMPARE(retargetedB.attribute(QStringLiteral("ViewportName")), QStringLiteral("target-b"));
+
+    DocumentViewport movedTarget(0);
+    movedTarget.rePos.enabled = true;
+    movedTarget.rePos.normalizedX = 0.7;
+    movedTarget.rePos.normalizedY = 0.8;
+    movedTarget.rePos.pos = DocumentViewport::TopLeft;
+    QVERIFY2(part.applyLiveNamedDestination(QStringLiteral("target-b"), movedTarget, &errorText), qPrintable(errorText));
+    model = part.m_toc->m_model;
+    const QModelIndex liveContentsEntry = model->index(2, 0);
+    QVERIFY(QMetaObject::invokeMethod(part.m_toc.data(), "slotExecuted", Qt::DirectConnection, Q_ARG(QModelIndex, liveContentsEntry)));
+    QTRY_VERIFY([&] {
+        const DocumentViewport viewport = part.m_pageView->documentViewport();
+        return viewport.pageNumber == 0 && viewport.rePos.enabled && qAbs(viewport.rePos.normalizedX - 0.7) < 0.01 && qAbs(viewport.rePos.normalizedY - 0.8) < 0.01;
+    }());
+    part.closeUrl(false);
+}
+
 void PartTest::testAddNamedDestinationToEmptyContents()
 {
     QTemporaryDir tempDir;
@@ -2588,6 +2688,79 @@ void PartTest::testLiveNamedDestinationEditing()
     Okular::Part reopenedPart(nullptr, {});
     QVERIFY(openDocument(&reopenedPart, savedFile));
     QVERIFY(DocumentViewport(reopenedPart.m_document->metaData(QStringLiteral("NamedViewport"), name).toString()).isValid());
+}
+
+void PartTest::testNamedDestinationDragDoesNotStartTextSelection()
+{
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+    const QString workingFile = tempDir.filePath(QStringLiteral("named-destination-drag.pdf"));
+    QVERIFY(QFile::copy(QStringLiteral(KDESRCDIR "data/file1.pdf"), workingFile));
+
+    Okular::Part part(nullptr, {});
+    QVERIFY(openDocument(&part, workingFile));
+    part.widget()->resize(900, 700);
+    part.widget()->show();
+    if (qgetenv("KDECI_CANNOT_CREATE_WINDOWS") == "1") {
+        QSKIP("KDE CI can't create a window on this platform, skipping some GUI tests");
+    }
+    QVERIFY(QTest::qWaitForWindowExposed(part.widget()));
+    part.setAdvancedModeEnabled(true);
+    part.m_document->setViewportPage(0);
+    QTRY_VERIFY(part.m_document->page(0)->hasPixmap(part.m_pageView));
+    part.m_document->requestTextPage(0);
+    QTRY_VERIFY(part.m_document->page(0)->hasTextPage());
+
+    const QString destinationName = QStringLiteral("drag-target");
+    QVERIFY(part.addNamedDestinationWithName(0, Okular::NormalizedPoint(0.25, 0.25), destinationName, false));
+    QApplication::processEvents();
+
+    QPoint markerPoint(-1, -1);
+    const auto findMarker = [&] {
+        QApplication::processEvents();
+        const QRect viewportRect = part.m_pageView->viewport()->rect();
+        double bestDistance = std::numeric_limits<double>::max();
+        for (int y = 0; y < viewportRect.height(); y += 8) {
+            for (int x = 0; x < viewportRect.width(); x += 8) {
+                const QPoint point(x, y);
+                int pageNumber = -1;
+                Okular::NormalizedPoint pagePoint;
+                if (!part.m_pageView->mapGlobalPosToPagePoint(part.m_pageView->viewport()->mapToGlobal(point), &pageNumber, &pagePoint) || pageNumber != 0) {
+                    continue;
+                }
+                const double distance = qAbs(pagePoint.x - 0.25) + qAbs(pagePoint.y - 0.25);
+                if (distance < bestDistance) {
+                    bestDistance = distance;
+                    markerPoint = point;
+                }
+            }
+        }
+        return markerPoint.x() >= 0;
+    };
+    QTRY_VERIFY_WITH_TIMEOUT(findMarker(), 3000);
+
+    QAction *textSelectionAction = part.actionCollection()->action(QStringLiteral("mouse_textselect"));
+    QVERIFY(textSelectionAction);
+    textSelectionAction->trigger();
+    QVERIFY(textSelectionAction->isChecked());
+    QVERIFY(!part.m_document->page(0)->textSelection());
+
+    const QRect viewportRect = part.m_pageView->viewport()->rect().adjusted(20, 20, -20, -20);
+    const QPoint destinationPoint(qBound(viewportRect.left(), markerPoint.x() + 40, viewportRect.right()), qBound(viewportRect.top(), markerPoint.y() + 30, viewportRect.bottom()));
+    QTest::mousePress(part.m_pageView->viewport(), Qt::LeftButton, Qt::NoModifier, markerPoint);
+    QTest::mouseMove(part.m_pageView->viewport(), destinationPoint, 25);
+    QTest::mouseRelease(part.m_pageView->viewport(), Qt::LeftButton, Qt::NoModifier, destinationPoint);
+    QTRY_VERIFY([&] {
+        const DocumentViewport movedDestination(part.m_document->metaData(QStringLiteral("NamedViewport"), destinationName).toString());
+        return movedDestination.isValid() && (qAbs(movedDestination.rePos.normalizedX - 0.25) > 0.01 || qAbs(movedDestination.rePos.normalizedY - 0.25) > 0.01);
+    }());
+
+    const QPoint idleMovePoint(qBound(viewportRect.left(), destinationPoint.x() + 20, viewportRect.right()), qBound(viewportRect.top(), destinationPoint.y() + 20, viewportRect.bottom()));
+    QTest::mouseMove(part.m_pageView->viewport(), idleMovePoint, 25);
+    QApplication::processEvents();
+    QVERIFY(textSelectionAction->isChecked());
+    QVERIFY(!part.m_document->page(0)->textSelection());
+    part.closeUrl(false);
 }
 
 void PartTest::testLivePdfLinkEditing()
@@ -2680,6 +2853,86 @@ void PartTest::testLivePdfLinkEditing()
         }
     }
     QVERIFY(foundSavedLink);
+}
+
+void PartTest::testLiveLinkSurvivesNamedDestinationUpdate()
+{
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+    const QString workingFile = tempDir.filePath(QStringLiteral("live-link-and-destinations.pdf"));
+    QVERIFY(QFile::copy(QStringLiteral(KDESRCDIR "data/file1.pdf"), workingFile));
+
+    Okular::Part part(nullptr, {});
+    QVERIFY(openDocument(&part, workingFile));
+    part.setAdvancedModeEnabled(true);
+
+    const QString firstDestinationName = QStringLiteral("live-target-1");
+    const QString secondDestinationName = QStringLiteral("live-target-2");
+    QVERIFY(part.addNamedDestinationWithName(0, Okular::NormalizedPoint(0.2, 0.3), firstDestinationName, false));
+
+    QString errorText;
+    const QRectF linkRectangle(QPointF(0.72, 0.76), QPointF(0.86, 0.83));
+    QVERIFY2(part.m_document->createInternalLink(1,
+                                                 linkRectangle.left(),
+                                                 linkRectangle.top(),
+                                                 linkRectangle.right(),
+                                                 linkRectangle.bottom(),
+                                                 firstDestinationName,
+                                                 1,
+                                                 0.2,
+                                                 0.3,
+                                                 &errorText),
+             qPrintable(errorText));
+
+    const auto liveLinkCount = [&part, &firstDestinationName]() {
+        int count = 0;
+        for (const Okular::ObjectRect *rect : part.m_document->page(0)->objectRects()) {
+            if (!rect || rect->objectType() != Okular::ObjectRect::Action || !rect->object()) {
+                continue;
+            }
+            const auto *action = static_cast<const Okular::Action *>(rect->object());
+            if (action->actionType() == Okular::Action::Goto && static_cast<const Okular::GotoAction *>(action)->destinationName() == firstDestinationName) {
+                ++count;
+            }
+        }
+        return count;
+    };
+
+    QCOMPARE(liveLinkCount(), 1);
+    QVERIFY(part.addNamedDestinationWithName(0, Okular::NormalizedPoint(0.5, 0.6), secondDestinationName, false));
+    QApplication::processEvents();
+    QCOMPARE(liveLinkCount(), 1);
+
+    DocumentViewport movedFirstDestination(0);
+    movedFirstDestination.rePos.enabled = true;
+    movedFirstDestination.rePos.normalizedX = 0.65;
+    movedFirstDestination.rePos.normalizedY = 0.7;
+    movedFirstDestination.rePos.pos = DocumentViewport::TopLeft;
+    QVERIFY2(part.applyLiveNamedDestination(firstDestinationName, movedFirstDestination, &errorText), qPrintable(errorText));
+
+    const Okular::GotoAction *namedLinkAction = nullptr;
+    for (const Okular::ObjectRect *rect : part.m_document->page(0)->objectRects()) {
+        if (!rect || rect->objectType() != Okular::ObjectRect::Action || !rect->object()) {
+            continue;
+        }
+        const auto *action = static_cast<const Okular::Action *>(rect->object());
+        if (action->actionType() != Okular::Action::Goto) {
+            continue;
+        }
+        const auto *gotoAction = static_cast<const Okular::GotoAction *>(action);
+        if (gotoAction->destinationName() == firstDestinationName) {
+            namedLinkAction = gotoAction;
+            break;
+        }
+    }
+    QVERIFY(namedLinkAction);
+    QVERIFY(!namedLinkAction->destViewport().isValid());
+    part.m_document->processAction(namedLinkAction);
+    QTRY_VERIFY([&] {
+        const DocumentViewport viewport = part.m_document->viewport();
+        return viewport.pageNumber == 0 && viewport.rePos.enabled && qAbs(viewport.rePos.normalizedX - 0.65) < 0.01 && qAbs(viewport.rePos.normalizedY - 0.7) < 0.01;
+    }());
+    part.closeUrl(false);
 }
 
 void PartTest::testEditPdfNamedDestinationAndLink()

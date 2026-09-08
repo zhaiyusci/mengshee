@@ -9,10 +9,10 @@
 
 #include "core/document.h"
 #include "core/observer.h"
-#include <QMetaObject>
 #include <QModelIndex>
 #include <QPointer>
 #include <qwidget.h>
+#include <optional>
 
 #include "okularpart_export.h"
 
@@ -45,7 +45,6 @@ public:
 
     // inherited from DocumentObserver
     void notifySetup(const QList<Okular::Page *> &pages, int setupFlags) override;
-    void notifyCurrentPageChanged(int previous, int current) override;
 
     void reparseConfig();
 
@@ -56,6 +55,7 @@ public:
 public Q_SLOTS:
     void addCurrentPageEntry();
     void renameCurrentEntry();
+    void editCurrentEntryDestination();
     void deleteCurrentEntry();
     void expandRecursively();
     void collapseRecursively();
@@ -75,22 +75,24 @@ protected:
     void contextMenuEvent(QContextMenuEvent *e) override;
 
 private:
+    void configureModel();
     QList<QModelIndex> expandedNodes(const QModelIndex &parent = QModelIndex()) const;
     bool applySynopsis(const Okular::DocumentSynopsis &synopsis);
+    bool setEntryDestination(const QModelIndex &index, const QString &destinationName, const std::optional<Okular::DocumentViewport> &directDestination);
+    void scheduleStructureCommit();
     Okular::DocumentSynopsis synopsisFromModel() const;
     QDomElement synopsisElementForIndex(QDomDocument &document, const QModelIndex &index) const;
     QDomElement elementForIndexPath(QDomDocument &document, const QModelIndex &index) const;
     Okular::DocumentViewport documentViewport() const;
     void goToDocumentViewport(const Okular::DocumentViewport &viewport);
-    void refreshCurrentViewport();
 
     Okular::Document *m_document;
     QPointer<PageView> m_pageView;
-    QMetaObject::Connection m_pageViewViewportConnection;
     QTreeView *m_treeView;
     KTreeViewSearchLine *m_searchLine;
     TOCModel *m_model;
     bool m_editingEnabled = false;
+    bool m_structureCommitPending = false;
 };
 
 #endif

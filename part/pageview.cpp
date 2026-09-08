@@ -311,6 +311,7 @@ public:
     bool namedDestinationDragging = false;
     bool creatingNamedDestination = false;
     bool creatingNamedDestinationsContinuously = false;
+    bool namedDestinationPlacementPress = false;
     bool creatingInternalLink = false;
     bool internalLinkCreationDragging = false;
     int internalLinkCreationPage = -1;
@@ -782,13 +783,11 @@ void PageView::startNamedDestinationCreation(bool continuous)
     }
     d->creatingNamedDestination = true;
     d->creatingNamedDestinationsContinuously = continuous;
+    d->namedDestinationPlacementPress = false;
     d->creatingInternalLink = false;
     d->internalLinkCreationDragging = false;
     d->internalLinkCreationPage = -1;
     d->internalLinkCreationRect = QRect();
-    d->selectedPdfLinkPage = -1;
-    d->selectedPdfLinkOriginalRect = QRectF();
-    d->selectedPdfLinkRect = QRectF();
     d->pdfLinkDragHandle = PdfLinkHandle::None;
     d->pdfLinkDragging = false;
     d->scroller->stop();
@@ -803,6 +802,7 @@ void PageView::cancelNamedDestinationCreation()
     }
     d->creatingNamedDestination = false;
     d->creatingNamedDestinationsContinuously = false;
+    d->namedDestinationPlacementPress = false;
     viewport()->update();
     updateCursor();
     Q_EMIT namedDestinationCreationCancelled();
@@ -816,6 +816,7 @@ void PageView::startLinkCreation()
     const bool cancelledNamedDestinationCreation = d->creatingNamedDestination;
     d->creatingNamedDestination = false;
     d->creatingNamedDestinationsContinuously = false;
+    d->namedDestinationPlacementPress = false;
     if (cancelledNamedDestinationCreation) {
         Q_EMIT namedDestinationCreationCancelled();
     }
@@ -973,6 +974,7 @@ void PageView::setupViewerActions(KActionCollection *ac)
             d->namedDestinationDragging = false;
             d->creatingNamedDestination = false;
             d->creatingNamedDestinationsContinuously = false;
+            d->namedDestinationPlacementPress = false;
             d->creatingInternalLink = false;
             d->internalLinkCreationDragging = false;
             d->internalLinkCreationPage = -1;
@@ -1686,6 +1688,7 @@ void PageView::notifySetup(const QList<Okular::Page *> &pageSet, int setupFlags)
         d->namedDestinationsByPage.clear();
         d->namedDestinationsLoaded = false;
         d->creatingNamedDestination = false;
+        d->namedDestinationPlacementPress = false;
         d->creatingInternalLink = false;
         d->internalLinkCreationDragging = false;
         d->internalLinkCreationPage = -1;
@@ -3462,6 +3465,11 @@ void PageView::mousePressEvent(QMouseEvent *e)
                 if (!d->creatingNamedDestinationsContinuously) {
                     d->creatingNamedDestination = false;
                 }
+                // The complete click belongs to the placement tool. In
+                // particular, do not let mouseReleaseEvent activate a PDF
+                // link that happens to lie below the new destination.
+                d->namedDestinationPlacementPress = true;
+                d->mousePressLinkObject = nullptr;
                 viewport()->update();
                 updateCursor();
                 e->accept();
@@ -3508,7 +3516,9 @@ void PageView::mousePressEvent(QMouseEvent *e)
             d->namedDestinationDragStartGlobal = e->globalPosition();
             d->namedDestinationDragContentPosition = eventPos;
             d->namedDestinationDragging = false;
-            d->mousePressPos = e->globalPosition();
+            d->mousePressPos = QPointF();
+            d->mouseSelectPos = QPointF();
+            d->mouseTextSelecting = false;
             setCursor(Qt::SizeAllCursor);
             e->accept();
             return;
@@ -3848,6 +3858,13 @@ void PageView::mouseReleaseEvent(QMouseEvent *e)
 
     const QPoint eventPos = contentAreaPoint(e->pos());
 
+    if (leftButton && d->namedDestinationPlacementPress) {
+        d->namedDestinationPlacementPress = false;
+        d->mousePressLinkObject = nullptr;
+        e->accept();
+        return;
+    }
+
     const Okular::ObjectRect *clickedLinkObject = nullptr;
     if (leftButton && d->mousePressLinkObject) {
         const PageViewItem *pageItem = pickItemOnPoint(eventPos.x(), eventPos.y());
@@ -3919,6 +3936,9 @@ void PageView::mouseReleaseEvent(QMouseEvent *e)
         const bool moved = d->namedDestinationDragging && pageItem;
         d->draggedNamedDestination.clear();
         d->namedDestinationDragging = false;
+        d->mousePressPos = QPointF();
+        d->mouseSelectPos = QPointF();
+        d->mouseTextSelecting = false;
         viewport()->update();
         updateCursor();
         if (moved) {

@@ -9,10 +9,22 @@
 // qt/kde includes
 #include <algorithm>
 #include <QContextMenuEvent>
+#include <QDialog>
+#include <QDialogButtonBox>
+#include <QDoubleSpinBox>
+#include <QFormLayout>
 #include <QHeaderView>
+#include <QHBoxLayout>
 #include <QInputDialog>
+#include <QLabel>
 #include <QLayout>
+#include <QListWidget>
+#include <QMetaObject>
+#include <QPushButton>
+#include <QRadioButton>
+#include <QScrollBar>
 #include <QSet>
+#include <QSpinBox>
 #include <QTreeView>
 #include <qdom.h>
 
@@ -28,7 +40,6 @@
 #include "core/action.h"
 #include "gui/tocmodel.h"
 #include "ktreeviewsearchline.h"
-#include "pageitemdelegate.h"
 #include "pageview.h"
 #include "settings.h"
 
@@ -58,11 +69,14 @@ TOC::TOC(QWidget *parent, Okular::Document *document)
     m_treeView->setSortingEnabled(false);
     m_treeView->setRootIsDecorated(true);
     m_treeView->setAlternatingRowColors(true);
-    m_treeView->setItemDelegate(new PageItemDelegate(m_treeView));
     m_treeView->header()->hide();
     m_treeView->setSelectionBehavior(QAbstractItemView::SelectRows);
+    m_treeView->setSelectionMode(QAbstractItemView::SingleSelection);
+    m_treeView->setDefaultDropAction(Qt::MoveAction);
+    m_treeView->setDropIndicatorShown(true);
     connect(m_treeView, &QTreeView::clicked, this, &TOC::slotExecuted);
     connect(m_treeView, &QTreeView::activated, this, &TOC::slotExecuted);
+    configureModel();
     m_searchLine->setTreeView(m_treeView);
 }
 
@@ -73,26 +87,22 @@ TOC::~TOC()
 
 void TOC::setPageView(PageView *pageView)
 {
-    if (m_pageView == pageView) {
-        refreshCurrentViewport();
-        return;
-    }
-
-    disconnect(m_pageViewViewportConnection);
     m_pageView = pageView;
-
-    if (pageView) {
-        m_pageViewViewportConnection = connect(pageView, &PageView::viewportStateChanged, this, &TOC::refreshCurrentViewport);
-    } else {
-        m_pageViewViewportConnection = {};
-    }
-
-    refreshCurrentViewport();
 }
 
 void TOC::setEditingEnabled(bool enabled)
 {
     m_editingEnabled = enabled;
+    m_model->setEditingEnabled(enabled);
+    m_treeView->setDragEnabled(enabled);
+    m_treeView->setAcceptDrops(enabled);
+    m_treeView->setDragDropMode(enabled ? QAbstractItemView::InternalMove : QAbstractItemView::NoDragDrop);
+}
+
+void TOC::configureModel()
+{
+    connect(m_model, &TOCModel::structureChanged, this, &TOC::scheduleStructureCommit, Qt::UniqueConnection);
+    m_model->setEditingEnabled(m_editingEnabled);
 }
 
 Okular::DocumentViewport TOC::documentViewport() const
@@ -107,11 +117,6 @@ void TOC::goToDocumentViewport(const Okular::DocumentViewport &viewport)
     } else {
         m_document->setViewport(viewport);
     }
-}
-
-void TOC::refreshCurrentViewport()
-{
-    m_model->setCurrentViewport(documentViewport());
 }
 
 void TOC::notifySetup(const QList<Okular::Page *> & /*pages*/, int setupFlags)
@@ -138,11 +143,6 @@ void TOC::notifySetup(const QList<Okular::Page *> & /*pages*/, int setupFlags)
     Q_EMIT hasTOC(!m_model->isEmpty());
 }
 
-void TOC::notifyCurrentPageChanged(int, int)
-{
-    refreshCurrentViewport();
-}
-
 void TOC::prepareForReload()
 {
     if (m_model->isEmpty()) {
@@ -152,6 +152,7 @@ void TOC::prepareForReload()
     const QList<QModelIndex> list = expandedNodes();
     TOCModel *m = m_model;
     m_model = new TOCModel(m_document, m_treeView);
+    configureModel();
     m_model->setOldModelData(m, list);
     m->setParent(nullptr);
 }
@@ -165,6 +166,7 @@ void TOC::rollbackReload()
     TOCModel *m = m_model;
     m_model = m->clearOldModelData();
     m_model->setParent(m_treeView);
+    configureModel();
     delete m;
 }
 
@@ -210,10 +212,16 @@ void TOC::slotExecuted(const QModelIndex &index)
     }
 
     QString externalFileName = m_model->externalFileNameForIndex(index);
+    const QString destinationName = m_model->viewportNameForIndex(index);
     Okular::DocumentViewport viewport = m_model->viewportForIndex(index);
     if (!externalFileName.isEmpty()) {
-        Okular::GotoAction action(externalFileName, viewport);
-        m_document->processAction(&action);
+        if (!destinationName.isEmpty()) {
+            Okular::GotoAction action(externalFileName, destinationName);
+            m_document->processAction(&action);
+        } else {
+            Okular::GotoAction action(externalFileName, viewport);
+            m_document->processAction(&action);
+        }
     } else if (viewport.isValid()) {
         goToDocumentViewport(viewport);
     }
@@ -235,6 +243,18 @@ static QList<int> indexPath(const QModelIndex &index)
         current = current.parent();
     }
     return path;
+}
+
+static QModelIndex indexFromPath(const QAbstractItemModel *model, const QList<int> &path)
+{
+    QModelIndex index;
+    for (int row : path) {
+        index = model->index(row, 0, index);
+        if (!index.isValid()) {
+            return QModelIndex();
+        }
+    }
+    return index;
 }
 
 static QDomElement childElementAt(QDomNode parent, int row)
@@ -362,18 +382,37 @@ QDomElement TOC::elementForIndexPath(QDomDocument &document, const QModelIndex &
 
 bool TOC::applySynopsis(const Okular::DocumentSynopsis &synopsis)
 {
+    QList<QList<int>> expandedPaths;
+    const QList<QModelIndex> expandedIndexes = expandedNodes();
+    expandedPaths.reserve(expandedIndexes.size());
+    for (const QModelIndex &index : expandedIndexes) {
+        expandedPaths.append(indexPath(index));
+    }
+    const QList<int> currentPath = indexPath(m_treeView->currentIndex());
+    const int horizontalScrollPosition = m_treeView->horizontalScrollBar()->value();
+    const int verticalScrollPosition = m_treeView->verticalScrollBar()->value();
+
     QString errorText;
     if (!m_document->setDocumentSynopsis(synopsis, &errorText)) {
         KMessageBox::error(this, errorText.isEmpty() ? i18n("This document's contents cannot be edited.") : errorText, i18n("Edit Contents"));
         return false;
     }
 
-    m_model->clear();
-    const Okular::DocumentSynopsis *updatedSynopsis = m_document->documentSynopsis();
-    if (updatedSynopsis) {
-        m_model->fill(updatedSynopsis);
+    for (const QList<int> &path : std::as_const(expandedPaths)) {
+        const QModelIndex index = indexFromPath(m_model, path);
+        if (index.isValid()) {
+            m_treeView->expand(index);
+        }
     }
-    Q_EMIT hasTOC(!m_model->isEmpty());
+    const QModelIndex currentIndex = indexFromPath(m_model, currentPath);
+    if (currentIndex.isValid()) {
+        for (QModelIndex parent = currentIndex.parent(); parent.isValid(); parent = parent.parent()) {
+            m_treeView->expand(parent);
+        }
+        m_treeView->setCurrentIndex(currentIndex);
+    }
+    m_treeView->horizontalScrollBar()->setValue(horizontalScrollPosition);
+    m_treeView->verticalScrollBar()->setValue(verticalScrollPosition);
     Q_EMIT contentsModified();
     return true;
 }
@@ -402,6 +441,27 @@ void TOC::addCurrentPageEntry()
     element.setAttribute(QStringLiteral("ViewportName"), destinationName);
     synopsis.appendChild(element);
     applySynopsis(synopsis);
+}
+
+void TOC::scheduleStructureCommit()
+{
+    if (!m_editingEnabled || m_structureCommitPending) {
+        return;
+    }
+    m_structureCommitPending = true;
+    QMetaObject::invokeMethod(
+        this,
+        [this] {
+            m_structureCommitPending = false;
+            const Okular::DocumentSynopsis synopsis = synopsisFromModel();
+            if (!applySynopsis(synopsis)) {
+                m_model->clear();
+                if (const Okular::DocumentSynopsis *currentSynopsis = m_document->documentSynopsis()) {
+                    m_model->fill(currentSynopsis);
+                }
+            }
+        },
+        Qt::QueuedConnection);
 }
 
 void TOC::addNamedDestinationEntry(const QString &name)
@@ -449,6 +509,180 @@ void TOC::renameCurrentEntry()
     applySynopsis(synopsis);
 }
 
+bool TOC::setEntryDestination(const QModelIndex &index, const QString &destinationName, const std::optional<Okular::DocumentViewport> &directDestination)
+{
+    if (!m_editingEnabled || !index.isValid() || (destinationName.isEmpty() && !directDestination)) {
+        return false;
+    }
+
+    Okular::DocumentSynopsis synopsis = synopsisFromModel();
+    QDomElement element = elementForIndexPath(synopsis, index);
+    if (element.isNull()) {
+        return false;
+    }
+
+    element.removeAttribute(QStringLiteral("URL"));
+    element.removeAttribute(QStringLiteral("ExternalFileName"));
+    element.removeAttribute(QStringLiteral("Viewport"));
+    element.removeAttribute(QStringLiteral("ViewportName"));
+    element.removeAttribute(QStringLiteral("CreateViewportName"));
+    if (!destinationName.isEmpty()) {
+        element.setAttribute(QStringLiteral("ViewportName"), destinationName);
+    } else {
+        const QString generatedName = uniqueContentsDestinationName(m_document, element.tagName());
+        element.setAttribute(QStringLiteral("ViewportName"), generatedName);
+        element.setAttribute(QStringLiteral("Viewport"), directDestination->toString());
+        element.setAttribute(QStringLiteral("CreateViewportName"), QStringLiteral("true"));
+    }
+    return applySynopsis(synopsis);
+}
+
+void TOC::editCurrentEntryDestination()
+{
+    if (!m_editingEnabled) {
+        return;
+    }
+    const QModelIndex index = m_treeView->currentIndex();
+    if (!index.isValid()) {
+        return;
+    }
+
+    struct DestinationChoice {
+        QString name;
+        Okular::DocumentViewport viewport;
+    };
+    QList<DestinationChoice> destinations;
+    const QVariantList destinationValues = m_document->metaData(QStringLiteral("NamedViewports")).toList();
+    for (const QVariant &value : destinationValues) {
+        const QVariantMap destination = value.toMap();
+        const QString name = destination.value(QStringLiteral("name")).toString();
+        const Okular::DocumentViewport viewport(destination.value(QStringLiteral("viewport")).toString());
+        if (!name.isEmpty() && viewport.isValid()) {
+            destinations.append({name, viewport});
+        }
+    }
+    std::sort(destinations.begin(), destinations.end(), [](const DestinationChoice &left, const DestinationChoice &right) { return left.name.compare(right.name, Qt::CaseInsensitive) < 0; });
+
+    const QString currentDestinationName = m_model->viewportNameForIndex(index);
+    Okular::DocumentViewport currentViewport = m_model->viewportForIndex(index);
+    if (!currentViewport.isValid()) {
+        currentViewport = documentViewport();
+    }
+
+    QDialog dialog(this);
+    dialog.setObjectName(QStringLiteral("EditContentsDestinationDialog"));
+    dialog.setWindowTitle(i18n("Edit Contents Destination"));
+    auto *layout = new QVBoxLayout(&dialog);
+    auto *form = new QFormLayout;
+    layout->addLayout(form);
+
+    auto *namedRadio = new QRadioButton(i18n("Named destination (preferred)"), &dialog);
+    auto *namedControls = new QWidget(&dialog);
+    auto *namedLayout = new QVBoxLayout(namedControls);
+    namedLayout->setContentsMargins(0, 0, 0, 0);
+    auto *search = new KLineEdit(namedControls);
+    search->setPlaceholderText(i18n("Search by name or page..."));
+    search->setClearButtonEnabled(true);
+    namedLayout->addWidget(search);
+    auto *destinationList = new QListWidget(namedControls);
+    destinationList->setObjectName(QStringLiteral("ContentsNamedDestinationList"));
+    destinationList->setMinimumHeight(180);
+    namedLayout->addWidget(destinationList);
+    for (int destinationIndex = 0; destinationIndex < destinations.size(); ++destinationIndex) {
+        const DestinationChoice &destination = destinations.at(destinationIndex);
+        auto *item = new QListWidgetItem(i18n("%1 — page %2", destination.name, destination.viewport.pageNumber + 1), destinationList);
+        item->setData(Qt::UserRole, destinationIndex);
+        if (destination.name == currentDestinationName) {
+            destinationList->setCurrentItem(item);
+        }
+    }
+    if (!destinationList->currentItem() && destinationList->count() > 0) {
+        destinationList->setCurrentRow(0);
+    }
+    namedRadio->setEnabled(!destinations.isEmpty());
+    form->addRow(namedRadio, namedControls);
+
+    auto *directRadio = new QRadioButton(i18n("Direct page position (creates a named destination)"), &dialog);
+    auto *directControls = new QWidget(&dialog);
+    auto *directLayout = new QHBoxLayout(directControls);
+    directLayout->setContentsMargins(0, 0, 0, 0);
+    auto *pageSpin = new QSpinBox(directControls);
+    pageSpin->setRange(1, qMax(1, static_cast<int>(m_document->pages())));
+    pageSpin->setValue(qBound(1, currentViewport.pageNumber + 1, qMax(1, static_cast<int>(m_document->pages()))));
+    auto *horizontalSpin = new QDoubleSpinBox(directControls);
+    horizontalSpin->setRange(0.0, 100.0);
+    horizontalSpin->setDecimals(1);
+    horizontalSpin->setSuffix(i18n("% x"));
+    horizontalSpin->setValue((currentViewport.rePos.enabled ? currentViewport.rePos.normalizedX : 0.0) * 100.0);
+    auto *verticalSpin = new QDoubleSpinBox(directControls);
+    verticalSpin->setRange(0.0, 100.0);
+    verticalSpin->setDecimals(1);
+    verticalSpin->setSuffix(i18n("% y"));
+    verticalSpin->setValue((currentViewport.rePos.enabled ? currentViewport.rePos.normalizedY : 0.0) * 100.0);
+    directLayout->addWidget(new QLabel(i18n("Page:"), directControls));
+    directLayout->addWidget(pageSpin);
+    directLayout->addWidget(horizontalSpin);
+    directLayout->addWidget(verticalSpin);
+    form->addRow(directRadio, directControls);
+
+    if (!currentDestinationName.isEmpty() && !destinations.isEmpty()) {
+        namedRadio->setChecked(true);
+    } else {
+        directRadio->setChecked(true);
+    }
+    const auto updateControls = [=] {
+        namedControls->setEnabled(namedRadio->isChecked() && !destinations.isEmpty());
+        directControls->setEnabled(directRadio->isChecked());
+    };
+    connect(namedRadio, &QRadioButton::toggled, &dialog, updateControls);
+    connect(directRadio, &QRadioButton::toggled, &dialog, updateControls);
+    connect(destinationList, &QListWidget::itemClicked, &dialog, [namedRadio](QListWidgetItem *) { namedRadio->setChecked(true); });
+    connect(search, &QLineEdit::textChanged, &dialog, [destinationList](const QString &text) {
+        QListWidgetItem *firstVisible = nullptr;
+        for (int row = 0; row < destinationList->count(); ++row) {
+            QListWidgetItem *item = destinationList->item(row);
+            const bool matches = text.trimmed().isEmpty() || item->text().contains(text.trimmed(), Qt::CaseInsensitive);
+            item->setHidden(!matches);
+            if (matches && !firstVisible) {
+                firstVisible = item;
+            }
+        }
+        if (!destinationList->currentItem() || destinationList->currentItem()->isHidden()) {
+            destinationList->setCurrentItem(firstVisible);
+        }
+    });
+    updateControls();
+
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+    layout->addWidget(buttons);
+    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    const auto updateAcceptButton = [=] {
+        const bool namedChoiceValid = !namedRadio->isChecked() || (destinationList->currentItem() && !destinationList->currentItem()->isHidden());
+        buttons->button(QDialogButtonBox::Ok)->setEnabled(namedChoiceValid);
+    };
+    connect(namedRadio, &QRadioButton::toggled, &dialog, updateAcceptButton);
+    connect(destinationList, &QListWidget::currentItemChanged, &dialog, [updateAcceptButton](QListWidgetItem *, QListWidgetItem *) { updateAcceptButton(); });
+    connect(search, &QLineEdit::textChanged, &dialog, [updateAcceptButton](const QString &) { updateAcceptButton(); });
+    updateAcceptButton();
+    if (dialog.exec() != QDialog::Accepted) {
+        return;
+    }
+
+    if (namedRadio->isChecked() && destinationList->currentItem()) {
+        const int destinationIndex = destinationList->currentItem()->data(Qt::UserRole).toInt();
+        setEntryDestination(index, destinations.at(destinationIndex).name, std::nullopt);
+        return;
+    }
+
+    Okular::DocumentViewport destination(pageSpin->value() - 1);
+    destination.rePos.enabled = true;
+    destination.rePos.normalizedX = horizontalSpin->value() / 100.0;
+    destination.rePos.normalizedY = verticalSpin->value() / 100.0;
+    destination.rePos.pos = Okular::DocumentViewport::TopLeft;
+    setEntryDestination(index, QString(), destination);
+}
+
 void TOC::deleteCurrentEntry()
 {
     if (!m_editingEnabled) {
@@ -478,6 +712,13 @@ void TOC::deleteCurrentEntry()
 void TOC::contextMenuEvent(QContextMenuEvent *e)
 {
     QModelIndex index = m_treeView->currentIndex();
+    if (e->reason() == QContextMenuEvent::Mouse) {
+        const QModelIndex clickedIndex = m_treeView->indexAt(m_treeView->viewport()->mapFromGlobal(e->globalPos()));
+        if (clickedIndex.isValid()) {
+            index = clickedIndex;
+            m_treeView->setCurrentIndex(index);
+        }
+    }
     if (!index.isValid()) {
         return;
     }

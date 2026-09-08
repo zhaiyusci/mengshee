@@ -6442,6 +6442,7 @@ void Part::showMenu(const Okular::Page *page, const QPoint point, const QString 
         if (m_advancedModeEnabled) {
             popup.addAction(QIcon::fromTheme(QStringLiteral("list-add")), i18n("Add Current Page to Contents"), m_toc.data(), &TOC::addCurrentPageEntry);
             popup.addAction(QIcon::fromTheme(QStringLiteral("edit-rename")), i18n("Rename Contents Entry"), m_toc.data(), &TOC::renameCurrentEntry);
+            popup.addAction(QIcon::fromTheme(QStringLiteral("edit-link"), QIcon::fromTheme(QStringLiteral("document-edit"))), i18n("Edit Contents Destination..."), m_toc.data(), &TOC::editCurrentEntryDestination);
             popup.addAction(QIcon::fromTheme(QStringLiteral("edit-delete")), i18n("Delete Contents Entry"), m_toc.data(), &TOC::deleteCurrentEntry);
             popup.addSeparator();
         }
