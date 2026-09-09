@@ -33,7 +33,7 @@ private Q_SLOTS:
     void testLatexRuntimePathIsNotSerialized();
     void testLatexStampPropertiesRoundTrip();
     void testLatexNoteGeometry();
-    void testCalloutTranslateKeepsLeaderPoints();
+    void testCalloutBoxChangesKeepLeaderPerpendicular();
     void cleanupTestCase();
 
 private:
@@ -225,7 +225,7 @@ void AnnotationTest::testLatexNoteGeometry()
     QCOMPARE(Okular::LatexNoteGeometry::visualSizeForContent(QSizeF(80.0, 20.0), 100.0, 4.0), QSizeF(108.0, 28.0));
 }
 
-void AnnotationTest::testCalloutTranslateKeepsLeaderPoints()
+void AnnotationTest::testCalloutBoxChangesKeepLeaderPerpendicular()
 {
     Okular::TextAnnotation ta;
     ta.setTextType(Okular::TextAnnotation::InPlace);
@@ -243,10 +243,56 @@ void AnnotationTest::testCalloutTranslateKeepsLeaderPoints()
     QCOMPARE(ta.boundingRectangle().bottom, 0.8);
     QCOMPARE(ta.inplaceCallout(0).x, 0.1);
     QCOMPARE(ta.inplaceCallout(0).y, 0.1);
-    QCOMPARE(ta.inplaceCallout(1).x, 0.2);
+    QCOMPARE(ta.inplaceCallout(1).x, 0.6);
     QCOMPARE(ta.inplaceCallout(1).y, 0.2);
     QCOMPARE(ta.inplaceCallout(2).x, 0.6);
     QCOMPARE(ta.inplaceCallout(2).y, 0.6);
+
+    ta.adjust(Okular::NormalizedPoint(-0.1, 0.0), Okular::NormalizedPoint(0.2, 0.1));
+
+    QCOMPARE(ta.boundingRectangle().left, 0.4);
+    QCOMPARE(ta.boundingRectangle().top, 0.6);
+    QCOMPARE(ta.boundingRectangle().right, 0.9);
+    QCOMPARE(ta.boundingRectangle().bottom, 0.9);
+    QCOMPARE(ta.inplaceCallout(0).x, 0.1);
+    QCOMPARE(ta.inplaceCallout(0).y, 0.1);
+    QCOMPARE(ta.inplaceCallout(1).x, 0.65);
+    QCOMPARE(ta.inplaceCallout(1).y, 0.2);
+    QCOMPARE(ta.inplaceCallout(2).x, 0.65);
+    QCOMPARE(ta.inplaceCallout(2).y, 0.6);
+
+    Okular::StampAnnotation latexCallout;
+    latexCallout.setLatexCallout(true);
+    latexCallout.setBoundingRectangle(Okular::NormalizedRect(0.4, 0.4, 0.6, 0.6));
+    latexCallout.setLatexCalloutPoint(Okular::NormalizedPoint(0.9, 0.5), 0);
+    latexCallout.setLatexCalloutPoint(Okular::NormalizedPoint(0.8, 0.3), 1);
+    latexCallout.setLatexCalloutPoint(Okular::NormalizedPoint(0.6, 0.5), 2);
+
+    latexCallout.translate(Okular::NormalizedPoint(-0.1, 0.1));
+
+    QCOMPARE(latexCallout.latexCalloutPoint(0).x, 0.9);
+    QCOMPARE(latexCallout.latexCalloutPoint(0).y, 0.5);
+    QCOMPARE(latexCallout.latexCalloutPoint(1).x, 0.8);
+    QCOMPARE(latexCallout.latexCalloutPoint(1).y, 0.6);
+    QCOMPARE(latexCallout.latexCalloutPoint(2).x, 0.5);
+    QCOMPARE(latexCallout.latexCalloutPoint(2).y, 0.6);
+
+    Okular::TextAnnotation switchingCallout;
+    switchingCallout.setTextType(Okular::TextAnnotation::InPlace);
+    switchingCallout.setInplaceIntent(Okular::TextAnnotation::Callout);
+    switchingCallout.setBoundingRectangle(Okular::NormalizedRect(0.4, 0.4, 0.6, 0.6));
+    switchingCallout.setInplaceCallout(Okular::NormalizedPoint(0.5, 0.9), 0);
+    switchingCallout.setInplaceCallout(Okular::NormalizedPoint(0.15, 0.5), 1);
+    switchingCallout.setInplaceCallout(Okular::NormalizedPoint(0.4, 0.5), 2);
+
+    switchingCallout.translate(Okular::NormalizedPoint(0.0, -0.3));
+
+    QCOMPARE(switchingCallout.inplaceCallout(0).x, 0.5);
+    QCOMPARE(switchingCallout.inplaceCallout(0).y, 0.9);
+    QCOMPARE(switchingCallout.inplaceCallout(1).x, 0.5);
+    QCOMPARE(switchingCallout.inplaceCallout(1).y, 0.5);
+    QCOMPARE(switchingCallout.inplaceCallout(2).x, 0.5);
+    QCOMPARE(switchingCallout.inplaceCallout(2).y, 0.3);
 }
 
 QTEST_MAIN(AnnotationTest)

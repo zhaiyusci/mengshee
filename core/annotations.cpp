@@ -133,39 +133,47 @@ static double strokeDistance(double distance, double penWidth)
     return fmax(distance - pow(penWidth, 2), 0);
 }
 
-static NormalizedPoint calloutPointOnAdjustedBoxEdge(const NormalizedPoint &point, const NormalizedRect &oldBox, const NormalizedRect &newBox)
+enum class CalloutBoxEdge { Left, Right, Top, Bottom };
+
+static CalloutBoxEdge calloutBoxEdgeFacingPoint(const NormalizedPoint &point, const NormalizedRect &box)
 {
-    const double oldWidth = oldBox.width();
-    const double oldHeight = oldBox.height();
-    const double newWidth = newBox.width();
-    const double newHeight = newBox.height();
-    if (oldWidth <= 0.0 || oldHeight <= 0.0 || newWidth <= 0.0 || newHeight <= 0.0) {
-        return NormalizedPoint(qBound(newBox.left, point.x, newBox.right), qBound(newBox.top, point.y, newBox.bottom));
-    }
+    const double centerX = (box.left + box.right) / 2.0;
+    const double centerY = (box.top + box.bottom) / 2.0;
+    const double halfWidth = qMax((box.right - box.left) / 2.0, 1e-12);
+    const double halfHeight = qMax((box.bottom - box.top) / 2.0, 1e-12);
+    const double horizontalDirection = qAbs(point.x - centerX) / halfWidth;
+    const double verticalDirection = qAbs(point.y - centerY) / halfHeight;
 
-    const double x = qBound(oldBox.left, point.x, oldBox.right);
-    const double y = qBound(oldBox.top, point.y, oldBox.bottom);
-    const double leftDistance = qAbs(x - oldBox.left);
-    const double rightDistance = qAbs(oldBox.right - x);
-    const double topDistance = qAbs(y - oldBox.top);
-    const double bottomDistance = qAbs(oldBox.bottom - y);
-    const double edgeDistance = qMin(qMin(leftDistance, rightDistance), qMin(topDistance, bottomDistance));
+    if (horizontalDirection >= verticalDirection) {
+        return point.x < centerX ? CalloutBoxEdge::Left : CalloutBoxEdge::Right;
+    }
+    return point.y < centerY ? CalloutBoxEdge::Top : CalloutBoxEdge::Bottom;
+}
 
-    if (edgeDistance == leftDistance) {
-        const double ratio = qBound(0.0, (y - oldBox.top) / oldHeight, 1.0);
-        return NormalizedPoint(newBox.left, newBox.top + ratio * newHeight);
-    }
-    if (edgeDistance == rightDistance) {
-        const double ratio = qBound(0.0, (y - oldBox.top) / oldHeight, 1.0);
-        return NormalizedPoint(newBox.right, newBox.top + ratio * newHeight);
-    }
-    if (edgeDistance == topDistance) {
-        const double ratio = qBound(0.0, (x - oldBox.left) / oldWidth, 1.0);
-        return NormalizedPoint(newBox.left + ratio * newWidth, newBox.top);
-    }
+static void adjustCalloutLeaderForBox(const NormalizedPoint &tip, NormalizedPoint &knee, NormalizedPoint &anchor, const NormalizedRect &newBox)
+{
+    const CalloutBoxEdge edge = calloutBoxEdgeFacingPoint(tip, newBox);
+    const double centerX = (newBox.left + newBox.right) / 2.0;
+    const double centerY = (newBox.top + newBox.bottom) / 2.0;
 
-    const double ratio = qBound(0.0, (x - oldBox.left) / oldWidth, 1.0);
-    return NormalizedPoint(newBox.left + ratio * newWidth, newBox.bottom);
+    switch (edge) {
+    case CalloutBoxEdge::Left:
+        anchor = NormalizedPoint(newBox.left, centerY);
+        knee.y = centerY;
+        break;
+    case CalloutBoxEdge::Right:
+        anchor = NormalizedPoint(newBox.right, centerY);
+        knee.y = centerY;
+        break;
+    case CalloutBoxEdge::Top:
+        anchor = NormalizedPoint(centerX, newBox.top);
+        knee.x = centerX;
+        break;
+    case CalloutBoxEdge::Bottom:
+        anchor = NormalizedPoint(centerX, newBox.bottom);
+        knee.x = centerX;
+        break;
+    }
 }
 
 // BEGIN AnnotationUtils implementation
@@ -1306,26 +1314,24 @@ void AnnotationPrivate::resetTransformation()
 
 void AnnotationPrivate::translate(const NormalizedPoint &coord)
 {
-    const NormalizedRect oldBoundary = m_boundary;
     m_boundary.left = m_boundary.left + coord.x;
     m_boundary.right = m_boundary.right + coord.x;
     m_boundary.top = m_boundary.top + coord.y;
     m_boundary.bottom = m_boundary.bottom + coord.y;
     if (m_latexCallout) {
-        m_latexCalloutPoints[2] = calloutPointOnAdjustedBoxEdge(m_latexCalloutPoints[2], oldBoundary, m_boundary);
+        adjustCalloutLeaderForBox(m_latexCalloutPoints[0], m_latexCalloutPoints[1], m_latexCalloutPoints[2], m_boundary);
     }
 }
 
 void AnnotationPrivate::adjust(const NormalizedPoint &deltaCoord1, const NormalizedPoint &deltaCoord2)
 {
-    const NormalizedRect oldBoundary = m_boundary;
     m_boundary.left = m_boundary.left + qBound(-m_boundary.left, deltaCoord1.x, m_boundary.right - m_boundary.left);
     m_boundary.top = m_boundary.top + qBound(-m_boundary.top, deltaCoord1.y, m_boundary.bottom - m_boundary.top);
     ;
     m_boundary.right = m_boundary.right + qBound(m_boundary.left - m_boundary.right, deltaCoord2.x, 1. - m_boundary.right);
     m_boundary.bottom = m_boundary.bottom + qBound(m_boundary.top - m_boundary.bottom, deltaCoord2.y, 1. - m_boundary.bottom);
     if (m_latexCallout) {
-        m_latexCalloutPoints[2] = calloutPointOnAdjustedBoxEdge(m_latexCalloutPoints[2], oldBoundary, m_boundary);
+        adjustCalloutLeaderForBox(m_latexCalloutPoints[0], m_latexCalloutPoints[1], m_latexCalloutPoints[2], m_boundary);
     }
 }
 
@@ -1824,11 +1830,10 @@ void TextAnnotationPrivate::resetTransformation()
 
 void TextAnnotationPrivate::translate(const NormalizedPoint &coord)
 {
-    const NormalizedRect oldBoundary = m_boundary;
     AnnotationPrivate::translate(coord);
 
     if (m_textType == TextAnnotation::InPlace && m_inplaceIntent == TextAnnotation::Callout) {
-        m_inplaceCallout[2] = calloutPointOnAdjustedBoxEdge(m_inplaceCallout[2], oldBoundary, m_boundary);
+        adjustCalloutLeaderForBox(m_inplaceCallout[0], m_inplaceCallout[1], m_inplaceCallout[2], m_boundary);
         return;
     }
 
@@ -1845,11 +1850,10 @@ void TextAnnotationPrivate::translate(const NormalizedPoint &coord)
 
 void TextAnnotationPrivate::adjust(const NormalizedPoint &deltaCoord1, const NormalizedPoint &deltaCoord2)
 {
-    const NormalizedRect oldBoundary = m_boundary;
     AnnotationPrivate::adjust(deltaCoord1, deltaCoord2);
 
     if (m_textType == TextAnnotation::InPlace && m_inplaceIntent == TextAnnotation::Callout) {
-        m_inplaceCallout[2] = calloutPointOnAdjustedBoxEdge(m_inplaceCallout[2], oldBoundary, m_boundary);
+        adjustCalloutLeaderForBox(m_inplaceCallout[0], m_inplaceCallout[1], m_inplaceCallout[2], m_boundary);
     }
 }
 

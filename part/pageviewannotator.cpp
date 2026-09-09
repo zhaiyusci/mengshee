@@ -278,9 +278,12 @@ public:
                 QPen pen = painter->pen();
                 pen.setColor(m_annotElement.hasAttribute(QStringLiteral("borderColor")) ? QColor(m_annotElement.attribute(QStringLiteral("borderColor"))) : m_engineColor);
                 painter->setPen(pen);
-                painter->drawLine(QPointF(startpoint.x * xScale, startpoint.y * yScale), QPointF(point.x * xScale, point.y * yScale));
-
                 const Okular::NormalizedRect previewRect = calloutBoxRect(QString());
+                const Okular::NormalizedPoint connection = calloutConnectionPoint(previewRect);
+                const Okular::NormalizedPoint elbow = calloutElbowPoint(previewRect, connection);
+                painter->drawLine(QPointF(startpoint.x * xScale, startpoint.y * yScale), QPointF(elbow.x * xScale, elbow.y * yScale));
+                painter->drawLine(QPointF(elbow.x * xScale, elbow.y * yScale), QPointF(connection.x * xScale, connection.y * yScale));
+
                 if (m_annotElement.hasAttribute(QStringLiteral("color"))) {
                     painter->setBrush(QColor(m_annotElement.attribute(QStringLiteral("color"))));
                 }
@@ -362,11 +365,7 @@ public:
         Okular::TextAnnotation *ta = static_cast<Okular::TextAnnotation *>(ann);
         rect = calloutBoxRect(content);
         const Okular::NormalizedPoint connection = calloutConnectionPoint(rect);
-        Okular::NormalizedPoint elbow((startpoint.x + connection.x) / 2.0, connection.y);
-        if (qAbs(startpoint.x - connection.x) < 0.02) {
-            elbow.x = connection.x;
-            elbow.y = (startpoint.y + connection.y) / 2.0;
-        }
+        const Okular::NormalizedPoint elbow = calloutElbowPoint(rect, connection);
         ta->setInplaceCallout(startpoint, 0);
         ta->setInplaceCallout(elbow, 1);
         ta->setInplaceCallout(connection, 2);
@@ -606,11 +605,7 @@ public:
         ann->setBoundingRectangle(rect);
         if (latexStamp && ann->isLatexCallout()) {
             const Okular::NormalizedPoint connection = calloutConnectionPoint(rect);
-            Okular::NormalizedPoint elbow((startpoint.x + connection.x) / 2.0, connection.y);
-            if (qAbs(startpoint.x - connection.x) < 0.02) {
-                elbow.x = connection.x;
-                elbow.y = (startpoint.y + connection.y) / 2.0;
-            }
+            const Okular::NormalizedPoint elbow = calloutElbowPoint(rect, connection);
             ann->setLatexCalloutPoint(startpoint, 0);
             ann->setLatexCalloutPoint(elbow, 1);
             ann->setLatexCalloutPoint(connection, 2);
@@ -689,8 +684,34 @@ private:
 
     Okular::NormalizedPoint calloutConnectionPoint(const Okular::NormalizedRect &boxRect) const
     {
-        const double connectX = startpoint.x < (boxRect.left + boxRect.right) / 2.0 ? boxRect.left : boxRect.right;
-        return Okular::NormalizedPoint(connectX, qBound(boxRect.top, startpoint.y, boxRect.bottom));
+        enum Edge { Left, Right, Top, Bottom };
+        const double centerX = (boxRect.left + boxRect.right) / 2.0;
+        const double centerY = (boxRect.top + boxRect.bottom) / 2.0;
+        const double halfWidth = qMax((boxRect.right - boxRect.left) / 2.0, 1e-12);
+        const double halfHeight = qMax((boxRect.bottom - boxRect.top) / 2.0, 1e-12);
+        const double horizontalDirection = qAbs(startpoint.x - centerX) / halfWidth;
+        const double verticalDirection = qAbs(startpoint.y - centerY) / halfHeight;
+        const Edge edge = horizontalDirection >= verticalDirection ? (startpoint.x < centerX ? Left : Right) : (startpoint.y < centerY ? Top : Bottom);
+
+        switch (edge) {
+        case Left:
+            return Okular::NormalizedPoint(boxRect.left, centerY);
+        case Right:
+            return Okular::NormalizedPoint(boxRect.right, centerY);
+        case Top:
+            return Okular::NormalizedPoint(centerX, boxRect.top);
+        case Bottom:
+            return Okular::NormalizedPoint(centerX, boxRect.bottom);
+        }
+        return {};
+    }
+
+    Okular::NormalizedPoint calloutElbowPoint(const Okular::NormalizedRect &boxRect, const Okular::NormalizedPoint &connection) const
+    {
+        if (connection.x == boxRect.left || connection.x == boxRect.right) {
+            return Okular::NormalizedPoint((startpoint.x + connection.x) / 2.0, connection.y);
+        }
+        return Okular::NormalizedPoint(connection.x, (startpoint.y + connection.y) / 2.0);
     }
 };
 

@@ -275,27 +275,51 @@ static bool hasUsableCalloutPoints(const Okular::Annotation *annotation)
     return hasNonZeroPoint;
 }
 
-static Okular::NormalizedPoint boundToCalloutBoxEdge(const Okular::NormalizedPoint &point, const Okular::NormalizedRect &box)
+enum class CalloutBoxEdge { Left, Right, Top, Bottom };
+
+static CalloutBoxEdge calloutBoxEdgeFacingPoint(const Okular::NormalizedPoint &point, const Okular::NormalizedRect &box)
 {
-    const double x = qBound(box.left, point.x, box.right);
-    const double y = qBound(box.top, point.y, box.bottom);
+    const double centerX = (box.left + box.right) / 2.0;
+    const double centerY = (box.top + box.bottom) / 2.0;
+    const double halfWidth = qMax((box.right - box.left) / 2.0, 1e-12);
+    const double halfHeight = qMax((box.bottom - box.top) / 2.0, 1e-12);
+    const double horizontalDirection = qAbs(point.x - centerX) / halfWidth;
+    const double verticalDirection = qAbs(point.y - centerY) / halfHeight;
 
-    const double leftDistance = qAbs(x - box.left);
-    const double rightDistance = qAbs(box.right - x);
-    const double topDistance = qAbs(y - box.top);
-    const double bottomDistance = qAbs(box.bottom - y);
-    const double edgeDistance = qMin(qMin(leftDistance, rightDistance), qMin(topDistance, bottomDistance));
+    if (horizontalDirection >= verticalDirection) {
+        return point.x < centerX ? CalloutBoxEdge::Left : CalloutBoxEdge::Right;
+    }
+    return point.y < centerY ? CalloutBoxEdge::Top : CalloutBoxEdge::Bottom;
+}
 
-    if (edgeDistance == leftDistance) {
-        return Okular::NormalizedPoint(box.left, y);
+static Okular::NormalizedPoint calloutBoxEdgeMidpoint(const Okular::NormalizedRect &box, CalloutBoxEdge edge)
+{
+    const double centerX = (box.left + box.right) / 2.0;
+    const double centerY = (box.top + box.bottom) / 2.0;
+    switch (edge) {
+    case CalloutBoxEdge::Left:
+        return Okular::NormalizedPoint(box.left, centerY);
+    case CalloutBoxEdge::Right:
+        return Okular::NormalizedPoint(box.right, centerY);
+    case CalloutBoxEdge::Top:
+        return Okular::NormalizedPoint(centerX, box.top);
+    case CalloutBoxEdge::Bottom:
+        return Okular::NormalizedPoint(centerX, box.bottom);
     }
-    if (edgeDistance == rightDistance) {
-        return Okular::NormalizedPoint(box.right, y);
+    return {};
+}
+
+static void constrainCalloutLeaderToBox(Okular::Annotation *annotation, const Okular::NormalizedRect &box, CalloutBoxEdge edge)
+{
+    Okular::NormalizedPoint knee = calloutPoint(annotation, 1, false);
+    const Okular::NormalizedPoint anchor = calloutBoxEdgeMidpoint(box, edge);
+    if (edge == CalloutBoxEdge::Left || edge == CalloutBoxEdge::Right) {
+        knee.y = anchor.y;
+    } else {
+        knee.x = anchor.x;
     }
-    if (edgeDistance == topDistance) {
-        return Okular::NormalizedPoint(x, box.top);
-    }
-    return Okular::NormalizedPoint(x, box.bottom);
+    setCalloutPoint(annotation, knee, 1);
+    setCalloutPoint(annotation, anchor, 2);
 }
 
 static bool pointMoved(const Okular::NormalizedPoint &a, const Okular::NormalizedPoint &b)
@@ -1490,19 +1514,26 @@ void MouseAnnotation::performCommand(const QPoint newPos)
             Okular::Annotation *calloutAnn = calloutAnnotation(m_focusedAnnotation.annotation);
             const int pointIndex = calloutIndexForHandle(m_handle);
             if (calloutAnn && pointIndex >= 0) {
+                const Okular::NormalizedRect box = latexCalloutBoxRectangle(calloutAnn);
                 Okular::NormalizedPoint point = calloutPoint(calloutAnn, pointIndex, false);
                 point.x += normalizedRotatedMouseDelta.x();
                 point.y += normalizedRotatedMouseDelta.y();
-                if (m_handle == RH_CalloutAnchor) {
-                    point = boundToCalloutBoxEdge(point, latexCalloutBoxRectangle(calloutAnn));
+
+                CalloutBoxEdge edge = calloutBoxEdgeFacingPoint(calloutPoint(calloutAnn, 2, false), box);
+                if (m_handle == RH_CalloutTip || m_handle == RH_CalloutAnchor) {
+                    edge = calloutBoxEdgeFacingPoint(point, box);
+                } else {
+                    setCalloutPoint(calloutAnn, point, pointIndex);
                 }
-                setCalloutPoint(calloutAnn, point, pointIndex);
+                constrainCalloutLeaderToBox(calloutAnn, box, edge);
                 logLatexCalloutInteraction("callout-point-preview",
                                            calloutAnn,
                                            {QStringLiteral("handle: %1").arg(int(m_handle)),
                                             QStringLiteral("index: %1").arg(pointIndex),
                                             QStringLiteral("delta: %1,%2").arg(normalizedRotatedMouseDelta.x()).arg(normalizedRotatedMouseDelta.y()),
-                                            QStringLiteral("new point: %1,%2").arg(point.x).arg(point.y)});
+                                            QStringLiteral("new point: %1,%2")
+                                                .arg(calloutPoint(calloutAnn, pointIndex, false).x)
+                                                .arg(calloutPoint(calloutAnn, pointIndex, false).y)});
             }
             return;
         }
