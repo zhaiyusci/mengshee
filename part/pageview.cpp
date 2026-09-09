@@ -1206,9 +1206,6 @@ void PageView::setupActions(KActionCollection *ac, PageViewAnnotator *sharedAnno
         if (d->annotator->pageView() != this) {
             return;
         }
-        if (d->mouseMode != Okular::Settings::EnumMouseMode::Browse && d->aMouseNormal) {
-            d->aMouseNormal->trigger();
-        }
         d->mouseAnnotation->focusAnnotation(pageViewItem, annotation);
     });
     connect(d->annotator, &PageViewAnnotator::requestOpenNewlySignedFile, this, &PageView::requestOpenNewlySignedFile);
@@ -1608,23 +1605,13 @@ QMimeData *PageView::getTableContents() const
 
 void PageView::copyTextSelection(TextCopyMode mode) const
 {
-    switch (d->mouseMode) {
-    case Okular::Settings::EnumMouseMode::Browse: {
-        if (auto *annotation = d->mouseAnnotation->annotation()) {
-            const QString text = annotation->contents();
-            if (!text.isEmpty()) {
-                QClipboard *cb = QApplication::clipboard();
-                cb->setText(text, QClipboard::Clipboard);
-            }
-        }
-    } break;
-
-    case Okular::Settings::EnumMouseMode::TableSelect: {
+    if (d->mouseMode == Okular::Settings::EnumMouseMode::TableSelect) {
         QClipboard *cb = QApplication::clipboard();
         cb->setMimeData(getTableContents(), QClipboard::Clipboard);
-    } break;
+        return;
+    }
 
-    case Okular::Settings::EnumMouseMode::TextSelect: {
+    if (d->mouseMode == Okular::Settings::EnumMouseMode::TextSelect) {
         QString text = d->selectedText();
         if (!text.isEmpty()) {
             QClipboard *cb = QApplication::clipboard();
@@ -1635,8 +1622,16 @@ void PageView::copyTextSelection(TextCopyMode mode) const
                 // Copy the original text without any modifications
                 cb->setText(text, QClipboard::Clipboard);
             }
+            return;
         }
-    } break;
+    }
+
+    if (auto *annotation = d->mouseAnnotation->annotation()) {
+        const QString text = annotation->contents();
+        if (!text.isEmpty()) {
+            QClipboard *cb = QApplication::clipboard();
+            cb->setText(text, QClipboard::Clipboard);
+        }
     }
 }
 
@@ -3406,6 +3401,11 @@ void PageView::mouseMoveEvent(QMouseEvent *e)
         break;
 
     case Okular::Settings::EnumMouseMode::TextSelect:
+        if (leftButton && d->mouseAnnotation->isActive()) {
+            d->mouseAnnotation->routeMouseMoveEvent(pageItem, eventPos, true);
+            updateCursor();
+            break;
+        }
         // if mouse moves 5 px away from the press point and the document supports text extraction, do 'textselection'
         if (!d->mouseTextSelecting && !d->mousePressPos.isNull() && d->document->supportsSearching() && ((eventPos - d->mouseSelectPos).manhattanLength() > 5)) {
             d->mouseTextSelecting = true;
@@ -3525,7 +3525,7 @@ void PageView::mousePressEvent(QMouseEvent *e)
         }
     }
 
-    if (e->button() == Qt::LeftButton && e->modifiers() == Qt::NoModifier && d->showNamedDestinations && d->document->canEditPdfLinks() && d->mouseMode == Okular::Settings::EnumMouseMode::Browse) {
+    if (e->button() == Qt::LeftButton && e->modifiers() == Qt::NoModifier && d->showNamedDestinations && d->document->canEditPdfLinks()) {
         PageViewItem *pageItem = pickItemOnPoint(eventPos.x(), eventPos.y());
         PdfLinkHandle handle = PdfLinkHandle::None;
         if (pageItem && pageItem->pageNumber() == d->selectedPdfLinkPage) {
@@ -3649,6 +3649,21 @@ void PageView::mousePressEvent(QMouseEvent *e)
     // handle mode dependent mouse press actions
     bool leftButton = e->button() == Qt::LeftButton, rightButton = e->button() == Qt::RightButton;
 
+    // Object interaction is not a separate mouse mode. In the ordinary text
+    // workflow, an editable annotation gets first refusal on a left press;
+    // text selection continues normally when no annotation claims it.
+    if (leftButton && (d->mouseMode == Okular::Settings::EnumMouseMode::Browse || d->mouseMode == Okular::Settings::EnumMouseMode::TextSelect)) {
+        PageViewItem *pageItem = pickItemOnPoint(eventPos.x(), eventPos.y());
+        if ((pageItem || d->mouseAnnotation->isFocused()) && d->mouseAnnotation->routeMousePressEvent(pageItem, eventPos)) {
+            d->mousePressLinkObject = nullptr;
+            d->mouseTextSelecting = false;
+            d->mouseSelectPos = QPointF();
+            textSelectionClear();
+            e->accept();
+            return;
+        }
+    }
+
     //   Not sure we should erase the selection when clicking with left.
     if (d->mouseMode != Okular::Settings::EnumMouseMode::TextSelect) {
         textSelectionClear();
@@ -3657,12 +3672,7 @@ void PageView::mousePressEvent(QMouseEvent *e)
     switch (d->mouseMode) {
     case Okular::Settings::EnumMouseMode::Browse: // drag start / click / link following
     {
-        PageViewItem *pageItem = pickItemOnPoint(eventPos.x(), eventPos.y());
         if (leftButton) {
-            if (pageItem || d->mouseAnnotation->isFocused()) {
-                d->mouseAnnotation->routeMousePressEvent(pageItem, eventPos);
-            }
-
             if (!d->mouseOnRect) {
                 d->mouseGrabOffset = QPoint(0, 0);
                 if (!d->pinchZoomActive) {
@@ -3991,6 +4001,23 @@ void PageView::mouseReleaseEvent(QMouseEvent *e)
         }
     }
 
+    const auto showLinkOrAnnotationContextMenu = [this, e, eventPos](PageViewItem *pageItem) {
+        if (!pageItem) {
+            return false;
+        }
+
+        QMenu *menu = createProcessLinkMenu(pageItem, eventPos);
+        AnnotationPopup annotPopup(d->document, AnnotationPopup::MultiAnnotationMode, this);
+        addAnnotationActionsForPoint(annotPopup, pageItem, eventPos, &menu);
+        if (!menu) {
+            return false;
+        }
+
+        menu->exec(e->globalPosition().toPoint());
+        menu->deleteLater();
+        return true;
+    };
+
     switch (d->mouseMode) {
     case Okular::Settings::EnumMouseMode::Browse: {
         if (!d->pinchZoomActive) {
@@ -4132,6 +4159,11 @@ void PageView::mouseReleaseEvent(QMouseEvent *e)
 
         // if mouse is released and selection is null this is a rightClick
         if (rightButton && !d->mouseSelecting) {
+            PageViewItem *pageItem = pickItemOnPoint(eventPos.x(), eventPos.y());
+            if (showLinkOrAnnotationContextMenu(pageItem)) {
+                break;
+            }
+            Q_EMIT rightClick(pageItem ? pageItem->page() : nullptr, e->globalPosition().toPoint());
             break;
         }
         const PageViewItem *pageItem = pickItemOnPoint(eventPos.x(), eventPos.y());
@@ -4191,14 +4223,8 @@ void PageView::mouseReleaseEvent(QMouseEvent *e)
         // if mouse is released and selection is null this is a rightClick
         if (rightButton && !d->mouseSelecting) {
             PageViewItem *pageItem = pickItemOnPoint(eventPos.x(), eventPos.y());
-            if (pageItem) {
-                QMenu *menu = nullptr;
-                AnnotationPopup annotPopup(d->document, AnnotationPopup::MultiAnnotationMode, this);
-                if (addAnnotationActionsForPoint(annotPopup, pageItem, eventPos, &menu)) {
-                    menu->exec(e->globalPosition().toPoint());
-                    menu->deleteLater();
-                    break;
-                }
+            if (showLinkOrAnnotationContextMenu(pageItem)) {
+                break;
             }
             Q_EMIT rightClick(pageItem ? pageItem->page() : nullptr, e->globalPosition().toPoint());
             break;
@@ -4367,14 +4393,8 @@ void PageView::mouseReleaseEvent(QMouseEvent *e)
         // if mouse is released and selection is null this is a rightClick
         if (rightButton && !d->mouseSelecting) {
             PageViewItem *pageItem = pickItemOnPoint(eventPos.x(), eventPos.y());
-            if (pageItem) {
-                QMenu *menu = nullptr;
-                AnnotationPopup annotPopup(d->document, AnnotationPopup::MultiAnnotationMode, this);
-                if (addAnnotationActionsForPoint(annotPopup, pageItem, eventPos, &menu)) {
-                    menu->exec(e->globalPosition().toPoint());
-                    menu->deleteLater();
-                    break;
-                }
+            if (showLinkOrAnnotationContextMenu(pageItem)) {
+                break;
             }
             Q_EMIT rightClick(pageItem ? pageItem->page() : nullptr, e->globalPosition().toPoint());
             break;
@@ -4441,7 +4461,7 @@ void PageView::mouseReleaseEvent(QMouseEvent *e)
 
     case Okular::Settings::EnumMouseMode::TextSelect:
         // if it is a left release checks if is over a previous link press
-        if (leftButton && mouseReleaseOverLink(clickedLinkObject)) {
+        if (leftButton && !d->mouseTextSelecting && mouseReleaseOverLink(clickedLinkObject)) {
             selectionClear();
             break;
         }
@@ -4648,6 +4668,20 @@ void PageView::mouseDoubleClickEvent(QMouseEvent *e)
             double nX = pageItem->absToPageX(eventPos.x());
             double nY = pageItem->absToPageY(eventPos.y());
 
+            // Opening an annotation is an object action, not a mouse-tool action.
+            // Give it priority over mode-specific double-click behavior such as
+            // selecting a word in text-selection mode.
+            const QRect &itemRect = pageItem->uncroppedGeometry();
+            const Okular::ObjectRect *annotationObject = pageItem->page()->objectRect(Okular::ObjectRect::OAnnotation, nX, nY, itemRect.width(), itemRect.height());
+            if (annotationObject) {
+                Okular::Annotation *annotation = static_cast<const Okular::AnnotationObjectRect *>(annotationObject)->annotation();
+                if (annotation && annotation->subType() != Okular::Annotation::AWidget) {
+                    openAnnotationWindow(annotation, pageItem->pageNumber());
+                    e->accept();
+                    return;
+                }
+            }
+
             if (d->mouseMode == Okular::Settings::EnumMouseMode::TextSelect) {
                 // Check for quad-click: double-click shortly after triple-click at same position
                 const bool isQuadClick = d->tripleClickDetectionEnabled && d->lastDoubleClickTime.isValid() && d->lastDoubleClickTime.elapsed() < QApplication::doubleClickInterval() &&
@@ -4686,16 +4720,6 @@ void PageView::mouseDoubleClickEvent(QMouseEvent *e)
                 }
             }
 
-            const QRect &itemRect = pageItem->uncroppedGeometry();
-            Okular::Annotation *ann = nullptr;
-
-            const Okular::ObjectRect *orect = pageItem->page()->objectRect(Okular::ObjectRect::OAnnotation, nX, nY, itemRect.width(), itemRect.height());
-            if (orect) {
-                ann = static_cast<const Okular::AnnotationObjectRect *>(orect)->annotation();
-            }
-            if (ann && ann->subType() != Okular::Annotation::AWidget) {
-                openAnnotationWindow(ann, pageItem->pageNumber());
-            }
         }
     }
 }
@@ -4797,8 +4821,8 @@ bool PageView::viewportEvent(QEvent *e)
     if (e->type() == QEvent::ToolTip
         // Show tool tips only for those modes that change the cursor
         // to a hand when hovering over the link.
-        && (d->mouseMode == Okular::Settings::EnumMouseMode::Browse || d->mouseMode == Okular::Settings::EnumMouseMode::RectSelect || d->mouseMode == Okular::Settings::EnumMouseMode::TextSelect ||
-            d->mouseMode == Okular::Settings::EnumMouseMode::TrimSelect)) {
+        && (d->mouseMode == Okular::Settings::EnumMouseMode::Browse || d->mouseMode == Okular::Settings::EnumMouseMode::RectSelect || d->mouseMode == Okular::Settings::EnumMouseMode::TableSelect ||
+            d->mouseMode == Okular::Settings::EnumMouseMode::TextSelect || d->mouseMode == Okular::Settings::EnumMouseMode::TrimSelect)) {
         QHelpEvent *he = static_cast<QHelpEvent *>(e);
         if (d->mouseAnnotation->isMouseOver()) {
             d->mouseAnnotation->routeTooltipEvent(he);
@@ -5736,6 +5760,11 @@ void PageView::updateCursor(const QPoint p)
                 setCursor(Qt::IBeamCursor);
                 return;
             }
+            if (d->mouseAnnotation->isFocused() && d->mouseAnnotation->isMouseOver()) {
+                d->mouseOnRect = true;
+                setCursor(d->mouseAnnotation->cursor());
+                return;
+            }
             cursorShapeFallback = Qt::IBeamCursor;
             break;
         case Okular::Settings::EnumMouseMode::Magnifier:
@@ -5748,6 +5777,13 @@ void PageView::updateCursor(const QPoint p)
                 return;
             }
             cursorShapeFallback = Qt::CrossCursor;
+            break;
+        case Okular::Settings::EnumMouseMode::TableSelect:
+            if (d->mouseSelecting) {
+                setCursor(Qt::CrossCursor);
+                return;
+            }
+            cursorShapeFallback = Qt::ArrowCursor;
             break;
         case Okular::Settings::EnumMouseMode::Browse:
             d->mouseOnRect = false;
@@ -5768,7 +5804,7 @@ void PageView::updateCursor(const QPoint p)
         if (linkobj) {
             d->mouseOverLinkObject = linkobj;
             d->mouseOnRect = true;
-            setCursor(d->showNamedDestinations && d->document->canEditPdfLinks() && d->mouseMode == Okular::Settings::EnumMouseMode::Browse ? Qt::SizeAllCursor : Qt::PointingHandCursor);
+            setCursor(d->showNamedDestinations && d->document->canEditPdfLinks() ? Qt::SizeAllCursor : Qt::PointingHandCursor);
         } else {
             setCursor(cursorShapeFallback);
         }

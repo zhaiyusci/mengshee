@@ -375,7 +375,7 @@
    </choices>
   </entry>
   <entry key="MouseMode" type="Enum" >
-   <default>Browse</default>
+   <default>TextSelect</default>
    <choices>
     <choice name="Browse" />
     <choice name="Zoom" />

@@ -938,7 +938,7 @@ MouseAnnotation::~MouseAnnotation()
 {
 }
 
-void MouseAnnotation::routeMousePressEvent(PageViewItem *pageViewItem, const QPoint eventPos)
+bool MouseAnnotation::routeMousePressEvent(PageViewItem *pageViewItem, const QPoint eventPos)
 {
     PageViewItem *interactionPageItem = pageViewItem;
     if (!interactionPageItem && m_focusedAnnotation.isValid()) {
@@ -950,12 +950,12 @@ void MouseAnnotation::routeMousePressEvent(PageViewItem *pageViewItem, const QPo
         m_mousePosition = eventPos - interactionPageItem->uncroppedGeometry().topLeft();
         m_handle = getHandleAt(m_mousePosition, m_focusedAnnotation);
         if (hasLatexRenderWarning(m_focusedAnnotation) && getLatexWarningMarkerRect(m_focusedAnnotation).contains(m_mousePosition)) {
-            return;
+            return true;
         }
         if (m_handle != RH_None) {
             /* Returning here means, the selection-rectangle gets control, unconditionally.
              * Even if it overlaps with another annotation. */
-            return;
+            return true;
         }
     }
 
@@ -966,18 +966,22 @@ void MouseAnnotation::routeMousePressEvent(PageViewItem *pageViewItem, const QPo
             ad.annotation->subType() == Okular::Annotation::ARichMedia) {
             /* qDebug() << "routeMousePressEvent: trigger action for AMovie/AScreen/AFileAttachment"; */
             processAction(ad);
+            return true;
         } else {
             /* qDebug() << "routeMousePressEvent: select for modification"; */
             m_mousePosition = eventPos - pageViewItem->uncroppedGeometry().topLeft();
             m_handle = getHandleAt(m_mousePosition, ad);
             if (m_handle != RH_None) {
                 setState(StateFocused, ad);
+                return true;
             }
         }
-    } else {
-        /* qDebug() << "routeMousePressEvent: no annotation under mouse, enter StateInactive"; */
-        setState(StateInactive, ad);
     }
+
+    /* No editable annotation claimed this press. Clear a previous annotation
+     * focus and let the active mouse tool handle the event. */
+    setState(StateInactive, AnnotationDescription());
+    return false;
 }
 
 void MouseAnnotation::routeMouseReleaseEvent()

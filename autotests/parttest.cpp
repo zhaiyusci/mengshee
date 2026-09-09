@@ -145,6 +145,7 @@ private Q_SLOTS:
     void testCrashTextEditDestroy();
     void testAnnotWindowAppearance();
     void testAnnotWindow();
+    void testAnnotWindowInTextSelectionMode();
     void testAdditionalActionTriggers();
     void testTypewriterAnnotTool();
     void testJumpToPage();
@@ -3959,6 +3960,65 @@ void PartTest::testAnnotWindow()
     QTRY_COMPARE(latexWindowDestroyed.count(), 1);
 }
 
+void PartTest::testAnnotWindowInTextSelectionMode()
+{
+    Okular::Part part(nullptr, {});
+    QVERIFY(openDocument(&part, QStringLiteral(KDESRCDIR "data/file1.pdf")));
+    part.widget()->resize(800, 600);
+    part.widget()->show();
+    if (qgetenv("KDECI_CANNOT_CREATE_WINDOWS") == "1") {
+        QSKIP("KDE CI can't create a window on this platform, skipping some GUI tests");
+    }
+    QVERIFY(QTest::qWaitForWindowExposed(part.widget()));
+
+    part.m_document->setViewportPage(0);
+    QTRY_VERIFY(part.m_document->page(0)->hasPixmap(part.m_pageView));
+    part.m_document->requestTextPage(0);
+    QTRY_VERIFY(part.m_document->page(0)->hasTextPage());
+
+    const Okular::TextEntity::List words = part.m_document->page(0)->words(nullptr, Okular::TextPage::AnyPixelTextAreaInclusionBehaviour);
+    QVERIFY(!words.isEmpty());
+    const Okular::NormalizedRect wordRect = words.constFirst().area();
+    const Okular::NormalizedPoint wordCenter = wordRect.center();
+    QVERIFY(part.m_document->page(0)->wordAt(wordCenter));
+
+    const Okular::NormalizedRect annotationRect(qMax(0.0, wordRect.left - 0.03),
+                                                 qMax(0.0, wordRect.top - 0.03),
+                                                 qMin(1.0, wordRect.right + 0.03),
+                                                 qMin(1.0, wordRect.bottom + 0.03));
+
+    auto *annotation = new Okular::TextAnnotation();
+    annotation->setTextType(Okular::TextAnnotation::InPlace);
+    annotation->setBoundingRectangle(annotationRect);
+    annotation->setContents(QStringLiteral("Annotation over selectable text"));
+    part.m_document->addPageAnnotation(0, annotation);
+
+    QVERIFY(QMetaObject::invokeMethod(part.m_pageView, "slotSetMouseTextSelect"));
+    const int width = part.m_pageView->horizontalScrollBar()->maximum() + part.m_pageView->viewport()->width();
+    const int height = part.m_pageView->verticalScrollBar()->maximum() + part.m_pageView->viewport()->height();
+    const auto viewportPoint = [width, height](const Okular::NormalizedPoint &point) {
+        return QPoint(qRound(width * point.x), qRound(height * point.y));
+    };
+    const QPoint annotationPosition = viewportPoint(wordCenter);
+
+    QTest::mouseMove(part.m_pageView->viewport(), annotationPosition);
+    QTest::mouseDClick(part.m_pageView->viewport(), Qt::LeftButton, Qt::NoModifier, annotationPosition);
+    QTRY_COMPARE(part.m_pageView->findChildren<QFrame *>(QStringLiteral("AnnotWindow")).size(), 1);
+    QVERIFY(!part.m_document->page(0)->textSelection());
+
+    part.m_pageView->findChild<QFrame *>(QStringLiteral("AnnotWindow"))->close();
+    QTRY_COMPARE(part.m_pageView->findChildren<QFrame *>(QStringLiteral("AnnotWindow")).size(), 0);
+
+    QTest::mouseClick(part.m_pageView->viewport(), Qt::LeftButton, Qt::NoModifier, annotationPosition);
+
+    const Okular::NormalizedRect beforeMove = annotation->boundingRectangle();
+    QTest::mousePress(part.m_pageView->viewport(), Qt::LeftButton, Qt::NoModifier, annotationPosition);
+    QTest::mouseMove(part.m_pageView->viewport(), annotationPosition + QPoint(30, 24));
+    QTest::mouseRelease(part.m_pageView->viewport(), Qt::LeftButton, Qt::NoModifier, annotationPosition + QPoint(30, 24));
+    QTRY_VERIFY(annotation->boundingRectangle().left > beforeMove.left && annotation->boundingRectangle().top > beforeMove.top);
+    QVERIFY(!part.m_document->page(0)->textSelection());
+}
+
 void PartTest::testAnnotWindowAppearance()
 {
     Okular::Settings::setAnnotationPopupTextFontSize(15);
@@ -4415,6 +4475,8 @@ void PartTest::testMouseModeMenu()
     QVariantList dummyArgs;
     Okular::Part part(nullptr, dummyArgs);
     QVERIFY(openDocument(&part, QStringLiteral(KDESRCDIR "data/file1.pdf")));
+
+    QCOMPARE(Okular::Settings::mouseMode(), (int)Okular::Settings::EnumMouseMode::TextSelect);
 
     QMetaObject::invokeMethod(part.m_pageView, "slotSetMouseNormal");
 

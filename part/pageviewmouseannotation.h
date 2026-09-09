@@ -78,8 +78,9 @@ public:
     MouseAnnotation(PageView *parent, Okular::Document *document);
     ~MouseAnnotation() override;
 
-    /* Process a mouse press event. eventPos: Mouse position in content area coordinates. */
-    void routeMousePressEvent(PageViewItem *pageViewItem, const QPoint eventPos);
+    /* Process a mouse press event. eventPos: Mouse position in content area coordinates.
+     * Returns whether the annotation interaction claimed the press. */
+    bool routeMousePressEvent(PageViewItem *pageViewItem, const QPoint eventPos);
 
     /* Process a mouse release event. */
     void routeMouseReleaseEvent();
