@@ -17,6 +17,7 @@
 */
 
 #include "pageview.h"
+#include "ocrtextlayout.h"
 
 // qt/kde includes
 #include <QActionGroup>
@@ -34,6 +35,9 @@
 #include <QHash>
 #include <QImage>
 #include <QInputDialog>
+#include <QLineEdit>
+#include <QRegularExpressionValidator>
+#include <QShortcut>
 #include <QLoggingCategory>
 #include <QMenu>
 #include <QMimeData>
@@ -300,6 +304,18 @@ public:
     bool workspaceActiveView = true;
     QList<PageViewItem *> items;
     QList<PageViewItem *> visibleItems;
+    int ocrEditingPage = -1;
+    QList<Okular::OcrTextWord> ocrWords;
+    QList<OcrTextLayout::Placement> ocrTextLayout;
+    QLineEdit *ocrWordEditor = nullptr;
+    int ocrEditingWord = -1;
+    QRectF ocrNewWordRectangle;
+    int selectedOcrWord = -1;
+    PdfLinkHandle ocrWordDragHandle = PdfLinkHandle::None;
+    bool ocrWordDragging = false;
+    QPoint ocrWordDragStart;
+    QRectF ocrWordDragStartRect;
+    QList<Okular::OcrTextWord> ocrWordDragBefore;
     MagnifierView *magnifierView = nullptr;
     QHash<int, QList<NamedDestinationMarker>> namedDestinationsByPage;
     QList<NamedDestinationHitRegion> namedDestinationHitRegions;
@@ -766,8 +782,111 @@ OKULARPART_EXPORT bool PageView::advancedModeEnabled() const
     return d->showNamedDestinations;
 }
 
+bool PageView::isOcrTextEditing() const
+{
+    return d->ocrEditingPage >= 0;
+}
+
+bool PageView::startOcrTextEditing(int pageNumber)
+{
+    stopOcrTextEditing();
+    if (!advancedModeEnabled() || !d->document->readOcrTextLayer(pageNumber, &d->ocrWords, nullptr)) {
+        return false;
+    }
+    cancelNamedDestinationCreation();
+    d->creatingInternalLink = false;
+    d->selectedPdfLinkPage = -1;
+    if (d->annotator) {
+        d->annotator->detachAnnotation();
+    }
+    d->ocrEditingPage = pageNumber;
+    d->selectedOcrWord = -1;
+    d->ocrTextLayout = OcrTextLayout::arrange(d->ocrWords);
+    viewport()->update();
+    Q_EMIT ocrTextEditingChanged();
+    return true;
+}
+
+void PageView::startOcrWordEditor(int word, const QRectF &newWordRectangle)
+{
+    d->selectedOcrWord = word;
+    d->ocrEditingWord = word;
+    d->ocrNewWordRectangle = newWordRectangle;
+    auto *editor = new QLineEdit(viewport());
+    d->ocrWordEditor = editor;
+    editor->setObjectName(QStringLiteral("ocrInlineEditor"));
+    editor->setValidator(new QRegularExpressionValidator(QRegularExpression(QStringLiteral("[ -~]*")), editor));
+    editor->setText(word >= 0 ? d->ocrWords[word].text : QString());
+    editor->setStyleSheet(QStringLiteral("QLineEdit { background: white; color: black; border: 1px solid #0078d4; padding: 0px; }"));
+    connect(editor, &QLineEdit::editingFinished, this, &PageView::finishOcrWordEditing);
+    auto *cancel = new QShortcut(QKeySequence(Qt::Key_Escape), editor);
+    cancel->setContext(Qt::WidgetShortcut);
+    connect(cancel, &QShortcut::activated, this, [this] {
+        auto *editor = d->ocrWordEditor;
+        d->ocrWordEditor = nullptr;
+        if (editor) {
+            editor->hide();
+            editor->deleteLater();
+        }
+        viewport()->update();
+    });
+    editor->show();
+    editor->setFocus();
+    editor->selectAll();
+}
+
+void PageView::finishOcrWordEditing()
+{
+    if (!d->ocrWordEditor) {
+        return;
+    }
+    auto *editor = d->ocrWordEditor;
+    d->ocrWordEditor = nullptr;
+    const QString text = editor->text().trimmed();
+    editor->hide();
+    editor->deleteLater();
+    auto after = d->ocrWords;
+    const int editedWord = d->ocrEditingWord;
+    if (editedWord >= 0) {
+        if (text.isEmpty()) {
+            after.removeAt(editedWord);
+            d->selectedOcrWord = -1;
+        } else {
+            after[editedWord].text = text;
+            d->selectedOcrWord = editedWord;
+        }
+    } else if (!text.isEmpty()) {
+        after.append({text, d->ocrNewWordRectangle});
+        d->selectedOcrWord = after.size() - 1;
+    }
+    d->ocrEditingWord = -1;
+    if (after != d->ocrWords) {
+        const auto before = d->ocrWords;
+        Q_EMIT ocrTextLayerChangeRequested(d->ocrEditingPage, before, after);
+    }
+    viewport()->update();
+}
+
+void PageView::stopOcrTextEditing()
+{
+    finishOcrWordEditing();
+    if (d->ocrEditingPage < 0) {
+        return;
+    }
+    d->ocrEditingPage = -1;
+    d->ocrWords.clear();
+    d->selectedOcrWord = -1;
+    d->ocrWordDragging = false;
+    d->ocrWordDragHandle = PdfLinkHandle::None;
+    viewport()->update();
+    Q_EMIT ocrTextEditingChanged();
+}
+
 void PageView::setAdvancedModeEnabled(bool enabled)
 {
+    if (!enabled) {
+        stopOcrTextEditing();
+    }
     if (d->aToggleNamedDestinations) {
         d->aToggleNamedDestinations->setChecked(enabled);
         return;
@@ -1675,6 +1794,19 @@ void PageView::createAnnotationsVideoWidgets(PageViewItem *item, const QList<Oku
 // BEGIN DocumentObserver inherited methods
 void PageView::notifySetup(const QList<Okular::Page *> &pageSet, int setupFlags)
 {
+    if (setupFlags & DocumentObserver::DocumentChanged) {
+        // A replaced/closed document must never receive the old editor's text.
+        if (d->ocrWordEditor) {
+            d->ocrWordEditor->disconnect(this);
+            delete d->ocrWordEditor;
+            d->ocrWordEditor = nullptr;
+        }
+        d->ocrEditingPage = -1;
+        d->ocrWords.clear();
+        d->selectedOcrWord = -1;
+        d->ocrWordDragging = false;
+        Q_EMIT ocrTextEditingChanged();
+    }
     d->auxiliaryLinkPressObject = nullptr;
     d->auxiliaryLinkControlClickPending = false;
     d->auxiliaryLinkMiddleClickPending = false;
@@ -2029,6 +2161,14 @@ void PageView::slotRealNotifyViewportChanged(bool smoothMove)
 
 void PageView::notifyPageChanged(int pageNumber, int changedFlags)
 {
+    if (pageNumber == d->ocrEditingPage && (changedFlags & DocumentObserver::TextSelection)) {
+        d->document->readOcrTextLayer(pageNumber, &d->ocrWords, nullptr);
+        if (d->selectedOcrWord >= d->ocrWords.size()) {
+            d->selectedOcrWord = -1;
+        }
+        d->ocrTextLayout = OcrTextLayout::arrange(d->ocrWords);
+        viewport()->update();
+    }
     // only handle pixmap / highlight changes notifies
     if (changedFlags & DocumentObserver::Bookmark) {
         return;
@@ -2595,7 +2735,7 @@ void PageView::paintEvent(QPaintEvent *pe)
 
 void PageView::drawLinkHighlights(const QRect &contentsRect, QPainter *p)
 {
-    if (!d->showNamedDestinations) {
+    if (isOcrTextEditing() || !d->showNamedDestinations) {
         return;
     }
 
@@ -2732,6 +2872,9 @@ void PageView::loadNamedDestinations()
 
 void PageView::drawNamedDestinations(const QRect &contentsRect, QPainter *p)
 {
+    if (isOcrTextEditing()) {
+        return;
+    }
     if (!d->showNamedDestinations || !d->namedDestinationsLoaded || d->namedDestinationsByPage.isEmpty()) {
         return;
     }
@@ -2954,6 +3097,11 @@ void PageView::resizeEvent(QResizeEvent *e)
 
 void PageView::keyPressEvent(QKeyEvent *e)
 {
+    if (isOcrTextEditing() && e->key() == Qt::Key_Escape) {
+        stopOcrTextEditing();
+        e->accept();
+        return;
+    }
     if (e->key() == Qt::Key_Escape && d->selectedPdfLinkPage >= 0) {
         d->selectedPdfLinkPage = -1;
         d->selectedPdfLinkOriginalRect = QRectF();
@@ -3169,6 +3317,71 @@ void PageView::continuousZoomEnd()
 
 void PageView::mouseMoveEvent(QMouseEvent *e)
 {
+    if (isOcrTextEditing()) {
+        const QPoint pos = contentAreaPoint(e->pos());
+        PageViewItem *item = pickItemOnPoint(pos.x(), pos.y());
+        if (d->ocrWordDragging && item && item->pageNumber() == d->ocrEditingPage && (e->buttons() & Qt::LeftButton)) {
+            const QPointF start(item->absToPageX(d->ocrWordDragStart.x()), item->absToPageY(d->ocrWordDragStart.y()));
+            const QPointF current(qBound(0.0, item->absToPageX(pos.x()), 1.0), qBound(0.0, item->absToPageY(pos.y()), 1.0));
+            QRectF updated = d->ocrWordDragStartRect;
+            const qreal minimumWidth = qMin(1.0, 4.0 / item->uncroppedWidth());
+            const qreal minimumHeight = qMin(1.0, 4.0 / item->uncroppedHeight());
+            switch (d->ocrWordDragHandle) {
+            case PdfLinkHandle::Move: {
+                const qreal dx = qBound(-updated.left(), current.x() - start.x(), 1.0 - updated.right());
+                const qreal dy = qBound(-updated.top(), current.y() - start.y(), 1.0 - updated.bottom());
+                updated.translate(dx, dy);
+                break;
+            }
+            case PdfLinkHandle::TopLeft:
+                updated.setLeft(qMin(current.x(), updated.right() - minimumWidth));
+                updated.setTop(qMin(current.y(), updated.bottom() - minimumHeight));
+                break;
+            case PdfLinkHandle::Top:
+                updated.setTop(qMin(current.y(), updated.bottom() - minimumHeight));
+                break;
+            case PdfLinkHandle::TopRight:
+                updated.setRight(qMax(current.x(), updated.left() + minimumWidth));
+                updated.setTop(qMin(current.y(), updated.bottom() - minimumHeight));
+                break;
+            case PdfLinkHandle::Right:
+                updated.setRight(qMax(current.x(), updated.left() + minimumWidth));
+                break;
+            case PdfLinkHandle::BottomRight:
+                updated.setRight(qMax(current.x(), updated.left() + minimumWidth));
+                updated.setBottom(qMax(current.y(), updated.top() + minimumHeight));
+                break;
+            case PdfLinkHandle::Bottom:
+                updated.setBottom(qMax(current.y(), updated.top() + minimumHeight));
+                break;
+            case PdfLinkHandle::BottomLeft:
+                updated.setLeft(qMin(current.x(), updated.right() - minimumWidth));
+                updated.setBottom(qMax(current.y(), updated.top() + minimumHeight));
+                break;
+            case PdfLinkHandle::Left:
+                updated.setLeft(qMin(current.x(), updated.right() - minimumWidth));
+                break;
+            case PdfLinkHandle::None:
+                break;
+            }
+            d->ocrWords[d->selectedOcrWord].rectangle = updated;
+            d->ocrTextLayout = OcrTextLayout::arrange(d->ocrWords);
+            viewport()->setCursor(pdfLinkCursor(d->ocrWordDragHandle));
+            viewport()->update();
+        } else if (item && item->pageNumber() == d->ocrEditingPage && d->selectedOcrWord >= 0 && d->selectedOcrWord < d->ocrWords.size()) {
+            const QRect pageRect = item->uncroppedGeometry();
+            const QRectF selectedRect(pageRect.left() + d->ocrWords[d->selectedOcrWord].rectangle.x() * item->uncroppedWidth(),
+                                      pageRect.top() + d->ocrWords[d->selectedOcrWord].rectangle.y() * item->uncroppedHeight(),
+                                      d->ocrWords[d->selectedOcrWord].rectangle.width() * item->uncroppedWidth(),
+                                      d->ocrWords[d->selectedOcrWord].rectangle.height() * item->uncroppedHeight());
+            const PdfLinkHandle handle = pdfLinkHandleAt(selectedRect, pos);
+            viewport()->setCursor(handle == PdfLinkHandle::None ? Qt::IBeamCursor : pdfLinkCursor(handle));
+        } else {
+            viewport()->setCursor(Qt::IBeamCursor);
+        }
+        e->accept();
+        return;
+    }
     d->previousMouseMovePos = e->globalPosition();
 
     // don't perform any mouse action when no document is shown
@@ -3419,6 +3632,49 @@ void PageView::mouseMoveEvent(QMouseEvent *e)
 
 void PageView::mousePressEvent(QMouseEvent *e)
 {
+    if (isOcrTextEditing()) {
+        finishOcrWordEditing();
+        const QPoint pos = contentAreaPoint(e->pos());
+        const PageViewItem *item = pickItemOnPoint(pos.x(), pos.y());
+        if (e->button() == Qt::LeftButton && item && item->pageNumber() == d->ocrEditingPage) {
+            const QPointF point(item->absToPageX(pos.x()), item->absToPageY(pos.y()));
+            if (d->selectedOcrWord >= 0 && d->selectedOcrWord < d->ocrWords.size()) {
+                const QRect pageRect = item->uncroppedGeometry();
+                const QRectF selectedRect(pageRect.left() + d->ocrWords[d->selectedOcrWord].rectangle.x() * item->uncroppedWidth(),
+                                          pageRect.top() + d->ocrWords[d->selectedOcrWord].rectangle.y() * item->uncroppedHeight(),
+                                          d->ocrWords[d->selectedOcrWord].rectangle.width() * item->uncroppedWidth(),
+                                          d->ocrWords[d->selectedOcrWord].rectangle.height() * item->uncroppedHeight());
+                const PdfLinkHandle handle = pdfLinkHandleAt(selectedRect, pos);
+                if (handle != PdfLinkHandle::None && e->type() != QEvent::MouseButtonDblClick) {
+                    d->ocrWordDragHandle = handle;
+                    d->ocrWordDragging = true;
+                    d->ocrWordDragStart = pos;
+                    d->ocrWordDragStartRect = d->ocrWords[d->selectedOcrWord].rectangle;
+                    d->ocrWordDragBefore = d->ocrWords;
+                    viewport()->setCursor(pdfLinkCursor(handle));
+                    e->accept();
+                    return;
+                }
+            }
+            int word = -1;
+            for (int i = d->ocrWords.size() - 1; i >= 0; --i) {
+                if (d->ocrWords[i].rectangle.contains(point)) {
+                    word = i;
+                    break;
+                }
+            }
+            if (word >= 0 || e->type() == QEvent::MouseButtonDblClick) {
+                startOcrWordEditor(word, QRectF(point.x(), point.y(), qMin(0.12, 1 - point.x()), qMin(0.025, 1 - point.y())));
+            } else {
+                d->selectedOcrWord = -1;
+            }
+        } else if (e->button() == Qt::LeftButton) {
+            d->selectedOcrWord = -1;
+        }
+        viewport()->update();
+        e->accept();
+        return;
+    }
     // Any new press ends the previous link-click candidate. In particular,
     // this prevents a link hovered before opening a context menu from being
     // activated by the click that dismisses that menu elsewhere on the page.
@@ -3844,6 +4100,23 @@ void PageView::mousePressEvent(QMouseEvent *e)
 
 void PageView::mouseReleaseEvent(QMouseEvent *e)
 {
+    if (isOcrTextEditing()) {
+        if (e->button() == Qt::LeftButton && d->ocrWordDragging) {
+            const PdfLinkHandle releasedHandle = d->ocrWordDragHandle;
+            const bool changed = d->ocrWordDragBefore != d->ocrWords;
+            d->ocrWordDragging = false;
+            d->ocrWordDragHandle = PdfLinkHandle::None;
+            if (changed) {
+                Q_EMIT ocrTextLayerChangeRequested(d->ocrEditingPage, d->ocrWordDragBefore, d->ocrWords);
+            } else if (releasedHandle == PdfLinkHandle::Move && d->selectedOcrWord >= 0 && d->selectedOcrWord < d->ocrWords.size()) {
+                startOcrWordEditor(d->selectedOcrWord);
+            }
+            d->ocrWordDragBefore.clear();
+            viewport()->update();
+        }
+        e->accept();
+        return;
+    }
     // stop the drag scrolling
     d->dragScrollTimer.stop();
 
@@ -4659,6 +4932,10 @@ void PageView::guessTableDividers()
 
 void PageView::mouseDoubleClickEvent(QMouseEvent *e)
 {
+    if (isOcrTextEditing()) {
+        mousePressEvent(e);
+        return;
+    }
     if (e->button() == Qt::LeftButton) {
         const QPoint eventPos = contentAreaPoint(e->pos());
         const PageViewItem *pageItem = pickItemOnPoint(eventPos.x(), eventPos.y());
@@ -4883,6 +5160,7 @@ bool PageView::viewportEvent(QEvent *e)
 
 void PageView::scrollContentsBy(int dx, int dy)
 {
+    finishOcrWordEditing();
     const QRect r = viewport()->rect();
     viewport()->scroll(dx, dy, r);
     // HACK manually repaint the damaged regions, as it seems some updates are missed
@@ -5018,7 +5296,66 @@ void PageView::drawDocumentOnPainter(const QRect contentsRect, QPainter *p)
                 viewPortPoint = &point;
             }
             const QRect pixmapRect = contentsRect.intersected(itemGeometry).translated(-item->croppedGeometry().topLeft());
-            PagePainter::paintCroppedPageOnPainter(p, item->page(), this, pageflags, item->uncroppedWidth(), item->uncroppedHeight(), pixmapRect, item->crop(), viewPortPoint);
+            if (item->pageNumber() == d->ocrEditingPage) {
+                p->fillRect(pixmapRect, Qt::white);
+                p->setClipRect(pixmapRect, Qt::IntersectClip);
+                p->setRenderHint(QPainter::TextAntialiasing);
+                const QPoint origin = item->uncroppedGeometry().topLeft() - itemGeometry.topLeft();
+                const auto wordRect = [item, origin](const QRectF &rect) {
+                    return QRectF(origin.x() + rect.x() * item->uncroppedWidth(), origin.y() + rect.y() * item->uncroppedHeight(), rect.width() * item->uncroppedWidth(), rect.height() * item->uncroppedHeight());
+                };
+                for (int index = 0; index < d->ocrWords.size(); ++index) {
+                    const auto &word = d->ocrWords[index];
+                    const QRectF rect = wordRect(word.rectangle);
+                    const auto &placement = d->ocrTextLayout[index];
+                    p->save();
+                    QFont font = OcrTextLayout::font();
+                    font.setPixelSize(qMax(1, qRound(placement.fontSize * item->uncroppedHeight())));
+                    p->setFont(font);
+                    p->setPen(Qt::black);
+                    p->drawText(QPointF(rect.left(), origin.y() + placement.baseline * item->uncroppedHeight()), word.text);
+                    p->restore();
+                    p->setPen(QColor(0, 120, 212, 65));
+                    p->drawRect(rect);
+                }
+                if (d->selectedOcrWord >= 0 && d->selectedOcrWord < d->ocrWords.size()) {
+                    const QRectF rect = wordRect(d->ocrWords[d->selectedOcrWord].rectangle);
+                    p->save();
+                    QPen selectionPen(QColor(0, 120, 212), 2.0);
+                    selectionPen.setCosmetic(true);
+                    p->setPen(selectionPen);
+                    p->setBrush(Qt::white);
+                    p->drawRect(rect);
+                    const std::array<QPointF, 8> handles {rect.topLeft(),
+                                                         QPointF(rect.center().x(), rect.top()),
+                                                         rect.topRight(),
+                                                         QPointF(rect.right(), rect.center().y()),
+                                                         rect.bottomRight(),
+                                                         QPointF(rect.center().x(), rect.bottom()),
+                                                         rect.bottomLeft(),
+                                                         QPointF(rect.left(), rect.center().y())};
+                    for (const QPointF &handle : handles) {
+                        p->drawRect(pdfLinkHandleRect(handle));
+                    }
+                    p->restore();
+                }
+                if (d->ocrWordEditor) {
+                    const QRectF normalized = d->ocrEditingWord >= 0 ? d->ocrWords[d->ocrEditingWord].rectangle : d->ocrNewWordRectangle;
+                    const QRectF rect = wordRect(normalized);
+                    QFont font = OcrTextLayout::font();
+                    const double fontSize = d->ocrEditingWord >= 0 ? d->ocrTextLayout[d->ocrEditingWord].fontSize * item->uncroppedHeight() : rect.height();
+                    font.setPixelSize(qMax(1, qRound(fontSize)));
+                    d->ocrWordEditor->setFont(font);
+                    QRect editorRect = rect.translated(itemGeometry.topLeft() - contentAreaPosition()).toAlignedRect();
+                    editorRect.setWidth(qMax(100, editorRect.width()));
+                    editorRect.setHeight(qMax(24, editorRect.height()));
+                    if (d->ocrWordEditor->geometry() != editorRect) {
+                        d->ocrWordEditor->setGeometry(editorRect);
+                    }
+                }
+            } else {
+                PagePainter::paintCroppedPageOnPainter(p, item->page(), this, pageflags, item->uncroppedWidth(), item->uncroppedHeight(), pixmapRect, item->crop(), viewPortPoint);
+            }
         }
 
         // remove painted area from 'remainingArea' and restore painter

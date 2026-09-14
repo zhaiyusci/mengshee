@@ -68,6 +68,7 @@ class View;
 class VisiblePageRect;
 class SignatureInfo;
 struct OcrResult;
+struct OcrTextWord;
 
 /** IDs for searches. Globally defined here. **/
 #define PART_SEARCH_ID 1
@@ -1111,6 +1112,8 @@ public:
 
     /** Returns whether the current backend can add an English OCR text layer. */
     bool canPerformEnglishOcr() const;
+    bool readOcrTextLayer(int pageNumber, QList<OcrTextWord> *words, QString *errorText);
+    bool replaceOcrTextLayer(int pageNumber, const QList<OcrTextWord> &words, QString *errorText);
 
     /** Writes a copy with an invisible English OCR text layer on selected 1-based pages. */
     OcrResult saveWithEnglishOcr(const QString &sourceFileName,

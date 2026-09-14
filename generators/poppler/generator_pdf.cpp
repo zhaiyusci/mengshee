@@ -3283,6 +3283,32 @@ bool PDFGenerator::deletePdfLink(Okular::Page *sourcePage, double linkLeft, doub
     return refreshPdfLinkObjects(sourcePage, nativeSourcePageNumber - 1, errorText);
 }
 
+bool PDFGenerator::readOcrTextLayer(int pageNumber, QList<Okular::OcrTextWord> *words, QString *errorText)
+{
+    QMutexLocker locker(userMutex());
+    std::vector<PdfPageSequenceEditor::OcrWord> nativeWords;
+    const bool ok = runPdfPagesOperation([&] {
+        return PdfPageSequenceEditor::readOcrTextLayer(popplerCoreDocument(pdfdoc.get()), nativePageForLogicalPage(pageNumber) + 1, &nativeWords);
+    }, errorText);
+    words->clear();
+    for (const auto &word : nativeWords) {
+        words->append({QString::fromStdString(word.text), QRectF(QPointF(word.left, word.top), QPointF(word.right, word.bottom))});
+    }
+    return ok;
+}
+
+bool PDFGenerator::replaceOcrTextLayer(int pageNumber, const QList<Okular::OcrTextWord> &words, QString *errorText)
+{
+    QMutexLocker locker(userMutex());
+    std::vector<PdfPageSequenceEditor::OcrWord> nativeWords;
+    for (const auto &word : words) {
+        nativeWords.push_back({word.text.toUtf8().toStdString(), word.rectangle.left(), word.rectangle.top(), word.rectangle.right(), word.rectangle.bottom()});
+    }
+    return runPdfPagesOperation([&] {
+        return PdfPageSequenceEditor::replaceOcrTextLayer(popplerCoreDocument(pdfdoc.get()), nativePageForLogicalPage(pageNumber) + 1, nativeWords);
+    }, errorText);
+}
+
 bool PDFGenerator::canPerformEnglishOcr() const
 {
 #if HAVE_TESSERACT
@@ -3417,13 +3443,26 @@ Okular::OcrResult PDFGenerator::saveWithEnglishOcr(const QString &sourceFileName
                 int top = 0;
                 int right = 0;
                 int bottom = 0;
+                int baselineLeft = 0;
+                int baselineTop = 0;
+                int baselineRight = 0;
+                int baselineBottom = 0;
                 const std::string word = printableEnglish(rawText.get());
                 if (!word.empty() && iterator->BoundingBox(tesseract::RIL_WORD, &left, &top, &right, &bottom) && right > left && bottom > top) {
                     const double normalizedLeft = std::clamp(static_cast<double>(left) / image.width(), 0.0, 1.0);
                     const double normalizedTop = std::clamp(static_cast<double>(top) / image.height(), 0.0, 1.0);
                     const double normalizedRight = std::clamp(static_cast<double>(right) / image.width(), 0.0, 1.0);
                     const double normalizedBottom = std::clamp(static_cast<double>(bottom) / image.height(), 0.0, 1.0);
-                    recognizedPage.words.push_back({ word, normalizedLeft, normalizedTop, normalizedRight, normalizedBottom });
+                    const bool hasBaseline = iterator->Baseline(tesseract::RIL_TEXTLINE, &baselineLeft, &baselineTop, &baselineRight, &baselineBottom);
+                    recognizedPage.words.push_back({ word,
+                                                     normalizedLeft,
+                                                     normalizedTop,
+                                                     normalizedRight,
+                                                     normalizedBottom,
+                                                     hasBaseline ? std::clamp(static_cast<double>(baselineLeft) / image.width(), 0.0, 1.0) : std::numeric_limits<double>::quiet_NaN(),
+                                                     hasBaseline ? std::clamp(static_cast<double>(baselineTop) / image.height(), 0.0, 1.0) : std::numeric_limits<double>::quiet_NaN(),
+                                                     hasBaseline ? std::clamp(static_cast<double>(baselineRight) / image.width(), 0.0, 1.0) : std::numeric_limits<double>::quiet_NaN(),
+                                                     hasBaseline ? std::clamp(static_cast<double>(baselineBottom) / image.height(), 0.0, 1.0) : std::numeric_limits<double>::quiet_NaN() });
                 }
             } while (iterator->Next(tesseract::RIL_WORD));
         }

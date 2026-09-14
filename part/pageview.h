@@ -21,6 +21,7 @@
 #include "config-okular.h"
 #include "core/area.h"
 #include "core/document.h"
+#include "core/generator.h"
 #include "core/observer.h"
 #include "core/view.h"
 #include "okularpart_export.h"
@@ -82,6 +83,10 @@ public:
     void startNamedDestinationCreation(bool continuous = false);
     void cancelNamedDestinationCreation();
     void startLinkCreation();
+    OKULARPART_EXPORT bool startOcrTextEditing(int pageNumber);
+    OKULARPART_EXPORT void stopOcrTextEditing();
+    OKULARPART_EXPORT bool isOcrTextEditing() const;
+    void finishOcrWordEditing();
 
     // Zoom mode ( last 4 are internally used only! )
     enum ZoomMode { ZoomFixed = 0, ZoomFitWidth = 1, ZoomFitPage = 2, ZoomFitAuto = 3, ZoomIn, ZoomOut, ZoomRefreshCurrent, ZoomActual };
@@ -200,6 +205,8 @@ public Q_SLOTS:
 #endif
 
 Q_SIGNALS:
+    void ocrTextEditingChanged();
+    void ocrTextLayerChangeRequested(int pageNumber, const QList<Okular::OcrTextWord> &before, const QList<Okular::OcrTextWord> &after);
     void rightClick(const Okular::Page *, const QPoint);
     void mouseBackButtonClick();
     void mouseForwardButtonClick();
@@ -305,6 +312,7 @@ private:
     void textSelectionClear();
     // updates cursor
     void updateCursor(const QPoint p);
+    void startOcrWordEditor(int word, const QRectF &newWordRectangle = QRectF());
     void requestInternalLinkInAuxiliaryFrame(const Okular::ObjectRect *rect, const QPoint &contentPos);
     void setDocumentViewport(const Okular::DocumentViewport &viewport, Okular::DocumentObserver *excludeObserver = nullptr, bool smoothMove = false, bool updateHistory = true);
     void setDocumentViewportPage(int page, Okular::DocumentObserver *excludeObserver = nullptr, bool smoothMove = false);

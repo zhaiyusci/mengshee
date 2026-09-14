@@ -10,6 +10,11 @@
 // clazy:excludeall=qstring-allocations
 
 #include <QSignalSpy>
+#include <QTableWidget>
+#include <QDialogButtonBox>
+#include "PdfPageSequenceEditor.h"
+#include <poppler-qt6.h>
+#include "../core/generator.h"
 #include <QTest>
 
 #include "../core/action.h"
@@ -23,6 +28,7 @@
 #include "../part/documentworkspace.h"
 #include "../part/findbar.h"
 #include "../part/pageview.h"
+#include "../part/ocrtextlayout.h"
 #include "../part/part.h"
 #include "../part/presentationwidget.h"
 #include "../part/sidebar.h"
@@ -76,6 +82,9 @@ Q_SIGNALS:
     void urlHandler(const QUrl &url); // NOLINT(readability-inconsistent-declaration-parameter-name)
 
 private Q_SLOTS:
+    void testOcrTextLayerEditing();
+    void testOcrTextLayout();
+    void testOcrPdfGeometry();
     void init();
 
     void testZoomWithCrop();
@@ -3958,6 +3967,272 @@ void PartTest::testAnnotWindow()
     QSignalSpy latexWindowDestroyed(latexWindow, &QObject::destroyed);
     latexWindow->close();
     QTRY_COMPARE(latexWindowDestroyed.count(), 1);
+}
+
+void PartTest::testOcrTextLayout()
+{
+    QFont font = OcrTextLayout::font();
+    font.setPixelSize(1000);
+    QFontMetricsF metrics(font);
+    QList<OcrTextWord> words;
+    const double size = 0.022;
+    const double baseline = 0.18;
+    const double aspect = 0.707;
+    double x = 0.10;
+    for (const QString &text : QStringLiteral("This is some random text with different letter heights").split(QLatin1Char(' '))) {
+        const QRectF glyph = metrics.tightBoundingRect(text);
+        words.append({text, QRectF(x + glyph.left() * size / 1000 / aspect, baseline + glyph.top() * size / 1000, glyph.width() * size / 1000 / aspect, glyph.height() * size / 1000)});
+        x += metrics.horizontalAdvance(text + QLatin1Char(' ')) * size / 1000 / aspect;
+    }
+    QVERIFY(words[2].rectangle.height() < words.last().rectangle.height());
+    auto placement = OcrTextLayout::arrange(words);
+    QCOMPARE(placement.size(), words.size());
+    for (const auto &word : placement) {
+        QVERIFY(qAbs(word.fontSize - size) < 0.000001);
+        QVERIFY(qAbs(word.baseline - baseline) < 0.000001);
+    }
+    // Box widths must not squeeze/stretch the glyphs or change a line's size.
+    auto narrow = words;
+    narrow[2].rectangle.setWidth(narrow[2].rectangle.width() / 3);
+    const auto narrowed = OcrTextLayout::arrange(narrow);
+    QCOMPARE(narrowed[2].fontSize, placement[2].fontSize);
+    QCOMPARE(narrowed[2].baseline, placement[2].baseline);
+    // Nearby rows remain separate; neither row inherits the other's baseline.
+    for (const auto &word : std::as_const(narrow)) {
+        words.append({word.text, word.rectangle.translated(0, 0.035)});
+    }
+    placement = OcrTextLayout::arrange(words);
+    QVERIFY(qAbs(placement.last().baseline - baseline - 0.035) < 0.000001);
+    QVERIFY(qAbs(placement.first().baseline - baseline) < 0.000001);
+    const QString output = qEnvironmentVariable("MENGSHEE_OCR_TEST_OUTPUT");
+    if (!output.isEmpty()) {
+        std::vector<PdfPageSequenceEditor::OcrWord> nativeWords;
+        for (const auto &word : std::as_const(words)) {
+            nativeWords.push_back({word.text.toStdString(), word.rectangle.left(), word.rectangle.top(), word.rectangle.right(), word.rectangle.bottom()});
+        }
+        const QString preview = output + QStringLiteral("-natural.pdf");
+        const auto result = PdfPageSequenceEditor::addOcrTextLayers(std::string(KDESRCDIR "data/file1.pdf"), preview.toStdString(), {{1, nativeWords}});
+        QVERIFY2(result.ok(), result.message.c_str());
+        Part part(nullptr, {});
+        QVERIFY(openDocument(&part, preview));
+        part.widget()->resize(1100, 800);
+        part.widget()->show();
+        QVERIFY(QTest::qWaitForWindowExposed(part.widget()));
+        part.actionCollection()->action(QStringLiteral("view_toggle_named_destinations"))->setChecked(true);
+        part.actionCollection()->action(QStringLiteral("advanced_edit_ocr_text"))->trigger();
+        QVERIFY(part.m_pageView->isOcrTextEditing());
+        QVERIFY(part.m_pageView->viewport()->grab().save(output + QStringLiteral("-natural.png")));
+    }
+}
+
+void PartTest::testOcrPdfGeometry()
+{
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const QString first = directory.filePath(QStringLiteral("first.pdf"));
+    const QString replaced = directory.filePath(QStringLiteral("replaced.pdf"));
+    const std::string input = std::string(KDESRCDIR "data/file1.pdf");
+    const auto firstResult = PdfPageSequenceEditor::addOcrTextLayers(
+        input, first.toStdString(), {{1, {{"oldlayerprobe", 0.1, 0.2, 0.3, 0.24, 0.1, 0.23, 0.3, 0.23}}}});
+    QVERIFY2(firstResult.ok(), firstResult.message.c_str());
+    const auto replaceResult = PdfPageSequenceEditor::addOcrTextLayers(
+        first.toStdString(), replaced.toStdString(), {{1, {{"newlayerprobe", 0.2, 0.6, 0.4, 0.64, 0.2, 0.63, 0.4, 0.63}}}});
+    QVERIFY2(replaceResult.ok(), replaceResult.message.c_str());
+
+    auto document = Poppler::Document::load(replaced);
+    QVERIFY(document);
+    std::unique_ptr<Poppler::Page> page = document->page(0);
+    QVERIFY(page);
+    const auto boxes = page->textList();
+    const Poppler::TextBox *probe = nullptr;
+    for (const auto &box : boxes) {
+        QVERIFY(box->text() != QStringLiteral("oldlayerprobe"));
+        if (box->text() == QStringLiteral("newlayerprobe")) {
+            probe = box.get();
+        }
+    }
+    QVERIFY(probe);
+    const QRectF box = probe->boundingBox();
+    const QSizeF size = page->pageSizeF();
+    QVERIFY(qAbs(box.left() / size.width() - 0.2) < 0.003);
+    QVERIFY(qAbs(box.top() / size.height() - 0.6) < 0.003);
+    QVERIFY(box.height() / size.height() < 0.06);
+
+    const QString realSource = qEnvironmentVariable("MENGSHEE_OCR_SOURCE");
+    if (!realSource.isEmpty()) {
+        Part realPart(nullptr, {});
+        QVERIFY(openDocument(&realPart, realSource));
+        const QString realOutput = qEnvironmentVariable("MENGSHEE_OCR_OUTPUT");
+        QVERIFY(!realOutput.isEmpty());
+        const OcrResult result = realPart.m_document->saveWithEnglishOcr(realSource, realOutput, {1}, false, [](int, int, int) { return true; });
+        QVERIFY2(result.success, qPrintable(result.errorText));
+        QCOMPARE(result.recognizedPages, 1);
+        QVERIFY(result.recognizedWords > 0);
+    }
+
+    Part part(nullptr, {});
+    QVERIFY(openDocument(&part, replaced));
+    QList<OcrTextWord> words;
+    QString error;
+    QVERIFY2(part.m_document->readOcrTextLayer(0, &words, &error), qPrintable(error));
+    QCOMPARE(words.size(), 1);
+    QCOMPARE(words[0].text, QStringLiteral("newlayerprobe"));
+}
+
+void PartTest::testOcrTextLayerEditing()
+{
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const QString input = QStringLiteral(KDESRCDIR "data/file1.pdf");
+    const QString recognized = directory.filePath(QStringLiteral("ocr.pdf"));
+    const auto result = PdfPageSequenceEditor::addOcrTextLayers(input.toStdString(), recognized.toStdString(), {{1, {{"WRONG", 0.15, 0.2, 0.35, 0.25}, {"a(b)\\c", 0.4, 0.2, 0.6, 0.25}}}});
+    QVERIFY2(result.ok(), result.message.c_str());
+    Part part(nullptr, {});
+    QVERIFY(openDocument(&part, recognized));
+    QList<OcrTextWord> before;
+    QString error;
+    QVERIFY2(part.m_document->readOcrTextLayer(0, &before, &error), qPrintable(error));
+    QCOMPARE(before.size(), 2);
+    QCOMPARE(before[0].text, QStringLiteral("WRONG"));
+    QCOMPARE(before[1].text, QStringLiteral("a(b)\\c"));
+    QVERIFY(qAbs(before[1].rectangle.width() - 0.2) < 0.00001);
+    part.m_document->requestTextPage(0);
+    QVERIFY(part.m_document->page(0)->text(nullptr).contains(QStringLiteral("WRONG")));
+    QAction *recognize = part.actionCollection()->action(QStringLiteral("advanced_recognize_english_text"));
+    QAction *edit = part.actionCollection()->action(QStringLiteral("advanced_edit_ocr_text"));
+    QVERIFY(recognize && edit);
+    QVERIFY(!recognize->isVisible());
+    QVERIFY(!edit->isVisible());
+    part.actionCollection()->action(QStringLiteral("view_toggle_named_destinations"))->setChecked(true);
+    QVERIFY(recognize->isVisible());
+    QVERIFY(recognize->isEnabled());
+    QVERIFY(edit && edit->isEnabled() && edit->isVisible());
+    part.widget()->resize(900, 700);
+    part.widget()->show();
+    QVERIFY(QTest::qWaitForWindowExposed(part.widget()));
+    edit->trigger();
+    QVERIFY(part.m_pageView->isOcrTextEditing());
+    QVERIFY(edit->isChecked());
+    auto *viewport = part.m_pageView->viewport();
+    QPoint wordPosition(-1, -1);
+    QTRY_VERIFY(viewport->width() > 100);
+    for (int y = 0; y < viewport->height() && wordPosition.x() < 0; y += 3) {
+        for (int x = 0; x < viewport->width(); x += 3) {
+            int page = -1;
+            NormalizedPoint point;
+            if (part.m_pageView->mapGlobalPosToPagePoint(viewport->mapToGlobal(QPoint(x, y)), &page, &point)
+                && page == 0 && point.x > 0.20 && point.x < 0.30 && point.y > 0.21 && point.y < 0.24) {
+                wordPosition = QPoint(x, y);
+                break;
+            }
+        }
+    }
+    QVERIFY(wordPosition.x() >= 0);
+    QTest::mouseClick(viewport, Qt::LeftButton, Qt::NoModifier, wordPosition);
+    auto *editor = viewport->findChild<QLineEdit *>(QStringLiteral("ocrInlineEditor"));
+    QVERIFY(editor && editor->isVisible());
+    QCOMPARE(editor->text(), QStringLiteral("WRONG"));
+    QTest::keyClicks(editor, QStringLiteral("CORRECTED"));
+    QTest::keyClick(editor, Qt::Key_Return);
+    QVERIFY(part.m_document->page(0)->text(nullptr).contains(QStringLiteral("CORRECTED")));
+    QVERIFY(!part.m_document->page(0)->text(nullptr).contains(QStringLiteral("WRONG")));
+    part.m_document->undo();
+    QVERIFY(part.m_document->page(0)->text(nullptr).contains(QStringLiteral("WRONG")));
+    part.m_document->redo();
+    QVERIFY(part.m_document->page(0)->text(nullptr).contains(QStringLiteral("CORRECTED")));
+    QPoint bottomRight(-1, -1);
+    for (int y = 0; y < viewport->height() && bottomRight.x() < 0; ++y) {
+        for (int x = 0; x < viewport->width(); ++x) {
+            int page = -1;
+            NormalizedPoint point;
+            if (part.m_pageView->mapGlobalPosToPagePoint(viewport->mapToGlobal(QPoint(x, y)), &page, &point)
+                && page == 0 && qAbs(point.x - 0.35) < 0.0015 && qAbs(point.y - 0.25) < 0.0015) {
+                bottomRight = QPoint(x, y);
+                break;
+            }
+        }
+    }
+    QVERIFY(bottomRight.x() >= 0);
+    QTest::mousePress(viewport, Qt::LeftButton, Qt::NoModifier, bottomRight);
+    QTest::mouseMove(viewport, bottomRight + QPoint(30, 20));
+    QTest::mouseRelease(viewport, Qt::LeftButton, Qt::NoModifier, bottomRight + QPoint(30, 20));
+    QList<OcrTextWord> resized;
+    QTRY_VERIFY(part.m_document->readOcrTextLayer(0, &resized, &error));
+    QTRY_VERIFY(resized[0].rectangle.right() > 0.35 && resized[0].rectangle.bottom() > 0.25);
+    part.m_document->undo();
+    QVERIFY(part.m_document->readOcrTextLayer(0, &resized, &error));
+    QVERIFY(qAbs(resized[0].rectangle.right() - 0.35) < 0.00001);
+    part.m_document->redo();
+    QVERIFY(part.m_document->readOcrTextLayer(0, &resized, &error));
+    QVERIFY(resized[0].rectangle.right() > 0.35);
+    QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+    QTest::mouseClick(viewport, Qt::LeftButton, Qt::NoModifier, wordPosition);
+    editor = viewport->findChild<QLineEdit *>(QStringLiteral("ocrInlineEditor"));
+    QVERIFY(editor && editor->isVisible());
+    QTest::keyClicks(editor, QStringLiteral("DISCARDED"));
+    QTest::keyClick(editor, Qt::Key_Escape);
+    QVERIFY(part.m_document->page(0)->text(nullptr).contains(QStringLiteral("CORRECTED")));
+    QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+    QTest::mouseClick(viewport, Qt::LeftButton, Qt::NoModifier, wordPosition);
+    editor = viewport->findChild<QLineEdit *>(QStringLiteral("ocrInlineEditor"));
+    QVERIFY(editor && editor->isVisible());
+    QTest::keyClick(editor, Qt::Key_Backspace);
+    QTest::keyClick(editor, Qt::Key_Return);
+    QVERIFY(!part.m_document->page(0)->text(nullptr).contains(QStringLiteral("CORRECTED")));
+    part.m_document->undo();
+    QVERIFY(part.m_document->page(0)->text(nullptr).contains(QStringLiteral("CORRECTED")));
+    QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+    QTest::mouseDClick(viewport, Qt::LeftButton, Qt::NoModifier, wordPosition + QPoint(0, 80));
+    editor = viewport->findChild<QLineEdit *>(QStringLiteral("ocrInlineEditor"));
+    QVERIFY(editor && editor->isVisible());
+    QVERIFY(editor->text().isEmpty());
+    QTest::keyClicks(editor, QStringLiteral("ADDED"));
+    QTest::keyClick(editor, Qt::Key_Return);
+    QVERIFY(part.m_document->page(0)->text(nullptr).contains(QStringLiteral("ADDED")));
+    part.m_document->undo();
+    QVERIFY(!part.m_document->page(0)->text(nullptr).contains(QStringLiteral("ADDED")));
+    if (!qEnvironmentVariable("MENGSHEE_OCR_TEST_OUTPUT").isEmpty()) {
+        QVERIFY(viewport->grab().save(qEnvironmentVariable("MENGSHEE_OCR_TEST_OUTPUT") + QStringLiteral(".png")));
+    }
+    edit->trigger();
+    QVERIFY(!part.m_pageView->isOcrTextEditing());
+    QVERIFY(!edit->isChecked());
+    const QString saved = directory.filePath(QStringLiteral("saved.pdf"));
+    QVERIFY2(part.m_document->saveChanges(saved, &error), qPrintable(error));
+    auto originalPdf = Poppler::Document::load(recognized);
+    auto editedPdf = Poppler::Document::load(saved);
+    QVERIFY(originalPdf && editedPdf);
+    QCOMPARE(originalPdf->page(0)->renderToImage(100, 100), editedPdf->page(0)->renderToImage(100, 100));
+    if (!qEnvironmentVariable("MENGSHEE_OCR_TEST_OUTPUT").isEmpty()) {
+        QVERIFY(QFile::copy(recognized, qEnvironmentVariable("MENGSHEE_OCR_TEST_OUTPUT")));
+    }
+    Part reopened(nullptr, {});
+    QVERIFY(openDocument(&reopened, saved));
+    QList<OcrTextWord> after;
+    QVERIFY2(reopened.m_document->readOcrTextLayer(0, &after, &error), qPrintable(error));
+    QCOMPARE(after[0].text, QStringLiteral("CORRECTED"));
+    QVERIFY(qAbs(after[0].rectangle.left() - 0.15) < 0.00001);
+    for (int rotation : {90, 180, 270, 0}) {
+        QVERIFY2(reopened.m_document->rotatePage(0, rotation, &error), qPrintable(error));
+        QVERIFY2(reopened.m_document->readOcrTextLayer(0, &after, &error), qPrintable(error));
+        QVERIFY2(reopened.m_document->replaceOcrTextLayer(0, after, &error), qPrintable(error));
+        QList<OcrTextWord> again;
+        QVERIFY(reopened.m_document->readOcrTextLayer(0, &again, &error));
+        QCOMPARE(again.size(), after.size());
+        QVERIFY(qAbs(again[0].rectangle.x() - after[0].rectangle.x()) < 0.00001);
+        QVERIFY(qAbs(again[0].rectangle.y() - after[0].rectangle.y()) < 0.00001);
+    }
+    QVERIFY(reopened.m_document->replaceOcrTextLayer(0, {}, &error));
+    QVERIFY(reopened.m_document->readOcrTextLayer(0, &after, &error));
+    QVERIFY(after.isEmpty());
+    QVERIFY(reopened.m_document->replaceOcrTextLayer(0, before, &error));
+    QVERIFY(reopened.m_document->readOcrTextLayer(0, &after, &error));
+    QCOMPARE(after.size(), before.size());
+    QList<OcrTextWord> invalid = before;
+    invalid[0].rectangle.setWidth(-1);
+    QVERIFY(!reopened.m_document->replaceOcrTextLayer(0, invalid, &error));
+    QVERIFY(reopened.m_document->readOcrTextLayer(0, &after, &error));
+    QCOMPARE(after.size(), before.size());
 }
 
 void PartTest::testAnnotWindowInTextSelectionMode()

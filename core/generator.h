@@ -22,6 +22,7 @@
 
 #include <QList>
 #include <QObject>
+#include <QRectF>
 #include <QSharedDataPointer>
 #include <QSizeF>
 #include <QString>
@@ -355,6 +356,13 @@ struct OKULARCORE_EXPORT OcrResult
 };
 
 /** Optional interface implemented by PDF generators that support OCR. */
+struct OKULARCORE_EXPORT OcrTextWord
+{
+    QString text;
+    QRectF rectangle;
+    bool operator==(const OcrTextWord &) const = default;
+};
+
 class OKULARCORE_EXPORT PdfOcrInterface
 {
 public:
@@ -363,6 +371,8 @@ public:
     virtual ~PdfOcrInterface() = default;
 
     virtual bool canPerformEnglishOcr() const = 0;
+    virtual bool readOcrTextLayer(int pageNumber, QList<OcrTextWord> *words, QString *errorText) = 0;
+    virtual bool replaceOcrTextLayer(int pageNumber, const QList<OcrTextWord> &words, QString *errorText) = 0;
     virtual OcrResult saveWithEnglishOcr(const QString &sourceFileName,
                                          const QString &outputFileName,
                                          const QList<int> &pageNumbers,

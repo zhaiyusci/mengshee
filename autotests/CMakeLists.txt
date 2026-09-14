@@ -29,7 +29,7 @@ if(Poppler_Qt6_FOUND)
     if (BUILD_DESKTOP)
         ecm_add_test(parttest.cpp closedialoghelper.cpp
             TEST_NAME "parttest"
-            LINK_LIBRARIES Qt6::Widgets Qt6::Test Qt6::Xml okularcore okularpart
+            LINK_LIBRARIES Qt6::Widgets Qt6::Test Qt6::Xml okularcore okularpart pdf_page_sequence_editor Poppler::Qt6
         )
     endif()
 

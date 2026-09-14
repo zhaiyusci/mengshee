@@ -6320,6 +6320,37 @@ bool Document::deletePdfLink(int sourcePageNumber, double linkLeft, double linkT
     return changed;
 }
 
+bool Document::readOcrTextLayer(int pageNumber, QList<OcrTextWord> *words, QString *errorText)
+{
+    auto *editor = dynamic_cast<PdfOcrInterface *>(d->m_generator);
+    return editor && words && pageNumber >= 0 && pageNumber < d->m_pagesVector.size() && editor->readOcrTextLayer(pageNumber, words, errorText);
+}
+
+bool Document::replaceOcrTextLayer(int pageNumber, const QList<OcrTextWord> &words, QString *errorText)
+{
+    auto *editor = dynamic_cast<PdfOcrInterface *>(d->m_generator);
+    if (!editor || pageNumber < 0 || pageNumber >= d->m_pagesVector.size()) {
+        return false;
+    }
+    d->clearAndWaitForRequests();
+    if (!editor->replaceOcrTextLayer(pageNumber, words, errorText)) {
+        return false;
+    }
+    Page *page = d->m_pagesVector[pageNumber];
+    const auto searchIds = d->m_searches.keys();
+    for (int searchId : searchIds) {
+        resetSearch(searchId);
+    }
+    page->d->deleteTextSelections();
+    page->setTextPage(nullptr);
+    d->m_allocatedTextPagesFifo.removeAll(pageNumber);
+    requestTextPage(pageNumber);
+    for (DocumentObserver *observer : std::as_const(d->m_observers)) {
+        observer->notifyPageChanged(pageNumber, DocumentObserver::TextSelection | DocumentObserver::Highlights);
+    }
+    return true;
+}
+
 bool Document::canPerformEnglishOcr() const
 {
     const auto ocr = dynamic_cast<const PdfOcrInterface *>(d->m_generator);

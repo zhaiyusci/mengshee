@@ -7294,6 +7294,9 @@ msgstr "创建链接..."
 msgid "Advanced PDF Editing Toolbar"
 msgstr "高级 PDF 编辑工具栏"
 
+msgid "Advanced PDF Editing"
+msgstr "高级 PDF 编辑"
+
 msgid "Page Tools"
 msgstr "页面工具"
 
@@ -7450,6 +7453,55 @@ msgstr "所有选中的页面都已经包含可选文字。"
 
 msgid "No English text was recognized on the selected pages."
 msgstr "在选中的页面上没有识别出英文文字。"
+
+msgid "Edit OCR Text Layer"
+msgstr "编辑 OCR 文字层"
+
+msgid "Edit OCR text on the current page. Click a word to correct it; double-click blank space to add text. Clear a word to delete it. Turn this off to restore the PDF appearance."
+msgstr "在当前页面上编辑 OCR 文字。点击文字可修改，双击空白处可补字，清空文字可删除。关闭此模式可恢复 PDF 原貌。"
+
+#, kde-format
+msgid "Edit OCR Text Layer — Page %1"
+msgstr "编辑 OCR 文字层 — 第 %1 页"
+
+msgid "This page has no supported OCR text layer. Text recognized by Mengshee can be edited here."
+msgstr "此页没有受支持的 OCR 文字层。可在此编辑由 Mengshee 识别的文字。"
+
+msgid "Edit the recognized English words and their rectangles. Coordinates are percentages of the page, measured from the top left. The page image stays unchanged."
+msgstr "编辑识别出的英文文字及其矩形区域。坐标以页面左上角为原点，单位为页面尺寸的百分比。页面图像保持不变。"
+
+msgid "Search recognized text"
+msgstr "搜索识别出的文字"
+
+msgid "Left (%)"
+msgstr "左侧 (%)"
+
+msgid "Top (%)"
+msgstr "顶部 (%)"
+
+msgid "Width (%)"
+msgstr "宽度 (%)"
+
+msgid "Height (%)"
+msgstr "高度 (%)"
+
+msgid "Add Word"
+msgstr "添加文字"
+
+msgid "Delete Selected Words"
+msgstr "删除选中文字"
+
+#, kde-format
+msgid "Row %1: enter printable English text and a nonempty rectangle within the page."
+msgstr "第 %1 行：请输入英文可打印字符，并确保矩形区域位于页面内且尺寸大于零。"
+
+#, kde-format
+msgid "Could not update the OCR text layer. %1"
+msgstr "无法更新 OCR 文字层。%1"
+
+msgctxt "Undo action"
+msgid "Edit OCR Text Layer"
+msgstr "编辑 OCR 文字层"
 
 msgctxt "Undo action"
 msgid "Recognize Text"

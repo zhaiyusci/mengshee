@@ -347,6 +347,8 @@ private:
     bool canUsePageLevelEditing() const;
     void setAdvancedModeEnabled(bool enabled);
     void updatePageEditActions();
+    void editOcrTextLayer();
+    void applyOcrTextLayerChange(int pageNumber, const QList<Okular::OcrTextWord> &before, const QList<Okular::OcrTextWord> &after);
     void insertPageWithDialog(int pageNumber);
     void insertPageFromTemplateWithDialog(int pageNumber);
     void insertBlankPage(int insertAfterPageNumber, const QSizeF &pageSize);
@@ -525,6 +527,7 @@ private:
     QAction *m_reload;
     QAction *m_combinePdfFiles = nullptr;
     QAction *m_recognizeEnglishText = nullptr;
+    QAction *m_editOcrTextLayer = nullptr;
     QAction *m_addCurrentPageToContents = nullptr;
     QAction *m_addNamedDestination = nullptr;
     QAction *m_addNamedDestinationsFromTemplate = nullptr;

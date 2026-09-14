@@ -80,6 +80,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cmath>
 #include <exception>
 #include <memory>
 #include <optional>
@@ -980,11 +981,21 @@ void Part::setupViewerActions()
     m_combinePdfFiles->setEnabled(true);
     connect(m_combinePdfFiles, &QAction::triggered, this, &Part::slotCombinePdfFiles);
 
-    m_recognizeEnglishText = ac->addAction(QStringLiteral("tools_recognize_english_text"));
+    m_editOcrTextLayer = ac->addAction(QStringLiteral("advanced_edit_ocr_text"));
+    m_editOcrTextLayer->setText(i18n("Edit OCR Text Layer"));
+    m_editOcrTextLayer->setCheckable(true);
+    m_editOcrTextLayer->setToolTip(i18n("Edit OCR text on the current page. Click a word to correct it; double-click blank space to add text. Clear a word to delete it. Turn this off to restore the PDF appearance."));
+    m_editOcrTextLayer->setIcon(QIcon::fromTheme(QStringLiteral("document-edit")));
+    m_editOcrTextLayer->setEnabled(false);
+    m_editOcrTextLayer->setVisible(false);
+    connect(m_editOcrTextLayer, &QAction::triggered, this, &Part::editOcrTextLayer);
+
+    m_recognizeEnglishText = ac->addAction(QStringLiteral("advanced_recognize_english_text"));
     m_recognizeEnglishText->setText(i18n("Recognize English Text..."));
     m_recognizeEnglishText->setIcon(QIcon::fromTheme(QStringLiteral("accessories-character-map"), QIcon::fromTheme(QStringLiteral("edit-find"))));
     m_recognizeEnglishText->setToolTip(i18n("Add a searchable English text layer to scanned PDF pages"));
     m_recognizeEnglishText->setEnabled(false);
+    m_recognizeEnglishText->setVisible(false);
     connect(m_recognizeEnglishText, &QAction::triggered, this, &Part::slotRecognizeEnglishText);
 
     m_addCurrentPageToContents = ac->addAction(QStringLiteral("tools_add_current_page_to_contents"));
@@ -1315,6 +1326,12 @@ PageView *Part::workspaceActivePageView() const
 
 void Part::connectWorkspacePageView(PageView *view)
 {
+    connect(view, &PageView::ocrTextEditingChanged, this, [this, view] {
+        if (m_editOcrTextLayer && workspaceActivePageView() == view) {
+            m_editOcrTextLayer->setChecked(view->isOcrTextEditing());
+        }
+    });
+    connect(view, &PageView::ocrTextLayerChangeRequested, this, &Part::applyOcrTextLayerChange);
     connect(view, &PageView::rightClick, this, &Part::slotShowMenu);
     connect(view, &PageView::editPdfLinkRequested, this, &Part::editPdfLink);
     connect(view, &PageView::createNamedDestinationRequested, this, &Part::addNamedDestination);
@@ -3266,6 +3283,9 @@ void Part::slotFindPrev()
 
 bool Part::saveFile()
 {
+    for (PageView *view : widget()->findChildren<PageView *>()) {
+        view->finishOcrWordEditing();
+    }
     if (!isModified()) {
         return true;
     } else {
@@ -3333,6 +3353,9 @@ bool Part::slotSaveFileAs(bool showOkularArchiveAsDefaultFormat)
 
 bool Part::saveAs(const QUrl &saveUrl)
 {
+    for (PageView *view : widget()->findChildren<PageView *>()) {
+        view->finishOcrWordEditing();
+    }
     // Save in the same format (.okular vs native) as the current file
     return saveAs(saveUrl, isDocumentArchive ? SaveAsOkularArchive : NoSaveAsFlags);
 }
@@ -4273,6 +4296,11 @@ void Part::updatePageEditActions()
     const bool canEditPages = canUsePageLevelEditing();
     const bool showAdvancedActions = m_advancedModeEnabled;
     const bool canEditLinks = showAdvancedActions && canEditPages && m_document->canEditPdfLinks();
+    if (m_editOcrTextLayer) {
+        m_editOcrTextLayer->setChecked(workspaceActivePageView() && workspaceActivePageView()->isOcrTextEditing());
+        m_editOcrTextLayer->setVisible(showAdvancedActions);
+        m_editOcrTextLayer->setEnabled(showAdvancedActions && canEditPages);
+    }
     const int currentPageNumber = workspaceActivePageNumber();
     const Okular::Page *currentPage = currentPageNumber >= 0 && currentPageNumber < static_cast<int>(m_document->pages()) ? m_document->page(currentPageNumber) : nullptr;
     const bool canRotateCurrentPage = showAdvancedActions && canEditPages && currentPage && m_document->canRotatePage();
@@ -4280,7 +4308,8 @@ void Part::updatePageEditActions()
         m_combinePdfFiles->setEnabled(!m_document->isOpened() || m_document->canCombinePdfFiles());
     }
     if (m_recognizeEnglishText) {
-        m_recognizeEnglishText->setEnabled(canEditPages && m_document->canPerformEnglishOcr());
+        m_recognizeEnglishText->setVisible(showAdvancedActions);
+        m_recognizeEnglishText->setEnabled(showAdvancedActions && canEditPages && m_document->canPerformEnglishOcr());
     }
     if (m_addCurrentPageToContents) {
         m_addCurrentPageToContents->setVisible(showAdvancedActions);
@@ -4349,6 +4378,11 @@ void Part::updatePageEditActions()
 void Part::setAdvancedModeEnabled(bool enabled)
 {
     const auto updateToolBars = [this, enabled] {
+        if (factory()) {
+            if (auto *advancedMenu = qobject_cast<QMenu *>(factory()->container(QStringLiteral("advanced_pdf_editing"), this))) {
+                advancedMenu->menuAction()->setVisible(enabled);
+            }
+        }
         if (m_thumbnailController) {
             m_thumbnailController->setAdvancedModeEnabled(enabled);
         }
@@ -4403,6 +4437,32 @@ void Part::setAdvancedModeEnabled(bool enabled)
     }
     updatePageEditActions();
     updateToolBars();
+}
+
+void Part::editOcrTextLayer()
+{
+    PageView *view = workspaceActivePageView();
+    if (!view || !m_advancedModeEnabled || !canUsePageLevelEditing()) {
+        return;
+    }
+    if (view->isOcrTextEditing()) {
+        view->stopOcrTextEditing();
+    } else if (!view->startOcrTextEditing(workspaceActivePageNumber())) {
+        KMessageBox::information(widget(), i18n("This page has no supported OCR text layer. Text recognized by Mengshee can be edited here."));
+    }
+    m_editOcrTextLayer->setChecked(view->isOcrTextEditing());
+}
+
+void Part::applyOcrTextLayerChange(int pageNumber, const QList<OcrTextWord> &before, const QList<OcrTextWord> &after)
+{
+    QString error;
+    if (!m_document->replaceOcrTextLayer(pageNumber, after, &error)) {
+        KMessageBox::error(widget(), i18n("Could not update the OCR text layer. %1", error));
+        return;
+    }
+    auto undo = [document = m_document, pageNumber, before](QString *error) { return document->replaceOcrTextLayer(pageNumber, before, error); };
+    auto redo = [document = m_document, pageNumber, after](QString *error) { return document->replaceOcrTextLayer(pageNumber, after, error); };
+    m_document->pushUndoCommand(new LivePdfLinkCommand(i18nc("Undo action", "Edit OCR Text Layer"), undo, redo));
 }
 
 void Part::slotRecognizeEnglishText()
