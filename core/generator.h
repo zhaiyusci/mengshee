@@ -682,6 +682,18 @@ public:
      */
     virtual bool exportTo(const QString &fileName, const ExportFormat &format);
 
+    /** Returns whether the loaded backend supports live page image export.
+     * Called on the owning (GUI) thread; the default implementation returns false.
+     */
+    virtual bool canRenderToImage() const;
+
+    /** Synchronously renders a zero-based logical page, including current rotation.
+     * Called on the owning (GUI) thread. Implementations must serialize access to
+     * live backend state, bound allocations, and restore temporary render settings.
+     * See Document::renderToImage(). The default returns a null image and an error.
+     */
+    virtual QImage renderToImage(int page, int dpi, bool includeAnnotations, QString *error = nullptr);
+
     /**
      * This method is called to know which wallet data should be used for the given file name.
      * Unless you have very special requirements to where wallet data should be stored you

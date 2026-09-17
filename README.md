@@ -66,6 +66,12 @@ LaTeX workflow.
   - Saved PDFs keep standard annotation structures and normal appearance
     streams.
 
+- **PDF image export**
+  - Export the current page, all pages, or a custom page range to PNG or JPEG.
+  - Choose DPI, JPEG quality, output names, and whether to include annotations.
+  - Uses the live document, including unsaved edits and the current page order.
+  - See `docs/image-export.md` for options and limits.
+
 - **Internal-link previews**
   - Internal PDF links can open in independent, splittable auxiliary panes
     without moving the main reading position.

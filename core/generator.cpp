@@ -441,6 +441,19 @@ bool Generator::exportTo(const QString &, const ExportFormat &)
     return false;
 }
 
+bool Generator::canRenderToImage() const
+{
+    return false;
+}
+
+QImage Generator::renderToImage(int, int, bool, QString *error)
+{
+    if (error) {
+        *error = i18n("This document backend does not support image export.");
+    }
+    return {};
+}
+
 void Generator::walletDataForFile(const QString &fileName, QString *walletName, QString *walletFolder, QString *walletKey) const
 {
 #if HAVE_KWALLET

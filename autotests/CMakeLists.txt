@@ -27,6 +27,15 @@ ecm_add_test(shelltest.cpp ../shell/shellutils.cpp
 
 if(Poppler_Qt6_FOUND)
     if (BUILD_DESKTOP)
+        ecm_add_test(imageexporttest.cpp
+            TEST_NAME "imageexporttest"
+            LINK_LIBRARIES Qt6::Widgets Qt6::Test Qt6::PrintSupport okularcore okularpart
+        )
+        ecm_add_test(imageexportuitest.cpp
+            TEST_NAME "imageexportuitest"
+            LINK_LIBRARIES Qt6::Widgets Qt6::Test Qt6::PrintSupport okularcore okularpart
+        )
+        set_tests_properties(imageexporttest imageexportuitest PROPERTIES TIMEOUT 60)
         ecm_add_test(parttest.cpp closedialoghelper.cpp
             TEST_NAME "parttest"
             LINK_LIBRARIES Qt6::Widgets Qt6::Test Qt6::Xml okularcore okularpart pdf_page_sequence_editor Poppler::Qt6

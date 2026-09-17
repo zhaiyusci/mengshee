@@ -41,7 +41,7 @@ kconfig_add_kcfg_files(okularGenerator_poppler_PART_SRCS GENERATE_MOC conf/pdfse
 
 okular_add_generator(okularGenerator_poppler ${okularGenerator_poppler_PART_SRCS})
 
-set(MENGSHEE_POPPLER_PRIVATE_BUILD_DIR "${CMAKE_BINARY_DIR}/../thirdparty/poppler-custom")
+set(MENGSHEE_POPPLER_PRIVATE_BUILD_DIR "${CMAKE_BINARY_DIR}/../thirdparty/poppler-custom" CACHE PATH "Build directory of the matching local Poppler fork (generated private headers)")
 if(NOT EXISTS "${MENGSHEE_POPPLER_PRIVATE_BUILD_DIR}/config.h")
     set(MENGSHEE_POPPLER_PRIVATE_BUILD_DIR "${CMAKE_BINARY_DIR}/../poppler-local")
 endif()

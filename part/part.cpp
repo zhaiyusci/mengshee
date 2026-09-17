@@ -25,6 +25,7 @@
 #include "config-okular.h"
 #include "latexrenderer.h"
 #include "mengsheeprintdialog.h"
+#include "imageexportdialog.h"
 
 // qt/kde includes
 #include <QApplication>
@@ -1252,6 +1253,11 @@ void Part::setupActions()
     m_exportAs->setMenu(m_exportAsMenu);
     m_exportAsText = actionForExportFormat(Okular::ExportFormat::standardFormat(Okular::ExportFormat::PlainText), m_exportAsMenu);
     m_exportAsMenu->addAction(m_exportAsText);
+    m_exportAsImages = ac->addAction(QStringLiteral("file_export_images"));
+    m_exportAsImages->setText(i18nc("@action:inmenu", "Images…"));
+    m_exportAsImages->setIcon(QIcon::fromTheme(QStringLiteral("image-x-generic")));
+    m_exportAsImages->setEnabled(false);
+    m_exportAsMenu->addAction(m_exportAsImages);
     m_exportAs->setEnabled(false);
     m_exportAsText->setEnabled(false);
 
@@ -2263,6 +2269,9 @@ bool Part::openFile()
     if (m_exportAsText) {
         m_exportAsText->setEnabled(ok && m_document->canExportToText());
     }
+    if (m_exportAsImages) {
+        m_exportAsImages->setEnabled(ok && m_document->canRenderToImage());
+    }
     if (m_exportAs) {
         m_exportAs->setEnabled(ok);
     }
@@ -2548,12 +2557,18 @@ bool Part::closeUrl(bool promptToSave)
     if (m_exportAsText) {
         m_exportAsText->setEnabled(false);
     }
+    if (m_exportAsImages) {
+        m_exportAsImages->setEnabled(false);
+    }
     m_exportFormats.clear();
     if (m_exportAs) {
         QMenu *menu = m_exportAs->menu();
         QList<QAction *> acts = menu->actions();
         int num = acts.count();
         for (int i = 1; i < num; ++i) {
+            if (acts.at(i) == m_exportAsImages) {
+                continue;
+            }
             menu->removeAction(acts.at(i));
             delete acts.at(i);
         }
@@ -6935,7 +6950,12 @@ void Part::slotAboutBackend()
 
 void Part::slotExportAs(QAction *act)
 {
+    if (act == m_exportAsImages) {
+        ImageExportDialog::exportDocument(m_document, workspaceActivePageNumber(), QFileInfo(realUrl().fileName()).completeBaseName(), widget());
+        return;
+    }
     QList<QAction *> acts = m_exportAs->menu() ? m_exportAs->menu()->actions() : QList<QAction *>();
+    acts.removeAll(m_exportAsImages);
     int id = acts.indexOf(act);
     if ((id < 0) || (id >= acts.count())) {
         return;

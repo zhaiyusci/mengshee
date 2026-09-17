@@ -7511,3 +7511,199 @@ msgstr "识别文字"
 msgid "Recognized English text on %1 page (%2 words). Save the document to keep this change."
 msgid_plural "Recognized English text on %1 pages (%2 words). Save the document to keep this change."
 msgstr[0] "已在 %1 页上识别出英文文字（%2 个单词）。请保存文档以保留此更改。"
+
+#: part/part.cpp
+msgctxt "@action:inmenu"
+msgid "Images…"
+msgstr "图像…"
+
+#: part/imageexportdialog.cpp
+#, kde-format
+msgid "Enter page numbers between 1 and %1, for example 1-4, 8, 11-13. Empty items, reversed ranges and open-ended ranges are not allowed."
+msgstr "请输入 1 到 %1 之间的页码，例如 1-4, 8, 11-13。不允许空项、倒序范围或省略起止页码的范围。"
+
+#: part/imageexportdialog.cpp
+msgid "Export Pages as Images"
+msgstr "将页面导出为图像"
+
+#: part/imageexportdialog.cpp
+msgid "This document cannot be exported as images."
+msgstr "此文档无法导出为图像。"
+
+#: part/imageexportdialog.cpp
+msgid "Custom page range"
+msgstr "自定义页面范围"
+
+#: part/imageexportdialog.cpp
+msgid "Page range:"
+msgstr "页面范围："
+
+#: part/imageexportdialog.cpp
+msgid "PNG (lossless)"
+msgstr "PNG（无损）"
+
+#: part/imageexportdialog.cpp
+msgid "JPEG"
+msgstr "JPEG"
+
+#: part/imageexportdialog.cpp
+msgid "No PNG or JPEG image writer is available."
+msgstr "没有可用的 PNG 或 JPEG 图像编码器。"
+
+#: part/imageexportdialog.cpp
+msgid "Format:"
+msgstr "格式："
+
+#: part/imageexportdialog.cpp
+msgid "Resolution (DPI):"
+msgstr "分辨率（DPI）："
+
+#: part/imageexportdialog.cpp
+msgid "JPEG quality:"
+msgstr "JPEG 质量："
+
+#: part/imageexportdialog.cpp
+msgid "Include annotations"
+msgstr "包含批注"
+
+#: part/imageexportdialog.cpp
+msgid "Browse…"
+msgstr "浏览…"
+
+#: part/imageexportdialog.cpp
+msgid "Output directory:"
+msgstr "输出目录："
+
+#: part/imageexportdialog.cpp
+msgid "Choose Output Directory"
+msgstr "选择输出目录"
+
+#: part/imageexportdialog.cpp
+msgid "Filename prefix:"
+msgstr "文件名前缀："
+
+#: part/imageexportdialog.cpp
+msgid "One file per page, using the original page number (for example document_0001.png).\nCancellation takes effect between pages. Files already written are kept.\nHigh resolutions may require substantial memory for a single page."
+msgstr "每页生成一个文件，使用原始页码命名（例如 document_0001.png）。\n取消操作在页面之间生效。已写入的文件将保留。\n高分辨率可能导致单页占用大量内存。"
+
+#: part/imageexportdialog.cpp
+msgid "Export"
+msgstr "导出"
+
+#: part/imageexportdialog.cpp
+msgid "There is no current page. Choose all pages or a custom page range."
+msgstr "没有当前页面。请选择所有页面或自定义页面范围。"
+
+#: part/imageexportdialog.cpp
+msgid "Enter a filename prefix of 1–80 characters without path separators, control characters or <>:\"|?*. Reserved names and trailing dots or spaces are not allowed."
+msgstr "请输入 1–80 个字符的文件名前缀，不得包含路径分隔符、控制字符或 <>:\"|?*。不允许使用保留名称，也不能以句点或空格结尾。"
+
+#: part/imageexportdialog.cpp
+msgid "Choose an existing output directory."
+msgstr "请选择已存在的输出目录。"
+
+#: part/imageexportdialog.cpp
+msgid "The output directory is no longer available."
+msgstr "输出目录已不可用。"
+
+#: part/imageexportdialog.cpp
+msgid "Preparing image export…"
+msgstr "正在准备导出图像…"
+
+#: part/imageexportdialog.cpp
+msgid "Cancel"
+msgstr "取消"
+
+#: part/imageexportdialog.cpp
+#, kde-format
+msgid "Cannot replace this output path because it is not a regular file:\n%1"
+msgstr "无法替换此输出路径，因为它不是普通文件：\n%1"
+
+#: part/imageexportdialog.cpp
+msgid "Replace Existing Image?"
+msgstr "替换现有图像？"
+
+#: part/imageexportdialog.cpp
+#, kde-format
+msgid "The following file already exists:\n%1\n\nReplace it? “Yes to All” allows replacement of all existing images in this export."
+msgstr "以下文件已存在：\n%1\n\n是否替换？选择“全部是”将允许替换本次导出中所有已存在的图像。"
+
+#: part/imageexportdialog.cpp
+#, kde-format
+msgid "Exporting page %1 of %2…\n%3 file(s) written. Cancel stops after the current page; written files are kept."
+msgstr "正在导出第 %1 页，共 %2 页…\n已写入 %3 个文件。取消操作将在当前页面完成后生效；已写入的文件将保留。"
+
+#: part/imageexportdialog.cpp
+msgid "The document or its window was closed or changed. Export stopped."
+msgstr "文档或其窗口已关闭或发生变化。导出已停止。"
+
+#: part/imageexportdialog.cpp
+#, kde-format
+msgid "Could not render page %1: %2"
+msgstr "无法渲染第 %1 页：%2"
+
+#: part/imageexportdialog.cpp
+msgid "The renderer returned an empty image."
+msgstr "渲染器返回了空图像。"
+
+#: part/imageexportdialog.cpp
+#, kde-format
+msgid "Could not open %1 for writing: %2"
+msgstr "无法打开 %1 进行写入：%2"
+
+#: part/imageexportdialog.cpp
+#, kde-format
+msgid "Could not write %1: %2"
+msgstr "无法写入 %1：%2"
+
+#: part/imageexportdialog.cpp
+#, kde-format
+msgid "Could not save %1 atomically: %2"
+msgstr "无法以原子方式保存 %1：%2"
+
+#: part/imageexportdialog.cpp
+msgid "Image Export Stopped"
+msgstr "图像导出已停止"
+
+#: part/imageexportdialog.cpp
+#, kde-format
+msgid "%1\n\n%2 file(s) were written to:\n%3\nFiles already written have been kept."
+msgstr "%1\n\n已将 %2 个文件写入：\n%3\n已写入的文件均已保留。"
+
+#: part/imageexportdialog.cpp
+msgid "Image Export Canceled"
+msgstr "图像导出已取消"
+
+#: part/imageexportdialog.cpp
+#, kde-format
+msgid "%1 file(s) were written to:\n%2\nFiles already written have been kept."
+msgstr "已将 %1 个文件写入：\n%2\n已写入的文件均已保留。"
+
+#: part/imageexportdialog.cpp
+msgid "Image Export Complete"
+msgstr "图像导出已完成"
+
+#: part/imageexportdialog.cpp
+#, kde-format
+msgid "%1 file(s) were written to:\n%2"
+msgstr "已将 %1 个文件写入：\n%2"
+
+#: core/document.cpp core/generator.cpp
+msgid "This document backend does not support image export."
+msgstr "此文档后端不支持图像导出。"
+
+#: core/document.cpp
+msgid "Page image export must run on the document's owning thread."
+msgstr "页面图像导出必须在文档所属的线程上运行。"
+
+#: core/document.cpp
+msgid "No document is open."
+msgstr "没有打开的文档。"
+
+#: core/document.cpp
+msgid "The requested page does not exist."
+msgstr "请求的页面不存在。"
+
+#: core/document.cpp
+msgid "The image resolution must be positive."
+msgstr "图像分辨率必须为正数。"

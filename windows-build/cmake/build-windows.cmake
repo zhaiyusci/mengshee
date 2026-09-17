@@ -127,6 +127,11 @@ function(mengshee_run_vs command_line)
 set \"PATH=${_qt_bin};${_sdk_bin};%PATH%\"
 call \"${VCVARS}\" >nul
 if errorlevel 1 exit /b %errorlevel%
+rem Keep /showIncludes encoding identical during CMake detection and Ninja builds.
+rem VSLANG prefers English; UTF-8 also handles installations with only Chinese resources.
+set \"VSLANG=1033\"
+chcp 65001 >nul
+if errorlevel 1 exit /b %errorlevel%
 ${command_line}
 ")
     message(STATUS ">>> ${command_line}")

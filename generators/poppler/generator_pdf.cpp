@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <cmath>
 #include <exception>
+#include <limits>
 #include <memory>
 #include <vector>
 
@@ -35,6 +36,8 @@
 #include <QMutex>
 #include <QPainter>
 #include <QPrinter>
+#include <QScopeGuard>
+#include <QThread>
 #include <QStack>
 #include <QStandardPaths>
 #include <QTemporaryFile>
@@ -1783,6 +1786,109 @@ QImage PDFGenerator::image(Okular::PixmapRequest *request)
     }
 
     return img;
+}
+
+bool PDFGenerator::canRenderToImage() const
+{
+    if (QThread::currentThread() != thread()) {
+        return false;
+    }
+    QMutexLocker locker(userMutex());
+    return pdfdoc && !m_pageOrder.isEmpty();
+}
+
+QImage PDFGenerator::renderToImage(int page, int dpi, bool includeAnnotations, QString *error)
+{
+    if (error) {
+        error->clear();
+    }
+    const auto fail = [error](const QString &message) -> QImage {
+        if (error) {
+            *error = message;
+        }
+        return {};
+    };
+    // The mutex serializes background pixmap/text jobs, but does not make the
+    // QObject/page model or document lifecycle safe to access from a worker.
+    if (QThread::currentThread() != thread()) {
+        return fail(i18n("Page image export must run on the document's owning thread."));
+    }
+    QMutexLocker locker(userMutex());
+    if (!pdfdoc) {
+        return fail(i18n("No PDF document is open."));
+    }
+    if (page < 0 || page >= m_pageOrder.size()) {
+        return fail(i18n("The requested page does not exist."));
+    }
+    if (dpi <= 0) {
+        return fail(i18n("The image resolution must be positive."));
+    }
+    if (dpi / 0.0254 > std::numeric_limits<int>::max()) {
+        return fail(i18n("The image resolution is too large."));
+    }
+    const int nativePage = nativePageForLogicalPage(page);
+    if (nativePage < 0 || nativePage >= pdfdoc->numPages()) {
+        return fail(i18n("The requested PDF page is unavailable."));
+    }
+
+    try {
+        const std::unique_ptr<Poppler::Page> pdfPage = pdfdoc->page(nativePage);
+        const Okular::Page *modelPage = document() ? document()->page(page) : nullptr;
+        if (!pdfPage || !modelPage) {
+            return fail(i18n("The requested PDF page is unavailable."));
+        }
+        // pageSizeF already includes the PDF's native /Rotate. Only add the
+        // Okular view rotation, not totalOrientation(), which would apply it twice.
+        QSizeF size = pdfPage->pageSizeF();
+        const int rotation = static_cast<int>(modelPage->rotation());
+        if (rotation % 2) {
+            size.transpose();
+        }
+        const double width = std::ceil(size.width() * dpi / 72.0);
+        const double height = std::ceil(size.height() * dpi / 72.0);
+        constexpr double maxPixels = 64000000.0;
+        constexpr double maxDimension = 32768.0;
+        // Validate in floating point before any narrowing conversion or allocation.
+        // 64M RGBA pixels alone require 256 MB; Poppler may need extra working memory.
+        if (!std::isfinite(width) || !std::isfinite(height) || width < 1 || height < 1) {
+            return fail(i18n("The PDF page has invalid image dimensions."));
+        }
+        if (width > maxDimension || height > maxDimension || width * height > maxPixels) {
+            return fail(i18n("The requested image is too large. Reduce the resolution (maximum 64 million pixels and 32768 pixels per side)."));
+        }
+
+        const auto oldHints = pdfdoc->renderHints();
+        const QColor oldPaper = pdfdoc->paperColor();
+        const auto oldBackend = pdfdoc->renderBackend();
+        // Declare after the locker: restoration (including exceptional exits) must
+        // happen before releasing the same mutex used by normal display rendering.
+        const auto restore = qScopeGuard([&] {
+            pdfdoc->setRenderHint(Poppler::Document::HideAnnotations, oldHints.testFlag(Poppler::Document::HideAnnotations));
+            pdfdoc->setRenderHint(Poppler::Document::Antialiasing, oldHints.testFlag(Poppler::Document::Antialiasing));
+            pdfdoc->setRenderHint(Poppler::Document::TextAntialiasing, oldHints.testFlag(Poppler::Document::TextAntialiasing));
+            pdfdoc->setRenderHint(Poppler::Document::IgnorePaperColor, oldHints.testFlag(Poppler::Document::IgnorePaperColor));
+            pdfdoc->setPaperColor(oldPaper);
+            pdfdoc->setRenderBackend(oldBackend);
+        });
+        pdfdoc->setRenderBackend(Poppler::Document::SplashBackend);
+        pdfdoc->setRenderHint(Poppler::Document::IgnorePaperColor, false);
+        pdfdoc->setRenderHint(Poppler::Document::HideAnnotations, !includeAnnotations);
+        pdfdoc->setRenderHint(Poppler::Document::Antialiasing, true);
+        pdfdoc->setRenderHint(Poppler::Document::TextAntialiasing, true);
+        pdfdoc->setPaperColor(Qt::white);
+        // Render the current live backend, never reopen the saved file: annotation,
+        // form, page-order and structural edits must not be lost during export.
+        QImage result = pdfPage->renderToImage(dpi, dpi, -1, -1, -1, -1, static_cast<Poppler::Page::Rotation>(rotation));
+        if (result.isNull()) {
+            return fail(i18n("Could not render the PDF page. Try a lower resolution."));
+        }
+        const int dotsPerMeter = qRound(dpi / 0.0254);
+        result.setDotsPerMeterX(dotsPerMeter);
+        result.setDotsPerMeterY(dotsPerMeter);
+        return result;
+    } catch (const std::exception &) {
+        return fail(i18n("Could not render the PDF page. Try a lower resolution."));
+    }
 }
 
 template<typename PopplerLinkType, typename OkularLinkType, typename PopplerAnnotationType, typename OkularAnnotationType>

@@ -18,6 +18,7 @@
 #include "signatureutils.h"
 
 #include <QDomDocument>
+#include <QImage>
 #include <QList>
 #include <QObject>
 #include <QPrinter>
@@ -409,6 +410,26 @@ public:
      * Exports the document in the given @p format and saves it under @p fileName.
      */
     bool exportTo(const QString &fileName, const ExportFormat &format) const;
+
+    /** Returns whether the open document supports synchronous page image export.
+     * Call on the document's owning (GUI) thread only.
+     */
+    bool canRenderToImage() const;
+
+    /**
+     * Renders the zero-based logical @p page at @p dpi, using the live document
+     * (including unsaved edits) and its current page/view rotation.
+     * @p includeAnnotations controls visible native annotations, not UI overlays.
+     * Returns a null image on failure and optionally sets @p error; clears it on success.
+     * The PDF backend uses white paper and rejects images exceeding 64 million pixels
+     * or 32768 pixels on either axis. It never silently reduces the requested DPI.
+     *
+     * Call on the document's owning (GUI) thread only. This blocks until one page
+     * is complete, does not process events, and cannot be cancelled within a page.
+     * Callers may process cancellation between pages and must revalidate the document
+     * if they process events. The returned image may be encoded on a worker thread.
+     */
+    QImage renderToImage(int page, int dpi, bool includeAnnotations, QString *error = nullptr);
 
     /**
      * Returns whether the document history is at the begin.

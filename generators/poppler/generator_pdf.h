@@ -82,6 +82,8 @@ public:
 
     // [INHERITED] perform actions on document / pages
     QImage image(Okular::PixmapRequest *request) override;
+    bool canRenderToImage() const override;
+    QImage renderToImage(int page, int dpi, bool includeAnnotations, QString *error = nullptr) override;
 
     // [INHERITED] print page using an already configured kprinter
     Okular::Document::PrintError print(QPrinter &printer) override;

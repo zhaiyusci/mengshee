@@ -98,6 +98,14 @@ It runs:
 
 For a clean Mengshee rebuild, add `-DCLEAN_BUILD=ON`.
 
+The driver uses UTF-8 console output for both compiler detection and builds
+(and prefers English MSVC messages when installed). Keep the same encoding when
+running manual CMake/Ninja commands: after `vcvars64.bat`, run `chcp 65001` and
+`set VSLANG=1033`. Otherwise a localized `/showIncludes` prefix can be recorded
+incorrectly, making Ninja miss header dependencies and retain ABI-incompatible
+objects. If upgrading from such a build, use `-DCLEAN_BUILD=ON` once; changing the
+console encoding alone does not repair the old compiler cache or object files.
+
 If Inno Setup is not installed, still build and stage the runtime with:
 
 ```powershell

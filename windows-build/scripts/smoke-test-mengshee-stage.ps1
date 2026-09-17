@@ -37,7 +37,8 @@ $oldPath = $env:PATH
 $process = $null
 try {
     $env:PATH = "$StageRoot\bin;$env:SystemRoot\System32;$env:SystemRoot"
-    Start-Process -FilePath $mengsheeExe -ArgumentList "`"$PdfPath`"" -WorkingDirectory (Join-Path $StageRoot "bin") -WindowStyle Minimized
+    # Never forward the smoke-test document to another installed/running instance.
+    Start-Process -FilePath $mengsheeExe -ArgumentList @("--new-process", "`"$PdfPath`"") -WorkingDirectory (Join-Path $StageRoot "bin") -WindowStyle Minimized
     Start-Sleep -Seconds $WaitSeconds
 
     $process = Get-Process -Name mengshee -ErrorAction Stop |

@@ -401,3 +401,39 @@ msgstr "只能编辑指向本文档页面的 PDF 目录项。"
 #, kde-format
 msgid "The PDF backend cannot edit this document's contents."
 msgstr "PDF 后端无法编辑此文档的目录。"
+
+#: generator_pdf.cpp
+msgid "Page image export must run on the document's owning thread."
+msgstr "页面图像导出必须在文档所属的线程上运行。"
+
+#: generator_pdf.cpp
+msgid "No PDF document is open."
+msgstr "没有打开的 PDF 文档。"
+
+#: generator_pdf.cpp
+msgid "The requested page does not exist."
+msgstr "请求的页面不存在。"
+
+#: generator_pdf.cpp
+msgid "The image resolution must be positive."
+msgstr "图像分辨率必须为正数。"
+
+#: generator_pdf.cpp
+msgid "The image resolution is too large."
+msgstr "图像分辨率过高。"
+
+#: generator_pdf.cpp
+msgid "The requested PDF page is unavailable."
+msgstr "请求的 PDF 页面不可用。"
+
+#: generator_pdf.cpp
+msgid "The PDF page has invalid image dimensions."
+msgstr "PDF 页面的图像尺寸无效。"
+
+#: generator_pdf.cpp
+msgid "The requested image is too large. Reduce the resolution (maximum 64 million pixels and 32768 pixels per side)."
+msgstr "请求的图像过大。请降低分辨率（最多 6400 万像素，且每边不超过 32768 像素）。"
+
+#: generator_pdf.cpp
+msgid "Could not render the PDF page. Try a lower resolution."
+msgstr "无法渲染 PDF 页面。请尝试降低分辨率。"

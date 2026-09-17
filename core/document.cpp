@@ -47,6 +47,7 @@
 #include <QStandardPaths>
 #include <QTemporaryFile>
 #include <QTextStream>
+#include <QThread>
 #include <QTimer>
 #include <QUndoCommand>
 #include <QWindow>
@@ -3553,6 +3554,41 @@ ExportFormat::List Document::exportFormats() const
 bool Document::exportTo(const QString &fileName, const ExportFormat &format) const
 {
     return d->m_generator ? d->m_generator->exportTo(fileName, format) : false;
+}
+
+bool Document::canRenderToImage() const
+{
+    return QThread::currentThread() == thread() && d->m_generator && d->m_generator->canRenderToImage();
+}
+
+QImage Document::renderToImage(int page, int dpi, bool includeAnnotations, QString *error)
+{
+    if (error) {
+        error->clear();
+    }
+    const auto fail = [error](const QString &message) -> QImage {
+        if (error) {
+            *error = message;
+        }
+        return {};
+    };
+    // Check affinity before touching mutable document/backend state.
+    if (QThread::currentThread() != thread()) {
+        return fail(i18n("Page image export must run on the document's owning thread."));
+    }
+    if (!d->m_generator) {
+        return fail(i18n("No document is open."));
+    }
+    if (page < 0 || page >= d->m_pagesVector.size()) {
+        return fail(i18n("The requested page does not exist."));
+    }
+    if (dpi <= 0) {
+        return fail(i18n("The image resolution must be positive."));
+    }
+    if (!d->m_generator->canRenderToImage()) {
+        return fail(i18n("This document backend does not support image export."));
+    }
+    return d->m_generator->renderToImage(page, dpi, includeAnnotations, error);
 }
 
 bool Document::historyAtBegin() const
