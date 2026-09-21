@@ -98,6 +98,8 @@ public:
     // [INHERITED] text exporting
     Okular::ExportFormat::List exportFormats() const override;
     bool exportTo(const QString &fileName, const Okular::ExportFormat &format) override;
+    bool canExportFlattenedPdf() const override;
+    bool exportFlattenedPdf(const QString &fileName, QString *errorText, int *flattenedAnnotations, int *preservedAnnotations) override;
 
     // [INHERITED] print interface
     Okular::PrintOptionsWidget *printConfigurationWidget() const override;

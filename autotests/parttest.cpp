@@ -55,6 +55,8 @@
 #include <QMimeDatabase>
 #include <QMimeData>
 #include <QPageRanges>
+#include <QPainter>
+#include <QPdfWriter>
 #include <QPrinter>
 #include <QPushButton>
 #include <QScrollBar>
@@ -145,6 +147,8 @@ private Q_SLOTS:
     void testeTextSelectionOverAndAcrossLinks_data();
     void testeTextSelectionOverAndAcrossLinks();
     void testClickUrlLinkWhileLinkTextIsSelected();
+    void testTextSelectionBlankContextMenu_data();
+    void testTextSelectionBlankContextMenu();
     void testRClickWhileLinkTextIsSelected();
     void testRClickOverLinkWhileLinkTextIsSelected();
     void testRClickOnSelectionModeShoulShowFollowTheLinkMenu();
@@ -1403,6 +1407,103 @@ void PartTest::testClickUrlLinkWhileLinkTextIsSelected()
 }
 
 // r-click on the selected text gives the "Go To:" content menu option
+void PartTest::testTextSelectionBlankContextMenu_data()
+{
+    QTest::addColumn<bool>("insidePage");
+    QTest::newRow("page-blank") << true;
+    QTest::newRow("outside-page") << false;
+}
+
+void PartTest::testTextSelectionBlankContextMenu()
+{
+    QFETCH(bool, insidePage);
+    if (qgetenv("KDECI_CANNOT_CREATE_WINDOWS") == "1") {
+        QSKIP("KDE CI can't create a window on this platform, skipping some gui tests");
+    }
+
+    // A generated blank page avoids relying on text/annotations in shared fixtures.
+    QTemporaryDir temporary;
+    QVERIFY(temporary.isValid());
+    const QString source = temporary.filePath(QStringLiteral("blank-context-menu.pdf"));
+    {
+        QPdfWriter writer(source);
+        QPainter painter(&writer);
+        QVERIFY(painter.isActive());
+        painter.fillRect(QRect(0, 0, writer.width(), writer.height()), Qt::white);
+        QVERIFY(painter.end());
+    }
+    Okular::Part part(nullptr, QVariantList());
+    QVERIFY(openDocument(&part, source));
+    part.widget()->resize(800, 600);
+    part.widget()->show();
+    QVERIFY(QTest::qWaitForWindowExposed(part.widget()));
+    part.m_document->setViewportPage(0);
+    QAction *fitPage = part.actionCollection()->action(QStringLiteral("view_fit_to_page"));
+    QVERIFY(fitPage);
+    fitPage->trigger();
+    QTRY_VERIFY(part.m_document->page(0)->hasPixmap(part.m_pageView));
+
+    QAction *textSelection = part.actionCollection()->action(QStringLiteral("mouse_textselect"));
+    QVERIFY(textSelection);
+    textSelection->trigger();
+    QVERIFY(textSelection->isChecked());
+
+    PageView *view = part.m_pageView;
+    QWidget *viewport = view->viewport();
+    // Use actual page mapping rather than assuming a particular zoom, margin or scroll position.
+    const auto findClickPosition = [&]() {
+        for (int y = 2; y < viewport->height() - 2; y += 4) {
+            for (int x = 2; x < viewport->width() - 2; x += 4) {
+                const QPoint position(x, y);
+                int pageNumber = -1;
+                Okular::NormalizedPoint point;
+                const bool onPage = view->mapGlobalPosToPagePoint(viewport->mapToGlobal(position), &pageNumber, &point);
+                // Pick the blank page interior, or the surrounding viewport margin.
+                if ((insidePage && onPage && pageNumber == 0 && point.x > 0.4 && point.x < 0.6 && point.y > 0.4 && point.y < 0.6) || (!insidePage && !onPage)) {
+                    return position;
+                }
+            }
+        }
+        return QPoint(-1, -1);
+    };
+    QTRY_VERIFY(findClickPosition().x() >= 0);
+    const QPoint position = findClickPosition();
+    const QPoint globalPosition = viewport->mapToGlobal(position);
+    // PageView's metaobject/signal symbols are not exported on Windows.
+    qRegisterMetaType<const Okular::Page *>();
+    QSignalSpy rightClicks(view, SIGNAL(rightClick(const Okular::Page *, QPoint)));
+    QVERIFY(rightClicks.isValid());
+
+    bool pageMenuShown = false;
+    // exec() starts a nested event loop. Always dismiss every visible menu, even an unexpected
+    // one, before asserting anything. A local single-shot also cancels the callback if no menu
+    // is opened (the original regression), so neither case leaves a pending reference capture.
+    QTimer menuCloser;
+    menuCloser.setSingleShot(true);
+    connect(&menuCloser, &QTimer::timeout, this, [&]() {
+        for (QWidget *widget : QApplication::topLevelWidgets()) {
+            if (auto *menu = qobject_cast<QMenu *>(widget); menu && menu->isVisible()) {
+                // Shared action identity identifies Part's page menu without translated labels.
+                pageMenuShown |= menu->actions().contains(part.m_prevBookmark) && menu->actions().contains(part.m_nextBookmark);
+                menu->close();
+            }
+        }
+    });
+    QTest::mouseMove(viewport, position);
+    menuCloser.start(100);
+    QTest::mouseClick(viewport, Qt::RightButton, Qt::NoModifier, position);
+    menuCloser.stop();
+
+    QCOMPARE(rightClicks.count(), 1);
+    QCOMPARE(qvariant_cast<const Okular::Page *>(rightClicks.at(0).at(0)), insidePage ? part.m_document->page(0) : nullptr);
+    QCOMPARE(rightClicks.at(0).at(1).toPoint(), globalPosition);
+    if (insidePage) {
+        QVERIFY(pageMenuShown);
+    } else {
+        QVERIFY(!pageMenuShown);
+    }
+}
+
 void PartTest::testRClickWhileLinkTextIsSelected()
 {
     QVariantList dummyArgs;

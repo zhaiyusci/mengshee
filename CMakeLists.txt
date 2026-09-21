@@ -609,6 +609,7 @@ if(BUILD_DESKTOP)
     part/fileprinterpreview.cpp
     part/mengsheeprintdialog.cpp
     part/imageexportdialog.cpp
+    part/flattenedpdfexportdialog.cpp
     part/findbar.cpp
     part/formwidgets.cpp
     part/kleopatraintegration.h

@@ -2337,7 +2337,7 @@ msgstr "移除此文档的所有书签"
 msgid "Certificate Viewer"
 msgstr "证书查看器"
 
-#: part/certificateviewer.cpp:50
+#: part/certificateviewer.cpp:50 part/flattenedpdfexportdialog.cpp
 #, kde-format
 msgid "Export…"
 msgstr "导出…"
@@ -7707,3 +7707,64 @@ msgstr "请求的页面不存在。"
 #: core/document.cpp
 msgid "The image resolution must be positive."
 msgstr "图像分辨率必须为正数。"
+
+#: part/part.cpp
+msgctxt "@action:inmenu"
+msgid "Flattened PDF…"
+msgstr "扁平化 PDF…"
+
+#: part/flattenedpdfexportdialog.cpp
+msgctxt "@title:window"
+msgid "Export Flattened PDF"
+msgstr "导出扁平化 PDF"
+
+#: part/flattenedpdfexportdialog.cpp
+msgid "This document cannot be exported as a flattened PDF. Documents with digital signatures are not supported."
+msgstr "此文档无法导出为扁平化 PDF。不支持带有数字签名的文档。"
+
+#: part/flattenedpdfexportdialog.cpp
+msgid "Create a final copy of all pages by merging visible drawing and text annotations into the page, preserving vectors. The original document remains editable.\n\nHidden annotations, links and forms are preserved. This is not secure redaction or tamper protection. Export is refused for digitally signed or unsupported documents.\n\nExport runs as a single synchronous operation. The application will be busy until it finishes; cancellation is not available during export."
+msgstr "将可见的绘图和文字批注合入页面，保留矢量，生成包含全部页面的定稿副本。原文档仍可编辑。\n\n隐藏批注、链接和表单将保留。这不是安全涂黑或防篡改功能。已签名或不支持的文档将被拒绝导出。\n\n导出为单次同步处理，完成前应用程序将处于忙碌状态；导出期间无法取消。"
+
+#: part/flattenedpdfexportdialog.cpp
+msgctxt "@item:inlistbox"
+msgid "PDF documents (*.pdf)"
+msgstr "PDF 文档 (*.pdf)"
+
+#: part/flattenedpdfexportdialog.cpp
+msgid "Choose a different file. The source document cannot be overwritten by a flattened copy."
+msgstr "请选择其他文件。扁平化副本不能覆盖源文档。"
+
+#: part/flattenedpdfexportdialog.cpp
+#, kde-format
+msgid "The file '%1' already exists. Replace it with the flattened PDF?"
+msgstr "文件“%1”已存在。是否用扁平化 PDF 替换它？"
+
+#: part/flattenedpdfexportdialog.cpp
+msgid "The flattened PDF could not be exported."
+msgstr "无法导出扁平化 PDF。"
+
+#: part/flattenedpdfexportdialog.cpp
+#, kde-format
+msgid "Exported to: %1\nFlattened annotations: %2\nPreserved annotations: %3\nThe original document has not been changed."
+msgstr "已导出到：%1\n已扁平化批注：%2\n保留批注：%3\n原文档未发生更改。"
+
+#: core/document.cpp core/generator.cpp
+msgid "This document backend does not support flattened PDF export."
+msgstr "此文档后端不支持扁平化 PDF 导出。"
+
+#: core/document.cpp
+msgid "PDF export must run on the document's owning thread."
+msgstr "PDF 导出必须在文档所属的线程上运行。"
+
+#: core/document.cpp
+msgid "Choose a regular output file for the flattened PDF."
+msgstr "请为扁平化 PDF 选择普通输出文件。"
+
+#: core/document.cpp
+msgid "Could not verify that the output is different from the source PDF."
+msgstr "无法确认输出文件与源 PDF 是否为不同文件。"
+
+#: core/document.cpp
+msgid "The flattened PDF must be saved to a different file. Your editable source will not be overwritten."
+msgstr "扁平化 PDF 必须另存到其他文件，不会覆盖可编辑的源文档。"

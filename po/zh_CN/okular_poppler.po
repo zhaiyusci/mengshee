@@ -437,3 +437,63 @@ msgstr "请求的图像过大。请降低分辨率（最多 6400 万像素，且
 #: generator_pdf.cpp
 msgid "Could not render the PDF page. Try a lower resolution."
 msgstr "无法渲染 PDF 页面。请尝试降低分辨率。"
+
+#: generator_pdf.cpp
+msgid "No PDF is open, or PDF export was requested from the wrong thread."
+msgstr "没有打开 PDF，或 PDF 导出请求来自错误的线程。"
+
+#: generator_pdf.cpp
+msgid "Flattened export of encrypted PDFs is not supported. The original encryption will not be silently removed."
+msgstr "不支持扁平化导出加密 PDF，不会擅自移除原文档的加密保护。"
+
+#: generator_pdf.cpp
+msgid "Could not create temporary files for flattened PDF export."
+msgstr "无法为 PDF 扁平化导出创建临时文件。"
+
+#: generator_pdf.cpp
+#, kde-format
+msgid "Could not create the current PDF snapshot: %1"
+msgstr "无法创建当前 PDF 的快照：%1"
+
+#: generator_pdf.cpp
+#, kde-format
+msgid "Could not flatten the PDF: %1"
+msgstr "无法扁平化 PDF：%1"
+
+#: generator_pdf.cpp
+#, kde-format
+msgid "Could not flatten page %1, annotation %2: %3"
+msgstr "无法扁平化第 %1 页的第 %2 个批注：%3"
+
+#: generator_pdf.cpp
+msgid "The output path must be a regular file, not a directory or symbolic link."
+msgstr "输出路径必须为普通文件，不能是目录或符号链接。"
+
+#: generator_pdf.cpp
+#, kde-format
+msgid "Could not read the flattened PDF: %1"
+msgstr "无法读取扁平化 PDF：%1"
+
+#: generator_pdf.cpp
+#, kde-format
+msgid "Could not open the output PDF: %1"
+msgstr "无法打开输出 PDF：%1"
+
+#: generator_pdf.cpp
+#, kde-format
+msgid "Could not write the output PDF: %1"
+msgstr "无法写入输出 PDF：%1"
+
+#: generator_pdf.cpp
+#, kde-format
+msgid "Could not save the output PDF atomically: %1"
+msgstr "无法以原子方式保存输出 PDF：%1"
+
+#: generator_pdf.cpp
+#, kde-format
+msgid "Flattened PDF export failed: %1"
+msgstr "扁平化 PDF 导出失败：%1"
+
+#: generator_pdf.cpp
+msgid "Flattened PDF export failed because of an unknown internal error."
+msgstr "由于未知的内部错误，扁平化 PDF 导出失败。"

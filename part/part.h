@@ -512,6 +512,7 @@ private:
     QAction *m_exportAs;
     QAction *m_exportAsText;
     QAction *m_exportAsImages = nullptr;
+    QAction *m_exportAsFlattenedPdf = nullptr;
     QAction *m_exportAsDocArchive;
 #if HAVE_PURPOSE
     QAction *m_share;

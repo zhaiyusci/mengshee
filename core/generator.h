@@ -883,6 +883,14 @@ protected:
     friend class DocumentPrivate;
     /// @endcond PRIVATE
 
+public:
+    /** Export a separate flattened PDF without changing the live document.
+     * These virtuals are appended to keep existing virtual slot ordering stable.
+     * The default backend does not support this operation.
+     */
+    virtual bool canExportFlattenedPdf() const;
+    virtual bool exportFlattenedPdf(const QString &fileName, QString *errorText, int *flattenedAnnotations, int *preservedAnnotations);
+
 private:
     Q_DISABLE_COPY(Generator)
 };

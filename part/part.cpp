@@ -26,6 +26,7 @@
 #include "latexrenderer.h"
 #include "mengsheeprintdialog.h"
 #include "imageexportdialog.h"
+#include "flattenedpdfexportdialog.h"
 
 // qt/kde includes
 #include <QApplication>
@@ -1258,6 +1259,11 @@ void Part::setupActions()
     m_exportAsImages->setIcon(QIcon::fromTheme(QStringLiteral("image-x-generic")));
     m_exportAsImages->setEnabled(false);
     m_exportAsMenu->addAction(m_exportAsImages);
+    m_exportAsFlattenedPdf = ac->addAction(QStringLiteral("file_export_flattened_pdf"));
+    m_exportAsFlattenedPdf->setText(i18nc("@action:inmenu", "Flattened PDF…"));
+    m_exportAsFlattenedPdf->setIcon(QIcon::fromTheme(QStringLiteral("application-pdf")));
+    m_exportAsFlattenedPdf->setEnabled(false);
+    m_exportAsMenu->addAction(m_exportAsFlattenedPdf);
     m_exportAs->setEnabled(false);
     m_exportAsText->setEnabled(false);
 
@@ -2272,6 +2278,9 @@ bool Part::openFile()
     if (m_exportAsImages) {
         m_exportAsImages->setEnabled(ok && m_document->canRenderToImage());
     }
+    if (m_exportAsFlattenedPdf) {
+        m_exportAsFlattenedPdf->setEnabled(ok && m_document->canExportFlattenedPdf());
+    }
     if (m_exportAs) {
         m_exportAs->setEnabled(ok);
     }
@@ -2560,13 +2569,16 @@ bool Part::closeUrl(bool promptToSave)
     if (m_exportAsImages) {
         m_exportAsImages->setEnabled(false);
     }
+    if (m_exportAsFlattenedPdf) {
+        m_exportAsFlattenedPdf->setEnabled(false);
+    }
     m_exportFormats.clear();
     if (m_exportAs) {
         QMenu *menu = m_exportAs->menu();
         QList<QAction *> acts = menu->actions();
         int num = acts.count();
         for (int i = 1; i < num; ++i) {
-            if (acts.at(i) == m_exportAsImages) {
+            if (acts.at(i) == m_exportAsImages || acts.at(i) == m_exportAsFlattenedPdf) {
                 continue;
             }
             menu->removeAction(acts.at(i));
@@ -6954,8 +6966,13 @@ void Part::slotExportAs(QAction *act)
         ImageExportDialog::exportDocument(m_document, workspaceActivePageNumber(), QFileInfo(realUrl().fileName()).completeBaseName(), widget());
         return;
     }
+    if (act == m_exportAsFlattenedPdf) {
+        FlattenedPdfExportDialog::exportDocument(m_document, realUrl(), widget());
+        return;
+    }
     QList<QAction *> acts = m_exportAs->menu() ? m_exportAs->menu()->actions() : QList<QAction *>();
     acts.removeAll(m_exportAsImages);
+    acts.removeAll(m_exportAsFlattenedPdf);
     int id = acts.indexOf(act);
     if ((id < 0) || (id >= acts.count())) {
         return;

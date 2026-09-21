@@ -441,6 +441,25 @@ bool Generator::exportTo(const QString &, const ExportFormat &)
     return false;
 }
 
+bool Generator::canExportFlattenedPdf() const
+{
+    return false;
+}
+
+bool Generator::exportFlattenedPdf(const QString &, QString *errorText, int *flattenedAnnotations, int *preservedAnnotations)
+{
+    if (flattenedAnnotations) {
+        *flattenedAnnotations = 0;
+    }
+    if (preservedAnnotations) {
+        *preservedAnnotations = 0;
+    }
+    if (errorText) {
+        *errorText = i18n("This document backend does not support flattened PDF export.");
+    }
+    return false;
+}
+
 bool Generator::canRenderToImage() const
 {
     return false;

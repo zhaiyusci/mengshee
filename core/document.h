@@ -431,6 +431,19 @@ public:
      */
     QImage renderToImage(int page, int dpi, bool includeAnnotations, QString *error = nullptr);
 
+    /** Whether the open backend supports exporting a flattened PDF copy. */
+    bool canExportFlattenedPdf() const;
+
+    /**
+     * Export the live document as a separate PDF with visible supported annotation
+     * appearances incorporated into page content. Does not alter the source,
+     * undo stack or save/dirty state. Hidden annotations, links and widgets remain
+     * interactive; signed/encrypted or unsupported documents fail explicitly.
+     * Must be called on the owning GUI thread. Writes the target atomically;
+     * callers are responsible for obtaining overwrite confirmation.
+     */
+    bool exportFlattenedPdf(const QString &fileName, QString *errorText = nullptr, int *flattenedAnnotations = nullptr, int *preservedAnnotations = nullptr);
+
     /**
      * Returns whether the document history is at the begin.
      */

@@ -34,6 +34,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <filesystem>
 #include <QLabel>
 #include <QMap>
 #include <QMetaObject>
@@ -3554,6 +3555,66 @@ ExportFormat::List Document::exportFormats() const
 bool Document::exportTo(const QString &fileName, const ExportFormat &format) const
 {
     return d->m_generator ? d->m_generator->exportTo(fileName, format) : false;
+}
+
+bool Document::canExportFlattenedPdf() const
+{
+    return QThread::currentThread() == thread() && d->m_generator && d->m_generator->canExportFlattenedPdf();
+}
+
+bool Document::exportFlattenedPdf(const QString &fileName, QString *errorText, int *flattenedAnnotations, int *preservedAnnotations)
+{
+    if (errorText) {
+        errorText->clear();
+    }
+    if (flattenedAnnotations) {
+        *flattenedAnnotations = 0;
+    }
+    if (preservedAnnotations) {
+        *preservedAnnotations = 0;
+    }
+    const auto fail = [errorText](const QString &message) {
+        if (errorText) {
+            *errorText = message;
+        }
+        return false;
+    };
+    if (QThread::currentThread() != thread()) {
+        return fail(i18n("PDF export must run on the document's owning thread."));
+    }
+    if (!canExportFlattenedPdf()) {
+        return fail(i18n("This document backend does not support flattened PDF export."));
+    }
+    const QFileInfo target(fileName);
+    if (fileName.isEmpty() || target.isSymLink() || (target.exists() && !target.isFile())) {
+        return fail(i18n("Choose a regular output file for the flattened PDF."));
+    }
+    const auto nativePath = [](const QString &path) {
+#ifdef Q_OS_WIN
+        return std::filesystem::path(path.toStdWString());
+#else
+        return std::filesystem::path(QFile::encodeName(path).constData());
+#endif
+    };
+    // Check both the current backing file and the original local URL, including
+    // hard-link aliases. This API may only produce a separate, non-destructive copy.
+    QStringList sources{d->m_docFileName};
+    if (d->m_url.isLocalFile()) {
+        sources.append(d->m_url.toLocalFile());
+    }
+    for (const QString &source : std::as_const(sources)) {
+        if (target.exists() && QFileInfo::exists(source)) {
+            std::error_code ec;
+            const bool equivalent = std::filesystem::equivalent(nativePath(source), nativePath(fileName), ec);
+            if (ec) {
+                return fail(i18n("Could not verify that the output is different from the source PDF."));
+            }
+            if (equivalent) {
+                return fail(i18n("The flattened PDF must be saved to a different file. Your editable source will not be overwritten."));
+            }
+        }
+    }
+    return d->m_generator->exportFlattenedPdf(fileName, errorText, flattenedAnnotations, preservedAnnotations);
 }
 
 bool Document::canRenderToImage() const

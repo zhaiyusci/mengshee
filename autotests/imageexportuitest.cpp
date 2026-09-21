@@ -234,6 +234,8 @@ void ImageExportUiTest::exportWorkflow()
     Okular::Document document(nullptr);
     const QString source = m_sourceDirectory.filePath(QStringLiteral("source.pdf"));
     QCOMPARE(document.openDocument(source, QUrl::fromLocalFile(source), QMimeDatabase().mimeTypeForName(QStringLiteral("application/pdf"))), Okular::Document::OpenSuccess);
+    // Ignore persisted reader-only rotation from other temporary PDF fixtures.
+    document.setRotation(0);
     QCOMPARE(document.pages(), 2u);
     QVERIFY(document.canRenderToImage());
 

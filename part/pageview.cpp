@@ -4824,7 +4824,13 @@ void PageView::mouseReleaseEvent(QMouseEvent *e)
                     }
 
                     menu->deleteLater();
+                } else {
+                    // Text selection mode still needs the regular page menu
+                    // when there is no link, annotation or selected text.
+                    Q_EMIT rightClick(item->page(), e->globalPosition().toPoint());
                 }
+            } else {
+                Q_EMIT rightClick(nullptr, e->globalPosition().toPoint());
             }
         }
         break;

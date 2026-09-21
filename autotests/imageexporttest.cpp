@@ -66,11 +66,15 @@ void ImageExportTest::init()
     m_document = std::make_unique<Okular::Document>(nullptr);
     const QString path = m_dir.filePath(QStringLiteral("source.pdf"));
     QCOMPARE(m_document->openDocument(path, QUrl::fromLocalFile(path), QMimeDatabase().mimeTypeForName(QStringLiteral("application/pdf"))), Okular::Document::OpenSuccess);
+    // Document metadata keys can collide across temporary fixtures with the
+    // same basename and size. Never inherit another test's remembered rotation.
+    m_document->setRotation(0);
     QVERIFY(m_document->canRenderToImage());
 }
 
 void ImageExportTest::cleanup()
 {
+    m_document->setRotation(0);
     m_document->closeDocument();
     m_document.reset();
 }

@@ -62,6 +62,22 @@ target_include_directories(pdf_page_sequence_editor
 )
 target_link_libraries(pdf_page_sequence_editor Poppler::Core)
 
+add_library(pdf_annotation_flattener STATIC
+    ${CMAKE_SOURCE_DIR}/external/poppler/utils/PdfAnnotationFlattener.cc
+    ${CMAKE_SOURCE_DIR}/external/poppler/utils/PdfAnnotationFlattener.h
+)
+set_target_properties(pdf_annotation_flattener PROPERTIES POSITION_INDEPENDENT_CODE ON)
+target_include_directories(pdf_annotation_flattener
+    PUBLIC ${CMAKE_SOURCE_DIR}/external/poppler/utils
+    PRIVATE
+        ${CMAKE_SOURCE_DIR}/external/poppler
+        ${CMAKE_SOURCE_DIR}/external/poppler/poppler
+        ${MENGSHEE_POPPLER_PRIVATE_BUILD_DIR}
+        ${MENGSHEE_POPPLER_PRIVATE_BUILD_DIR}/poppler
+)
+target_link_libraries(pdf_annotation_flattener Poppler::Core)
+target_link_libraries(okularGenerator_poppler pdf_annotation_flattener)
+
 target_include_directories(okularGenerator_poppler PRIVATE
     ${CMAKE_SOURCE_DIR}/external/poppler
     ${CMAKE_SOURCE_DIR}/external/poppler/poppler

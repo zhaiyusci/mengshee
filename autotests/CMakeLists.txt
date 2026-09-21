@@ -36,6 +36,11 @@ if(Poppler_Qt6_FOUND)
             LINK_LIBRARIES Qt6::Widgets Qt6::Test Qt6::PrintSupport okularcore okularpart
         )
         set_tests_properties(imageexporttest imageexportuitest PROPERTIES TIMEOUT 60)
+        ecm_add_test(flattenedpdfexporttest.cpp
+            TEST_NAME "flattenedpdfexporttest"
+            LINK_LIBRARIES Qt6::Widgets Qt6::Test Qt6::PrintSupport Qt6::Xml okularcore okularpart
+        )
+        set_tests_properties(flattenedpdfexporttest PROPERTIES TIMEOUT 120)
         ecm_add_test(parttest.cpp closedialoghelper.cpp
             TEST_NAME "parttest"
             LINK_LIBRARIES Qt6::Widgets Qt6::Test Qt6::Xml okularcore okularpart pdf_page_sequence_editor Poppler::Qt6

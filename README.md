@@ -72,6 +72,12 @@ LaTeX workflow.
   - Uses the live document, including unsaved edits and the current page order.
   - See `docs/image-export.md` for options and limits.
 
+- **Flattened PDF export**
+  - Export a separate final copy with supported visible annotation appearances
+    merged into page content, preserving vectors rather than rasterizing pages.
+  - Keep the editable original; retain hidden annotations, links and form widgets.
+  - See `docs/flattened-pdf-export.md` for safety guarantees and supported cases.
+
 - **Internal-link previews**
   - Internal PDF links can open in independent, splittable auxiliary panes
     without moving the main reading position.

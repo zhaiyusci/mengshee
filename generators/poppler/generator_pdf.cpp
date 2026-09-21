@@ -20,6 +20,7 @@
 #include "generator_pdf.h"
 
 #include "PdfPageSequenceEditor.h"
+#include "PdfAnnotationFlattener.h"
 
 // qt/kde includes
 #include <QCheckBox>
@@ -30,6 +31,9 @@
 #include <QDir>
 #include <QDomElement>
 #include <QFile>
+#include <QFileInfo>
+#include <QSaveFile>
+#include <QTemporaryDir>
 #include <QImage>
 #include <QImageReader>
 #include <QLayout>
@@ -3015,6 +3019,101 @@ bool PDFGenerator::save(const QString &fileName, SaveOptions options, QString *e
         }
     }
     return success;
+}
+
+bool PDFGenerator::canExportFlattenedPdf() const
+{
+    return QThread::currentThread() == thread() && pdfdoc != nullptr;
+}
+
+bool PDFGenerator::exportFlattenedPdf(const QString &fileName, QString *errorText, int *flattenedAnnotations, int *preservedAnnotations)
+{
+    if (errorText) {
+        errorText->clear();
+    }
+    if (flattenedAnnotations) {
+        *flattenedAnnotations = 0;
+    }
+    if (preservedAnnotations) {
+        *preservedAnnotations = 0;
+    }
+    const auto fail = [errorText](const QString &message) {
+        if (errorText) {
+            *errorText = message;
+        }
+        return false;
+    };
+    if (!canExportFlattenedPdf()) {
+        return fail(i18n("No PDF is open, or PDF export was requested from the wrong thread."));
+    }
+    try {
+        {
+            QMutexLocker locker(userMutex());
+            if (pdfdoc->isEncrypted()) {
+                return fail(i18n("Flattened export of encrypted PDFs is not supported. The original encryption will not be silently removed."));
+            }
+        }
+        QTemporaryDir temporary;
+        if (!temporary.isValid()) {
+            return fail(i18n("Could not create temporary files for flattened PDF export."));
+        }
+        const QString snapshot = temporary.filePath(QStringLiteral("editable-snapshot.pdf"));
+        const QString flattened = temporary.filePath(QStringLiteral("flattened.pdf"));
+        // Serialize the live model, not the on-disk source. save() already locks
+        // the backend and applies the current logical page sequence. Do not run
+        // document save actions or clear the caller's dirty/undo state.
+        QString saveError;
+        if (!save(snapshot, SaveChanges, &saveError)) {
+            return fail(i18n("Could not create the current PDF snapshot: %1", saveError));
+        }
+        const auto result = PdfAnnotationFlattener::flatten(pdfPagesFileName(snapshot), pdfPagesFileName(flattened));
+        if (!result.ok()) {
+            if (result.pageNumber > 0) {
+                return fail(i18n("Could not flatten page %1, annotation %2: %3", result.pageNumber, result.annotationIndex, QString::fromStdString(result.message)));
+            }
+            return fail(i18n("Could not flatten the PDF: %1", QString::fromStdString(result.message)));
+        }
+        const QFileInfo destination(fileName);
+        if (destination.isSymLink() || (destination.exists() && !destination.isFile())) {
+            return fail(i18n("The output path must be a regular file, not a directory or symbolic link."));
+        }
+        QFile input(flattened);
+        QSaveFile output(fileName);
+        output.setDirectWriteFallback(false);
+        if (!input.open(QIODevice::ReadOnly)) {
+            return fail(i18n("Could not read the flattened PDF: %1", input.errorString()));
+        }
+        if (!output.open(QIODevice::WriteOnly)) {
+            return fail(i18n("Could not open the output PDF: %1", output.errorString()));
+        }
+        QByteArray buffer(1024 * 1024, Qt::Uninitialized);
+        while (true) {
+            const qint64 count = input.read(buffer.data(), buffer.size());
+            if (count < 0) {
+                return fail(i18n("Could not read the flattened PDF: %1", input.errorString()));
+            }
+            if (count == 0) {
+                break;
+            }
+            if (output.write(buffer.constData(), count) != count) {
+                return fail(i18n("Could not write the output PDF: %1", output.errorString()));
+            }
+        }
+        if (!output.commit()) {
+            return fail(i18n("Could not save the output PDF atomically: %1", output.errorString()));
+        }
+        if (flattenedAnnotations) {
+            *flattenedAnnotations = result.flattenedAnnotations;
+        }
+        if (preservedAnnotations) {
+            *preservedAnnotations = result.preservedAnnotations;
+        }
+        return true;
+    } catch (const std::exception &exception) {
+        return fail(i18n("Flattened PDF export failed: %1", QString::fromLocal8Bit(exception.what())));
+    } catch (...) {
+        return fail(i18n("Flattened PDF export failed because of an unknown internal error."));
+    }
 }
 
 bool PDFGenerator::canInsertBlankPage() const

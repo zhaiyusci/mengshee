@@ -7,13 +7,21 @@ the source and binary compatibility contract.
 
 ## Why the Fork Exists
 
-The fork currently carries two categories of changes:
+The fork currently carries three categories of changes:
 
 - annotation appearance, FreeText fallback, Windows/CJK font handling, and the
   Qt annotation behavior required by Mengshee's annotation features;
 - a branding-neutral PDF page-sequence editor used to insert, import, delete,
   move, and reorder pages while preserving the page object graph and
-  annotations.
+  annotations;
+- a source-level annotation flattener that incorporates supported normal
+  appearances into page contents while preserving the original PDF graph.
+
+`utils/PdfAnnotationFlattener.{h,cc}` is compiled into the
+`pdf_annotation_flattener` static target in the parent build and linked to the PDF
+generator. Like the page editor, it adds no shared-library ABI; it must use the
+matching private headers and Core SDK. Product policy and live-state snapshot/
+atomic destination orchestration remain in the parent repository.
 
 The page editor is implemented by:
 
