@@ -78,6 +78,21 @@ target_include_directories(pdf_annotation_flattener
 target_link_libraries(pdf_annotation_flattener Poppler::Core)
 target_link_libraries(okularGenerator_poppler pdf_annotation_flattener)
 
+add_library(pdf_page_bounds STATIC
+    ${CMAKE_SOURCE_DIR}/external/poppler/utils/PdfPageBounds.cc
+    ${CMAKE_SOURCE_DIR}/external/poppler/utils/PdfPageBounds.h
+)
+set_target_properties(pdf_page_bounds PROPERTIES POSITION_INDEPENDENT_CODE ON)
+target_include_directories(pdf_page_bounds
+    PUBLIC ${CMAKE_SOURCE_DIR}/external/poppler/utils
+    PRIVATE
+        ${CMAKE_SOURCE_DIR}/external/poppler
+        ${CMAKE_SOURCE_DIR}/external/poppler/poppler
+        ${MENGSHEE_POPPLER_PRIVATE_BUILD_DIR}
+        ${MENGSHEE_POPPLER_PRIVATE_BUILD_DIR}/poppler
+)
+target_link_libraries(pdf_page_bounds Poppler::Core)
+
 target_include_directories(okularGenerator_poppler PRIVATE
     ${CMAKE_SOURCE_DIR}/external/poppler
     ${CMAKE_SOURCE_DIR}/external/poppler/poppler

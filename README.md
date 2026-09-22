@@ -94,6 +94,8 @@ https://github.com/zhaiyusci/mengshee/releases
   - Product direction for Mengshee as a PDF-centered, LaTeX-native slide editor.
 - `docs/latex-note-pdf-spec.md`
   - PDF representation and rendering contract for LaTeX notes.
+- `docs/latex-note-render-guards.md`
+  - Leading-display layout, source/colour preservation, and renderer guard boundaries.
 - `docs/template-note-pdf-spec.md`
   - PDF representation, JSON payload, expression language, predefined
     variables, and refresh rules for template notes.

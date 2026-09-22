@@ -8,6 +8,9 @@
 */
 
 #include "latexrenderer.h"
+#include "latexpdfbounds.h"
+#include "latexrenderguards.h"
+#include "latexsource.h"
 
 #include <cmath>
 #include <condition_variable>
@@ -304,9 +307,7 @@ public:
         }
 
         const double widthPt = std::isfinite(maxWidth) && maxWidth > 0.0 ? maxWidth : 360.0;
-        const QColor effectiveColor = textColor.isValid() ? textColor : QColor(Qt::black);
-        const QString coloredSource = QStringLiteral("{\\color[rgb]{%1,%2,%3}\n%4\n\\par}").arg(effectiveColor.redF(), 0, 'f', 6).arg(effectiveColor.greenF(), 0, 'f', 6).arg(effectiveColor.blueF(), 0, 'f', 6).arg(latexSource);
-        const QByteArray snippet = coloredSource.toUtf8();
+        const QByteArray snippet = LatexSource::prepareSnippet(latexSource, textColor).toUtf8();
 
         struct RenderState {
             std::mutex mutex;
@@ -446,9 +447,16 @@ public:
             return LatexRenderer::LatexFailed;
         }
 
+        fileList << sourcePdfFile;
+        if (!LatexRenderGuards::isUsablePdfArtifact(sourcePdfFile)) {
+            latexOutput = i18n("The LaTeX renderer returned an unreadable, invalid, or oversized PDF (limit: 64 MiB).");
+            return LatexRenderer::LatexFailed;
+        }
+        if (!LatexPdfBounds::expandInPlace(sourcePdfFile, latexOutput)) {
+            return LatexRenderer::LatexFailed;
+        }
         latexOutput = summary;
         pdfFileName = sourcePdfFile;
-        fileList << sourcePdfFile;
         if (warning && outcomeCode != StemTeXRenderOutcomeOk) {
             warning->type = LatexRenderWarningType::CompileError;
             warning->message = outcomeMessage.trimmed();
@@ -1175,11 +1183,35 @@ LatexRenderer::Error LatexRenderer::renderLatexToPdf(const QString &latexFormula
     m_lastBackendName.clear();
     m_lastWarning = {};
 
-    QString formula = latexFormula.trimmed();
-    if (formula.isEmpty()) {
-        pdfFileName.clear();
+    pdfFileName.clear();
+    latexOutput.clear();
+    // Inspect a copy only for emptiness: authored whitespace and terminal
+    // comments are part of TeX syntax and must survive rendering unchanged.
+    using LatexRenderGuards::InputError;
+    const InputError inputError = LatexRenderGuards::validateInput(latexFormula, maxWidth, fontSize);
+    switch (inputError) {
+    case InputError::None:
+        break;
+    case InputError::EmptySource:
+        latexOutput = i18n("LaTeX source is empty.");
+        break;
+    case InputError::SourceTooLarge:
+        latexOutput = i18n("LaTeX source exceeds the limit of 250,000 characters.");
+        break;
+    case InputError::EmbeddedNull:
+        latexOutput = i18n("LaTeX source contains a null character.");
+        break;
+    case InputError::InvalidWidth:
+        latexOutput = i18n("LaTeX note width must be finite and between 0 and 50,000 points (0 uses the default).");
+        break;
+    case InputError::InvalidFontSize:
+        latexOutput = i18n("LaTeX font size must be finite and between 1 and 200 points (0 uses the default).");
+        break;
+    }
+    if (inputError != InputError::None) {
         return LatexFailed;
     }
+    const QString &formula = latexFormula;
 #ifdef Q_OS_WIN
     logTexInvocation("stemtex-render",
                      QStringLiteral("stemtex"),

@@ -616,7 +616,10 @@ if(BUILD_DESKTOP)
     part/kleopatraintegration.cpp
     part/ktreeviewsearchline.cpp
     part/latexnoteutils.cpp
+    part/latexpdfbounds.cpp
     part/latexrenderer.cpp
+    part/latexrenderguards.cpp
+    part/latexsource.cpp
     part/templatenoteutils.cpp
     part/minibar.cpp
     part/okmenutitle.cpp
@@ -665,6 +668,7 @@ generate_export_header(okularpart BASE_NAME okularpart)
 target_link_libraries(okularpart okularcore
     ${MATH_LIB}
     Poppler::Qt6
+    pdf_page_bounds
     Qt6::Svg
     Qt6::Concurrent
     KF6::Archive

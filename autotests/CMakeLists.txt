@@ -2,6 +2,15 @@ add_definitions( -DKDESRCDIR="${CMAKE_CURRENT_SOURCE_DIR}/" )
 
 include_directories(${CMAKE_CURRENT_BINARY_DIR}/..)
 
+ecm_add_test(latexrenderguardstest.cpp ../part/latexrenderguards.cpp
+    TEST_NAME "latexrenderguardstest"
+    LINK_LIBRARIES Qt6::Test Qt6::Core
+)
+ecm_add_test(latexsourcepreparationtest.cpp ../part/latexsource.cpp
+    TEST_NAME "latexsourcepreparationtest"
+    LINK_LIBRARIES Qt6::Test Qt6::Gui
+)
+
 macro(add_conf_unittest _source)
   set(_test ${_source} ../part/editdrawingtooldialog.cpp)
   get_filename_component(_name ${_source} NAME_WE)
@@ -26,6 +35,16 @@ ecm_add_test(shelltest.cpp ../shell/shellutils.cpp
 )
 
 if(Poppler_Qt6_FOUND)
+    ecm_add_test(latexpdfboundstest.cpp ../part/latexpdfbounds.cpp ../part/latexrenderguards.cpp
+        TEST_NAME "latexpdfboundstest"
+        LINK_LIBRARIES Qt6::Test Qt6::Gui KF6::I18n Poppler::Qt6 pdf_page_bounds
+    )
+    set_tests_properties(latexpdfboundstest PROPERTIES TIMEOUT 60)
+    ecm_add_test(latexframeclippingtest.cpp
+        TEST_NAME "latexframeclippingtest"
+        LINK_LIBRARIES Qt6::Test Qt6::Gui Poppler::Qt6
+    )
+    set_tests_properties(latexframeclippingtest PROPERTIES TIMEOUT 60)
     if (BUILD_DESKTOP)
         ecm_add_test(imageexporttest.cpp
             TEST_NAME "imageexporttest"

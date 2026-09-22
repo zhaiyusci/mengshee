@@ -6203,6 +6203,36 @@ msgstr ""
 msgid "LaTeX source is empty."
 msgstr "LaTeX 源码为空。"
 
+#: part/latexrenderer.cpp
+#, kde-format
+msgid "LaTeX source exceeds the limit of 250,000 characters."
+msgstr "LaTeX 源码超过了 250,000 个字符的限制。"
+
+#: part/latexrenderer.cpp
+#, kde-format
+msgid "LaTeX source contains a null character."
+msgstr "LaTeX 源码包含空字符（NUL）。"
+
+#: part/latexrenderer.cpp
+#, kde-format
+msgid "LaTeX note width must be finite and between 0 and 50,000 points (0 uses the default)."
+msgstr "LaTeX 批注宽度必须是 0 到 50,000 磅之间的有限值（0 使用默认值）。"
+
+#: part/latexrenderer.cpp
+#, kde-format
+msgid "LaTeX font size must be finite and between 1 and 200 points (0 uses the default)."
+msgstr "LaTeX 字号必须是 1 到 200 磅之间的有限值（0 使用默认值）。"
+
+#: part/latexrenderer.cpp
+#, kde-format
+msgid "The LaTeX renderer returned an unreadable, invalid, or oversized PDF (limit: 64 MiB)."
+msgstr "LaTeX 渲染器返回的 PDF 无法读取、格式无效或超过大小限制（64 MiB）。"
+
+#: part/latexpdfbounds.cpp
+#, kde-format
+msgid "Could not preserve the LaTeX note's logical and painted bounds: %1"
+msgstr "无法保留 LaTeX 批注的逻辑行框与绘制边界：%1"
+
 #: part/latexnoteutils.cpp:367 part/latexnoteutils.cpp:439
 #: part/latexnoteutils.cpp:514 part/annotationpopup.cpp:642
 #, kde-format

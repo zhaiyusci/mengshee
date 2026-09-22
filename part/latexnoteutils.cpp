@@ -114,7 +114,9 @@ QString latexNoteBaseName(const QString &latexInput, const QColor &textColor, do
     const bool fixedWidth = std::isfinite(layoutWidthPoints) && layoutWidthPoints > 0.0;
     const QString widthText = fixedWidth ? QString::number(layoutWidthPoints, 'f', 3) : QStringLiteral("0");
     const QString fontSizeText = std::isfinite(fontSizePoints) && fontSizePoints > 0.0 ? QString::number(fontSizePoints, 'f', 3) : QStringLiteral("0");
-    const QString renderMode = fixedWidth ? QStringLiteral("fixed-width-content-v6") : QStringLiteral("natural-width-content-v6");
+    // Geometry policy is part of the appearance identity. An explicit rerender
+    // must rebuild the former forced-height display and its frame appearance.
+    const QString renderMode = fixedWidth ? QStringLiteral("fixed-width-content-v8-native-display") : QStringLiteral("natural-width-content-v8-native-display");
     const QString hashText = latexInput + QStringLiteral("|%1|%2|%3|%4|%5").arg(textColor.name(QColor::HexArgb), widthText, fontSizeText, renderMode, backendName);
     return QString::fromLatin1(QCryptographicHash::hash(hashText.toUtf8(), QCryptographicHash::Sha256).toHex());
 }
@@ -517,7 +519,7 @@ RenderResult renderAppearancePdf(const QString &latexInput, const QColor &textCo
                            << "bytes:" << temporaryPdfInfo.size();
 
     result.pdfSizePoints = GuiUtils::pdfPageSizeInPoints(temporaryPdfFile);
-    if (!result.pdfSizePoints.isValid() || result.pdfSizePoints.isEmpty()) {
+    if (!result.pdfSizePoints.isValid() || result.pdfSizePoints.isEmpty() || !std::isfinite(result.pdfSizePoints.width()) || !std::isfinite(result.pdfSizePoints.height())) {
         qCWarning(OkularUiDebug) << "LaTeX note rendered PDF has invalid size; temporary PDF:" << temporaryPdfFile << "size:" << result.pdfSizePoints;
         result.errorMessage = i18n("Could not load the rendered LaTeX note PDF.");
         return result;
