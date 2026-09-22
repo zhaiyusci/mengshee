@@ -4768,7 +4768,10 @@ void PageView::mouseReleaseEvent(QMouseEvent *e)
 #if HAVE_SPEECH
                 const QAction *speakText = nullptr;
 #endif
-                if (item->page()->textSelection()) {
+                // Dragging over blank space can leave an empty selection area.
+                // Offer text actions only when that selection contains actual text.
+                const QString selectedText = d->selectedText();
+                if (item->page()->textSelection() && !selectedText.trimmed().isEmpty()) {
                     if (!menu) {
                         menu = new QMenu(this);
                     }
@@ -4786,13 +4789,13 @@ void PageView::mouseReleaseEvent(QMouseEvent *e)
                         textWithoutLineBreaksToClipboard->setEnabled(false);
                         textWithoutLineBreaksToClipboard->setText(i18n("Copy forbidden by DRM"));
                     } else {
-                        addSearchWithinDocumentAction(menu, d->selectedText());
-                        addWebShortcutsMenu(menu, d->selectedText());
+                        addSearchWithinDocumentAction(menu, selectedText);
+                        addWebShortcutsMenu(menu, selectedText);
                     }
 
                     // if the right-click was over a link add "Follow This link" instead of "Go to"
                     if (!mouseClickOverLink) {
-                        url = UrlUtils::getUrl(d->selectedText());
+                        url = UrlUtils::getUrl(selectedText);
                         if (!url.isEmpty()) {
                             const QString squeezedText = KStringHandler::rsqueeze(url, linkTextPreviewLength);
                             httpLink = menu->addAction(i18n("Go to '%1'", squeezedText));
@@ -5620,6 +5623,13 @@ QPoint PageView::viewportToContentArea(const Okular::DocumentViewport &vp) const
             // TopLeft
             c.rx() += qRound(normClamp(normalized_on_crop_x, 0.0) * (double)r.width() + viewport()->width() / 2.0);
             c.ry() += qRound(normClamp(normalized_on_crop_y, 0.0) * (double)r.height() + viewport()->height() / 2.0);
+            if (d->viewSession && !d->workspaceMainView) {
+                // PDF destinations may sit on a formula's baseline. Leave room
+                // above it in auxiliary panes rather than clipping its upper part.
+                // This is a view-only inset in logical pixels, not a change to the
+                // stored destination; center positioning and the main view stay exact.
+                c.ry() -= qMin(48, viewport()->height() / 4);
+            }
         }
     } else {
         // exact repositioning disabled, align page top margin with viewport top border by default
@@ -5645,7 +5655,14 @@ void PageView::updateSelection(const QPoint pos)
         std::vector<std::unique_ptr<Okular::RegularAreaRect>> selections = textSelections(pos, d->mouseSelectPos.toPoint(), first);
         QSet<int> pagesWithSelectionSet;
         for (size_t i = 0; i < selections.size(); ++i) {
-            pagesWithSelectionSet.insert(i + first);
+            const auto &area = selections[i];
+            const int pageNumber = first + static_cast<int>(i);
+            // A drag may intersect a page without selecting any characters.
+            // Do not register that page as selected or install an empty area.
+            // Previously selected pages excluded here are cleared below.
+            if (area && !area->isEmpty() && !d->document->page(pageNumber)->text(area.get(), Okular::TextPage::CentralPixelTextAreaInclusionBehaviour).trimmed().isEmpty()) {
+                pagesWithSelectionSet.insert(pageNumber);
+            }
         }
 
         const QSet<int> noMoreSelectedPages = d->pagesWithTextSelection - pagesWithSelectionSet;

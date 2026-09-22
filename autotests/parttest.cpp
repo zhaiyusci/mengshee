@@ -116,6 +116,7 @@ private Q_SLOTS:
     void testEditExternalPdfLink();
     void testOpenAuxiliaryViewWithoutLink();
     void testAuxiliaryDocumentWorkspace();
+    void testAuxiliaryTopAlignedDestinationMargin();
     void testFindBarDoesNotConsumeWorkspaceHeight();
     void testScrollBarAndMouseWheel();
     void testOpenUrlArguments();
@@ -891,6 +892,103 @@ void PartTest::testOpenAuxiliaryViewWithoutLink()
     QTRY_COMPARE(workspace->activeView(), mainView);
 }
 
+void PartTest::testAuxiliaryTopAlignedDestinationMargin()
+{
+    Okular::Part part(nullptr, {});
+    QVERIFY(openDocument(&part, QStringLiteral(KDESRCDIR "data/pdf_with_internal_links.pdf")));
+    part.widget()->resize(1200, 600);
+    part.widget()->show();
+    if (qgetenv("KDECI_CANNOT_CREATE_WINDOWS") == "1") {
+        QSKIP("KDE CI can't create a window on this platform, skipping some gui tests");
+    }
+    QVERIFY(QTest::qWaitForWindowExposed(part.widget()));
+
+    PageView *mainView = part.m_pageView;
+    part.m_document->setViewportPage(0);
+    QTRY_VERIFY(part.m_document->page(0)->hasPixmap(mainView));
+    const int mainPage = mainView->documentViewport().pageNumber;
+
+    DocumentViewport target(1);
+    target.rePos.enabled = true;
+    target.rePos.pos = DocumentViewport::TopLeft;
+    target.rePos.normalizedX = 0.0;
+    target.rePos.normalizedY = 0.5;
+    const QString originalTarget = target.toString();
+    part.openAuxiliaryView(mainView, target, QStringLiteral("Top-aligned destination"));
+    QTRY_COMPARE(part.m_documentWorkspace->auxiliaryViewCount(), 1);
+    PageView *auxiliaryView = part.m_documentWorkspace->auxiliaryViews().constFirst();
+    QVERIFY(auxiliaryView);
+    QTRY_VERIFY(auxiliaryView->isVisible());
+
+    QTimer *mainResizeTimer = mainView->findChild<QTimer *>(QStringLiteral("delayResizeEventTimer"));
+    QTimer *auxiliaryResizeTimer = auxiliaryView->findChild<QTimer *>(QStringLiteral("delayResizeEventTimer"));
+    QVERIFY(mainResizeTimer);
+    QVERIFY(auxiliaryResizeTimer);
+    QTRY_VERIFY_WITH_TIMEOUT(!mainResizeTimer->isActive(), 5000);
+    QTRY_VERIFY_WITH_TIMEOUT(!auxiliaryResizeTimer->isActive(), 5000);
+    QCOMPARE(mainView->documentViewport().pageNumber, mainPage);
+    const QString mainViewport = mainView->documentViewport().toString();
+    const int mainScroll = mainView->verticalScrollBar()->value();
+
+    // Use the real zoom slots (not unexported QTest-only PageView methods).
+    // A large fixed zoom keeps the mid-page destination away from scroll limits.
+    QVERIFY(QMetaObject::invokeMethod(auxiliaryView, "slotZoomActual"));
+    for (int i = 0; i < 3; ++i) {
+        QVERIFY(QMetaObject::invokeMethod(auxiliaryView, "slotZoomIn"));
+    }
+    auxiliaryView->goToDocumentViewport(target, false);
+    // Large zoom levels use tiles, so a full-page hasPixmap() check with
+    // default dimensions cannot indicate readiness. Wait for layout instead.
+    QTRY_VERIFY(auxiliaryView->verticalScrollBar()->maximum() > 0);
+    QTRY_VERIFY(auxiliaryView->viewport()->height() >= 192);
+
+    // Infer the destination's logical screen Y from two points on the page.
+    // This tests rendered geometry, independently of the stored viewport and
+    // without assuming a PDF DPI, page size, border width or device pixel ratio.
+    const auto targetScreenY = [auxiliaryView, &target]() -> double {
+        QWidget *viewport = auxiliaryView->viewport();
+        const int x = viewport->width() / 2;
+        const int y = viewport->height() / 2;
+        int firstPage = -1;
+        int secondPage = -1;
+        NormalizedPoint first;
+        NormalizedPoint second;
+        if (!auxiliaryView->mapGlobalPosToPagePoint(viewport->mapToGlobal(QPoint(x, y)), &firstPage, &first)
+            || !auxiliaryView->mapGlobalPosToPagePoint(viewport->mapToGlobal(QPoint(x, y + 10)), &secondPage, &second)
+            || firstPage != target.pageNumber || secondPage != target.pageNumber || second.y <= first.y) {
+            return -10000.0;
+        }
+        return y + (target.rePos.normalizedY - first.y) * 10.0 / (second.y - first.y);
+    };
+    QTRY_VERIFY(qAbs(targetScreenY() - 48.0) <= 2.0);
+    QCOMPARE(auxiliaryView->documentViewport().toString(), originalTarget);
+    QVERIFY(auxiliaryView->verticalScrollBar()->value() > 0);
+    QVERIFY(auxiliaryView->verticalScrollBar()->value() < auxiliaryView->verticalScrollBar()->maximum());
+
+    // Repeated navigation must not accumulate the presentation-only inset.
+    const int auxiliaryScroll = auxiliaryView->verticalScrollBar()->value();
+    for (int i = 0; i < 3; ++i) {
+        DocumentViewport away = target;
+        away.rePos.normalizedY = 0.6;
+        auxiliaryView->goToDocumentViewport(away, false);
+        auxiliaryView->goToDocumentViewport(target, false);
+        QTRY_VERIFY(qAbs(targetScreenY() - 48.0) <= 2.0);
+        QCOMPARE(auxiliaryView->verticalScrollBar()->value(), auxiliaryScroll);
+        QCOMPARE(auxiliaryView->documentViewport().toString(), originalTarget);
+    }
+
+    DocumentViewport centered = target;
+    centered.rePos.pos = DocumentViewport::Center;
+    centered.rePos.normalizedX = 0.5;
+    auxiliaryView->goToDocumentViewport(centered, false);
+    QTRY_VERIFY(qAbs(targetScreenY() - auxiliaryView->viewport()->height() / 2.0) <= 2.0);
+    QCOMPARE(auxiliaryView->documentViewport().toString(), centered.toString());
+    QCOMPARE(target.toString(), originalTarget);
+    QCOMPARE(mainView->documentViewport().toString(), mainViewport);
+    QCOMPARE(mainView->verticalScrollBar()->value(), mainScroll);
+    QCOMPARE(part.m_document->currentPage(), static_cast<uint>(mainPage));
+}
+
 void PartTest::testAuxiliaryDocumentWorkspace()
 {
     Okular::Part part(nullptr, {});
@@ -1410,13 +1508,16 @@ void PartTest::testClickUrlLinkWhileLinkTextIsSelected()
 void PartTest::testTextSelectionBlankContextMenu_data()
 {
     QTest::addColumn<bool>("insidePage");
-    QTest::newRow("page-blank") << true;
-    QTest::newRow("outside-page") << false;
+    QTest::addColumn<bool>("dragBlank");
+    QTest::newRow("page-blank") << true << false;
+    QTest::newRow("outside-page") << false << false;
+    QTest::newRow("page-blank-after-empty-drag") << true << true;
 }
 
 void PartTest::testTextSelectionBlankContextMenu()
 {
     QFETCH(bool, insidePage);
+    QFETCH(bool, dragBlank);
     if (qgetenv("KDECI_CANNOT_CREATE_WINDOWS") == "1") {
         QSKIP("KDE CI can't create a window on this platform, skipping some gui tests");
     }
@@ -1469,6 +1570,17 @@ void PartTest::testTextSelectionBlankContextMenu()
     QTRY_VERIFY(findClickPosition().x() >= 0);
     const QPoint position = findClickPosition();
     const QPoint globalPosition = viewport->mapToGlobal(position);
+    if (dragBlank) {
+        const QPoint end = position + QPoint(40, 20);
+        int pageNumber = -1;
+        Okular::NormalizedPoint point;
+        QVERIFY(view->mapGlobalPosToPagePoint(viewport->mapToGlobal(end), &pageNumber, &point));
+        QCOMPARE(pageNumber, 0);
+        simulateMouseSelection(position.x(), position.y(), end.x(), end.y(), viewport);
+        const Okular::Page *page = part.m_document->page(0);
+        QVERIFY(!page->textSelection());
+        QVERIFY(!view->hasTextSelection());
+    }
     // PageView's metaobject/signal symbols are not exported on Windows.
     qRegisterMetaType<const Okular::Page *>();
     QSignalSpy rightClicks(view, SIGNAL(rightClick(const Okular::Page *, QPoint)));
@@ -1534,6 +1646,9 @@ void PartTest::testRClickWhileLinkTextIsSelected()
     const double mouseEndX = width * 0.60;
 
     simulateMouseSelection(mouseStartX, mouseY, mouseEndX, mouseY, part.m_pageView->viewport());
+    QVERIFY(part.m_pageView->hasTextSelection());
+    QVERIFY(part.m_document->page(0)->textSelection());
+    QVERIFY(!part.m_document->page(0)->text(part.m_document->page(0)->textSelection()).trimmed().isEmpty());
 
     // Need to do this because the pop-menu will have his own mainloop and will block tests until
     // the menu disappear
@@ -1604,6 +1719,9 @@ void PartTest::testRClickOverLinkWhileLinkTextIsSelected()
     const double mouseEndX = width * 0.60;
 
     simulateMouseSelection(mouseStartX, mouseY, mouseEndX, mouseY, part.m_pageView->viewport());
+    QVERIFY(part.m_pageView->hasTextSelection());
+    QVERIFY(part.m_document->page(0)->textSelection());
+    QVERIFY(!part.m_document->page(0)->text(part.m_document->page(0)->textSelection()).trimmed().isEmpty());
 
     // Need to do this because the pop-menu will have his own mainloop and will block tests until
     // the menu disappear
