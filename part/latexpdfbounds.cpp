@@ -4,7 +4,7 @@
 #include "latexpdfbounds.h"
 #include "latexrenderguards.h"
 
-#include <PdfPageBounds.h>
+#include <pdfpagebounds.h>
 #include <KLocalizedString>
 #include <QFile>
 #include <QSaveFile>

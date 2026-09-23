@@ -114,9 +114,9 @@ QString latexNoteBaseName(const QString &latexInput, const QColor &textColor, do
     const bool fixedWidth = std::isfinite(layoutWidthPoints) && layoutWidthPoints > 0.0;
     const QString widthText = fixedWidth ? QString::number(layoutWidthPoints, 'f', 3) : QStringLiteral("0");
     const QString fontSizeText = std::isfinite(fontSizePoints) && fontSizePoints > 0.0 ? QString::number(fontSizePoints, 'f', 3) : QStringLiteral("0");
-    // Geometry policy is part of the appearance identity. An explicit rerender
-    // must rebuild the former forced-height display and its frame appearance.
-    const QString renderMode = fixedWidth ? QStringLiteral("fixed-width-content-v8-native-display") : QStringLiteral("natural-width-content-v8-native-display");
+    // Geometry and appearance policy are part of the identity. Explicit rerenders
+    // must rebuild through Mengshee's own appearance composer.
+    const QString renderMode = fixedWidth ? QStringLiteral("fixed-width-content-v9-app-appearance") : QStringLiteral("natural-width-content-v9-app-appearance");
     const QString hashText = latexInput + QStringLiteral("|%1|%2|%3|%4|%5").arg(textColor.name(QColor::HexArgb), widthText, fontSizeText, renderMode, backendName);
     return QString::fromLatin1(QCryptographicHash::hash(hashText.toUtf8(), QCryptographicHash::Sha256).toHex());
 }

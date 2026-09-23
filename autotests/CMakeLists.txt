@@ -42,9 +42,9 @@ if(Poppler_Qt6_FOUND)
     set_tests_properties(latexpdfboundstest PROPERTIES TIMEOUT 60)
     ecm_add_test(latexframeclippingtest.cpp
         TEST_NAME "latexframeclippingtest"
-        LINK_LIBRARIES Qt6::Test Qt6::Gui Poppler::Qt6
+        LINK_LIBRARIES Qt6::Test Qt6::Gui Poppler::Qt6 latex_appearance
     )
-    set_tests_properties(latexframeclippingtest PROPERTIES TIMEOUT 60)
+    set_tests_properties(latexframeclippingtest PROPERTIES TIMEOUT 90)
     if (BUILD_DESKTOP)
         ecm_add_test(imageexporttest.cpp
             TEST_NAME "imageexporttest"

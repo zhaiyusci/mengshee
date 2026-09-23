@@ -136,6 +136,8 @@ private Q_SLOTS:
     void testRotateSinglePageBackend();
     void testRotateSinglePage();
     void testLatexNoteOnRotatedPage();
+    void testLatexAppearanceResizeHistory_data();
+    void testLatexAppearanceResizeHistory();
     void testDeletePagePreservesInternalLinks();
     void testDuplicatePagePreservesInternalLinks();
     void testInsertPdfPagePreservesInternalLinks();
@@ -2631,6 +2633,91 @@ void PartTest::testLatexNoteOnRotatedPage()
     QVERIFY(reopenedAnnotation);
     QVERIFY(reopenedAnnotation->isOkularLatex());
     QVERIFY(reopenedAnnotation->flags() & Okular::Annotation::FixedRotation);
+}
+
+void PartTest::testLatexAppearanceResizeHistory_data()
+{
+    QTest::addColumn<bool>("callout");
+    QTest::addColumn<int>("rotation");
+    QTest::newRow("boxed") << false << 0;
+    QTest::newRow("callout") << true << 0;
+    QTest::newRow("boxed-rotated") << false << 90;
+    QTest::newRow("callout-rotated") << true << 90;
+}
+
+void PartTest::testLatexAppearanceResizeHistory()
+{
+    QFETCH(bool, callout);
+    QFETCH(int, rotation);
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString working = dir.filePath(QStringLiteral("document.pdf"));
+    const QString source = dir.filePath(QStringLiteral("source.pdf"));
+    QVERIFY(QFile::copy(QStringLiteral(KDESRCDIR "data/simple-multipage.pdf"), working));
+    QVERIFY(QFile::copy(QStringLiteral(":/mengshee/data/latex-default-note.pdf"), source));
+    // Resource copies inherit read-only permissions on Windows.
+    QVERIFY(QFile::setPermissions(source, QFileDevice::ReadOwner | QFileDevice::WriteOwner));
+    Okular::Part part(nullptr, {});
+    QVERIFY(openDocument(&part, working));
+    if (rotation) {
+        part.setPageRotation(0, rotation);
+    }
+    auto *note = new Okular::StampAnnotation;
+    const Okular::NormalizedRect large(.2, .2, .5, .4);
+    note->setBoundingRectangle(large);
+    note->setContents(QStringLiteral("Appearance history regression"));
+    note->setOkularLatex(true);
+    note->setLatexNoteType(callout ? Okular::Annotation::LatexNoteCallout : Okular::Annotation::LatexNoteBoxed);
+    note->setLatexAppearancePdfFileName(source);
+    note->setLatexPadding(3);
+    note->setLatexFillColor(Qt::yellow);
+    note->setLatexBorderColor(Qt::black);
+    note->style().setWidth(2);
+    note->style().setOpacity(.5);
+    if (callout) {
+        note->setLatexCalloutPoint(Okular::NormalizedPoint(.1, .5), 0);
+        note->setLatexCalloutPoint(Okular::NormalizedPoint(.15, .3), 1);
+        note->setLatexCalloutPoint(Okular::NormalizedPoint(.2, .3), 2);
+    }
+    part.m_document->addPageAnnotation(0, note);
+    const QString name = note->uniqueName();
+    auto saveImage = [&](Okular::Part &editor, const QString &file) -> QImage {
+        QString error;
+        if (!editor.m_document->saveChanges(file, &error)) {
+            qWarning() << error;
+            return {};
+        }
+        auto pdf = Poppler::Document::load(file);
+        if (!pdf) {
+            return {};
+        }
+        pdf->setRenderHint(Poppler::Document::Antialiasing, true);
+        pdf->setRenderHint(Poppler::Document::TextAntialiasing, true);
+        auto page = pdf->page(0);
+        return page ? page->renderToImage(144, 144) : QImage();
+    };
+    const QImage full = saveImage(part, dir.filePath(QStringLiteral("full.pdf")));
+    QVERIFY(!full.isNull());
+    QVERIFY(QFile::remove(source));
+    part.m_document->prepareToModifyAnnotationProperties(note);
+    note->setBoundingRectangle(Okular::NormalizedRect(.2, .2, .5, .202));
+    part.m_document->modifyPageAnnotationProperties(0, note);
+    const QString smallFile = dir.filePath(QStringLiteral("small.pdf"));
+    const QImage small = saveImage(part, smallFile);
+    QVERIFY(!small.isNull());
+    QVERIFY(small != full);
+    part.m_document->undo();
+    QCOMPARE(saveImage(part, dir.filePath(QStringLiteral("undo.pdf"))), full);
+    part.m_document->redo();
+    QCOMPARE(saveImage(part, dir.filePath(QStringLiteral("redo.pdf"))), small);
+    Okular::Part reopened(nullptr, {});
+    QVERIFY(openDocument(&reopened, smallFile));
+    auto *restored = static_cast<Okular::StampAnnotation *>(reopened.m_document->page(0)->annotation(name));
+    QVERIFY(restored);
+    reopened.m_document->prepareToModifyAnnotationProperties(restored);
+    restored->setBoundingRectangle(large);
+    reopened.m_document->modifyPageAnnotationProperties(0, restored);
+    QCOMPARE(saveImage(reopened, dir.filePath(QStringLiteral("grown.pdf"))), full);
 }
 
 void PartTest::testDeletePagePreservesInternalLinks()

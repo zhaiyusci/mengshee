@@ -35,6 +35,7 @@
 #include "debug_pdf.h"
 #include "generator_pdf.h"
 #include "imagescaling.h"
+#include "latexappearance.h"
 #include "popplerembeddedfile.h"
 #include "popplerversion.h"
 
@@ -888,57 +889,48 @@ static void updatePopplerAnnotationFromOkularAnnotation(const Okular::HighlightA
     pHighlightAnnotation->setHighlightQuads(pQuads);
 }
 
-static bool updatePopplerAnnotationFromOkularAnnotation(const Okular::StampAnnotation *oStampAnnotation, Poppler::StampAnnotation *pStampAnnotation, const Poppler::Page *page, const Poppler::AnnotationAppearance *sourceAppearance = nullptr)
+static bool updatePopplerAnnotationFromOkularAnnotation(const Okular::StampAnnotation *oStampAnnotation,
+                                                       Poppler::StampAnnotation *pStampAnnotation,
+                                                       const Poppler::Page *page,
+                                                       const Poppler::AnnotationAppearance *sourceAppearance = nullptr,
+                                                       Poppler::Document *document = nullptr,
+                                                       int nativePage = -1,
+                                                       const MengsheeLatexAppearance::RawSource &preservedRaw = {})
 {
     pStampAnnotation->setStampIconName(oStampAnnotation->stampIconName());
 #ifdef POPPLER_QT6_HAS_ANNOTATION_CUSTOM_SCALAR_PROPERTIES
     pStampAnnotation->removeCustomProperty(TemplateNoteDataKey);
     if (oStampAnnotation->isOkularLatex()) {
         pStampAnnotation->setCustomStringProperty(LatexNoteDataKey, latexNoteDataForStampAnnotation(oStampAnnotation, page));
+        // Creation first populates an untied Qt annotation. Compose only after
+        // addAnnotation has bound it to the destination Core document/XRef.
+        if (!document || nativePage < 0) {
+            return true;
+        }
 
         const QString pdfAppearanceFile = oStampAnnotation->latexAppearancePdfFileName();
         const QFileInfo pdfAppearanceInfo(pdfAppearanceFile);
-        qCDebug(OkularPdfDebug) << "Embedding LaTeX Stamp appearance; path:" << pdfAppearanceFile << "exists:" << pdfAppearanceInfo.exists() << "bytes:" << pdfAppearanceInfo.size() << "layout width:" << oStampAnnotation->latexLayoutWidth()
-                                << "contents length:" << oStampAnnotation->contents().size();
-        if (!pdfAppearanceFile.isEmpty() && pdfAppearanceInfo.exists()) {
-            QRectF expandedBoundary;
-            const Poppler::StampAnnotation::CustomPdfAppearanceOptions appearanceOptions = latexStampAppearanceOptions(oStampAnnotation, page, &expandedBoundary);
-            if (oStampAnnotation->isLatexCallout() && expandedBoundary.isValid()) {
-                pStampAnnotation->setBoundary(expandedBoundary);
-            }
-            const bool appearanceUpdated = pStampAnnotation->setStampCustomPdf(pdfAppearanceFile, 1, appearanceOptions);
-            qCDebug(OkularPdfDebug) << "Embedding LaTeX Stamp appearance result:" << appearanceUpdated << "path:" << pdfAppearanceFile;
-            if (!appearanceUpdated) {
-                qCWarning(OkularPdfDebug) << "Could not embed LaTeX Stamp appearance" << pdfAppearanceFile;
-            }
-            return appearanceUpdated;
-        }
-        if (pdfAppearanceFile.isEmpty()) {
-            qCDebug(OkularPdfDebug) << "LaTeX Stamp appearance PDF is not available; no runtime path is set";
-        } else {
-            qCWarning(OkularPdfDebug) << "LaTeX Stamp appearance PDF is not available; path:" << pdfAppearanceFile;
-        }
-        if (sourceAppearance && oStampAnnotation->latexNoteType() != Okular::Annotation::LatexNoteCallout) {
+        const bool hasSourceFile = !pdfAppearanceFile.isEmpty() && pdfAppearanceInfo.exists();
+        if (!hasSourceFile && !preservedRaw.isValid() && sourceAppearance) {
+            // This holder comes only from this document's own live annotation.
+            // Restore before raw extraction if Qt property setters discarded AP.
             pStampAnnotation->setAnnotationAppearance(*sourceAppearance);
-            qCDebug(OkularPdfDebug) << "Preserved LaTeX stamp appearance from current AP; no runtime source PDF";
-            return true;
         }
-#ifdef POPPLER_QT6_HAS_STAMP_APPEARANCE_FROM_CURRENT_APPEARANCE
-        {
-            QRectF expandedBoundary;
-            const Poppler::StampAnnotation::CustomPdfAppearanceOptions appearanceOptions = latexStampAppearanceOptions(oStampAnnotation, page, &expandedBoundary);
-            if (oStampAnnotation->isLatexCallout() && expandedBoundary.isValid()) {
-                pStampAnnotation->setBoundary(expandedBoundary);
-            }
-            if (sourceAppearance) {
-                pStampAnnotation->setAnnotationAppearance(*sourceAppearance);
-            }
-            const bool rebuiltAppearance = pStampAnnotation->setStampCustomPdfFromCurrentAppearance(appearanceOptions);
-            qCDebug(OkularPdfDebug) << "Rebuilt LaTeX stamp appearance from current AP:" << rebuiltAppearance;
-            return rebuiltAppearance;
+        QRectF expandedBoundary;
+        const auto appearanceOptions = latexStampAppearanceOptions(oStampAnnotation, page, &expandedBoundary);
+        const QRectF oldBoundary = pStampAnnotation->boundary();
+        if (oStampAnnotation->isLatexCallout() && expandedBoundary.isValid()) {
+            pStampAnnotation->setBoundary(expandedBoundary);
         }
-#endif
-        return false;
+        QString error;
+        const bool updated = MengsheeLatexAppearance::rebuild(document, nativePage, pStampAnnotation, hasSourceFile ? pdfAppearanceFile : QString(), appearanceOptions, preservedRaw, &error);
+        if (!updated) {
+            if (oStampAnnotation->isLatexCallout()) {
+                pStampAnnotation->setBoundary(oldBoundary);
+            }
+            qCWarning(OkularPdfDebug) << "Could not build Mengshee LaTeX appearance:" << error;
+        }
+        return updated;
     }
     pStampAnnotation->removeCustomProperty(LatexNoteDataKey);
 #endif
@@ -1216,14 +1208,21 @@ void PopplerAnnotationProxy::notifyAddition(Okular::Annotation *okl_ann, int pag
 
     if (okl_ann->subType() == Okular::Annotation::AStamp && ppl_ann->subType() == Poppler::Annotation::AStamp) {
         const Okular::StampAnnotation *okl_stampann = static_cast<const Okular::StampAnnotation *>(okl_ann);
+        // AP copies contain references into their original document. Never
+        // transplant one into another XRef; fresh PDF imports remap resources.
+        const bool sameDocumentTransfer = stampAppearanceTransfer && stampAppearanceTransfer->document == ppl_doc && stampAppearanceTransfer->appearance;
         if (okl_stampann->isOkularLatex()) {
-            updatePopplerAnnotationFromOkularAnnotation(okl_stampann, static_cast<Poppler::StampAnnotation *>(ppl_ann), ppl_page.get());
-        }
-
-        // Apply a clipboard appearance only after the native annotation has
-        // been added and all type-specific updates have run. Both operations
-        // can otherwise replace the AP with the named fallback stamp (Draft).
-        if (stampAppearanceTransfer && stampAppearanceTransfer->document == ppl_doc && stampAppearanceTransfer->appearance) {
+            if (sameDocumentTransfer) {
+                ppl_ann->setAnnotationAppearance(*stampAppearanceTransfer->appearance);
+            }
+            auto *stamp = static_cast<Poppler::StampAnnotation *>(ppl_ann);
+            const auto raw = MengsheeLatexAppearance::captureRawSource(ppl_doc, nativePageForLogicalPage(page), stamp);
+            const auto preserved = stamp->annotationAppearance();
+            if (!updatePopplerAnnotationFromOkularAnnotation(okl_stampann, stamp, ppl_page.get(), preserved.get(), ppl_doc, nativePageForLogicalPage(page), raw) && preserved) {
+                stamp->setAnnotationAppearance(*preserved);
+            }
+        } else if (sameDocumentTransfer) {
+            // Other stamp types keep their existing appearance-transfer policy.
             ppl_ann->setAnnotationAppearance(*stampAppearanceTransfer->appearance);
         }
         okl_ann->setNativeData(nullptr);
@@ -1279,10 +1278,16 @@ void PopplerAnnotationProxy::notifyModification(const Okular::Annotation *okl_an
     }
 
     std::unique_ptr<Poppler::AnnotationAppearance> preservedAppearance;
+    MengsheeLatexAppearance::RawSource preservedLatexRaw;
     QRectF preservedBoundary;
     if (ppl_ann->subType() == Poppler::Annotation::AStamp) {
         preservedAppearance = ppl_ann->annotationAppearance();
         preservedBoundary = ppl_ann->boundary();
+        if (okl_ann->subType() == Okular::Annotation::AStamp && static_cast<const Okular::StampAnnotation *>(okl_ann)->isOkularLatex()) {
+            // Qt flags/style changes may invalidate the old outer AP. Its Fm0
+            // is the reusable source, not the previous frame-clipped drawing.
+            preservedLatexRaw = MengsheeLatexAppearance::captureRawSource(ppl_doc, nativePageForLogicalPage(page), static_cast<Poppler::StampAnnotation *>(ppl_ann));
+        }
     }
 
     // Set basic properties
@@ -1330,7 +1335,7 @@ void PopplerAnnotationProxy::notifyModification(const Okular::Annotation *okl_an
             qCWarning(OkularPdfDebug) << "Cannot update a stamp annotation on invalid logical page" << page;
             break;
         }
-        const bool appearanceUpdated = updatePopplerAnnotationFromOkularAnnotation(okl_stampann, ppl_stampann, ppl_page.get(), preservedAppearance.get());
+        const bool appearanceUpdated = updatePopplerAnnotationFromOkularAnnotation(okl_stampann, ppl_stampann, ppl_page.get(), preservedAppearance.get(), ppl_doc, nativePageForLogicalPage(page), preservedLatexRaw);
         if (!appearanceUpdated && preservedAppearance) {
             if (okl_stampann->isOkularLatex() && okl_stampann->isLatexCallout() && preservedBoundary.isValid()) {
                 ppl_stampann->setBoundary(preservedBoundary);

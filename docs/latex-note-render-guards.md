@@ -63,7 +63,9 @@ strut height. Display-to-prose and ordinary baseline distances are retained.
 
 ## Native PDF bounds union
 
-`external/poppler/utils/PdfPageBounds.{h,cc}` measures the **already typeset PDF**.
+`generators/poppler/pdfpagebounds.{h,cpp}` measures the **already typeset PDF**.
+This is a Mengshee-owned adapter using the pinned backend's existing Core/Splash
+interfaces, not a policy or helper added to the Poppler fork.
 `part/latexpdfbounds.cpp` invokes it on the validated, caller-owned SDK artifact.
 
 - A 1×1 Splash font provider obtains real glyph outlines, not whole-font ascent
@@ -88,14 +90,36 @@ filters and resource excesses fail explicitly. Annots/AcroForm are deliberately
 removed under this appearance-only contract. Input is read-only; a verified new
 output is published without replacing an existing destination. The application
 then atomically replaces only its private SDK artifact using `QSaveFile`.
-See `external/poppler/README.local-fork.md` for limits and the cooperative deadline.
-This is not a malicious-PDF sandbox or complete syntax validator.
+Limits include 64 MiB input/output and decoded non-image streams, 2,000,000
+preflight nodes and paint/outline operations, nesting bounds, an inspection
+canvas within ±1,000,000bp and output spans at most 50,000bp. The 15-second
+deadline is cooperative: it cannot interrupt PDFDoc opening or an individual
+font-library call. This is not a malicious-PDF sandbox or complete syntax validator.
 
 ## Fixed-frame clipping is a separate operation
 
 A complete source PDF does not mean content may paint over the note frame.
-`AnnotStamp::setCustomPdfPageAppearanceFromForm` now surrounds only `/Fm0 Do`
-with a local graphics-state save, frame-inner rectangle clip and restore.
+Mengshee's `generators/poppler/latexappearance.cpp` authors the frame, leader,
+content placement and content-only clip. It uses the existing generic importer
+only to copy a raw source PDF into the destination document, then submits its
+own Form through Core's existing `Annot::setNewAppearance` interface.
+Poppler's default custom-stamp behaviour is not modified.
+
+The source-only `/Fm0 Do` is surrounded by a local graphics-state save,
+frame-inner rectangle clip and restore. `/Fm0` always retains the **unclipped
+source**, not a previously composed outer appearance. Shrinking, saving,
+reopening without the temporary source PDF and growing the frame therefore
+cannot accumulate clips or opacity. Unsupported appearances without recoverable
+raw source are preserved rather than guessed; recompile those notes.
+
+The existing private Qt Document-to-Core bridge is centralized in
+`popplercorebridge.h`; it still requires matching pinned headers and library.
+No additional Qt annotation-memory-layout adapter or backend API is introduced.
+The annotation adapter obtains the real bound Core handle via a protected
+member pointer declared by the pinned Qt wrapper, not an object downcast or
+name-based search. Empty/duplicate `/NM` names remain valid. Wrong-document,
+wrong-page and unbound handles are rejected, and raw resources cannot be
+carried across document owners.
 
 The frame path is inset by half the stroke width, so its **inner edge is a full
 visible stroke width** inside the frame rectangle. Transparent/zero-width
@@ -109,9 +133,9 @@ clip. Repainting a border on top is not used as a workaround, since translucent
 content would still blend into it. GUI page rendering and saved PDF appearances
 use this same composition path.
 
-The explicit-render cache identity is now `content-v8-native-display`, so a
-rerender cannot take the unchanged-path shortcut for the previous forced-height
-appearance. Existing saved AP streams are not rewritten on PDF load: explicitly
+The explicit-render cache identity is now `content-v9-app-appearance`, so a
+rerender cannot take the unchanged-path shortcut instead of running the
+application-owned appearance composer. Existing saved AP streams are not rewritten on PDF load: explicitly
 recompile an old note to obtain both the new layout and the new content clip.
 
 ## Other retained guards
@@ -138,11 +162,19 @@ Automated tests: `latexrenderguardstest`, `latexsourcepreparationtest`,
 The new frame regression uses synthetic vector content, independent of TeX:
 widths 0/1/4, padding 0/2, boxed/callout, opacity 1/.5, zero content offset and
 exhausted inner frame. It checks protected border pixels, preserved leaders,
-unchanged bounds/source hashes and save/reopen output. The old DLL fails 22
-cases; the corrected DLL passes all 26 data rows (28 QtTest results).
+unchanged bounds/source hashes and save/reopen output. All 26 data rows now use
+the application-owned composer. Additional tests verify the unchanged backend
+as a negative control, recovery after source deletion and repeated shrinking /
+saving / reopening / growing, and native-handle/document ownership. These are
+31 QtTest results including setup/cleanup.
+
+`parttest::testLatexAppearanceResizeHistory` exercises the actual application
+annotation proxy for boxed/callout notes on normal/rotated pages, including
+property updates, undo/redo and source-free growth after reopening.
 
 The following `tmp/` paths are local development evidence, not files shipped in
-source archives or release assets. Current follow-up evidence lives in
+source archives or release assets. Application-ownership follow-up evidence is
+in `tmp/latex-app-appearance/`. Initial 2026.0.19.3 evidence lives in
 `tmp/latex-frame-feedback/`, including the
 new actual C++ fixture export, native comparisons, original/fixed frame tests
 and read-only analysis of the reported PDF. Reference/default-policy evidence
@@ -154,5 +186,10 @@ Earlier native-bounds evidence remains useful for the unchanged union helper:
 Those older display-height screenshots describe the **superseded forced-height
 revision**, not the current default. Do not use them to assert current top space.
 
-These fixes are included in the 2026.0.19.3 hotfix. Existing notes need explicit
-recompilation; opening an older PDF alone does not update its saved appearance.
+The initial 2026.0.19.3 release implemented the frame clip in Poppler. The
+follow-up architecture correction moves that decision and the bounds helper
+into Mengshee and restores the previous backend dependency. At the maintainer's
+request, version 2026.0.19.3 is reissued with the corrected commit, tag and release
+assets; the original commit remains in history. Existing notes need explicit
+recompilation or an appearance rebuild; opening an older PDF alone does not
+update its saved appearance.

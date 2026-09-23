@@ -78,13 +78,14 @@ target_include_directories(pdf_annotation_flattener
 target_link_libraries(pdf_annotation_flattener Poppler::Core)
 target_link_libraries(okularGenerator_poppler pdf_annotation_flattener)
 
+# These adapters and appearance policies belong to Mengshee, not the backend fork.
 add_library(pdf_page_bounds STATIC
-    ${CMAKE_SOURCE_DIR}/external/poppler/utils/PdfPageBounds.cc
-    ${CMAKE_SOURCE_DIR}/external/poppler/utils/PdfPageBounds.h
+    pdfpagebounds.cpp
+    pdfpagebounds.h
 )
 set_target_properties(pdf_page_bounds PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_include_directories(pdf_page_bounds
-    PUBLIC ${CMAKE_SOURCE_DIR}/external/poppler/utils
+    PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}
     PRIVATE
         ${CMAKE_SOURCE_DIR}/external/poppler
         ${CMAKE_SOURCE_DIR}/external/poppler/poppler
@@ -92,6 +93,20 @@ target_include_directories(pdf_page_bounds
         ${MENGSHEE_POPPLER_PRIVATE_BUILD_DIR}/poppler
 )
 target_link_libraries(pdf_page_bounds Poppler::Core)
+
+add_library(latex_appearance STATIC latexappearance.cpp latexappearance.h popplercorebridge.h)
+set_target_properties(latex_appearance PROPERTIES POSITION_INDEPENDENT_CODE ON)
+target_include_directories(latex_appearance
+    PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}
+    PRIVATE
+        ${CMAKE_SOURCE_DIR}/external/poppler
+        ${CMAKE_SOURCE_DIR}/external/poppler/poppler
+        ${CMAKE_SOURCE_DIR}/external/poppler/qt6/src
+        ${MENGSHEE_POPPLER_PRIVATE_BUILD_DIR}
+        ${MENGSHEE_POPPLER_PRIVATE_BUILD_DIR}/poppler
+)
+target_link_libraries(latex_appearance PUBLIC Poppler::Qt6 PRIVATE Poppler::Core Qt6::Gui)
+target_link_libraries(okularGenerator_poppler latex_appearance)
 
 target_include_directories(okularGenerator_poppler PRIVATE
     ${CMAKE_SOURCE_DIR}/external/poppler

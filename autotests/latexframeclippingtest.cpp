@@ -2,6 +2,8 @@
     SPDX-License-Identifier: GPL-2.0-or-later
 */
 
+#include "latexappearance.h"
+
 #include <QCryptographicHash>
 #include <QFile>
 #include <QImage>
@@ -53,6 +55,9 @@ class LatexFrameClippingTest : public QObject
 private Q_SLOTS:
     void innerClip_data();
     void innerClip();
+    void genericBackendKeepsItsPolicy();
+    void reopenAndGrowFromRawSource();
+    void rejectForeignOrUnboundSource();
 };
 
 void LatexFrameClippingTest::innerClip_data()
@@ -120,11 +125,13 @@ void LatexFrameClippingTest::innerClip()
         QVERIFY(page);
         auto annotation = std::make_unique<Poppler::StampAnnotation>();
         annotation->setBoundary(boundary);
+        annotation->setUniqueName(QStringLiteral("mengshee-frame-test"));
         auto style = annotation->style();
         style.setOpacity(opacity);
         annotation->setStyle(style);
         page->addAnnotation(annotation.get());
-        QVERIFY(annotation->setStampCustomPdf(variant == 0 ? blankPath : sourcePath, 1, options));
+        QString error;
+        QVERIFY2(MengsheeLatexAppearance::rebuild(document.get(), 0, annotation.get(), variant == 0 ? blankPath : sourcePath, options, {}, &error), qPrintable(error));
         QCOMPARE(annotation->boundary(), boundary);
         // 288 DPI: ignore only one device pixel next to the mathematical clip edge.
         images[variant] = page->renderToImage(288, 288);
@@ -171,6 +178,156 @@ void LatexFrameClippingTest::innerClip()
     if (callout) {
         QVERIFY(foundLeader);
     }
+}
+
+void LatexFrameClippingTest::genericBackendKeepsItsPolicy()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString pagePath = dir.filePath(QStringLiteral("page.pdf"));
+    const QString sourcePath = dir.filePath(QStringLiteral("source.pdf"));
+    QVERIFY(writePdf(pagePath, 200, 200, {}));
+    QVERIFY(writePdf(sourcePath, 100, 70, "0 0 1 rg 0 0 100 70 re f\n"));
+    auto document = Poppler::Document::load(pagePath);
+    QVERIFY(document);
+    auto page = document->page(0);
+    auto stamp = std::make_unique<Poppler::StampAnnotation>();
+    stamp->setUniqueName(QStringLiteral("legacy-generic-stamp"));
+    stamp->setBoundary(QRectF(.1, .65, .5, .15));
+    page->addAnnotation(stamp.get());
+    Poppler::StampAnnotation::CustomPdfAppearanceOptions options;
+    options.outerSize = QSizeF(100, 30);
+    options.frameRect = QRectF(0, 0, 100, 30);
+    options.alignContentToFrameTopLeft = true;
+    options.borderWidth = 4;
+    options.fillColor = Qt::yellow;
+    options.borderColor = Qt::black;
+    QVERIFY(stamp->setStampCustomPdf(sourcePath, 1, options));
+    // The pinned, unmodified backend does not choose Mengshee's clipping policy.
+    const QColor genericPixel = page->renderToImage(288, 288).pixelColor(280, 636);
+    QVERIFY(genericPixel.blue() > 200 && genericPixel.red() < 30);
+    QString error;
+    // Also migrate a legacy Fm0 appearance without a runtime source file.
+    QVERIFY(QFile::remove(sourcePath));
+    QVERIFY2(MengsheeLatexAppearance::rebuild(document.get(), 0, stamp.get(), {}, options, {}, &error), qPrintable(error));
+    QCOMPARE(page->renderToImage(288, 288).pixelColor(280, 636), QColor(Qt::black));
+}
+
+void LatexFrameClippingTest::reopenAndGrowFromRawSource()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString pagePath = dir.filePath(QStringLiteral("page.pdf"));
+    const QString sourcePath = dir.filePath(QStringLiteral("source.pdf"));
+    const QString savedPath = dir.filePath(QStringLiteral("small.pdf"));
+    QVERIFY(writePdf(pagePath, 200, 200, {}));
+    QVERIFY(writePdf(sourcePath, 100, 70, "0 0 1 rg 0 0 100 70 re f\n1 0 0 rg 0 5 100 10 re f\n"));
+    auto document = Poppler::Document::load(pagePath);
+    QVERIFY(document);
+    document->setRenderHint(Poppler::Document::Antialiasing, true);
+    auto page = document->page(0);
+    auto stamp = std::make_unique<Poppler::StampAnnotation>();
+    stamp->setUniqueName(QStringLiteral("reversible-frame"));
+    const QRectF largeBoundary(.1, .45, .5, .35);
+    stamp->setBoundary(largeBoundary);
+    auto style = stamp->style();
+    style.setOpacity(.5);
+    stamp->setStyle(style);
+    page->addAnnotation(stamp.get());
+    Poppler::StampAnnotation::CustomPdfAppearanceOptions options;
+    options.outerSize = QSizeF(100, 70);
+    options.frameRect = QRectF(0, 0, 100, 70);
+    options.alignContentToFrameTopLeft = true;
+    options.borderWidth = 2;
+    options.fillColor = Qt::yellow;
+    options.borderColor = Qt::black;
+    QString error;
+    QVERIFY2(MengsheeLatexAppearance::rebuild(document.get(), 0, stamp.get(), sourcePath, options, {}, &error), qPrintable(error));
+    const QImage full = page->renderToImage(288, 288);
+    auto raw = MengsheeLatexAppearance::captureRawSource(document.get(), 0, stamp.get(), &error);
+    QVERIFY2(raw.isValid(), qPrintable(error));
+    stamp->setBoundary(QRectF(.1, .65, .5, .15));
+    options.outerSize.setHeight(30);
+    options.frameRect.setHeight(30);
+    QVERIFY2(MengsheeLatexAppearance::rebuild(document.get(), 0, stamp.get(), {}, options, raw, &error), qPrintable(error));
+    const QImage small = page->renderToImage(288, 288);
+    QVERIFY(small != full);
+    auto converter = document->pdfConverter();
+    converter->setOutputFileName(savedPath);
+    converter->setPDFOptions(Poppler::PDFConverter::WithChanges);
+    QVERIFY(converter->convert());
+    converter.reset();
+    raw = {};
+    stamp.reset();
+    page.reset();
+    document.reset();
+    QVERIFY(QFile::remove(sourcePath));
+    document = Poppler::Document::load(savedPath);
+    QVERIFY(document);
+    document->setRenderHint(Poppler::Document::Antialiasing, true);
+    page = document->page(0);
+    auto annotations = page->annotations();
+    QCOMPARE(annotations.size(), 1);
+    auto *reopened = static_cast<Poppler::StampAnnotation *>(annotations.front().get());
+    QCOMPARE(page->renderToImage(288, 288), small);
+    // Exercise both a small frame and an exhausted inner frame. Growing must
+    // recover the red bottom stripe, with no accumulated clipping or opacity.
+    for (const int height : {30, 2, 70, 30, 70}) {
+        raw = MengsheeLatexAppearance::captureRawSource(document.get(), 0, reopened, &error);
+        QVERIFY2(raw.isValid(), qPrintable(error));
+        reopened->setBoundary(QRectF(.1, (160. - height) / 200., .5, height / 200.));
+        options.outerSize.setHeight(height);
+        options.frameRect.setHeight(height);
+        QVERIFY2(MengsheeLatexAppearance::rebuild(document.get(), 0, reopened, {}, options, raw, &error), qPrintable(error));
+        if (height == 70) {
+            QCOMPARE(reopened->boundary(), largeBoundary);
+            QCOMPARE(page->renderToImage(288, 288), full);
+        }
+    }
+}
+
+void LatexFrameClippingTest::rejectForeignOrUnboundSource()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("page.pdf"));
+    QVERIFY(writePdf(path, 200, 200, {}));
+    auto first = Poppler::Document::load(path);
+    auto second = Poppler::Document::load(path);
+    QVERIFY(first && second);
+    auto page = first->page(0);
+    auto otherPage = second->page(0);
+    auto stamp = std::make_unique<Poppler::StampAnnotation>();
+    auto other = std::make_unique<Poppler::StampAnnotation>();
+    stamp->setUniqueName(QStringLiteral("same-name"));
+    other->setUniqueName(QStringLiteral("same-name"));
+    stamp->setBoundary(QRectF(.1, .1, .4, .4));
+    other->setBoundary(stamp->boundary());
+    page->addAnnotation(stamp.get());
+    otherPage->addAnnotation(other.get());
+    QVERIFY(stamp->setStampCustomPdf(path, 1));
+    QVERIFY(other->setStampCustomPdf(path, 1));
+    QString error;
+    const auto raw = MengsheeLatexAppearance::captureRawSource(first.get(), 0, stamp.get(), &error);
+    QVERIFY2(raw.isValid(), qPrintable(error));
+    const QImage before = otherPage->renderToImage();
+    QVERIFY(!MengsheeLatexAppearance::rebuild(second.get(), 0, other.get(), {}, {}, raw, &error));
+    QVERIFY(!error.isEmpty());
+    QCOMPARE(otherPage->renderToImage(), before);
+    auto duplicate = std::make_unique<Poppler::StampAnnotation>();
+    duplicate->setUniqueName(stamp->uniqueName());
+    duplicate->setBoundary(stamp->boundary());
+    page->addAnnotation(duplicate.get());
+    // Names are optional PDF metadata, not native identity. Duplicate or empty
+    // names must not redirect an edit or prevent use of a genuinely bound handle.
+    QVERIFY2(MengsheeLatexAppearance::captureRawSource(first.get(), 0, stamp.get(), &error).isValid(), qPrintable(error));
+    auto unbound = std::make_unique<Poppler::StampAnnotation>();
+    unbound->setUniqueName(stamp->uniqueName());
+    QVERIFY(!MengsheeLatexAppearance::captureRawSource(first.get(), 0, unbound.get(), &error).isValid());
+    QVERIFY(!MengsheeLatexAppearance::rebuild(first.get(), 0, unbound.get(), path, {}, {}, &error));
+    QVERIFY(!MengsheeLatexAppearance::captureRawSource(first.get(), 1, stamp.get(), &error).isValid());
+    other->setUniqueName({});
+    QVERIFY2(MengsheeLatexAppearance::captureRawSource(second.get(), 0, other.get(), &error).isValid(), qPrintable(error));
 }
 
 QTEST_MAIN(LatexFrameClippingTest)

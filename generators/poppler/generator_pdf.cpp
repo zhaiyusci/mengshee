@@ -81,7 +81,7 @@
 #include "popplerembeddedfile.h"
 #include "popplerversion.h"
 
-#include "external/poppler/qt6/src/poppler-private.h"
+#include "popplercorebridge.h"
 #include <Outline.h>
 #include <PDFDoc.h>
 
@@ -1294,23 +1294,6 @@ const Okular::DocumentSynopsis *PDFGenerator::generateDocumentSynopsis()
 
 namespace
 {
-struct PopplerDocumentShim {
-    Poppler::DocumentData *m_doc = nullptr;
-};
-
-PDFDoc *popplerCoreDocument(Poppler::Document *document)
-{
-    if (!document) {
-        return nullptr;
-    }
-    // Poppler's Qt wrapper does not expose PDFDoc. In the current Qt6 wrapper
-    // Document has one data member, DocumentData *m_doc. Keep this local to the
-    // PDF generator; it should be replaced by a public Poppler Qt outline writer
-    // API if this feature is upstreamed.
-    auto *shim = reinterpret_cast<PopplerDocumentShim *>(document);
-    return shim->m_doc ? shim->m_doc->doc.get() : nullptr;
-}
-
 std::string pdfTextString(const QString &text)
 {
     std::string result;

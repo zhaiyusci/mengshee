@@ -2,7 +2,7 @@
     SPDX-License-Identifier: GPL-2.0-or-later
 */
 #include "part/latexpdfbounds.h"
-#include <PdfPageBounds.h>
+#include "pdfpagebounds.h"
 #include <poppler-qt6.h>
 #include <QFile>
 #include <QTemporaryDir>
