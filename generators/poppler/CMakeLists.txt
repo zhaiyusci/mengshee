@@ -108,6 +108,19 @@ target_include_directories(latex_appearance
 target_link_libraries(latex_appearance PUBLIC Poppler::Qt6 PRIVATE Poppler::Core Qt6::Gui)
 target_link_libraries(okularGenerator_poppler latex_appearance)
 
+add_library(pdf_reading_views STATIC pdfreadingviews.cpp pdfreadingviews.h)
+set_target_properties(pdf_reading_views PROPERTIES POSITION_INDEPENDENT_CODE ON)
+target_include_directories(pdf_reading_views
+    PUBLIC ${CMAKE_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}
+    PRIVATE
+        ${CMAKE_SOURCE_DIR}/external/poppler
+        ${CMAKE_SOURCE_DIR}/external/poppler/poppler
+        ${MENGSHEE_POPPLER_PRIVATE_BUILD_DIR}
+        ${MENGSHEE_POPPLER_PRIVATE_BUILD_DIR}/poppler
+)
+target_link_libraries(pdf_reading_views PUBLIC okularcore Qt6::Core Qt6::Gui PRIVATE Poppler::Core)
+target_link_libraries(okularGenerator_poppler pdf_reading_views)
+
 target_include_directories(okularGenerator_poppler PRIVATE
     ${CMAKE_SOURCE_DIR}/external/poppler
     ${CMAKE_SOURCE_DIR}/external/poppler/poppler

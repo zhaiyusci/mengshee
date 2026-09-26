@@ -65,7 +65,21 @@ Okular::Document *MiniBarLogic::document() const
 
 int MiniBarLogic::currentPage() const
 {
-    return m_pageView ? m_pageView->documentViewport().pageNumber : static_cast<int>(m_document->currentPage());
+    return m_pageView ? m_pageView->displayedPageNumber() : static_cast<int>(m_document->currentPage());
+}
+
+int MiniBarLogic::pageCount() const
+{
+    return m_pageView ? m_pageView->displayedPageCount() : static_cast<int>(m_document->pages());
+}
+
+void MiniBarLogic::rebuildDisplay()
+{
+    QList<Okular::Page *> pages;
+    for (uint i = 0; i < m_document->pages(); ++i) {
+        pages.append(const_cast<Okular::Page *>(m_document->page(i)));
+    }
+    notifySetup(pages, Okular::DocumentObserver::DocumentChanged);
 }
 
 void MiniBarLogic::setPageView(PageView *pageView)
@@ -76,25 +90,29 @@ void MiniBarLogic::setPageView(PageView *pageView)
     }
 
     disconnect(m_pageViewViewportConnection);
+    disconnect(m_pageViewPagesConnection);
+    disconnect(m_pageViewModeConnection);
     m_pageView = pageView;
 
     if (pageView) {
         m_pageViewViewportConnection = connect(pageView, &PageView::viewportStateChanged, this, &MiniBarLogic::refreshCurrentPage);
+        m_pageViewPagesConnection = connect(pageView, &PageView::displayedPagesChanged, this, &MiniBarLogic::rebuildDisplay);
+        m_pageViewModeConnection = connect(pageView, &PageView::readingViewModeChanged, this, &MiniBarLogic::rebuildDisplay);
     } else {
         m_pageViewViewportConnection = {};
     }
 
-    refreshCurrentPage();
+    rebuildDisplay();
 }
 
 void MiniBarLogic::goToPage(int page)
 {
-    if (page < 0 || page >= static_cast<int>(m_document->pages())) {
+    if (page < 0 || page >= pageCount()) {
         return;
     }
 
     if (m_pageView) {
-        m_pageView->goToDocumentViewport(Okular::DocumentViewport(page), true, true);
+        m_pageView->goToDisplayedPage(page);
     } else {
         m_document->setViewportPage(page);
     }
@@ -102,15 +120,16 @@ void MiniBarLogic::goToPage(int page)
 
 void MiniBarLogic::refreshCurrentPage()
 {
-    const int pages = static_cast<int>(m_document->pages());
+    const int pages = pageCount();
     const int page = currentPage();
     if (pages < 1 || page < 0 || page >= pages) {
         return;
     }
 
     const QString pageNumber = QString::number(page + 1);
-    const Okular::Page *documentPage = m_document->page(page);
-    const QString pageLabel = documentPage ? documentPage->label() : QString();
+    const bool readingViews = m_pageView && m_pageView->readingViewMode();
+    const Okular::Page *documentPage = readingViews ? nullptr : m_document->page(page);
+    const QString pageLabel = readingViews ? m_pageView->displayedPageLabel(page) : (documentPage ? documentPage->label() : QString());
 
     for (MiniBar *miniBar : std::as_const(m_miniBars)) {
         miniBar->m_prevButton->setEnabled(page > 0);
@@ -118,6 +137,12 @@ void MiniBarLogic::refreshCurrentPage()
         miniBar->m_pageNumberEdit->setText(pageNumber);
         miniBar->m_pageNumberLabel->setText(pageNumber);
         miniBar->m_pageLabelEdit->setText(pageLabel);
+        miniBar->m_readingPageLabel->setText(readingViews ? pageLabel : QString());
+        miniBar->m_readingPageLabel->setVisible(readingViews);
+        // The editable value is always the ordinal in reading mode. A View's
+        // user-assigned label is informative only and may occur more than once.
+        miniBar->m_pageNumberEdit->setToolTip(readingViews ? pageLabel : QString());
+        miniBar->m_pagesButton->setToolTip(readingViews ? pageLabel : QString());
     }
 }
 
@@ -129,17 +154,20 @@ void MiniBarLogic::notifySetup(const QList<Okular::Page *> &pageVector, int setu
     }
 
     // if document is closed or has no pages, hide widget
-    const int pages = pageVector.count();
+    const bool readingViews = m_pageView && m_pageView->readingViewMode();
+    const int pages = pageVector.isEmpty() ? 0 : (readingViews ? m_pageView->displayedPageCount() : pageVector.count());
     if (pages < 1) {
         for (MiniBar *miniBar : std::as_const(m_miniBars)) {
             miniBar->setEnabled(false);
+            miniBar->m_readingPageLabel->clear();
+            miniBar->m_readingPageLabel->setVisible(false);
         }
         return;
     }
 
     bool labelsDiffer = false;
     for (const Okular::Page *page : pageVector) {
-        if (!page->label().isEmpty()) {
+        if (!readingViews && !page->label().isEmpty()) {
             if (page->label().toInt() != (page->number() + 1)) {
                 labelsDiffer = true;
             }
@@ -214,6 +242,7 @@ MiniBar::MiniBar(QWidget *parent, MiniBarLogic *miniBarLogic)
     horLayout->addWidget(m_prevButton);
     // bottom: left lineEdit (current page box)
     m_pageNumberEdit = new PageNumberEdit(this);
+    m_pageNumberEdit->setObjectName(QStringLiteral("readingPageNumber"));
     horLayout->addWidget(m_pageNumberEdit);
     m_pageNumberEdit->installEventFilter(this);
     // bottom: left labelWidget (current page label)
@@ -224,11 +253,16 @@ MiniBar::MiniBar(QWidget *parent, MiniBarLogic *miniBarLogic)
     m_pageNumberLabel = new QLabel(this);
     m_pageNumberLabel->setAlignment(Qt::AlignCenter);
     horLayout->addWidget(m_pageNumberLabel);
+    m_readingPageLabel = new QLabel(this);
+    m_readingPageLabel->setObjectName(QStringLiteral("readingPageLabel"));
+    m_readingPageLabel->setVisible(false);
+    horLayout->addWidget(m_readingPageLabel);
     // bottom: central 'of' label
     horLayout->addSpacing(5);
     horLayout->addWidget(new QLabel(i18nc("Layouted like: '5 [pages] of 10'", "of"), this));
     // bottom: right button
     m_pagesButton = new HoverButton(this);
+    m_pagesButton->setObjectName(QStringLiteral("displayedPageCountButton"));
     horLayout->addWidget(m_pagesButton);
     // bottom: right next_page button
     m_nextButton = new HoverButton(this);
@@ -302,7 +336,7 @@ void MiniBar::slotChangePageFromReturn()
     // convert it to page number and go to that page
     bool ok;
     int number = pageNumber.toInt(&ok) - 1;
-    if (ok && number >= 0 && number < (int)m_miniBarLogic->document()->pages() && number != m_miniBarLogic->currentPage()) {
+    if (ok && number >= 0 && number < m_miniBarLogic->pageCount() && number != m_miniBarLogic->currentPage()) {
         slotChangePage(number);
     }
 }
@@ -365,18 +399,40 @@ ProgressWidget::~ProgressWidget()
     m_document->removeObserver(this);
 }
 
+void ProgressWidget::setPageView(PageView *pageView)
+{
+    if (m_pageView != pageView) {
+        disconnect(m_viewportConnection);
+        disconnect(m_pagesConnection);
+        disconnect(m_modeConnection);
+        m_pageView = pageView;
+        if (pageView) {
+            const auto refresh = [this] { notifyCurrentPageChanged(-1, static_cast<int>(m_document->currentPage())); };
+            m_viewportConnection = connect(pageView, &PageView::viewportStateChanged, this, refresh);
+            m_pagesConnection = connect(pageView, &PageView::displayedPagesChanged, this, refresh);
+            m_modeConnection = connect(pageView, &PageView::readingViewModeChanged, this, refresh);
+        }
+    }
+    notifyCurrentPageChanged(-1, static_cast<int>(m_document->currentPage()));
+}
+
 void ProgressWidget::notifyCurrentPageChanged(int previousPage, int currentPage)
 {
     Q_UNUSED(previousPage)
 
     // get current page number
-    int pages = m_document->pages();
+    const int pages = m_pageView ? m_pageView->displayedPageCount() : static_cast<int>(m_document->pages());
+    if (m_pageView) {
+        currentPage = m_pageView->displayedPageNumber();
+    }
 
     // if the document is opened and page is changed
     if (pages > 0) {
         // update percentage
         const float percentage = pages < 2 ? 1.0 : (float)currentPage / (float)(pages - 1);
         setProgress(percentage);
+    } else {
+        setProgress(0);
     }
 }
 
@@ -389,9 +445,18 @@ void ProgressWidget::setProgress(float percentage)
 void ProgressWidget::slotGotoNormalizedPage(float index)
 {
     // figure out page number and go to that page
-    int number = (int)(index * (float)m_document->pages());
-    if (number >= 0 && number < (int)m_document->pages() && number != (int)m_document->currentPage()) {
-        m_document->setViewportPage(number);
+    const int pages = m_pageView ? m_pageView->displayedPageCount() : static_cast<int>(m_document->pages());
+    const int current = m_pageView ? m_pageView->displayedPageNumber() : static_cast<int>(m_document->currentPage());
+    if (pages < 1) {
+        return;
+    }
+    const int number = qBound(0, static_cast<int>(index * pages), pages - 1);
+    if (number != current) {
+        if (m_pageView) {
+            m_pageView->goToDisplayedPage(number);
+        } else {
+            m_document->setViewportPage(number);
+        }
     }
 }
 

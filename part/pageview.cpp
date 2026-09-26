@@ -33,6 +33,12 @@
 #include <QFrame>
 #include <QGestureEvent>
 #include <QHash>
+#include <QLineF>
+#include <QScopeGuard>
+#include <QSignalBlocker>
+#include <QPointer>
+#include <algorithm>
+#include <limits>
 #include <QImage>
 #include <QInputDialog>
 #include <QLineEdit>
@@ -83,6 +89,7 @@
 #include "annotwindow.h"
 #include "colormodemenu.h"
 #include "core/annotations.h"
+#include "core/readingview.h"
 #include "cursorwraphelper.h"
 #include "formwidgets.h"
 #include "gui/debug_ui.h"
@@ -182,6 +189,7 @@ struct NamedDestinationMarker {
 
 struct NamedDestinationHitRegion {
     int pageNumber = -1;
+    int displayIndex = -1;
     QString name;
     QRectF rect;
 };
@@ -277,12 +285,86 @@ static bool samePdfLinkRectangle(const QRectF &first, const QRectF &second)
     return std::abs(first.left() - second.left()) < tolerance && std::abs(first.top() - second.top()) < tolerance && std::abs(first.right() - second.right()) < tolerance && std::abs(first.bottom() - second.bottom()) < tolerance;
 }
 
+// Reading Views use the same display-normalized geometry as links, but only
+// labels, borders and handles are interactive: interiors must remain readable.
+static QRectF readingViewDisplayRect(const PageViewItem *item, const Okular::NormalizedRect &rect)
+{
+    switch (item->page()->rotation()) {
+    case Okular::Rotation90:
+        return QRectF(QPointF(1.0 - rect.bottom, rect.left), QPointF(1.0 - rect.top, rect.right));
+    case Okular::Rotation180:
+        return QRectF(QPointF(1.0 - rect.right, 1.0 - rect.bottom), QPointF(1.0 - rect.left, 1.0 - rect.top));
+    case Okular::Rotation270:
+        return QRectF(QPointF(rect.top, 1.0 - rect.right), QPointF(rect.bottom, 1.0 - rect.left));
+    case Okular::Rotation0:
+        return QRectF(QPointF(rect.left, rect.top), QPointF(rect.right, rect.bottom));
+    }
+    return {};
+}
+
+static QRectF readingViewLabelRect(const PageViewItem *item, const QRectF &rect, int number, const QFont &font)
+{
+    const QFontMetricsF metrics(font);
+    const QRectF page = item->croppedGeometry();
+    const QSizeF size(qMin(page.width(), metrics.horizontalAdvance(QString::number(number)) + 10.0), qMin(page.height(), metrics.height() + 4.0));
+    return QRectF(QPointF(qBound(page.left(), rect.left() + 4.0, page.right() - size.width()), qBound(page.top(), rect.top() + 4.0, page.bottom() - size.height())), size);
+}
+
+static PdfLinkHandle readingViewHandleAt(const QRectF &rect, const QRectF &label, const QPointF &point, bool selected)
+{
+    if (selected) {
+        const PdfLinkHandle handle = pdfLinkHandleAt(rect, point);
+        if (handle != PdfLinkHandle::None && handle != PdfLinkHandle::Move) {
+            return handle;
+        }
+    }
+    constexpr qreal borderHitWidth = 4.0;
+    const bool onBorder = rect.adjusted(-borderHitWidth, -borderHitWidth, borderHitWidth, borderHitWidth).contains(point)
+        && !rect.adjusted(borderHitWidth, borderHitWidth, -borderHitWidth, -borderHitWidth).contains(point);
+    return label.contains(point) || onBorder ? PdfLinkHandle::Move : PdfLinkHandle::None;
+}
+
 TableSelectionPart::TableSelectionPart(PageViewItem *item_p, const Okular::NormalizedRect &rectInItem_p, const Okular::NormalizedRect &rectInSelection_p)
     : item(item_p)
     , rectInItem(rectInItem_p)
     , rectInSelection(rectInSelection_p)
 {
 }
+
+// Slots survive until Document destruction: queued partial-render notifications
+// may still hold the observer address after removeObserver(). No slot owns an item.
+class ReadingPixmapObserver final : public QObject, public Okular::DocumentObserver
+{
+public:
+    ReadingPixmapObserver(Okular::Document *document, PageView *view) : QObject(document), owner(view) {}
+
+    void notifyPageChanged(int page, int flags) override
+    {
+        if (owner && registered && page == sourcePage && (flags & Pixmap)) {
+            owner->notifyPageChanged(page, Pixmap);
+            // A cancelled/older-size result is only a temporary fallback. Check
+            // the current native dimensions and ROI again before considering it done.
+            owner->scheduleReadingRenderReconcile();
+        }
+    }
+    bool canUnloadPixmap(int page) const override
+    {
+        return !owner || !registered || page != sourcePage || region.isNull();
+    }
+    bool visiblePixmapRect(int page, Okular::NormalizedRect *rect) const override
+    {
+        if (rect) *rect = owner && registered && page == sourcePage ? region : Okular::NormalizedRect();
+        return true; // Never refresh this slot using another frame's/source-wide union.
+    }
+
+    QPointer<PageView> owner;
+    bool registered = false;
+    int sourcePage = -1;
+    QString identity;
+    QSize logicalSize;
+    qreal dpr = 1.0;
+    Okular::NormalizedRect region;
+};
 
 // structure used internally by PageView for data storage
 class PageViewPrivate
@@ -304,6 +386,17 @@ public:
     bool workspaceActiveView = true;
     QList<PageViewItem *> items;
     QList<PageViewItem *> visibleItems;
+    bool readingMode = false;
+    bool localReadingNavigation = false;
+    int currentDisplayIndex = 0;
+    int interactionDisplayIndex = -1;
+    struct ReadingHistoryEntry { QString identity; Okular::DocumentViewport viewport; };
+    QList<ReadingHistoryEntry> readingHistory;
+    int readingHistoryIndex = -1;
+    QList<ReadingPixmapObserver *> readingRenderSlots;
+    bool readingRenderReconcileQueued = false;
+    QList<QPair<int, QString>> readingSelectedText;
+    bool ocrModeEnabled = false;
     int ocrEditingPage = -1;
     QList<Okular::OcrTextWord> ocrWords;
     QList<OcrTextLayout::Placement> ocrTextLayout;
@@ -317,6 +410,19 @@ public:
     QRectF ocrWordDragStartRect;
     QList<Okular::OcrTextWord> ocrWordDragBefore;
     MagnifierView *magnifierView = nullptr;
+    QHash<int, QList<Okular::ReadingView>> readingViewsByPage;
+    bool readingViewEditingEnabled = false;
+    bool creatingReadingView = false; // continuous drawing is armed
+    bool readingViewCreatingGesture = false; // this particular drag creates a new View
+    bool readingViewDragging = false;
+    bool readingViewConsumedPress = false;
+    int selectedReadingViewPage = -1;
+    QString selectedReadingViewId;
+    int readingViewDragPage = -1;
+    PdfLinkHandle readingViewDragHandle = PdfLinkHandle::None;
+    QPoint readingViewDragStart;
+    QRectF readingViewDragStartRect;
+    QRectF readingViewDraftRect;
     QHash<int, QList<NamedDestinationMarker>> namedDestinationsByPage;
     QList<NamedDestinationHitRegion> namedDestinationHitRegions;
     bool namedDestinationsLoaded = false;
@@ -662,6 +768,17 @@ PageView::PageView(QWidget *parent, Okular::Document *document, bool independent
     d->magnifierView->hide();
     d->magnifierView->setGeometry(0, 0, 351, 201); // TODO: more dynamic?
 
+    connect(document, &Okular::Document::readingViewsChanged, this, [this](int pageNumber) {
+        d->readingViewsByPage.remove(pageNumber);
+        if (d->readingMode) {
+            rebuildDisplayedItems();
+            return;
+        }
+        if (d->readingViewDragging && d->readingViewDragPage == pageNumber) {
+            refreshReadingViews();
+        }
+        viewport()->update();
+    });
     connect(document, &Okular::Document::processMovieAction, this, &PageView::slotProcessMovieAction);
     connect(document, &Okular::Document::processRenditionAction, this, &PageView::slotProcessRenditionAction);
 
@@ -671,6 +788,18 @@ PageView::PageView(QWidget *parent, Okular::Document *document, bool independent
 
 PageView::~PageView()
 {
+    const auto renderSlots = d->readingRenderSlots;
+    for (auto *slot : renderSlots) slot->owner.clear();
+    // Registry mutation is deferred even if a frame is closed from an observer
+    // callback. QObject context cancels this cleanup if Document dies first.
+    auto *document = d->document;
+    QMetaObject::invokeMethod(document, [document, renderSlots] {
+        for (auto *slot : renderSlots) {
+            if (slot->registered) document->removeObserver(slot);
+            slot->registered = false;
+            slot->region = {};
+        }
+    }, Qt::QueuedConnection);
 #if HAVE_SPEECH
     if (d->m_tts) {
         d->m_tts->stopAllSpeechs();
@@ -730,8 +859,10 @@ QStringList PageView::namedDestinationsAtGlobalPos(QPoint globalPos) const
     }
 
     const QPoint contentPos = contentAreaPoint(viewport()->mapFromGlobal(globalPos));
+    const auto *item = const_cast<PageView *>(this)->pickItemOnPoint(contentPos.x(), contentPos.y());
+    if (!item) return names;
     for (auto it = d->namedDestinationHitRegions.crbegin(); it != d->namedDestinationHitRegions.crend(); ++it) {
-        if (it->rect.contains(contentPos) && !names.contains(it->name)) {
+        if (it->displayIndex == item->displayIndex && it->rect.contains(contentPos) && !names.contains(it->name)) {
             names.append(it->name);
         }
     }
@@ -782,6 +913,17 @@ OKULARPART_EXPORT bool PageView::advancedModeEnabled() const
     return d->showNamedDestinations;
 }
 
+bool PageView::ocrModeEnabled() const
+{
+    return d->ocrModeEnabled;
+}
+
+void PageView::setOcrModeEnabled(bool enabled)
+{
+    d->ocrModeEnabled = enabled;
+    if (!enabled) stopOcrTextEditing();
+}
+
 bool PageView::isOcrTextEditing() const
 {
     return d->ocrEditingPage >= 0;
@@ -789,8 +931,10 @@ bool PageView::isOcrTextEditing() const
 
 bool PageView::startOcrTextEditing(int pageNumber)
 {
+    if (!d->ocrModeEnabled) return false;
+    cancelReadingViewCreation();
     stopOcrTextEditing();
-    if (!advancedModeEnabled() || !d->document->readOcrTextLayer(pageNumber, &d->ocrWords, nullptr)) {
+    if (!d->document->readOcrTextLayer(pageNumber, &d->ocrWords, nullptr)) {
         return false;
     }
     cancelNamedDestinationCreation();
@@ -882,21 +1026,194 @@ void PageView::stopOcrTextEditing()
     Q_EMIT ocrTextEditingChanged();
 }
 
-void PageView::setAdvancedModeEnabled(bool enabled)
+bool PageView::readingViewMode() const { return d->readingMode; }
+int PageView::displayedPageCount() const { return d->items.size(); }
+int PageView::displayedPageNumber() const
 {
-    if (!enabled) {
-        stopOcrTextEditing();
+    return d->items.isEmpty() ? -1 : (d->readingMode ? qBound(0, d->currentDisplayIndex, int(d->items.size()) - 1) : qBound(0, documentViewport().pageNumber, int(d->items.size()) - 1));
+}
+Okular::DocumentObserver *PageView::displayedPagePixmapObserver(int index) const
+{
+    const auto *item = d->items.value(index);
+    if (!item) return nullptr;
+    return d->readingMode ? item->readingRenderObserver : const_cast<PageView *>(this);
+}
+
+QSize PageView::displayedPageUncroppedSize(int index) const
+{
+    const auto *item = d->items.value(index);
+    return item ? QSize(item->uncroppedWidth(), item->uncroppedHeight()) : QSize();
+}
+
+QString PageView::displayedPageLabel(int index) const
+{
+    const auto *item = d->items.value(index);
+    if (!item) return {};
+    return item->readingViewId.isEmpty() ? QString::number(item->pageNumber() + 1)
+        : i18n("Page %1 · View %2", item->pageNumber() + 1, item->readingViewNumber);
+}
+
+PageViewItem *PageView::sourceItem(int sourcePage) const
+{
+    if (!d->readingMode) return d->items.value(sourcePage);
+    for (int index : {d->interactionDisplayIndex, d->currentDisplayIndex}) {
+        auto *item = d->items.value(index);
+        if (item && item->pageNumber() == sourcePage) return item;
     }
-    if (d->aToggleNamedDestinations) {
-        d->aToggleNamedDestinations->setChecked(enabled);
+    for (auto *item : std::as_const(d->visibleItems)) if (item->pageNumber() == sourcePage) return item;
+    for (auto *item : std::as_const(d->items)) if (item->pageNumber() == sourcePage) return item;
+    return nullptr;
+}
+
+int PageView::itemIndexForViewport(const Okular::DocumentViewport &vp) const
+{
+    if (!d->readingMode) return vp.pageNumber >= 0 && vp.pageNumber < d->items.size() ? vp.pageNumber : -1;
+    const auto matches = [&vp](const PageViewItem *item) {
+        if (!item || item->pageNumber() != vp.pageNumber) return false;
+        if (!vp.rePos.enabled) return true;
+        const QRectF r = readingViewDisplayRect(item, item->readingCrop);
+        return r.adjusted(-1e-9, -1e-9, 1e-9, 1e-9).contains(QPointF(vp.rePos.normalizedX, vp.rePos.normalizedY));
+    };
+    if (vp.rePos.enabled && matches(d->items.value(d->currentDisplayIndex))) return d->currentDisplayIndex;
+    for (int i = 0; i < d->items.size(); ++i) if (matches(d->items[i])) return i;
+    int nearest = -1;
+    double minimum = std::numeric_limits<double>::max();
+    for (const auto *item : std::as_const(d->items)) {
+        if (item->pageNumber() != vp.pageNumber) continue;
+        const QRectF r = readingViewDisplayRect(item, item->readingCrop);
+        const double x = vp.rePos.normalizedX - qBound(r.left(), vp.rePos.normalizedX, r.right());
+        const double y = vp.rePos.normalizedY - qBound(r.top(), vp.rePos.normalizedY, r.bottom());
+        const double distance = x * x + y * y;
+        if (distance < minimum) { minimum = distance; nearest = item->displayIndex; }
+    }
+    return nearest;
+}
+
+void PageView::rebuildDisplayedItems()
+{
+    const QString identity = d->items.value(d->currentDisplayIndex) ? d->items[d->currentDisplayIndex]->readingIdentity : QString();
+    QList<Okular::Page *> pages;
+    for (uint i = 0; i < d->document->pages(); ++i) pages.append(const_cast<Okular::Page *>(d->document->page(i)));
+    notifySetup(pages, DocumentObserver::DocumentChanged);
+    if (!d->items.isEmpty()) {
+        if (d->readingMode && !identity.isEmpty()) {
+            for (const auto *item : std::as_const(d->items)) {
+                if (item->readingIdentity == identity) { goToDisplayedPage(item->displayIndex); return; }
+            }
+        }
+        const int index = itemIndexForViewport(documentViewport());
+        auto pageOnly = documentViewport();
+        pageOnly.rePos.enabled = false;
+        d->currentDisplayIndex = index >= 0 ? index : qMax(0, itemIndexForViewport(pageOnly));
+        slotRelayoutPages();
+        if (d->readingMode && index < 0) goToDisplayedPage(d->currentDisplayIndex);
+        else slotRealNotifyViewportChanged(false);
+    }
+}
+
+void PageView::setReadingViewMode(bool enabled)
+{
+    if (d->readingMode == enabled) return;
+    refreshReadingViews();
+    cancelNamedDestinationCreation();
+    stopOcrTextEditing();
+    if (d->annotator) d->annotator->detachAnnotation();
+    d->mouseAnnotation->reset();
+    textSelectionClear();
+    selectionClear();
+    d->mousePressLinkObject = nullptr;
+    d->magnifierView->hide();
+    d->readingMode = enabled;
+    d->readingHistory.clear();
+    d->readingHistoryIndex = -1;
+    scheduleReadingRenderReconcile();
+    d->currentDisplayIndex = 0;
+    rebuildDisplayedItems();
+    if (d->readingMode) rememberDisplayedViewport();
+    Q_EMIT readingViewModeChanged(d->readingMode);
+    Q_EMIT displayedPagesChanged();
+    Q_EMIT viewportStateChanged();
+}
+
+void PageView::rememberDisplayedViewport()
+{
+    if (!d->readingMode || d->items.isEmpty()) return;
+    const PageViewPrivate::ReadingHistoryEntry entry{d->items[displayedPageNumber()]->readingIdentity, documentViewport()};
+    if (d->readingHistoryIndex >= 0 && d->readingHistory[d->readingHistoryIndex].identity == entry.identity) {
+        d->readingHistory[d->readingHistoryIndex].viewport = entry.viewport;
         return;
     }
+    while (d->readingHistory.size() > d->readingHistoryIndex + 1) d->readingHistory.removeLast();
+    d->readingHistory.append(entry);
+    d->readingHistoryIndex = d->readingHistory.size() - 1;
+}
 
+void PageView::goToDisplayedPage(int index, bool atBottom)
+{
+    const auto *item = d->items.value(index);
+    if (!item) return;
+    if (!d->readingMode) {
+        Okular::DocumentViewport vp(item->pageNumber());
+        if (atBottom) { vp.rePos.enabled = true; vp.rePos.normalizedX = 0; vp.rePos.normalizedY = 1; vp.rePos.pos = Okular::DocumentViewport::TopLeft; }
+        goToDocumentViewport(vp, true, true);
+        return;
+    }
+    rememberDisplayedViewport();
+    d->currentDisplayIndex = index;
+    const QRectF crop = readingViewDisplayRect(item, item->readingCrop);
+    Okular::DocumentViewport vp(item->pageNumber());
+    vp.rePos.enabled = true;
+    vp.rePos.pos = Okular::DocumentViewport::TopLeft;
+    vp.rePos.normalizedX = crop.left();
+    vp.rePos.normalizedY = atBottom ? crop.bottom() : crop.top();
+    d->localReadingNavigation = true;
+    setDocumentViewport(vp, this, false, false);
+    slotRealNotifyViewportChanged(false); // Same source+point can be a different virtual page.
+    d->localReadingNavigation = false;
+    rememberDisplayedViewport();
+    Q_EMIT viewportStateChanged();
+}
+
+void PageView::setAdvancedModeEnabled(bool enabled)
+{
+    setCrossReferenceModeEnabled(enabled);
+}
+
+void PageView::setCrossReferenceModeEnabled(bool enabled)
+{
+    if (d->aToggleNamedDestinations) {
+        const QSignalBlocker blocker(d->aToggleNamedDestinations);
+        d->aToggleNamedDestinations->setChecked(enabled);
+    }
+    if (d->showNamedDestinations == enabled) return;
     d->showNamedDestinations = enabled;
+    if (!enabled) {
+        const bool cancelledNamedDestinationCreation = d->creatingNamedDestination;
+        d->draggedNamedDestination.clear();
+        d->namedDestinationDragging = false;
+        d->creatingNamedDestination = false;
+        d->creatingNamedDestinationsContinuously = false;
+        d->namedDestinationPlacementPress = false;
+        d->creatingInternalLink = false;
+        d->internalLinkCreationDragging = false;
+        d->internalLinkCreationPage = -1;
+        d->internalLinkCreationRect = QRect();
+        d->selectedPdfLinkPage = -1;
+        d->selectedPdfLinkOriginalRect = QRectF();
+        d->selectedPdfLinkRect = QRectF();
+        d->pdfLinkDragHandle = PdfLinkHandle::None;
+        d->pdfLinkDragging = false;
+        updateCursor();
+        if (cancelledNamedDestinationCreation) Q_EMIT namedDestinationCreationCancelled();
+    }
+    if (enabled && !d->namedDestinationsLoaded) loadNamedDestinations();
+    viewport()->update();
+    Q_EMIT advancedModeChanged(enabled); // Compatibility signal: cross-references only.
 }
 
 void PageView::startNamedDestinationCreation(bool continuous)
 {
+    cancelReadingViewCreation();
     if (!d->showNamedDestinations || !d->document->canEditPdfLinks()) {
         return;
     }
@@ -929,6 +1246,7 @@ void PageView::cancelNamedDestinationCreation()
 
 void PageView::startLinkCreation()
 {
+    cancelReadingViewCreation();
     if (!d->showNamedDestinations || !d->document->canEditPdfLinks()) {
         return;
     }
@@ -951,6 +1269,372 @@ void PageView::startLinkCreation()
     d->scroller->stop();
     setCursor(Qt::CrossCursor);
     displayMessage(i18n("Drag a rectangle over the area that should become a link. Press Esc to cancel."));
+}
+
+void PageView::ensureReadingViewsLoaded(int pageNumber) const
+{
+    if (!d->readingViewsByPage.contains(pageNumber)) {
+        d->readingViewsByPage.insert(pageNumber, d->document->readingViews(pageNumber, nullptr));
+    }
+}
+
+void PageView::refreshReadingViews()
+{
+    d->readingViewsByPage.clear();
+    // A model change invalidates any preview, not the selected stable identity.
+    d->readingViewDragging = false;
+    d->readingViewCreatingGesture = false;
+    d->readingViewDragPage = -1;
+    d->readingViewDragHandle = PdfLinkHandle::None;
+    d->readingViewDragStartRect = {};
+    d->readingViewDraftRect = {};
+    viewport()->update();
+}
+
+void PageView::cancelReadingViewCreation()
+{
+    const bool wasCreating = d->creatingReadingView;
+    d->creatingReadingView = false;
+    d->readingViewDragging = false;
+    d->readingViewCreatingGesture = false;
+    d->readingViewDragPage = -1;
+    d->readingViewDragHandle = PdfLinkHandle::None;
+    d->readingViewDraftRect = {};
+    d->selectedReadingViewPage = -1;
+    d->selectedReadingViewId.clear();
+    // Keep consumedPress until release; cancelling must not activate a link
+    // underneath a press owned by this editor. Do not clear another tool's press.
+    if (d->readingViewConsumedPress) {
+        d->mousePressLinkObject = nullptr;
+    }
+    viewport()->update();
+    updateCursor();
+    if (wasCreating) {
+        Q_EMIT readingViewCreationCancelled();
+    }
+}
+
+bool PageView::readingViewEditingEnabled() const
+{
+    return d->readingViewEditingEnabled;
+}
+
+void PageView::setReadingViewEditingEnabled(bool enabled)
+{
+    if (d->readingViewEditingEnabled == enabled) {
+        return;
+    }
+    d->readingViewEditingEnabled = enabled;
+    if (!enabled) {
+        cancelReadingViewCreation();
+    }
+    viewport()->update();
+    Q_EMIT readingViewEditingChanged(enabled);
+}
+
+void PageView::startReadingViewCreation()
+{
+    if (!d->readingViewEditingEnabled || !d->document->canEditReadingViews() || d->creatingReadingView) {
+        return;
+    }
+    cancelReadingViewCreation();
+    cancelNamedDestinationCreation();
+    stopOcrTextEditing();
+    d->creatingInternalLink = false;
+    d->internalLinkCreationDragging = false;
+    d->internalLinkCreationRect = {};
+    d->draggedNamedDestination.clear();
+    d->namedDestinationDragging = false;
+    d->selectedPdfLinkPage = -1;
+    d->pdfLinkDragging = false;
+    if (d->annotator) {
+        d->annotator->detachAnnotation();
+    }
+    d->mouseAnnotation->reset();
+    selectionClear();
+    d->mouseTextSelecting = false;
+    d->mousePressPos = {};
+    d->mouseSelectPos = {};
+    d->mousePressLinkObject = nullptr;
+    d->scroller->stop();
+    d->dragScrollTimer.stop();
+    d->creatingReadingView = true;
+    setCursor(Qt::CrossCursor);
+    displayMessage(i18n("Drag a rectangle to define a Reading View. Press Esc to cancel."));
+    viewport()->update();
+}
+
+QStringList PageView::readingViewsAtGlobalPos(QPoint globalPos, int *pageNumber) const
+{
+    QStringList ids;
+    if (pageNumber) {
+        *pageNumber = -1;
+    }
+    if (!d->readingViewEditingEnabled) {
+        return ids;
+    }
+    const QPoint point = contentAreaPoint(viewport()->mapFromGlobal(globalPos));
+    for (const PageViewItem *item : std::as_const(d->visibleItems)) {
+        if (!item->isVisible() || !item->croppedGeometry().contains(point)) {
+            continue;
+        }
+        ensureReadingViewsLoaded(item->pageNumber());
+        const auto &views = d->readingViewsByPage[item->pageNumber()];
+        for (auto it = views.crbegin(); it != views.crend(); ++it) {
+            const QRectF rect = pdfLinkContentRect(item, readingViewDisplayRect(item, it->rectangle));
+            const QRectF label = readingViewLabelRect(item, rect, it->number, font());
+            const bool selected = d->selectedReadingViewPage == item->pageNumber() && d->selectedReadingViewId == it->id;
+            if (readingViewHandleAt(rect, label, point, selected) != PdfLinkHandle::None) {
+                ids.append(it->id);
+            }
+        }
+        if (!ids.isEmpty() && pageNumber) {
+            *pageNumber = item->pageNumber();
+        }
+        break;
+    }
+    return ids;
+}
+
+void PageView::drawReadingViews(const QRect &contentsRect, QPainter *p)
+{
+    if (!d->readingViewEditingEnabled) {
+        return;
+    }
+    p->save();
+    p->setClipRect(contentsRect, Qt::IntersectClip);
+    p->setRenderHint(QPainter::Antialiasing, true);
+    p->setFont(font());
+    p->setBrush(Qt::NoBrush);
+    const QColor color(140, 55, 165, 230);
+    for (const PageViewItem *item : std::as_const(d->visibleItems)) {
+        if (!item->isVisible() || !item->croppedGeometry().intersects(contentsRect)) {
+            continue;
+        }
+        ensureReadingViewsLoaded(item->pageNumber());
+        p->save();
+        p->setClipRect(item->croppedGeometry(), Qt::IntersectClip);
+        for (const auto &view : std::as_const(d->readingViewsByPage[item->pageNumber()])) {
+            const bool selected = d->selectedReadingViewPage == item->pageNumber() && d->selectedReadingViewId == view.id;
+            const QRectF normalized = selected && d->readingViewDragging ? d->readingViewDraftRect : readingViewDisplayRect(item, view.rectangle);
+            const QRectF rect = pdfLinkContentRect(item, normalized);
+            QPen pen(color, selected ? 2.0 : 1.25, selected ? Qt::SolidLine : Qt::DashLine);
+            pen.setCosmetic(true);
+            p->setPen(pen);
+            p->drawRect(rect);
+            const QRectF label = readingViewLabelRect(item, rect, view.number, font());
+            p->drawRect(label);
+            p->drawText(label, Qt::AlignCenter, QString::number(view.number));
+            if (selected && d->readingViewEditingEnabled && d->document->canEditReadingViews()) {
+                const std::array<QPointF, 8> centers {rect.topLeft(), QPointF(rect.center().x(), rect.top()), rect.topRight(), QPointF(rect.right(), rect.center().y()),
+                                                      rect.bottomRight(), QPointF(rect.center().x(), rect.bottom()), rect.bottomLeft(), QPointF(rect.left(), rect.center().y())};
+                for (const auto &center : centers) {
+                    p->drawRect(pdfLinkHandleRect(center));
+                }
+            }
+        }
+        if (d->readingViewCreatingGesture && d->readingViewDragging && d->readingViewDragPage == item->pageNumber()) {
+            QPen pen(color, 2.0, Qt::DashLine);
+            pen.setCosmetic(true);
+            p->setPen(pen);
+            p->drawRect(pdfLinkContentRect(item, d->readingViewDraftRect));
+        }
+        p->restore();
+    }
+    p->restore();
+}
+
+bool PageView::readingViewMousePress(QMouseEvent *event)
+{
+    if (event->button() == Qt::LeftButton) {
+        d->readingViewConsumedPress = false;
+    }
+    if (!d->readingViewEditingEnabled) {
+        return false;
+    }
+    if (d->creatingReadingView && event->button() == Qt::RightButton) {
+        cancelReadingViewCreation();
+        event->accept();
+        return true;
+    }
+    if (event->button() != Qt::LeftButton || (!d->creatingReadingView && event->modifiers() != Qt::NoModifier) || (!d->readingViewEditingEnabled || !d->document->canEditReadingViews())) {
+        return false;
+    }
+    const QPoint point = contentAreaPoint(event->pos());
+    PageViewItem *item = pickItemOnPoint(point.x(), point.y());
+    d->readingViewCreatingGesture = false;
+    // Outside the drawing tool, preserve normal tool/annotation priority.
+    if (!d->creatingReadingView && (d->creatingNamedDestination || d->creatingInternalLink || (d->annotator && d->annotator->active()) || d->mouseAnnotation->isModified()
+        || !namedDestinationsAtGlobalPos(event->globalPosition().toPoint()).isEmpty())) {
+        return false;
+    }
+    int page = -1;
+    const auto ids = readingViewsAtGlobalPos(event->globalPosition().toPoint(), &page);
+    if (!item || ids.isEmpty()) {
+        if (!d->selectedReadingViewId.isEmpty()) {
+            d->selectedReadingViewId.clear();
+            d->selectedReadingViewPage = -1;
+            viewport()->update();
+        }
+        if (d->creatingReadingView) {
+            d->readingViewConsumedPress = true;
+            d->mousePressLinkObject = nullptr;
+            if (item && event->modifiers() == Qt::NoModifier) {
+                d->readingViewCreatingGesture = true;
+                d->readingViewDragHandle = PdfLinkHandle::None;
+                d->readingViewDragPage = item->pageNumber();
+                d->readingViewDragStart = point;
+                const QPointF start(qBound(0.0, item->absToPageX(point.x()), 1.0), qBound(0.0, item->absToPageY(point.y()), 1.0));
+                d->readingViewDraftRect = QRectF(start, start);
+                d->readingViewDragging = true;
+            }
+            event->accept();
+            return true;
+        }
+        return false;
+    }
+    const QString id = page == d->selectedReadingViewPage && ids.contains(d->selectedReadingViewId) ? d->selectedReadingViewId : ids.first();
+    const auto &views = d->readingViewsByPage[page];
+    const auto it = std::find_if(views.cbegin(), views.cend(), [&id](const Okular::ReadingView &view) { return view.id == id; });
+    if (it == views.cend()) {
+        return false;
+    }
+    const QRectF normalized = readingViewDisplayRect(item, it->rectangle);
+    const QRectF rect = pdfLinkContentRect(item, normalized);
+    const bool selected = d->selectedReadingViewPage == page && d->selectedReadingViewId == id;
+    d->readingViewDragHandle = readingViewHandleAt(rect, readingViewLabelRect(item, rect, it->number, font()), point, selected);
+    d->selectedReadingViewId = id;
+    d->selectedReadingViewPage = page;
+    d->readingViewDragPage = page;
+    d->readingViewDragStart = point;
+    d->readingViewDragStartRect = normalized;
+    d->readingViewDraftRect = normalized;
+    d->readingViewDragging = true;
+    d->readingViewConsumedPress = true;
+    d->mousePressLinkObject = nullptr;
+    d->mousePressPos = {};
+    d->mouseSelectPos = {};
+    d->mouseTextSelecting = false;
+    d->scroller->stop();
+    d->dragScrollTimer.stop();
+    d->mouseGrabOffset = {};
+    viewport()->update();
+    setCursor(pdfLinkCursor(d->readingViewDragHandle));
+    event->accept();
+    return true;
+}
+
+bool PageView::readingViewMouseMove(QMouseEvent *event)
+{
+    if (!d->readingViewEditingEnabled) {
+        return false;
+    }
+    if (d->readingViewDragging) {
+        if (!d->readingViewEditingEnabled || !d->document->canEditReadingViews()) {
+            cancelReadingViewCreation();
+            return true;
+        }
+        PageViewItem *item = sourceItem(d->readingViewDragPage);
+        if (item && (event->buttons() & Qt::LeftButton)) {
+            const QPoint point = contentAreaPoint(event->pos());
+            const QPointF start(item->absToPageX(d->readingViewDragStart.x()), item->absToPageY(d->readingViewDragStart.y()));
+            const QPointF current(qBound(0.0, item->absToPageX(point.x()), 1.0), qBound(0.0, item->absToPageY(point.y()), 1.0));
+            QRectF rect = d->readingViewDragStartRect;
+            if (d->readingViewCreatingGesture) {
+                rect = QRectF(start, current).normalized();
+            } else if ((point - d->readingViewDragStart).manhattanLength() >= QApplication::startDragDistance()) {
+                // Imported valid rectangles may be smaller than the on-screen
+                // minimum; resizing one must still remain within the page.
+                const double minWidth = std::min({4.0 / item->uncroppedWidth(), rect.right(), 1.0 - rect.left()});
+                const double minHeight = std::min({4.0 / item->uncroppedHeight(), rect.bottom(), 1.0 - rect.top()});
+                switch (d->readingViewDragHandle) {
+                case PdfLinkHandle::Move:
+                    rect.translate(qBound(-rect.left(), current.x() - start.x(), 1.0 - rect.right()), qBound(-rect.top(), current.y() - start.y(), 1.0 - rect.bottom()));
+                    break;
+                case PdfLinkHandle::TopLeft:
+                case PdfLinkHandle::Top:
+                case PdfLinkHandle::TopRight:
+                    rect.setTop(qMin(current.y(), rect.bottom() - minHeight));
+                    break;
+                default:
+                    break;
+                }
+                if (d->readingViewDragHandle == PdfLinkHandle::BottomLeft || d->readingViewDragHandle == PdfLinkHandle::Bottom || d->readingViewDragHandle == PdfLinkHandle::BottomRight) {
+                    rect.setBottom(qMax(current.y(), rect.top() + minHeight));
+                }
+                if (d->readingViewDragHandle == PdfLinkHandle::TopLeft || d->readingViewDragHandle == PdfLinkHandle::Left || d->readingViewDragHandle == PdfLinkHandle::BottomLeft) {
+                    rect.setLeft(qMin(current.x(), rect.right() - minWidth));
+                }
+                if (d->readingViewDragHandle == PdfLinkHandle::TopRight || d->readingViewDragHandle == PdfLinkHandle::Right || d->readingViewDragHandle == PdfLinkHandle::BottomRight) {
+                    rect.setRight(qMax(current.x(), rect.left() + minWidth));
+                }
+            }
+            d->readingViewDraftRect = rect;
+            viewport()->update();
+        }
+        setCursor(d->readingViewCreatingGesture ? Qt::CrossCursor : pdfLinkCursor(d->readingViewDragHandle));
+        event->accept();
+        return true;
+    }
+    if (event->buttons() == Qt::NoButton && d->readingViewEditingEnabled && d->document->canEditReadingViews() && !d->creatingNamedDestination && !d->creatingInternalLink
+        && !(d->annotator && d->annotator->active()) && namedDestinationsAtGlobalPos(event->globalPosition().toPoint()).isEmpty()) {
+        int page = -1;
+        const auto ids = readingViewsAtGlobalPos(event->globalPosition().toPoint(), &page);
+        if (!ids.isEmpty()) {
+            const QPoint point = contentAreaPoint(event->pos());
+            const auto *item = pickItemOnPoint(point.x(), point.y());
+            const auto &views = d->readingViewsByPage[page];
+            const QString id = page == d->selectedReadingViewPage && ids.contains(d->selectedReadingViewId) ? d->selectedReadingViewId : ids.first();
+            const auto it = std::find_if(views.cbegin(), views.cend(), [&id](const Okular::ReadingView &view) { return view.id == id; });
+            if (item && it != views.cend()) {
+                const QRectF rect = pdfLinkContentRect(item, readingViewDisplayRect(item, it->rectangle));
+                setCursor(pdfLinkCursor(readingViewHandleAt(rect, readingViewLabelRect(item, rect, it->number, font()), contentAreaPoint(event->pos()), id == d->selectedReadingViewId && page == d->selectedReadingViewPage)));
+                return true;
+            }
+        }
+    }
+    if (d->creatingReadingView) {
+        setCursor(Qt::CrossCursor);
+        event->accept();
+        return true;
+    }
+    return false;
+}
+
+bool PageView::readingViewMouseRelease(QMouseEvent *event)
+{
+    if (event->button() != Qt::LeftButton || !d->readingViewConsumedPress) {
+        return false;
+    }
+    d->readingViewConsumedPress = false;
+    d->mousePressLinkObject = nullptr;
+    const bool active = d->readingViewDragging && d->readingViewEditingEnabled && d->document->canEditReadingViews();
+    const bool creating = d->readingViewCreatingGesture;
+    const int page = d->readingViewDragPage;
+    const QString id = d->selectedReadingViewId;
+    const QRectF rect = d->readingViewDraftRect;
+    const QRectF before = d->readingViewDragStartRect;
+    d->readingViewDragging = false;
+    d->readingViewCreatingGesture = false;
+    d->readingViewDragPage = -1;
+    d->readingViewDragHandle = PdfLinkHandle::None;
+    d->readingViewDragStartRect = {};
+    d->readingViewDraftRect = {};
+    if (active && creating) {
+        const PageViewItem *item = sourceItem(page);
+        if (item && rect.width() * item->uncroppedWidth() >= QApplication::startDragDistance() && rect.height() * item->uncroppedHeight() >= QApplication::startDragDistance()) {
+            // The synchronous model update may rebuild items; keep the tool armed.
+            Q_EMIT createReadingViewRequested(page, rect);
+        } else {
+            displayMessage(i18n("The Reading View is too small. Drag a larger rectangle, or press Esc to cancel."));
+        }
+    } else if (active && !id.isEmpty() && !samePdfLinkRectangle(before, rect)) {
+        Q_EMIT changeReadingViewRectangleRequested(page, id, rect);
+    }
+    viewport()->update();
+    updateCursor();
+    event->accept();
+    return true;
 }
 
 void PageView::setupViewport(QWidget *viewport)
@@ -1081,39 +1765,13 @@ void PageView::setupViewerActions(KActionCollection *ac)
     connect(d->aReadingDirection, &QAction::toggled, this, &PageView::slotReadingDirectionToggled);
     connect(Okular::SettingsCore::self(), &Okular::SettingsCore::configChanged, this, &PageView::slotUpdateReadingDirectionAction);
 
-    d->aToggleNamedDestinations = new KToggleAction(QIcon::fromTheme(QStringLiteral("document-edit")), i18n("Advanced Mode"), this);
-    d->aToggleNamedDestinations->setToolTip(i18n("Show advanced PDF editing tools for pages, contents, links, and named destinations"));
+    d->aToggleNamedDestinations = new KToggleAction(QIcon::fromTheme(QStringLiteral("document-edit")), i18n("Cross-reference Mode"), this);
+    d->aToggleNamedDestinations->setToolTip(i18n("Show and edit PDF links and named destinations"));
+    d->aToggleNamedDestinations->setVisible(false); // Hidden compatibility alias; Part provides the mode selector.
+    d->aToggleNamedDestinations->setChecked(d->showNamedDestinations);
     ac->addAction(QStringLiteral("view_toggle_named_destinations"), d->aToggleNamedDestinations);
     d->aToggleNamedDestinations->setEnabled(false);
-    connect(d->aToggleNamedDestinations, &QAction::toggled, this, [this](bool checked) {
-        d->showNamedDestinations = checked;
-        if (!checked) {
-            const bool cancelledNamedDestinationCreation = d->creatingNamedDestination;
-            d->draggedNamedDestination.clear();
-            d->namedDestinationDragging = false;
-            d->creatingNamedDestination = false;
-            d->creatingNamedDestinationsContinuously = false;
-            d->namedDestinationPlacementPress = false;
-            d->creatingInternalLink = false;
-            d->internalLinkCreationDragging = false;
-            d->internalLinkCreationPage = -1;
-            d->internalLinkCreationRect = QRect();
-            d->selectedPdfLinkPage = -1;
-            d->selectedPdfLinkOriginalRect = QRectF();
-            d->selectedPdfLinkRect = QRectF();
-            d->pdfLinkDragHandle = PdfLinkHandle::None;
-            d->pdfLinkDragging = false;
-            updateCursor();
-            if (cancelledNamedDestinationCreation) {
-                Q_EMIT namedDestinationCreationCancelled();
-            }
-        }
-        if (checked && !d->namedDestinationsLoaded) {
-            loadNamedDestinations();
-        }
-        viewport()->update();
-        Q_EMIT advancedModeChanged(checked);
-    });
+    connect(d->aToggleNamedDestinations, &QAction::toggled, this, &PageView::setCrossReferenceModeEnabled);
 
     // Mouse mode actions for viewer mode
     d->mouseModeActionGroup = new QActionGroup(this);
@@ -1291,6 +1949,7 @@ void PageView::setupActions(KActionCollection *ac, PageViewAnnotator *sharedAnno
     }
     connect(d->annotator, &PageViewAnnotator::toolActive, this, [&](bool selected) {
         if (selected) {
+            cancelReadingViewCreation();
             QAction *aMouseMode = d->mouseModeActionGroup->checkedAction();
             if (aMouseMode) {
                 aMouseMode->setChecked(false);
@@ -1619,6 +2278,22 @@ bool PageView::addTextMarkupAnnotationForSelection(const QDomElement &annotation
 
 QString PageViewPrivate::selectedText() const
 {
+    if (readingMode) {
+        QStringList pieces;
+        for (const auto &entry : readingSelectedText) pieces.append(entry.second);
+        if (pieces.isEmpty()) {
+            const auto *item = items.value(currentDisplayIndex);
+            if (item && item->page()->textSelection()) {
+                Okular::RegularAreaRect clipped;
+                for (const auto &rect : *item->page()->textSelection()) {
+                    const auto part = rect & item->readingCrop;
+                    if (part.width() > 0 && part.height() > 0) clipped.append(part);
+                }
+                if (!clipped.isEmpty()) pieces.append(item->page()->text(&clipped, Okular::TextPage::CentralPixelTextAreaInclusionBehaviour));
+            }
+        }
+        return pieces.join(QLatin1Char('\n'));
+    }
     if (pagesWithTextSelection.isEmpty()) {
         return QString();
     }
@@ -1724,6 +2399,11 @@ QMimeData *PageView::getTableContents() const
 
 void PageView::copyTextSelection(TextCopyMode mode) const
 {
+    if (d->readingMode && !d->readingSelectedText.isEmpty()) {
+        const QString text = d->selectedText();
+        QApplication::clipboard()->setText(mode == TextCopyMode::WithoutLineBreaks ? Okular::removeLineBreaks(text) : text, QClipboard::Clipboard);
+        return;
+    }
     if (d->mouseMode == Okular::Settings::EnumMouseMode::TableSelect) {
         QClipboard *cb = QApplication::clipboard();
         cb->setMimeData(getTableContents(), QClipboard::Clipboard);
@@ -1754,8 +2434,46 @@ void PageView::copyTextSelection(TextCopyMode mode) const
     }
 }
 
+void PageView::setReadingTextSelection(const QPoint *start, const QPoint *end)
+{
+    d->readingSelectedText.clear();
+    QHash<int, Okular::RegularAreaRect> bySource;
+    int first = 0, last = d->items.size() - 1;
+    QPoint begin, finish;
+    if (start && end) {
+        const auto *a = pickItemOnPoint(start->x(), start->y());
+        const auto *b = pickItemOnPoint(end->x(), end->y());
+        if (!a || !b) return;
+        first = qMin(a->displayIndex, b->displayIndex);
+        last = qMax(a->displayIndex, b->displayIndex);
+        const bool forward = a->displayIndex < b->displayIndex || (a == b && (start->y() < end->y() || (start->y() == end->y() && start->x() <= end->x())));
+        begin = forward ? *start : *end;
+        finish = forward ? *end : *start;
+    }
+    for (int i = first; i <= last; ++i) {
+        const auto *item = d->items[i];
+        const QPoint a = start && i == first ? begin - item->uncroppedGeometry().topLeft() : QPoint();
+        const QPoint b = end && i == last ? finish - item->uncroppedGeometry().topLeft() : QPoint();
+        auto area = textSelectionForItem(item, a, b);
+        if (!area || area->isEmpty()) continue;
+        const QString text = item->page()->text(area.get(), Okular::TextPage::CentralPixelTextAreaInclusionBehaviour);
+        if (text.trimmed().isEmpty()) continue;
+        d->readingSelectedText.append(qMakePair(item->pageNumber(), text.trimmed()));
+        auto &combined = bySource[item->pageNumber()];
+        for (const auto &rect : std::as_const(*area)) combined.append(rect);
+    }
+    const auto previous = d->pagesWithTextSelection;
+    d->pagesWithTextSelection.clear();
+    for (int page : previous) if (!bySource.contains(page)) d->document->setPageTextSelection(page, nullptr, QColor());
+    for (auto it = bySource.cbegin(); it != bySource.cend(); ++it) {
+        d->pagesWithTextSelection.insert(it.key());
+        d->document->setPageTextSelection(it.key(), std::make_unique<Okular::RegularAreaRect>(it.value()), palette().color(QPalette::Active, QPalette::Highlight));
+    }
+}
+
 void PageView::selectAll()
 {
+    if (d->readingMode) { setReadingTextSelection(); return; }
     for (const PageViewItem *item : std::as_const(d->items)) {
         std::unique_ptr<Okular::RegularAreaRect> area = textSelectionForItem(item);
         d->pagesWithTextSelection.insert(item->pageNumber());
@@ -1794,6 +2512,23 @@ void PageView::createAnnotationsVideoWidgets(PageViewItem *item, const QList<Oku
 // BEGIN DocumentObserver inherited methods
 void PageView::notifySetup(const QList<Okular::Page *> &pageSet, int setupFlags)
 {
+    const QString oldReadingIdentity = d->items.value(d->currentDisplayIndex) ? d->items[d->currentDisplayIndex]->readingIdentity : QString();
+    // Drop editor previews before any PageViewItem is rebound or destroyed.
+    // Do not run cursor hit testing against the previous document's items here.
+    const bool cancelledReadingView = d->creatingReadingView && (!d->readingViewEditingEnabled || pageSet.isEmpty());
+    d->readingViewsByPage.clear();
+    d->creatingReadingView = d->creatingReadingView && d->readingViewEditingEnabled && !pageSet.isEmpty();
+    d->readingViewDragging = false;
+    d->readingViewCreatingGesture = false;
+    d->readingViewDragPage = -1;
+    d->readingViewDragHandle = PdfLinkHandle::None;
+    d->readingViewDragStartRect = {};
+    d->readingViewDraftRect = {};
+    d->selectedReadingViewPage = -1;
+    d->selectedReadingViewId.clear();
+    if (cancelledReadingView) {
+        Q_EMIT readingViewCreationCancelled();
+    }
     if (setupFlags & DocumentObserver::DocumentChanged) {
         // A replaced/closed document must never receive the old editor's text.
         if (d->ocrWordEditor) {
@@ -1828,10 +2563,12 @@ void PageView::notifySetup(const QList<Okular::Page *> &pageSet, int setupFlags)
     }
 
     bool documentChanged = setupFlags & Okular::DocumentObserver::DocumentChanged;
+    scheduleReadingRenderReconcile();
+    d->readingSelectedText.clear();
     const bool allowfillforms = d->document->isAllowed(Okular::AllowFillForms);
 
     // reuse current pages if nothing new
-    if ((pageSet.count() == d->items.count()) && !documentChanged && !(setupFlags & Okular::DocumentObserver::NewLayoutForPages)) {
+    if (!d->readingMode && (pageSet.count() == d->items.count()) && !documentChanged && !(setupFlags & Okular::DocumentObserver::NewLayoutForPages)) {
         int count = pageSet.count();
         for (int i = 0; (i < count) && !documentChanged; i++) {
             if ((int)pageSet[i]->number() != d->items[i]->pageNumber()) {
@@ -1902,6 +2639,8 @@ void PageView::notifySetup(const QList<Okular::Page *> &pageSet, int setupFlags)
         }
     }
 
+    // Editors must not retain a projected item across reconstruction.
+    if (d->annotator && d->annotator->pageView() == this) d->annotator->detachAnnotation();
     // mouseAnnotation must not access our PageViewItem widgets any longer
     d->mouseAnnotation->reset();
 
@@ -1919,8 +2658,38 @@ void PageView::notifySetup(const QList<Okular::Page *> &pageSet, int setupFlags)
     bool hasformwidgets = false;
     // create children widgets
     for (const Okular::Page *page : pageSet) {
-        PageViewItem *item = new PageViewItem(page);
-        d->items.push_back(item);
+        const int firstItem = d->items.size();
+        if (d->readingMode) {
+            const QString token = d->document->readingViewPageToken(page->number());
+            const QString pageKey = token.isEmpty() ? QStringLiteral("page:%1").arg(page->number()) : token;
+            auto definitions = d->document->readingViews(page->number());
+            std::stable_sort(definitions.begin(), definitions.end(), [](const auto &a, const auto &b) { return a.number < b.number; });
+            int added = 0;
+            for (const auto &definition : definitions) {
+                const auto crop = definition.rectangle & Okular::NormalizedRect(0, 0, 1, 1);
+                if (!(crop.width() > 0 && crop.height() > 0)) continue;
+                auto *view = new PageViewItem(page);
+                view->displayIndex = d->items.size();
+                view->readingViewId = definition.id;
+                view->readingIdentity = pageKey + QLatin1Char('/') + definition.id;
+                view->readingViewNumber = definition.number;
+                view->readingCrop = crop;
+                d->items.append(view);
+                ++added;
+            }
+            if (!added) {
+                auto *view = new PageViewItem(page);
+                view->readingIdentity = pageKey;
+                view->displayIndex = d->items.size();
+                d->items.append(view);
+            }
+        } else {
+            PageViewItem *item = new PageViewItem(page);
+            item->displayIndex = d->items.size();
+            d->items.push_back(item);
+        }
+        for (int itemIndex = firstItem; itemIndex < d->items.size(); ++itemIndex) {
+        PageViewItem *item = d->items[itemIndex];
 #ifdef PAGEVIEW_DEBUG
         qCDebug(OkularUiDebug).nospace() << "cropped geom for " << d->items.last()->pageNumber() << " is " << d->items.last()->croppedGeometry();
 #endif
@@ -1938,8 +2707,16 @@ void PageView::notifySetup(const QList<Okular::Page *> &pageSet, int setupFlags)
         }
 
         createAnnotationsVideoWidgets(item, page->annotations());
+        }
     }
 
+    d->interactionDisplayIndex = -1;
+    d->currentDisplayIndex = qBound(0, d->currentDisplayIndex, qMax(0, int(d->items.size()) - 1));
+    for (const auto *item : std::as_const(d->items)) {
+        if (!oldReadingIdentity.isEmpty() && item->readingIdentity == oldReadingIdentity) d->currentDisplayIndex = item->displayIndex;
+    }
+    if (d->items.isEmpty()) { d->readingHistory.clear(); d->readingHistoryIndex = -1; }
+    Q_EMIT displayedPagesChanged();
     // invalidate layout so relayout/repaint will happen on next viewport change
     if (haspages) {
         // We do a delayed call to slotRelayoutPages but also set the dirtyLayout
@@ -2029,7 +2806,7 @@ void PageView::updateActionState(bool haspages, bool hasformwidgets)
         d->aToggleNamedDestinations->setEnabled(haspages);
     }
     bool allowAnnotations = d->document->isAllowed(Okular::AllowNotes);
-    if (d->annotator) {
+    if (d->annotator && d->workspaceActiveView) {
         bool allowTools = haspages && allowAnnotations;
         d->annotator->setToolsEnabled(allowTools);
         d->annotator->setTextToolsEnabled(allowTools && d->document->supportsSearching());
@@ -2104,6 +2881,10 @@ void PageView::slotRealNotifyViewportChanged(bool smoothMove)
         return;
     }
 
+    if (d->readingMode && !d->localReadingNavigation) {
+        const int index = itemIndexForViewport(documentViewport());
+        if (index >= 0) d->currentDisplayIndex = index;
+    }
     // block setViewport outgoing calls
     d->blockViewport = true;
 
@@ -2150,6 +2931,7 @@ void PageView::slotRealNotifyViewportChanged(bool smoothMove)
 
     // enable setViewport calls
     d->blockViewport = false;
+    if (d->readingMode && !d->localReadingNavigation) rememberDisplayedViewport();
 
     if (viewport()) {
         viewport()->update();
@@ -2242,7 +3024,6 @@ void PageView::notifyPageChanged(int pageNumber, int changedFlags)
                 // since the page has been regenerated below cursor, update it
                 updateCursor();
             }
-            break;
         }
     }
 }
@@ -2264,8 +3045,18 @@ void PageView::notifyZoom(int factor)
     }
 }
 
+bool PageView::visiblePixmapRect(int /*pageNumber*/, Okular::NormalizedRect *rect) const
+{
+    if (!d->readingMode) return false;
+    // In projected mode only per-item slots own rendering. An old regular-mode
+    // tile manager must not be refreshed with the source-wide navigation union.
+    if (rect) *rect = {};
+    return true;
+}
+
 bool PageView::canUnloadPixmap(int pageNumber) const
 {
+    if (d->readingMode) return true;
     if (Okular::SettingsCore::memoryLevel() == Okular::SettingsCore::EnumMemoryLevel::Low || Okular::SettingsCore::memoryLevel() == Okular::SettingsCore::EnumMemoryLevel::Normal) {
         // if the item is visible, forbid unloading
         for (const PageViewItem *visibleItem : std::as_const(d->visibleItems)) {
@@ -2288,7 +3079,7 @@ bool PageView::canUnloadPixmap(int pageNumber) const
 void PageView::notifyCurrentPageChanged(int previous, int current)
 {
     if (previous >= 0 && previous < d->items.count()) {
-        PageViewItem *item = d->items.at(previous);
+        PageViewItem *item = sourceItem(previous);
         if (item) {
             const QHash<const Okular::Movie *, VideoWidget *> videoWidgetsList = item->videoWidgets();
             for (VideoWidget *videoWidget : videoWidgetsList) {
@@ -2310,7 +3101,7 @@ void PageView::notifyCurrentPageChanged(int previous, int current)
     }
 
     if (current >= 0 && current < d->items.count()) {
-        PageViewItem *item = d->items.at(current);
+        PageViewItem *item = sourceItem(current);
         if (item) {
             const QHash<const Okular::Movie *, VideoWidget *> videoWidgetsList = item->videoWidgets();
             for (VideoWidget *videoWidget : videoWidgetsList) {
@@ -2610,7 +3401,7 @@ void PageView::paintEvent(QPaintEvent *pe)
             pixmapPainter.translate(-contentsRect.left(), -contentsRect.top());
 
             // 1) Layer 0: paint items and clear bg on unpainted rects
-            drawDocumentOnPainter(contentsRect, &pixmapPainter);
+            drawDocumentOnPainter(contentsRect, &pixmapPainter, true);
             // 2a) Layer 1a: paint (blend) transparent selection (rectangle)
             if (!selectionRect.isNull() && selectionRect.intersects(contentsRect) && !selectionRectInternal.contains(contentsRect)) {
                 QRect blendRect = selectionRectInternal.intersected(contentsRect);
@@ -2684,6 +3475,7 @@ void PageView::paintEvent(QPaintEvent *pe)
 
             // 4) Layer 2: overlays
             drawLinkHighlights(contentsRect, &pixmapPainter);
+            drawReadingViews(contentsRect, &pixmapPainter);
             drawNamedDestinations(contentsRect, &pixmapPainter);
             drawInternalLinkCreation(contentsRect, &pixmapPainter);
             if (Okular::Settings::debugDrawBoundaries()) {
@@ -2696,7 +3488,7 @@ void PageView::paintEvent(QPaintEvent *pe)
             screenPainter.drawPixmap(contentsRect.left(), contentsRect.top(), doubleBuffer);
         } else {
             // 1) Layer 0: paint items and clear bg on unpainted rects
-            drawDocumentOnPainter(contentsRect, &screenPainter);
+            drawDocumentOnPainter(contentsRect, &screenPainter, true);
             // 2a) Layer 1a: paint opaque selection (rectangle)
             if (!selectionRect.isNull() && selectionRect.intersects(contentsRect) && !selectionRectInternal.contains(contentsRect)) {
                 screenPainter.setPen(palette().color(QPalette::Active, QPalette::Highlight).darker(110));
@@ -2723,6 +3515,7 @@ void PageView::paintEvent(QPaintEvent *pe)
 
             // 4) Layer 2: overlays
             drawLinkHighlights(contentsRect, &screenPainter);
+            drawReadingViews(contentsRect, &screenPainter);
             drawNamedDestinations(contentsRect, &screenPainter);
             drawInternalLinkCreation(contentsRect, &screenPainter);
             if (Okular::Settings::debugDrawBoundaries()) {
@@ -2902,14 +3695,15 @@ void PageView::drawNamedDestinations(const QRect &contentsRect, QPainter *p)
     const QColor labelBackground(232, 248, 237, 238);
     const QColor labelText(15, 32, 45);
 
-    for (const PageViewItem *item : std::as_const(d->items)) {
+    const auto &markerItems = d->readingMode ? d->visibleItems : d->items;
+    for (const PageViewItem *item : markerItems) {
         const auto destinationIt = d->namedDestinationsByPage.constFind(item->pageNumber());
         if (destinationIt == d->namedDestinationsByPage.cend() || !item->isVisible() || !item->croppedGeometry().intersects(contentsRect)) {
             continue;
         }
 
         const QRectF pageRect(item->croppedGeometry());
-        d->namedDestinationHitRegions.removeIf([item](const NamedDestinationHitRegion &region) { return region.pageNumber == item->pageNumber(); });
+        d->namedDestinationHitRegions.removeIf([item](const NamedDestinationHitRegion &region) { return region.displayIndex == item->displayIndex; });
         QList<DestinationGroup> groups;
         for (const NamedDestinationMarker &marker : destinationIt.value()) {
             Okular::NormalizedPoint normalized(marker.normalizedX, marker.normalizedY);
@@ -2996,8 +3790,8 @@ void PageView::drawNamedDestinations(const QRect &contentsRect, QPainter *p)
                 const QString &name = group.names.at(nameIndex);
                 const qreal lineTop = labelRect.top() + 4.0 + nameIndex * metrics.height();
                 const qreal lineBottom = qMin(labelRect.bottom(), lineTop + metrics.height());
-                d->namedDestinationHitRegions.append(NamedDestinationHitRegion {item->pageNumber(), name, QRectF(labelRect.left(), lineTop, labelRect.width(), lineBottom - lineTop)});
-                d->namedDestinationHitRegions.append(NamedDestinationHitRegion {item->pageNumber(), name, anchorHitRect});
+                d->namedDestinationHitRegions.append(NamedDestinationHitRegion {item->pageNumber(), item->displayIndex, name, QRectF(labelRect.left(), lineTop, labelRect.width(), lineBottom - lineTop)});
+                d->namedDestinationHitRegions.append(NamedDestinationHitRegion {item->pageNumber(), item->displayIndex, name, anchorHitRect});
             }
 
             QPen leaderPen(markerColor);
@@ -3097,6 +3891,11 @@ void PageView::resizeEvent(QResizeEvent *e)
 
 void PageView::keyPressEvent(QKeyEvent *e)
 {
+    if (e->key() == Qt::Key_Escape && (d->creatingReadingView || d->readingViewDragging || !d->selectedReadingViewId.isEmpty())) {
+        cancelReadingViewCreation();
+        e->accept();
+        return;
+    }
     if (isOcrTextEditing() && e->key() == Qt::Key_Escape) {
         stopOcrTextEditing();
         e->accept();
@@ -3183,8 +3982,9 @@ void PageView::keyPressEvent(QKeyEvent *e)
     case Qt::Key_H:
         if (horizontalScrollBar()->maximum() == 0) {
             // if we cannot scroll we go to the previous page vertically
-            int next_page = documentViewport().pageNumber - viewColumns();
-            setDocumentViewportPage(next_page);
+            int next_page = displayedPageNumber() - viewColumns();
+            if (d->readingMode) goToDisplayedPage(qMax(0, next_page));
+            else setDocumentViewportPage(next_page);
         } else {
             d->scroller->scrollTo(d->scroller->finalPosition() + QPoint(-stepsize * horizontalScrollBar()->singleStep(), 0), d->currentShortScrollDuration);
         }
@@ -3193,8 +3993,9 @@ void PageView::keyPressEvent(QKeyEvent *e)
     case Qt::Key_L:
         if (horizontalScrollBar()->maximum() == 0) {
             // if we cannot scroll we advance the page vertically
-            int next_page = documentViewport().pageNumber + viewColumns();
-            setDocumentViewportPage(next_page);
+            int next_page = displayedPageNumber() + viewColumns();
+            if (d->readingMode) goToDisplayedPage(qMin(displayedPageCount() - 1, next_page));
+            else setDocumentViewportPage(next_page);
         } else {
             d->scroller->scrollTo(d->scroller->finalPosition() + QPoint(stepsize * horizontalScrollBar()->singleStep(), 0), d->currentShortScrollDuration);
         }
@@ -3415,6 +4216,10 @@ void PageView::mouseMoveEvent(QMouseEvent *e)
 
     const QPoint eventPos = contentAreaPoint(e->pos());
 
+    if (readingViewMouseMove(e)) {
+        return;
+    }
+
     if (d->creatingNamedDestination) {
         setCursor(Qt::CrossCursor);
         e->accept();
@@ -3423,13 +4228,7 @@ void PageView::mouseMoveEvent(QMouseEvent *e)
 
     if (d->creatingInternalLink) {
         if (d->internalLinkCreationDragging && (e->buttons() & Qt::LeftButton)) {
-            PageViewItem *sourceItem = nullptr;
-            for (PageViewItem *item : std::as_const(d->items)) {
-                if (item->pageNumber() == d->internalLinkCreationPage) {
-                    sourceItem = item;
-                    break;
-                }
-            }
+            PageViewItem *sourceItem = this->sourceItem(d->internalLinkCreationPage);
             if (sourceItem) {
                 const QRect pageRect = sourceItem->uncroppedGeometry();
                 const QPoint boundedPoint(qBound(pageRect.left(), eventPos.x(), pageRect.right()), qBound(pageRect.top(), eventPos.y(), pageRect.bottom()));
@@ -3460,7 +4259,7 @@ void PageView::mouseMoveEvent(QMouseEvent *e)
 
     if (d->pdfLinkDragging && d->selectedPdfLinkPage >= 0) {
         if (e->buttons() & Qt::LeftButton) {
-            PageViewItem *selectedItem = d->selectedPdfLinkPage < d->items.size() ? d->items.at(d->selectedPdfLinkPage) : nullptr;
+            PageViewItem *selectedItem = sourceItem(d->selectedPdfLinkPage);
             if (selectedItem) {
                 const QRectF previousContentRect = pdfLinkContentRect(selectedItem, d->selectedPdfLinkRect);
                 const QPointF start(selectedItem->absToPageX(d->pdfLinkDragStart.x()), selectedItem->absToPageY(d->pdfLinkDragStart.y()));
@@ -3632,6 +4431,10 @@ void PageView::mouseMoveEvent(QMouseEvent *e)
 
 void PageView::mousePressEvent(QMouseEvent *e)
 {
+    const QPoint interactionPoint = contentAreaPoint(e->pos());
+    const auto *interactionItem = pickItemOnPoint(interactionPoint.x(), interactionPoint.y());
+    d->interactionDisplayIndex = interactionItem ? interactionItem->displayIndex : -1;
+    if (d->readingMode && interactionItem) d->currentDisplayIndex = interactionItem->displayIndex;
     if (isOcrTextEditing()) {
         finishOcrWordEditing();
         const QPoint pos = contentAreaPoint(e->pos());
@@ -3701,6 +4504,10 @@ void PageView::mousePressEvent(QMouseEvent *e)
                                                                    pageItem->uncroppedWidth(),
                                                                    pageItem->uncroppedHeight());
         }
+    }
+
+    if (readingViewMousePress(e)) {
+        return;
     }
 
     if (d->creatingNamedDestination) {
@@ -4100,6 +4907,10 @@ void PageView::mousePressEvent(QMouseEvent *e)
 
 void PageView::mouseReleaseEvent(QMouseEvent *e)
 {
+    const auto interactionReset = qScopeGuard([this] { d->interactionDisplayIndex = -1; });
+    if (readingViewMouseRelease(e)) {
+        return;
+    }
     if (isOcrTextEditing()) {
         if (e->button() == Qt::LeftButton && d->ocrWordDragging) {
             const PdfLinkHandle releasedHandle = d->ocrWordDragHandle;
@@ -4183,13 +4994,7 @@ void PageView::mouseReleaseEvent(QMouseEvent *e)
     }
 
     if (leftButton && d->creatingInternalLink && d->internalLinkCreationDragging) {
-        PageViewItem *sourceItem = nullptr;
-        for (PageViewItem *item : std::as_const(d->items)) {
-            if (item->pageNumber() == d->internalLinkCreationPage) {
-                sourceItem = item;
-                break;
-            }
-        }
+        PageViewItem *sourceItem = this->sourceItem(d->internalLinkCreationPage);
 
         const QRect linkRect = d->internalLinkCreationRect.normalized();
         const int sourcePageNumber = d->internalLinkCreationPage;
@@ -4350,7 +5155,8 @@ void PageView::mouseReleaseEvent(QMouseEvent *e)
             }
         } else if (rightButton && !d->mouseAnnotation->isModified()) {
             if (pageItem && pageItem == pageItemPressPos && ((d->mousePressPos - e->globalPosition()).manhattanLength() < QApplication::startDragDistance())) {
-                if (d->document->canEditPdfLinks() && !namedDestinationsAtGlobalPos(e->globalPosition().toPoint()).isEmpty()) {
+                if (!readingViewsAtGlobalPos(e->globalPosition().toPoint()).isEmpty()
+                    || (d->document->canEditPdfLinks() && !namedDestinationsAtGlobalPos(e->globalPosition().toPoint()).isEmpty())) {
                     Q_EMIT rightClick(pageItem->page(), e->globalPosition().toPoint());
                     e->accept();
                     return;
@@ -5046,6 +5852,15 @@ void PageView::wheelEvent(QWheelEvent *e)
         return;
     }
 
+    if (d->readingMode && !getContinuousMode() && ((vScroll == verticalScrollBar()->maximum() && delta < 0) || (vScroll == verticalScrollBar()->minimum() && delta > 0))) {
+        d->singlePageWheelAccumulatedDelta += delta;
+        if (qAbs(d->singlePageWheelAccumulatedDelta) >= QWheelEvent::DefaultDeltasPerStep) {
+            const bool backwards = d->singlePageWheelAccumulatedDelta > 0;
+            d->singlePageWheelAccumulatedDelta = 0;
+            goToDisplayedPage(qBound(0, displayedPageNumber() + (backwards ? -viewColumns() : viewColumns()), displayedPageCount() - 1), backwards);
+        }
+        return;
+    }
     // Perform scroll
     if (!getContinuousMode() && vScroll == verticalScrollBar()->maximum() && delta < 0) {
         d->singlePageWheelAccumulatedDelta += delta;
@@ -5269,8 +6084,11 @@ void PageView::notifyAnnotationWindowsAboutViewportBoundsChange()
     }
 }
 
-void PageView::drawDocumentOnPainter(const QRect contentsRect, QPainter *p)
+void PageView::drawDocumentOnPainter(const QRect contentsRect, QPainter *p, bool visibleOnly)
 {
+    // Screen updates in projected mode must not scan the entire document on
+    // every highlight preview. Selection-image export retains its full range.
+    const auto &paintItems = visibleOnly && d->readingMode ? d->visibleItems : d->items;
     QColor backColor;
 
     if (Okular::Settings::useCustomBackgroundColor()) {
@@ -5283,8 +6101,8 @@ void PageView::drawDocumentOnPainter(const QRect contentsRect, QPainter *p)
     QRegion remainingArea(contentsRect);
 
     // This loop draws the actual pages
-    // iterate over all items painting the ones intersecting contentsRect
-    for (const PageViewItem *item : std::as_const(d->items)) {
+    // iterate over items intersecting contentsRect
+    for (const PageViewItem *item : paintItems) {
         // check if a piece of the page intersects the contents rect
         if (!item->isVisible() || !item->croppedGeometry().intersects(contentsRect)) {
             continue;
@@ -5348,7 +6166,7 @@ void PageView::drawDocumentOnPainter(const QRect contentsRect, QPainter *p)
                     }
                     p->restore();
                 }
-                if (d->ocrWordEditor) {
+                if (d->ocrWordEditor && item == sourceItem(d->ocrEditingPage)) {
                     const QRectF normalized = d->ocrEditingWord >= 0 ? d->ocrWords[d->ocrEditingWord].rectangle : d->ocrNewWordRectangle;
                     const QRectF rect = wordRect(normalized);
                     QFont font = OcrTextLayout::font();
@@ -5361,9 +6179,14 @@ void PageView::drawDocumentOnPainter(const QRect contentsRect, QPainter *p)
                     if (d->ocrWordEditor->geometry() != editorRect) {
                         d->ocrWordEditor->setGeometry(editorRect);
                     }
+                    const QRect editorClip = item->croppedGeometry().translated(-contentAreaPosition()).intersected(editorRect);
+                    d->ocrWordEditor->setMask(QRegion(editorClip.translated(-editorRect.topLeft())));
                 }
             } else {
-                PagePainter::paintCroppedPageOnPainter(p, item->page(), this, pageflags, item->uncroppedWidth(), item->uncroppedHeight(), pixmapRect, item->crop(), viewPortPoint);
+                auto *observer = displayedPagePixmapObserver(item->displayIndex);
+                // A queued slot bind may not have run yet. A borrowed old bitmap
+                // is only a temporary preview; reconcile always requests native pixels.
+                PagePainter::paintCroppedPageOnPainter(p, item->page(), observer ? observer : this, pageflags | (d->readingMode ? PagePainter::ProjectedViewRaster : 0), item->uncroppedWidth(), item->uncroppedHeight(), pixmapRect, item->crop(), viewPortPoint);
             }
         }
 
@@ -5387,8 +6210,8 @@ void PageView::drawDocumentOnPainter(const QRect contentsRect, QPainter *p)
     // width of the shadow in device pixels
     static const int shadowWidth = 2 * dpr;
 
-    // iterate over all items painting a black outline and a simple bottom/right gradient
-    for (const PageViewItem *item : std::as_const(d->items)) {
+    // Paint a black outline and a simple bottom/right gradient.
+    for (const PageViewItem *item : paintItems) {
         // check if a piece of the page intersects the contents rect
         if (!item->isVisible() || !item->croppedGeometry().intersects(checkRect)) {
             continue;
@@ -5435,8 +6258,15 @@ void PageView::updateItemSize(PageViewItem *item, int colWidth, int rowHeight)
     double width = okularPage->width(), height = okularPage->height(), zoom = d->zoomFactor;
     Okular::NormalizedRect crop(0., 0., 1., 1.);
 
+    if (d->readingMode) {
+        const QRectF r = readingViewDisplayRect(item, item->readingCrop);
+        crop = Okular::NormalizedRect(r.left(), r.top(), r.right(), r.bottom());
+        width *= crop.width();
+        height *= crop.height();
+    }
+    // A View is an exact user-defined range; do not expand it to trim minimums.
     // Handle cropping, due to either "Trim Margin" or "Trim to Selection" cases
-    if ((Okular::Settings::trimMargins() && okularPage->isBoundingBoxKnown() && !okularPage->boundingBox().isNull()) || (d->aTrimToSelection && d->aTrimToSelection->isChecked() && !d->trimBoundingBox.isNull())) {
+    if (!d->readingMode && ((Okular::Settings::trimMargins() && okularPage->isBoundingBoxKnown() && !okularPage->boundingBox().isNull()) || (d->aTrimToSelection && d->aTrimToSelection->isChecked() && !d->trimBoundingBox.isNull()))) {
         crop = Okular::Settings::trimMargins() ? okularPage->boundingBox() : d->trimBoundingBox;
 
         // Rotate the bounding box
@@ -5492,7 +6322,7 @@ void PageView::updateItemSize(PageViewItem *item, int colWidth, int rowHeight)
         height = (height / width) * colWidth;
         zoom = (double)colWidth / width;
         item->setWHZC(colWidth, (int)height, zoom, crop);
-        if (item->pageNumber() == documentViewport().pageNumber) {
+        if (item->displayIndex == displayedPageNumber()) {
             d->zoomFactor = zoom;
         }
     } else if (d->zoomMode == ZoomFitPage) {
@@ -5500,7 +6330,7 @@ void PageView::updateItemSize(PageViewItem *item, int colWidth, int rowHeight)
         const double scaleH = (double)rowHeight / (double)height;
         zoom = qMin(scaleW, scaleH);
         item->setWHZC((int)(zoom * width), (int)(zoom * height), zoom, crop);
-        if (item->pageNumber() == documentViewport().pageNumber) {
+        if (item->displayIndex == displayedPageNumber()) {
             d->zoomFactor = zoom;
         }
     } else if (d->zoomMode == ZoomFitAuto) {
@@ -5522,7 +6352,7 @@ void PageView::updateItemSize(PageViewItem *item, int colWidth, int rowHeight)
             zoom = qMin(scaleW, scaleH);
         }
         item->setWHZC((int)(zoom * width), (int)(zoom * height), zoom, crop);
-        if (item->pageNumber() == documentViewport().pageNumber) {
+        if (item->displayIndex == displayedPageNumber()) {
             d->zoomFactor = zoom;
         }
     }
@@ -5550,6 +6380,7 @@ PageViewItem *PageView::pickItemOnPoint(int x, int y)
 
 void PageView::textSelectionClear()
 {
+    d->readingSelectedText.clear();
     // something to clear
     if (!d->pagesWithTextSelection.isEmpty()) {
         for (const int page : std::as_const(d->pagesWithTextSelection)) {
@@ -5606,13 +6437,16 @@ QPoint PageView::viewportToContentArea(const Okular::DocumentViewport &vp) const
 {
     Q_ASSERT(vp.pageNumber >= 0);
 
-    const QRect &r = d->items[vp.pageNumber]->croppedGeometry();
+    const int index = d->readingMode ? displayedPageNumber() : vp.pageNumber;
+    const auto *item = d->items.value(index);
+    if (!item) return {};
+    const QRect &r = item->croppedGeometry();
     QPoint c {r.left(), r.top()};
 
     if (vp.rePos.enabled) {
         // Convert the coordinates of vp to normalized coordinates on the cropped page.
         // This is a no-op if the page isn't cropped.
-        const Okular::NormalizedRect &crop = d->items[vp.pageNumber]->crop();
+        const Okular::NormalizedRect &crop = item->crop();
         const double normalized_on_crop_x = (vp.rePos.normalizedX - crop.left) / (crop.right - crop.left);
         const double normalized_on_crop_y = (vp.rePos.normalizedY - crop.top) / (crop.bottom - crop.top);
 
@@ -5651,6 +6485,11 @@ void PageView::updateSelection(const QPoint pos)
         viewport()->update(updateRect.adjusted(-1, -2, 2, 1));
     } else if (d->mouseTextSelecting) {
         scrollPosIntoView(pos);
+        if (d->readingMode) {
+            const QPoint anchor = d->mouseSelectPos.toPoint();
+            setReadingTextSelection(&pos, &anchor);
+            return;
+        }
         int first = -1;
         std::vector<std::unique_ptr<Okular::RegularAreaRect>> selections = textSelections(pos, d->mouseSelectPos.toPoint(), first);
         QSet<int> pagesWithSelectionSet;
@@ -5720,6 +6559,14 @@ std::unique_ptr<Okular::RegularAreaRect> PageView::textSelectionForItem(const Pa
     }
 
     std::unique_ptr<Okular::RegularAreaRect> selectionArea = okularPage->textArea(mouseTextSelectionInfo);
+    if (d->readingMode && selectionArea) {
+        auto clipped = std::make_unique<Okular::RegularAreaRect>();
+        for (const auto &rect : std::as_const(*selectionArea)) {
+            const auto part = rect & item->readingCrop;
+            if (part.width() > 0 && part.height() > 0) clipped->append(part);
+        }
+        selectionArea = std::move(clipped);
+    }
 #ifdef PAGEVIEW_DEBUG
     qCDebug(OkularUiDebug).nospace() << "text areas (" << okularPage->number() << "): " << (selectionArea ? QString::number(selectionArea->count()) : QStringLiteral("(none)"));
 #endif
@@ -5763,7 +6610,7 @@ double PageView::zoomFactorFitMode(ZoomMode mode)
     const int nCols = overrideCentering ? 1 : viewColumns();
     const int colWidth = viewport()->width() / nCols - kcolWidthMargin;
     const double rowHeight = viewport()->height() - krowHeightMargin;
-    const PageViewItem *currentItem = d->items[qMax(0, documentViewport().pageNumber)];
+    const PageViewItem *currentItem = d->items[qMax(0, displayedPageNumber())];
     // prevent segmentation fault when opening a new document;
     if (!currentItem) {
         return 0;
@@ -5944,7 +6791,7 @@ void PageView::updateZoomText()
 {
     // use current page zoom as zoomFactor if in ZoomFit/* mode
     if (d->zoomMode != ZoomFixed && d->items.count() > 0) {
-        d->zoomFactor = d->items[qMax(0, documentViewport().pageNumber)]->zoomFactor();
+        d->zoomFactor = d->items[qMax(0, displayedPageNumber())]->zoomFactor();
     }
     float newFactor = d->zoomFactor;
     d->aZoom->removeAllActions();
@@ -6064,7 +6911,7 @@ void PageView::updateCursor()
 
 void PageView::updateCursor(const QPoint p)
 {
-    if (d->creatingNamedDestination || d->creatingInternalLink) {
+    if (d->creatingReadingView || d->creatingNamedDestination || d->creatingInternalLink) {
         setCursor(Qt::CrossCursor);
         return;
     }
@@ -6090,7 +6937,7 @@ void PageView::updateCursor(const QPoint p)
         QStringList destinationNames;
         if (d->showNamedDestinations && d->document->canEditPdfLinks()) {
             for (const NamedDestinationHitRegion &region : std::as_const(d->namedDestinationHitRegions)) {
-                if (region.rect.contains(p) && !destinationNames.contains(region.name)) {
+                if (region.displayIndex == pageItem->displayIndex && region.rect.contains(p) && !destinationNames.contains(region.name)) {
                     destinationNames.append(region.name);
                 }
             }
@@ -6525,9 +7372,11 @@ void PageView::zoomWithFixedCenter(PageView::ZoomMode newZoomMode, QPointF zoomC
 
     // if the zoom center is not over a page, use viewport page number
     if (!page) {
-        page = d->items[vp.pageNumber];
+        page = sourceItem(vp.pageNumber);
     }
 
+    if (!page) return;
+    if (d->readingMode) d->currentDisplayIndex = page->displayIndex;
     const QRect beginGeometry = page->croppedGeometry();
 
     QPoint offset {beginGeometry.left(), beginGeometry.top()};
@@ -6625,7 +7474,7 @@ void PageView::slotRelayoutPages()
 
     // set all items geometry and resize contents. handle 'continuous' and 'single' modes separately
 
-    const PageViewItem *currentItem = d->items[qMax(0, documentViewport().pageNumber)];
+    const PageViewItem *currentItem = d->items[qMax(0, displayedPageNumber())];
 
     // Here we find out column's width and row's height to compute a table
     // so we can place widgets 'centered in virtual cells'.
@@ -6663,7 +7512,7 @@ void PageView::slotRelayoutPages()
         }
     }
 
-    const int pageRowIdx = ((centerFirstPage ? nCols - 1 : 0) + currentItem->pageNumber()) / nCols;
+    const int pageRowIdx = ((centerFirstPage ? nCols - 1 : 0) + currentItem->displayIndex) / nCols;
 
     // 2) compute full size
     for (int i = 0; i < nCols; i++) {
@@ -6691,8 +7540,8 @@ void PageView::slotRelayoutPages()
     for (PageViewItem *item : std::as_const(d->items)) {
         int cWidth = colWidth[cIdx], rHeight = rowHeight[rIdx];
         if (continuousView || rIdx == pageRowIdx) {
-            const bool reallyDoCenterFirst = item->pageNumber() == 0 && centerFirstPage;
-            const bool reallyDoCenterLast = item->pageNumber() == pageCount - 1 && centerLastPage;
+            const bool reallyDoCenterFirst = item->displayIndex == 0 && centerFirstPage;
+            const bool reallyDoCenterLast = item->displayIndex == pageCount - 1 && centerLastPage;
             int actualX = 0;
             if (reallyDoCenterFirst || reallyDoCenterLast) {
                 // page is centered across entire viewport
@@ -6700,10 +7549,10 @@ void PageView::slotRelayoutPages()
             } else if (facingPages) {
                 if (Okular::Settings::rtlReadingDirection()) {
                     // RTL reading mode
-                    actualX = ((centerFirstPage && item->pageNumber() % 2 == 0) || (!centerFirstPage && item->pageNumber() % 2 == 1)) ? (fullWidth / 2) - item->croppedWidth() - 1 : (fullWidth / 2) + 1;
+                    actualX = ((centerFirstPage && item->displayIndex % 2 == 0) || (!centerFirstPage && item->displayIndex % 2 == 1)) ? (fullWidth / 2) - item->croppedWidth() - 1 : (fullWidth / 2) + 1;
                 } else {
                     // page edges 'touch' the center of the viewport
-                    actualX = ((centerFirstPage && item->pageNumber() % 2 == 1) || (!centerFirstPage && item->pageNumber() % 2 == 0)) ? (fullWidth / 2) - item->croppedWidth() - 1 : (fullWidth / 2) + 1;
+                    actualX = ((centerFirstPage && item->displayIndex % 2 == 1) || (!centerFirstPage && item->displayIndex % 2 == 0)) ? (fullWidth / 2) - item->croppedWidth() - 1 : (fullWidth / 2) + 1;
                 }
             } else {
                 // page is centered within its virtual column
@@ -6814,6 +7663,152 @@ static void slotRequestPreloadPixmap(PageView *pageView, const PageViewItem *i, 
     }
 }
 
+void PageView::scheduleReadingRenderReconcile()
+{
+    if (d->readingRenderReconcileQueued) return;
+    d->readingRenderReconcileQueued = true;
+    QMetaObject::invokeMethod(this, [this] {
+        d->readingRenderReconcileQueued = false;
+        reconcileReadingRenderSlots();
+    }, Qt::QueuedConnection);
+}
+
+void PageView::reconcileReadingRenderSlots()
+{
+    if (d->blockPixmapsRequest) return;
+    // Read the latest items, never a list captured before a queued model rebuild.
+    const QList<PageViewItem *> visible = d->readingMode ? d->visibleItems : QList<PageViewItem *>();
+    const QRect viewRect(contentAreaPosition(), viewport()->size());
+    QSet<QString> wanted;
+    for (const auto *item : visible) wanted.insert(item->readingIdentity);
+    QSet<ReadingPixmapObserver *> used;
+    bool mappingChanged = false;
+    for (auto *item : visible) {
+        const QRect intersection = item->croppedGeometry().intersected(viewRect);
+        if (!item->isVisible() || intersection.isEmpty()) { item->readingRenderObserver = nullptr; continue; }
+        ReadingPixmapObserver *slot = nullptr;
+        for (auto *candidate : std::as_const(d->readingRenderSlots)) {
+            if (!used.contains(candidate) && candidate->identity == item->readingIdentity) { slot = candidate; break; }
+        }
+        if (!slot) {
+            for (auto *candidate : std::as_const(d->readingRenderSlots)) {
+                if (!used.contains(candidate) && !wanted.contains(candidate->identity)) { slot = candidate; break; }
+            }
+        }
+        if (!slot) {
+            slot = new ReadingPixmapObserver(d->document, this);
+            d->readingRenderSlots.append(slot);
+        }
+        used.insert(slot);
+        // Rebinding is like scrolling an ordinary observer to a different page:
+        // old page caches become unloadable, and observer-scoped request batching
+        // supersedes pending work without an O(document pages) remove/add cycle.
+        slot->identity = item->readingIdentity;
+        slot->sourcePage = item->pageNumber();
+        slot->logicalSize = QSize(item->uncroppedWidth(), item->uncroppedHeight());
+        slot->dpr = devicePixelRatioF();
+        const QRect local = intersection.translated(-item->uncroppedGeometry().topLeft());
+        slot->region = Okular::NormalizedRect(qBound(0.0, double(local.left()) / item->uncroppedWidth(), 1.0),
+                                              qBound(0.0, double(local.top()) / item->uncroppedHeight(), 1.0),
+                                              qBound(0.0, double(local.right() + 1) / item->uncroppedWidth(), 1.0),
+                                              qBound(0.0, double(local.bottom() + 1) / item->uncroppedHeight(), 1.0));
+        if (!slot->registered) {
+            slot->registered = true;
+            d->document->addObserver(slot);
+        }
+        mappingChanged |= item->readingRenderObserver != slot;
+        item->readingRenderObserver = slot;
+    }
+    for (auto *slot : std::as_const(d->readingRenderSlots)) {
+        if (used.contains(slot)) continue;
+        slot->region = {};
+        if (slot->registered) d->document->removeObserver(slot);
+        slot->registered = false;
+        slot->sourcePage = -1;
+    }
+    for (auto *slot : used) {
+        const auto *page = d->document->page(slot->sourcePage);
+        const int width = qCeil(slot->logicalSize.width() * slot->dpr);
+        const int height = qCeil(slot->logicalSize.height() * slot->dpr);
+        if (!page || width <= 0 || height <= 0 || slot->region.isNull() || page->hasPixmap(slot, width, height, slot->region)) continue;
+        auto *request = new Okular::PixmapRequest(slot, slot->sourcePage, slot->logicalSize.width(), slot->logicalSize.height(), slot->dpr, PAGEVIEW_PRIO, Okular::PixmapRequest::Asynchronous);
+        request->setNormalizedRect(slot->region);
+        if (page->hasTilesManager(slot)) request->setTile(true);
+        // Replacement/cancellation in Document is observer-scoped. Keep each
+        // slot's request in its own batch, as ordinary independent frames do.
+        d->document->requestPixmaps(QList<Okular::PixmapRequest *>{request});
+    }
+    if (mappingChanged) viewport()->update();
+}
+
+void PageView::requestReadingPixmaps(int newValue)
+{
+    const QRect viewRect(contentAreaPosition(), viewport()->size());
+    const auto previouslyVisible = d->visibleItems;
+    d->visibleItems.clear();
+    QHash<int, Okular::NormalizedRect> published;
+    int closest = -1;
+    double distance = std::numeric_limits<double>::max();
+    // Finding intersections is cheap; widget work is only for current/just-left items.
+    for (auto *item : std::as_const(d->items)) {
+        if (!item->isVisible()) continue;
+        const QRect intersection = item->croppedGeometry().intersected(viewRect);
+        if (intersection.isEmpty()) continue;
+        d->visibleItems.append(item);
+        const QRect local = intersection.translated(-item->uncroppedGeometry().topLeft());
+        const Okular::NormalizedRect r(double(local.left()) / item->uncroppedWidth(), double(local.top()) / item->uncroppedHeight(),
+                                      double(local.right() + 1) / item->uncroppedWidth(), double(local.bottom() + 1) / item->uncroppedHeight());
+        if (!published.contains(item->pageNumber())) published.insert(item->pageNumber(), r);
+        else published[item->pageNumber()] |= r;
+        const double currentDistance = QLineF(QPointF(item->croppedGeometry().center()), QPointF(viewRect.center())).length();
+        if (currentDistance < distance) { distance = currentDistance; closest = item->displayIndex; }
+    }
+    QSet<PageViewItem *> widgetsToPosition(d->visibleItems.cbegin(), d->visibleItems.cend());
+    for (auto *item : previouslyVisible) widgetsToPosition.insert(item);
+    for (auto *item : widgetsToPosition) {
+        const bool onScreen = d->visibleItems.contains(item);
+        if (!onScreen) item->readingRenderObserver = nullptr;
+        const QRect clip = item->croppedGeometry().translated(-viewRect.topLeft());
+        for (auto *field : const_cast<PageViewItem *>(item)->formWidgets()) {
+            const auto r = field->rect();
+            field->moveTo(qRound(item->uncroppedGeometry().left() + item->uncroppedWidth() * r.left) + 1 - viewRect.left(),
+                          qRound(item->uncroppedGeometry().top() + item->uncroppedHeight() * r.top) + 1 - viewRect.top());
+            if (auto *widget = dynamic_cast<QWidget *>(field)) {
+                const QRect visible = widget->geometry().intersected(clip);
+                widget->setMask(QRegion(visible.translated(-widget->pos())));
+                field->setVisibility(onScreen && item->isVisible() && d->m_formsVisible && !visible.isEmpty() && field->formField()->isVisible() && FormWidgetsController::shouldFormWidgetBeShown(field->formField()));
+            }
+        }
+        for (auto *video : const_cast<PageViewItem *>(item)->videoWidgets()) {
+            const auto r = video->normGeometry();
+            video->move(qRound(item->uncroppedGeometry().left() + item->uncroppedWidth() * r.left) + 1 - viewRect.left(),
+                        qRound(item->uncroppedGeometry().top() + item->uncroppedHeight() * r.top) + 1 - viewRect.top());
+            const QRect visible = video->geometry().intersected(clip);
+            video->setMask(QRegion(visible.translated(-video->pos())));
+            if (!onScreen || !item->isVisible() || visible.isEmpty()) {
+                if (video->isPlaying()) { video->stop(); video->pageLeft(); }
+                video->hide();
+            }
+        }
+    }
+    scheduleReadingRenderReconcile();
+    if (newValue != -1 && !d->blockViewport && closest >= 0) {
+        d->currentDisplayIndex = closest;
+        const auto *item = d->items[closest];
+        Okular::DocumentViewport vp(item->pageNumber());
+        vp.rePos.enabled = true;
+        vp.rePos.normalizedX = qBound(item->crop().left, item->absToPageX(viewRect.center().x()), item->crop().right);
+        vp.rePos.normalizedY = qBound(item->crop().top, item->absToPageY(viewRect.center().y()), item->crop().bottom);
+        setDocumentViewport(vp, this, false, false);
+        rememberDisplayedViewport();
+    }
+    QList<Okular::VisiblePageRect *> rects;
+    if (d->workspaceActiveView) {
+        for (auto it = published.cbegin(); it != published.cend(); ++it) rects.append(new Okular::VisiblePageRect(it.key(), it.value()));
+        d->document->setVisiblePageRects(rects, this);
+    }
+}
+
 void PageView::slotRequestVisiblePixmaps(int newValue)
 {
     // if requests are blocked (because raised by an unwanted event), exit
@@ -6821,6 +7816,10 @@ void PageView::slotRequestVisiblePixmaps(int newValue)
         return;
     }
 
+    if (d->readingMode) {
+        requestReadingPixmaps(newValue);
+        return;
+    }
     // precalc view limits for intersecting with page coords inside the loop
     const bool isEvent = newValue != -1 && !d->blockViewport;
     const QRectF viewportRect(horizontalScrollBar()->value(), verticalScrollBar()->value(), viewport()->width(), viewport()->height());
@@ -6945,13 +7944,13 @@ void PageView::slotRequestVisiblePixmaps(int newValue)
 
         for (int j = 1; j <= pagesToPreload; j++) {
             // add the page after the 'visible series' in preload
-            const int tailRequest = d->visibleItems.last()->pageNumber() + j;
+            const int tailRequest = d->visibleItems.last()->displayIndex + j;
             if (tailRequest < (int)d->items.count()) {
                 slotRequestPreloadPixmap(this, d->items[tailRequest], expandedViewportRect, &requestedPixmaps);
             }
 
             // add the page before the 'visible series' in preload
-            const int headRequest = d->visibleItems.first()->pageNumber() - j;
+            const int headRequest = d->visibleItems.first()->displayIndex - j;
             if (headRequest >= 0) {
                 slotRequestPreloadPixmap(this, d->items[headRequest], expandedViewportRect, &requestedPixmaps);
             }
@@ -7127,6 +8126,7 @@ void PageView::slotUpdateReadingDirectionAction()
 
 void PageView::slotSetMouseNormal()
 {
+    cancelReadingViewCreation();
     selectionClear();
     textSelectionClear();
     d->mouseMode = Okular::Settings::EnumMouseMode::Browse;
@@ -7143,6 +8143,7 @@ void PageView::slotSetMouseNormal()
 
 void PageView::slotSetMouseZoom()
 {
+    cancelReadingViewCreation();
     selectionClear();
     textSelectionClear();
     d->mouseMode = Okular::Settings::EnumMouseMode::Zoom;
@@ -7159,6 +8160,7 @@ void PageView::slotSetMouseZoom()
 
 void PageView::slotSetMouseMagnifier()
 {
+    cancelReadingViewCreation();
     selectionClear();
     textSelectionClear();
     d->mouseMode = Okular::Settings::EnumMouseMode::Magnifier;
@@ -7175,6 +8177,7 @@ void PageView::slotSetMouseMagnifier()
 
 void PageView::slotSetMouseSelect()
 {
+    cancelReadingViewCreation();
     selectionClear();
     textSelectionClear();
     d->mouseMode = Okular::Settings::EnumMouseMode::RectSelect;
@@ -7191,6 +8194,7 @@ void PageView::slotSetMouseSelect()
 
 void PageView::slotSetMouseTextSelect()
 {
+    cancelReadingViewCreation();
     selectionClear();
     textSelectionClear();
     d->mouseMode = Okular::Settings::EnumMouseMode::TextSelect;
@@ -7207,6 +8211,7 @@ void PageView::slotSetMouseTextSelect()
 
 void PageView::slotSetMouseTableSelect()
 {
+    cancelReadingViewCreation();
     selectionClear();
     textSelectionClear();
     d->mouseMode = Okular::Settings::EnumMouseMode::TableSelect;
@@ -7355,21 +8360,62 @@ const Okular::DocumentViewport &PageView::documentViewport() const
 
 bool PageView::viewportHistoryAtBegin() const
 {
+    if (d->readingMode) return d->readingHistoryIndex <= 0;
     return d->viewSession && !d->workspaceMainView ? d->viewSession->historyAtBegin() : d->document->historyAtBegin();
 }
 
 bool PageView::viewportHistoryAtEnd() const
 {
+    if (d->readingMode) return d->readingHistoryIndex + 1 >= d->readingHistory.size();
     return d->viewSession && !d->workspaceMainView ? d->viewSession->historyAtEnd() : d->document->historyAtEnd();
 }
 
 void PageView::goToDocumentViewport(const Okular::DocumentViewport &viewport, bool smoothMove, bool updateHistory)
 {
+    if (d->readingMode) {
+        const int index = itemIndexForViewport(viewport);
+        if (index >= 0) {
+            if (updateHistory) rememberDisplayedViewport();
+            d->currentDisplayIndex = index;
+            d->localReadingNavigation = true;
+            setDocumentViewport(viewport, this, smoothMove, false);
+            slotRealNotifyViewportChanged(smoothMove);
+            d->localReadingNavigation = false;
+            if (updateHistory) rememberDisplayedViewport();
+            return;
+        }
+    }
     setDocumentViewport(viewport, nullptr, smoothMove, updateHistory);
+}
+
+void PageView::restoreReadingHistory(int direction)
+{
+    int next = d->readingHistoryIndex + direction;
+    while (next >= 0 && next < d->readingHistory.size()) {
+        const auto entry = d->readingHistory[next];
+        for (const auto *item : std::as_const(d->items)) {
+            if (item->readingIdentity != entry.identity) continue;
+            d->readingHistoryIndex = next;
+            d->currentDisplayIndex = item->displayIndex;
+            auto vp = entry.viewport;
+            vp.pageNumber = item->pageNumber();
+            const QRectF crop = readingViewDisplayRect(item, item->readingCrop);
+            vp.rePos.normalizedX = qBound(crop.left(), vp.rePos.normalizedX, crop.right());
+            vp.rePos.normalizedY = qBound(crop.top(), vp.rePos.normalizedY, crop.bottom());
+            d->localReadingNavigation = true;
+            setDocumentViewport(vp, this, false, false);
+            slotRealNotifyViewportChanged(false);
+            d->localReadingNavigation = false;
+            Q_EMIT viewportStateChanged();
+            return;
+        }
+        next += direction;
+    }
 }
 
 void PageView::goToPreviousViewport()
 {
+    if (d->readingMode) { restoreReadingHistory(-1); return; }
     if (d->viewSession && !d->workspaceMainView) {
         d->viewSession->setPrevViewport();
     } else {
@@ -7380,6 +8426,7 @@ void PageView::goToPreviousViewport()
 
 void PageView::goToNextViewport()
 {
+    if (d->readingMode) { restoreReadingHistory(1); return; }
     if (d->viewSession && !d->workspaceMainView) {
         d->viewSession->setNextViewport();
     } else {
@@ -7495,6 +8542,10 @@ void PageView::slotAutoScrollDown()
 
 void PageView::slotScrollUp(int nSteps)
 {
+    if (d->readingMode && !getContinuousMode() && verticalScrollBar()->value() <= verticalScrollBar()->minimum()) {
+        goToDisplayedPage(qMax(0, displayedPageNumber() - viewColumns()), true);
+        return;
+    }
     if (verticalScrollBar()->value() > verticalScrollBar()->minimum()) {
         if (nSteps) {
             d->scroller->scrollTo(d->scroller->finalPosition() + QPoint(0, -100 * nSteps), d->currentShortScrollDuration);
@@ -7519,6 +8570,10 @@ void PageView::slotScrollUp(int nSteps)
 
 void PageView::slotScrollDown(int nSteps)
 {
+    if (d->readingMode && !getContinuousMode() && verticalScrollBar()->value() >= verticalScrollBar()->maximum()) {
+        goToDisplayedPage(qMin(displayedPageCount() - 1, displayedPageNumber() + viewColumns()));
+        return;
+    }
     if (verticalScrollBar()->value() < verticalScrollBar()->maximum()) {
         if (nSteps) {
             d->scroller->scrollTo(d->scroller->finalPosition() + QPoint(0, 100 * nSteps), d->currentShortScrollDuration);
@@ -7681,7 +8736,7 @@ void PageView::slotSpeakDocument()
 
 void PageView::slotSpeakFromCurrentPage()
 {
-    const int currentPage = documentViewport().pageNumber;
+    const int currentPage = displayedPageNumber();
 
     QString text;
     QList<PageViewItem *>::const_iterator dIt = d->items.constBegin(), dEnd = d->items.constEnd();
@@ -7699,7 +8754,7 @@ void PageView::slotSpeakCurrentPage()
 {
     const int currentPage = documentViewport().pageNumber;
 
-    const PageViewItem *item = d->items.at(currentPage);
+    const PageViewItem *item = sourceItem(currentPage);
     std::unique_ptr<Okular::RegularAreaRect> area = textSelectionForItem(item);
     const QString text = item->page()->text(area.get());
 
@@ -7825,7 +8880,7 @@ void PageView::slotProcessMovieAction(const Okular::MovieAction *action)
 
     const int currentPage = documentViewport().pageNumber;
 
-    PageViewItem *item = d->items.at(currentPage);
+    PageViewItem *item = sourceItem(currentPage);
     if (!item) {
         return;
     }
@@ -7863,7 +8918,7 @@ void PageView::slotProcessRenditionAction(const Okular::RenditionAction *action)
 
     const int currentPage = documentViewport().pageNumber;
 
-    PageViewItem *item = d->items.at(currentPage);
+    PageViewItem *item = sourceItem(currentPage);
     if (!item) {
         return;
     }
@@ -7927,7 +8982,7 @@ void PageView::slotSelectPage()
 {
     textSelectionClear();
     const int currentPage = documentViewport().pageNumber;
-    const PageViewItem *item = d->items.at(currentPage);
+    const PageViewItem *item = sourceItem(currentPage);
 
     if (item) {
         std::unique_ptr<Okular::RegularAreaRect> area = textSelectionForItem(item);

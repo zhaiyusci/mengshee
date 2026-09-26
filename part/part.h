@@ -43,10 +43,12 @@
 
 #include "../core/document.h"
 #include "../core/observer.h"
+#include "../core/readingview.h"
 #include "../interfaces/viewerinterface.h"
 #include "../kdocumentviewer.h"
 
 #include "okularpart_export.h"
+#include "editingmode.h"
 
 class QAction;
 class QWidget;
@@ -54,6 +56,7 @@ class QPrinter;
 class QMenu;
 
 class KConfigDialog;
+class KSelectAction;
 class KDirWatch;
 class KHamburgerMenu;
 class KMainWindow;
@@ -346,6 +349,7 @@ private:
     bool applyLiveNamedDestination(const QString &name, const std::optional<DocumentViewport> &destination, QString *errorText = nullptr);
     bool canUsePageLevelEditing() const;
     void setAdvancedModeEnabled(bool enabled);
+    void setEditingMode(EditingMode mode);
     void updatePageEditActions();
     void editOcrTextLayer();
     void applyOcrTextLayerChange(int pageNumber, const QList<Okular::OcrTextWord> &before, const QList<Okular::OcrTextWord> &after);
@@ -355,6 +359,14 @@ private:
     void insertPdfPage(int insertAfterPageNumber, const QString &insertedFileName, int pageToInsert);
     void insertBlankPageAfterPage(int pageNumber);
     void duplicatePage(int pageNumber);
+    void addReadingView(int pageNumber, const QRectF &displayRectangle);
+    bool addReadingViewWithNumber(int pageNumber, const QRectF &displayRectangle, int number);
+    void editReadingViewNumber(int pageNumber, const QString &id);
+    void deleteReadingView(int pageNumber, const QString &id);
+    void changeReadingViewRectangle(int pageNumber, const QString &id, const QRectF &displayRectangle);
+    bool commitReadingViews(int pageNumber, const QList<Okular::ReadingView> &views, const QString &undoText);
+    void refreshReadingViews();
+    bool applyReadingViewsToDocument(int sourcePage);
     void addNamedDestination(int pageNumber, const Okular::NormalizedPoint &position);
     void startBatchNamedDestinationCreation();
     bool addNamedDestinationWithName(int pageNumber, const Okular::NormalizedPoint &position, const QString &name, bool replaceExistingWithoutPrompt);
@@ -428,7 +440,7 @@ private:
     // main widgets
     Sidebar *m_sidebar;
     SearchWidget *m_searchWidget;
-    FindBar *m_findBar;
+    QPointer<FindBar> m_findBar;
     KMessageWidget *m_migrationMessage;
     KMessageWidget *m_topMessage;
     KMessageWidget *m_formsMessage;
@@ -531,6 +543,10 @@ private:
     QAction *m_recognizeEnglishText = nullptr;
     QAction *m_editOcrTextLayer = nullptr;
     QAction *m_addCurrentPageToContents = nullptr;
+    QAction *m_readByViews = nullptr;
+    QAction *m_addReadingView = nullptr;
+    KSelectAction *m_editingModeSelector = nullptr;
+    QAction *m_applyReadingViewsToDocument = nullptr;
     QAction *m_addNamedDestination = nullptr;
     QAction *m_addNamedDestinationsFromTemplate = nullptr;
     QAction *m_createLink = nullptr;
@@ -544,7 +560,9 @@ private:
     QAction *m_rotateCurrentPageRight = nullptr;
     QAction *m_resetCurrentPageRotation = nullptr;
     QAction *m_deleteCurrentPage = nullptr;
-    bool m_advancedModeEnabled = false;
+    bool m_advancedModeEnabled = false; // Legacy alias for CrossReferences only.
+    EditingMode m_editingMode = EditingMode::Reading;
+    bool m_updatingEditingMode = false;
     bool m_batchNamedDestinationCreationActive = false;
     bool m_batchNamedDestinationReplaceConflicts = false;
     QString m_batchNamedDestinationTemplate = QStringLiteral("eq-{x}");

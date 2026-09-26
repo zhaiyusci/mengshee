@@ -450,6 +450,8 @@ install( FILES
            core/annotations.h
            core/area.h
            core/document.h
+           core/readingview.h
+           core/readingvieweditinginterface.h
            core/fontinfo.h
            core/form.h
            core/generator.h

@@ -946,7 +946,7 @@ bool MouseAnnotation::routeMousePressEvent(PageViewItem *pageViewItem, const QPo
     }
 
     /* Is there a selected annotation? */
-    if (m_focusedAnnotation.isValid() && interactionPageItem) {
+    if (m_focusedAnnotation.isValid() && interactionPageItem == m_focusedAnnotation.pageViewItem) {
         m_mousePosition = eventPos - interactionPageItem->uncroppedGeometry().topLeft();
         m_handle = getHandleAt(m_mousePosition, m_focusedAnnotation);
         if (hasLatexRenderWarning(m_focusedAnnotation) && getLatexWarningMarkerRect(m_focusedAnnotation).contains(m_mousePosition)) {
@@ -1001,7 +1001,9 @@ void MouseAnnotation::routeMouseReleaseEvent()
 
 void MouseAnnotation::routeMouseMoveEvent(PageViewItem *pageViewItem, const QPoint eventPos, bool leftButtonPressed)
 {
-    PageViewItem *interactionPageItem = pageViewItem;
+    // A drag belongs to the instance where it started, even when the cursor
+    // crosses another projection of the same source page.
+    PageViewItem *interactionPageItem = leftButtonPressed && m_focusedAnnotation.isValid() ? m_focusedAnnotation.pageViewItem : pageViewItem;
     if (!interactionPageItem && m_focusedAnnotation.isValid()) {
         interactionPageItem = m_focusedAnnotation.pageViewItem;
     }
@@ -1034,7 +1036,7 @@ void MouseAnnotation::routeMouseMoveEvent(PageViewItem *pageViewItem, const QPoi
         if (isFocused()) {
             /* qDebug() << "routeMouseMoveEvent: update cursor for focused annotation, new eventPos " << eventPos; */
             m_mousePosition = eventPos - interactionPageItem->uncroppedGeometry().topLeft();
-            m_handle = getHandleAt(m_mousePosition, m_focusedAnnotation);
+            m_handle = interactionPageItem == m_focusedAnnotation.pageViewItem ? getHandleAt(m_mousePosition, m_focusedAnnotation) : RH_None;
             m_pageView->updateCursor();
         }
 

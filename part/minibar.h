@@ -98,6 +98,8 @@ public:
 
     Okular::Document *document() const;
     int currentPage() const;
+    int pageCount() const;
+    void rebuildDisplay();
     void setPageView(PageView *pageView);
     void goToPage(int page);
     void refreshCurrentPage();
@@ -111,6 +113,8 @@ private:
     Okular::Document *m_document;
     QPointer<PageView> m_pageView;
     QMetaObject::Connection m_pageViewViewportConnection;
+    QMetaObject::Connection m_pageViewPagesConnection;
+    QMetaObject::Connection m_pageViewModeConnection;
 };
 
 /**
@@ -148,6 +152,7 @@ private:
     PageNumberEdit *m_pageNumberEdit;
     PageLabelEdit *m_pageLabelEdit;
     QLabel *m_pageNumberLabel;
+    QLabel *m_readingPageLabel;
     HoverButton *m_prevButton;
     HoverButton *m_pagesButton;
     HoverButton *m_nextButton;
@@ -168,6 +173,7 @@ public:
     void notifyCurrentPageChanged(int previous, int current) override;
 
     void slotGotoNormalizedPage(float index);
+    void setPageView(PageView *pageView);
 
 Q_SIGNALS:
     void prevPage();
@@ -183,6 +189,10 @@ protected:
 
 private:
     Okular::Document *m_document;
+    QPointer<PageView> m_pageView;
+    QMetaObject::Connection m_viewportConnection;
+    QMetaObject::Connection m_pagesConnection;
+    QMetaObject::Connection m_modeConnection;
     float m_progressPercentage;
 };
 

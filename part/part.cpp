@@ -50,6 +50,9 @@
 #include <QGroupBox>
 #include <QHBoxLayout>
 #include <QInputDialog>
+#include <QSignalBlocker>
+#include <QUuid>
+#include <limits>
 #include <QJsonArray>
 #include <QLabel>
 #include <QLayout>
@@ -90,6 +93,7 @@
 #include <KAboutPluginDialog>
 #include <KActionCollection>
 #include <KActionMenu>
+#include <KSelectAction>
 #include <KBookmarkAction>
 #include <KColorSchemeManager>
 #include <KColorSchemeMenu>
@@ -145,6 +149,7 @@
 #include "fileprinterpreview.h"
 #include "findbar.h"
 #include "gui/signatureguiutils.h"
+#include "gui/toolbarbuttonheight.h"
 #include "layers.h"
 #include "minibar.h"
 #include "okmenutitle.h"
@@ -823,6 +828,20 @@ void Part::setupViewerActions()
         openAuxiliaryView(sourceView, target, i18nc("@title Auxiliary document frame", "Page %1", target.pageNumber + 1));
     });
 
+    m_readByViews = ac->addAction(QStringLiteral("view_read_by_views"));
+    m_readByViews->setText(i18n("Read by Views"));
+    m_readByViews->setIcon(QIcon::fromTheme(QStringLiteral("view-pages-single")));
+    m_readByViews->setCheckable(true);
+    m_readByViews->setEnabled(false);
+    m_readByViews->setToolTip(i18n("Display the defined Views as pages; turn off to read the original PDF pages"));
+    connect(m_readByViews, &QAction::toggled, this, [this](bool enabled) {
+        if (PageView *view = workspaceActivePageView()) {
+            view->setReadingViewMode(enabled);
+        }
+        updateViewActions();
+        updatePageEditActions();
+    });
+
     // Page Traversal actions
     m_gotoPage = KStandardAction::gotoPage(this, SLOT(slotGoToPage()), ac);
     ac->setDefaultShortcuts(m_gotoPage, KStandardShortcut::gotoLine());
@@ -1005,6 +1024,41 @@ void Part::setupViewerActions()
     m_addCurrentPageToContents->setIcon(QIcon::fromTheme(QStringLiteral("list-add")));
     m_addCurrentPageToContents->setEnabled(false);
     connect(m_addCurrentPageToContents, &QAction::triggered, m_toc.data(), &TOC::addCurrentPageEntry);
+
+    m_editingModeSelector = new KSelectAction(i18n("Mode"), this);
+    m_editingModeSelector->setItems({i18n("Reading and Annotations"), i18n("Cross-references"), i18n("OCR"), i18n("Page Editing"), i18n("View Editing")});
+    m_editingModeSelector->setCurrentItem(static_cast<int>(m_editingMode));
+    ac->addAction(QStringLiteral("editing_mode_selector"), m_editingModeSelector);
+    connect(m_editingModeSelector, &KSelectAction::indexTriggered, this, [this](int index) {
+        if (index >= 0 && index <= static_cast<int>(EditingMode::Views)) {
+            setEditingMode(static_cast<EditingMode>(index));
+        }
+    });
+    m_applyReadingViewsToDocument = ac->addAction(QStringLiteral("view_apply_views_to_document"));
+    m_applyReadingViewsToDocument->setText(i18n("Apply Views to Entire Document..."));
+    m_applyReadingViewsToDocument->setEnabled(false);
+    connect(m_applyReadingViewsToDocument, &QAction::triggered, this, [this] {
+        const int sourcePage = workspaceActivePageNumber();
+        if (KMessageBox::warningContinueCancel(widget(),
+                i18n("Replace the Views on all other pages with the current page's Views? Ranges are applied in relative page proportions. This operation can be undone."),
+                i18n("Apply Views to Entire Document")) == KMessageBox::Continue) {
+            if (!applyReadingViewsToDocument(sourcePage)) {
+                KMessageBox::information(widget(), i18n("Could not apply the Views to the document."));
+            }
+        }
+    });
+
+    m_addReadingView = ac->addAction(QStringLiteral("advanced_add_reading_view"));
+    m_addReadingView->setText(i18n("Draw View"));
+    m_addReadingView->setIcon(QIcon::fromTheme(QStringLiteral("select-rectangular"), QIcon::fromTheme(QStringLiteral("list-add"))));
+    m_addReadingView->setToolTip(i18n("Draw rectangles to define automatically numbered Views"));
+    m_addReadingView->setEnabled(false);
+    m_addReadingView->setVisible(false);
+    connect(m_addReadingView, &QAction::triggered, this, [this] {
+        if (PageView *view = workspaceActivePageView()) {
+            view->startReadingViewCreation();
+        }
+    });
 
     m_addNamedDestination = ac->addAction(QStringLiteral("advanced_add_named_destination"));
     m_addNamedDestination->setText(i18n("Add Named Destination"));
@@ -1346,6 +1400,14 @@ void Part::connectWorkspacePageView(PageView *view)
     connect(view, &PageView::ocrTextLayerChangeRequested, this, &Part::applyOcrTextLayerChange);
     connect(view, &PageView::rightClick, this, &Part::slotShowMenu);
     connect(view, &PageView::editPdfLinkRequested, this, &Part::editPdfLink);
+    view->setReadingViewEditingEnabled(m_editingMode == EditingMode::Views && canUsePageLevelEditing() && m_document->canEditReadingViews());
+    connect(view, &PageView::readingViewEditingChanged, this, [this, view](bool) {
+        if (!m_updatingEditingMode && workspaceActivePageView() == view) {
+            updatePageEditActions();
+        }
+    });
+    connect(view, &PageView::createReadingViewRequested, this, &Part::addReadingView);
+    connect(view, &PageView::changeReadingViewRectangleRequested, this, &Part::changeReadingViewRectangle);
     connect(view, &PageView::createNamedDestinationRequested, this, &Part::addNamedDestination);
     connect(view, &PageView::namedDestinationCreationCancelled, this, [this] {
         m_batchNamedDestinationCreationActive = false;
@@ -1366,6 +1428,14 @@ void Part::connectWorkspacePageView(PageView *view)
     connect(view, &PageView::escPressed, m_findBar, &FindBar::resetSearch);
     connect(view, &PageView::mouseBackButtonClick, this, &Part::slotHistoryBack);
     connect(view, &PageView::mouseForwardButtonClick, this, &Part::slotHistoryNext);
+    const auto refreshReadingNavigation = [this, view] {
+        if (workspaceActivePageView() == view) {
+            updateViewActions();
+            updatePageEditActions();
+        }
+    };
+    connect(view, &PageView::readingViewModeChanged, this, refreshReadingNavigation);
+    connect(view, &PageView::displayedPagesChanged, this, refreshReadingNavigation);
     connect(view, &PageView::viewportStateChanged, this, [this, view] {
         if (workspaceActivePageView() == view) {
             updateViewActions();
@@ -1397,7 +1467,10 @@ void Part::openAuxiliaryView(PageView *sourceView, const DocumentViewport &targe
     if (m_embedMode != ViewerWidgetMode && m_embedMode != PrintPreviewMode) {
         view->setupActions(viewActions, m_pageView->annotator());
     }
-    view->setAdvancedModeEnabled(m_advancedModeEnabled);
+    const QScopedValueRollback<bool> updatingMode(m_updatingEditingMode, true);
+    view->setCrossReferenceModeEnabled(m_editingMode == EditingMode::CrossReferences);
+    view->setOcrModeEnabled(m_editingMode == EditingMode::Ocr);
+    view->setReadingViewEditingEnabled(m_editingMode == EditingMode::Views && canUsePageLevelEditing() && m_document->canEditReadingViews());
     registerWorkspacePageViewActions(view);
     connectWorkspacePageView(view);
     // Seed the new tab from the source frame. For links this makes Back return
@@ -1522,18 +1595,35 @@ Part::~Part()
         Part::closeUrl(false);
     }
 
-    // Side panels and shared controls outlive the DocumentWorkspace in the
-    // widget tree. Detach their active-view bindings before destroying the
-    // PageViews so no teardown callback can observe a half-destroyed view.
-    m_findBar->setSearchView(nullptr);
-    m_miniBarLogic->setPageView(nullptr);
-    m_pageSizeLabel->setPageView(nullptr);
-    m_toc->setPageView(nullptr);
-    m_thumbnailList->setPageView(nullptr);
-    m_reviewsWidget->setPageView(nullptr);
-    m_bookmarkList->setPageView(nullptr);
-    m_layers->setPageViews({});
-    m_signaturePanel->setPageView(nullptr);
+    // Detach surviving controls before destroying the PageViews. Shell may
+    // already have destroyed the tab widget and its child controls.
+    if (m_findBar) {
+        m_findBar->setSearchView(nullptr);
+    }
+    if (m_miniBarLogic) {
+        m_miniBarLogic->setPageView(nullptr);
+    }
+    if (m_pageSizeLabel) {
+        m_pageSizeLabel->setPageView(nullptr);
+    }
+    if (m_toc) {
+        m_toc->setPageView(nullptr);
+    }
+    if (m_thumbnailList) {
+        m_thumbnailList->setPageView(nullptr);
+    }
+    if (m_reviewsWidget) {
+        m_reviewsWidget->setPageView(nullptr);
+    }
+    if (m_bookmarkList) {
+        m_bookmarkList->setPageView(nullptr);
+    }
+    if (m_layers) {
+        m_layers->setPageViews({});
+    }
+    if (m_signaturePanel) {
+        m_signaturePanel->setPageView(nullptr);
+    }
 
     delete m_toc;
     delete m_layers;
@@ -2640,8 +2730,13 @@ void Part::guiActivateEvent(KParts::GUIActivateEvent *event)
     setWindowTitleFromDocument();
 
     if (event->activated()) {
-        setAdvancedModeEnabled(m_advancedModeEnabled);
+        setEditingMode(m_editingMode);
         rebuildBookmarkMenu();
+        if (auto *mainWindow = findMainWindow()) {
+            for (auto *toolbar : mainWindow->toolBars()) {
+                ToolbarButtonHeight::install(toolbar);
+            }
+        }
     }
 }
 
@@ -2862,9 +2957,27 @@ void Part::updateViewActions()
     bool opened = m_document->pages() > 0;
     PageView *activeView = workspaceActivePageView();
     m_openAuxiliaryView->setEnabled(opened && activeView);
-    const int currentPage = activeView ? activeView->documentViewport().pageNumber : static_cast<int>(m_document->currentPage());
+    if (PageViewAnnotator *annotator = activeView ? activeView->annotator() : nullptr) {
+        annotator->setPageView(activeView);
+        const bool allowTools = opened && m_document->isAllowed(Okular::AllowNotes);
+        annotator->setToolsEnabled(allowTools);
+        annotator->setTextToolsEnabled(allowTools && m_document->supportsSearching());
+    }
+    if (QAction *signature = actionCollection()->action(QStringLiteral("add_digital_signature"))) {
+        signature->setEnabled(opened && activeView && m_document->canSign());
+    }
+    const int currentPage = activeView ? activeView->displayedPageNumber() : static_cast<int>(m_document->currentPage());
+    const int pageCount = activeView ? activeView->displayedPageCount() : static_cast<int>(m_document->pages());
+    if (m_readByViews) {
+        const QSignalBlocker blocker(m_readByViews);
+        m_readByViews->setChecked(activeView && activeView->readingViewMode());
+        m_readByViews->setEnabled(opened && activeView);
+    }
+#ifdef OKULAR_ENABLE_MINIBAR
+    m_progressWidget->setPageView(activeView);
+#endif
     if (opened) {
-        m_gotoPage->setEnabled(m_document->pages() > 1);
+        m_gotoPage->setEnabled(pageCount > 1);
 
         // Check if you are at the beginning or not
         if (currentPage != 0) {
@@ -2882,7 +2995,7 @@ void Part::updateViewActions()
             m_prevPage->setEnabled(false);
         }
 
-        if (m_document->pages() == currentPage + 1) {
+        if (pageCount == currentPage + 1) {
             // If you are at the end, disable go to next page
             m_nextPage->setEnabled(false);
             if (activeView && activeView->verticalScrollBar()->value() == activeView->verticalScrollBar()->maximum()) {
@@ -3113,32 +3226,35 @@ void Part::slotGoToPage()
     if (!activeView) {
         return;
     }
-    GotoPageDialog pageDialog(activeView, activeView->documentViewport().pageNumber + 1, m_document->pages());
+    if (activeView->displayedPageCount() < 1) {
+        return;
+    }
+    GotoPageDialog pageDialog(activeView, activeView->displayedPageNumber() + 1, activeView->displayedPageCount());
     if (pageDialog.exec() == QDialog::Accepted) {
-        activeView->goToDocumentViewport(DocumentViewport(pageDialog.getPage() - 1), true, true);
+        activeView->goToDisplayedPage(pageDialog.getPage() - 1);
     }
 }
 
 void Part::slotPreviousPage()
 {
     PageView *activeView = workspaceActivePageView();
-    if (m_document->isOpened() && activeView && activeView->documentViewport().pageNumber > 0) {
-        activeView->goToDocumentViewport(DocumentViewport(activeView->documentViewport().pageNumber - 1), true, true);
+    if (m_document->isOpened() && activeView && activeView->displayedPageNumber() > 0) {
+        activeView->goToDisplayedPage(activeView->displayedPageNumber() - 1);
     }
 }
 
 void Part::slotNextPage()
 {
     PageView *activeView = workspaceActivePageView();
-    if (m_document->isOpened() && activeView && activeView->documentViewport().pageNumber < (static_cast<int>(m_document->pages()) - 1)) {
-        activeView->goToDocumentViewport(DocumentViewport(activeView->documentViewport().pageNumber + 1), true, true);
+    if (m_document->isOpened() && activeView && activeView->displayedPageNumber() < activeView->displayedPageCount() - 1) {
+        activeView->goToDisplayedPage(activeView->displayedPageNumber() + 1);
     }
 }
 
 void Part::slotGotoFirst()
 {
     if (PageView *activeView = workspaceActivePageView(); m_document->isOpened() && activeView) {
-        activeView->goToDocumentViewport(DocumentViewport(0), true, true);
+        activeView->goToDisplayedPage(0);
         m_beginningOfDocument->setEnabled(false);
     }
 }
@@ -3146,12 +3262,7 @@ void Part::slotGotoFirst()
 void Part::slotGotoLast()
 {
     if (PageView *activeView = workspaceActivePageView(); m_document->isOpened() && activeView) {
-        DocumentViewport endPage(m_document->pages() - 1);
-        endPage.rePos.enabled = true;
-        endPage.rePos.normalizedX = 0;
-        endPage.rePos.normalizedY = 1;
-        endPage.rePos.pos = Okular::DocumentViewport::TopLeft;
-        activeView->goToDocumentViewport(endPage, true, true);
+        activeView->goToDisplayedPage(activeView->displayedPageCount() - 1, true);
         m_endOfDocument->setEnabled(false);
     }
 }
@@ -4321,61 +4432,96 @@ void Part::refreshTemplateNotes()
 void Part::updatePageEditActions()
 {
     const bool canEditPages = canUsePageLevelEditing();
-    const bool showAdvancedActions = m_advancedModeEnabled;
-    const bool canEditLinks = showAdvancedActions && canEditPages && m_document->canEditPdfLinks();
+    const bool showPageActions = m_editingMode == EditingMode::Pages;
+    const bool showCrossReferenceActions = m_editingMode == EditingMode::CrossReferences;
+    const bool showOcrActions = m_editingMode == EditingMode::Ocr;
+    const bool editingViews = m_editingMode == EditingMode::Views;
+    const bool canEditLinks = showCrossReferenceActions && canEditPages && m_document->canEditPdfLinks();
+    const bool canEditViews = editingViews && canEditPages && m_document->canEditReadingViews();
+    const QScopedValueRollback<bool> updatingMode(m_updatingEditingMode, true);
+    const auto syncFrame = [=](PageView *view) {
+        if (view) {
+            view->setCrossReferenceModeEnabled(showCrossReferenceActions);
+            view->setOcrModeEnabled(showOcrActions);
+            view->setReadingViewEditingEnabled(canEditViews);
+        }
+    };
+    if (m_documentWorkspace) {
+        syncFrame(m_documentWorkspace->mainView());
+        for (PageView *view : m_documentWorkspace->auxiliaryViews()) {
+            syncFrame(view);
+        }
+    } else {
+        syncFrame(m_pageView);
+    }
+    if (m_editingModeSelector) {
+        const QSignalBlocker blocker(m_editingModeSelector);
+        m_editingModeSelector->setCurrentItem(static_cast<int>(m_editingMode));
+    }
+    if (m_addReadingView) {
+        m_addReadingView->setVisible(editingViews);
+        m_addReadingView->setEnabled(canEditViews && editingViews);
+    }
+    if (m_applyReadingViewsToDocument) {
+        QString error;
+        const int page = workspaceActivePageNumber();
+        const bool hasViews = canEditViews && page >= 0 && page < int(m_document->pages()) && !m_document->readingViews(page, &error).isEmpty() && error.isEmpty();
+        m_applyReadingViewsToDocument->setVisible(editingViews);
+        m_applyReadingViewsToDocument->setEnabled(hasViews);
+    }
     if (m_editOcrTextLayer) {
         m_editOcrTextLayer->setChecked(workspaceActivePageView() && workspaceActivePageView()->isOcrTextEditing());
-        m_editOcrTextLayer->setVisible(showAdvancedActions);
-        m_editOcrTextLayer->setEnabled(showAdvancedActions && canEditPages);
+        m_editOcrTextLayer->setVisible(showOcrActions);
+        m_editOcrTextLayer->setEnabled(showOcrActions && canEditPages);
     }
     const int currentPageNumber = workspaceActivePageNumber();
     const Okular::Page *currentPage = currentPageNumber >= 0 && currentPageNumber < static_cast<int>(m_document->pages()) ? m_document->page(currentPageNumber) : nullptr;
-    const bool canRotateCurrentPage = showAdvancedActions && canEditPages && currentPage && m_document->canRotatePage();
+    const bool canRotateCurrentPage = showPageActions && canEditPages && currentPage && m_document->canRotatePage();
     if (m_combinePdfFiles) {
         m_combinePdfFiles->setEnabled(!m_document->isOpened() || m_document->canCombinePdfFiles());
     }
     if (m_recognizeEnglishText) {
-        m_recognizeEnglishText->setVisible(showAdvancedActions);
-        m_recognizeEnglishText->setEnabled(showAdvancedActions && canEditPages && m_document->canPerformEnglishOcr());
+        m_recognizeEnglishText->setVisible(showOcrActions);
+        m_recognizeEnglishText->setEnabled(showOcrActions && canEditPages && m_document->canPerformEnglishOcr());
     }
     if (m_addCurrentPageToContents) {
-        m_addCurrentPageToContents->setVisible(showAdvancedActions);
-        m_addCurrentPageToContents->setEnabled(showAdvancedActions && canEditPages);
+        m_addCurrentPageToContents->setVisible(showCrossReferenceActions);
+        m_addCurrentPageToContents->setEnabled(showCrossReferenceActions && canEditPages);
     }
     if (m_addNamedDestination) {
-        m_addNamedDestination->setVisible(showAdvancedActions);
+        m_addNamedDestination->setVisible(showCrossReferenceActions);
         m_addNamedDestination->setEnabled(canEditLinks);
     }
     if (m_addNamedDestinationsFromTemplate) {
-        m_addNamedDestinationsFromTemplate->setVisible(showAdvancedActions);
+        m_addNamedDestinationsFromTemplate->setVisible(showCrossReferenceActions);
         m_addNamedDestinationsFromTemplate->setEnabled(canEditLinks);
     }
     if (m_createLink) {
-        m_createLink->setVisible(showAdvancedActions);
+        m_createLink->setVisible(showCrossReferenceActions);
         m_createLink->setEnabled(canEditLinks);
     }
     if (m_insertPage) {
-        m_insertPage->setVisible(showAdvancedActions);
-        m_insertPage->setEnabled(showAdvancedActions && canEditPages && (m_document->canInsertBlankPage() || m_document->canInsertPageFromPdf()));
+        m_insertPage->setVisible(showPageActions);
+        m_insertPage->setEnabled(showPageActions && canEditPages && (m_document->canInsertBlankPage() || m_document->canInsertPageFromPdf()));
     }
     if (m_setPageTemplate) {
-        m_setPageTemplate->setVisible(showAdvancedActions);
-        m_setPageTemplate->setEnabled(showAdvancedActions);
+        m_setPageTemplate->setVisible(showPageActions);
+        m_setPageTemplate->setEnabled(showPageActions);
     }
     if (m_insertPageFromTemplate) {
-        m_insertPageFromTemplate->setVisible(showAdvancedActions);
-        m_insertPageFromTemplate->setEnabled(showAdvancedActions && canEditPages && m_document->canInsertPageFromPdf());
+        m_insertPageFromTemplate->setVisible(showPageActions);
+        m_insertPageFromTemplate->setEnabled(showPageActions && canEditPages && m_document->canInsertPageFromPdf());
     }
     if (m_insertBlankPageAfterCurrentPage) {
-        m_insertBlankPageAfterCurrentPage->setVisible(showAdvancedActions);
-        m_insertBlankPageAfterCurrentPage->setEnabled(showAdvancedActions && canEditPages && m_document->canInsertBlankPage());
+        m_insertBlankPageAfterCurrentPage->setVisible(showPageActions);
+        m_insertBlankPageAfterCurrentPage->setEnabled(showPageActions && canEditPages && m_document->canInsertBlankPage());
     }
     if (m_duplicateCurrentPage) {
-        m_duplicateCurrentPage->setVisible(showAdvancedActions);
-        m_duplicateCurrentPage->setEnabled(showAdvancedActions && canEditPages && m_document->canInsertPageFromPdf());
+        m_duplicateCurrentPage->setVisible(showPageActions);
+        m_duplicateCurrentPage->setEnabled(showPageActions && canEditPages && m_document->canInsertPageFromPdf());
     }
     if (m_rotateCurrentPage) {
-        m_rotateCurrentPage->setVisible(showAdvancedActions);
+        m_rotateCurrentPage->setVisible(showPageActions);
         m_rotateCurrentPage->setEnabled(canRotateCurrentPage);
     }
     if (m_rotateCurrentPageLeft) {
@@ -4388,30 +4534,48 @@ void Part::updatePageEditActions()
         m_resetCurrentPageRotation->setEnabled(canRotateCurrentPage && currentPage->orientation() != Okular::Rotation0);
     }
     if (m_deleteCurrentPage) {
-        m_deleteCurrentPage->setVisible(showAdvancedActions);
-        m_deleteCurrentPage->setEnabled(showAdvancedActions && canEditPages && m_document->canDeletePage() && m_document->pages() > 1);
+        m_deleteCurrentPage->setVisible(showPageActions);
+        m_deleteCurrentPage->setEnabled(showPageActions && canEditPages && m_document->canDeletePage() && m_document->pages() > 1);
     }
     if (m_toc) {
-        m_toc->setEditingEnabled(showAdvancedActions && canEditPages);
+        m_toc->setEditingEnabled(showCrossReferenceActions && canEditPages);
     }
     if (m_thumbnailList) {
-        m_thumbnailList->setPageReorderingEnabled(showAdvancedActions && canEditPages && m_document->canMovePage() && m_document->pages() > 1);
+        m_thumbnailList->setPageReorderingEnabled(showPageActions && canEditPages && m_document->canMovePage() && m_document->pages() > 1);
     }
     if (m_thumbnailController) {
-        m_thumbnailController->setAdvancedModeEnabled(showAdvancedActions);
+        m_thumbnailController->setAdvancedModeEnabled(showPageActions);
     }
 }
 
 void Part::setAdvancedModeEnabled(bool enabled)
 {
+    if (!m_updatingEditingMode) {
+        setEditingMode(enabled ? EditingMode::CrossReferences : EditingMode::Reading);
+    }
+}
+
+void Part::setEditingMode(EditingMode mode)
+{
+    if (m_updatingEditingMode) {
+        return;
+    }
+    const QScopedValueRollback<bool> updatingMode(m_updatingEditingMode, true);
+    if (m_editingMode != mode) {
+        m_batchNamedDestinationCreationActive = false;
+        m_batchNamedDestinationExistingViewports.clear();
+    }
+    m_editingMode = mode;
+    m_advancedModeEnabled = mode == EditingMode::CrossReferences;
+    const bool enabled = mode != EditingMode::Reading;
     const auto updateToolBars = [this, enabled] {
         if (factory()) {
-            if (auto *advancedMenu = qobject_cast<QMenu *>(factory()->container(QStringLiteral("advanced_pdf_editing"), this))) {
+            if (auto *advancedMenu = qobject_cast<QMenu *>(factory()->container(QStringLiteral("editing_mode_tools"), this))) {
                 advancedMenu->menuAction()->setVisible(enabled);
             }
         }
         if (m_thumbnailController) {
-            m_thumbnailController->setAdvancedModeEnabled(enabled);
+            m_thumbnailController->setAdvancedModeEnabled(m_editingMode == EditingMode::Pages);
         }
         if (auto *mainWindow = findMainWindow()) {
             const auto configureModeToolBar = [](KToolBar *toolBar, bool visible) {
@@ -4444,12 +4608,6 @@ void Part::setAdvancedModeEnabled(bool enabled)
         }
     };
 
-    if (m_advancedModeEnabled == enabled) {
-        updateToolBars();
-        return;
-    }
-
-    m_advancedModeEnabled = enabled;
     QList<PageView *> views;
     if (m_documentWorkspace) {
         if (PageView *mainView = m_documentWorkspace->mainView()) {
@@ -4460,7 +4618,9 @@ void Part::setAdvancedModeEnabled(bool enabled)
         views.append(m_pageView);
     }
     for (PageView *view : std::as_const(views)) {
-        view->setAdvancedModeEnabled(enabled);
+        view->setCrossReferenceModeEnabled(mode == EditingMode::CrossReferences);
+        view->setOcrModeEnabled(mode == EditingMode::Ocr);
+        view->setReadingViewEditingEnabled(mode == EditingMode::Views && canUsePageLevelEditing() && m_document->canEditReadingViews());
     }
     updatePageEditActions();
     updateToolBars();
@@ -4469,7 +4629,7 @@ void Part::setAdvancedModeEnabled(bool enabled)
 void Part::editOcrTextLayer()
 {
     PageView *view = workspaceActivePageView();
-    if (!view || !m_advancedModeEnabled || !canUsePageLevelEditing()) {
+    if (!view || m_editingMode != EditingMode::Ocr || !canUsePageLevelEditing()) {
         return;
     }
     if (view->isOcrTextEditing()) {
@@ -4482,6 +4642,9 @@ void Part::editOcrTextLayer()
 
 void Part::applyOcrTextLayerChange(int pageNumber, const QList<OcrTextWord> &before, const QList<OcrTextWord> &after)
 {
+    if (m_editingMode != EditingMode::Ocr || !canUsePageLevelEditing()) {
+        return;
+    }
     QString error;
     if (!m_document->replaceOcrTextLayer(pageNumber, after, &error)) {
         KMessageBox::error(widget(), i18n("Could not update the OCR text layer. %1", error));
@@ -4494,6 +4657,9 @@ void Part::applyOcrTextLayerChange(int pageNumber, const QList<OcrTextWord> &bef
 
 void Part::slotRecognizeEnglishText()
 {
+    if (m_editingMode != EditingMode::Ocr) {
+        return;
+    }
     if (!canUsePageLevelEditing() || !m_document->canPerformEnglishOcr()) {
         KMessageBox::information(widget(), i18n("English text recognition is only available for local PDF files."));
         return;
@@ -4941,7 +5107,7 @@ void Part::slotCombinePdfFiles()
 
 void Part::slotInsertBlankPageAfterCurrentPage()
 {
-    if (!m_advancedModeEnabled) {
+    if (m_editingMode != EditingMode::Pages) {
         return;
     }
     insertBlankPageAfterPage(workspaceActivePageNumber());
@@ -4949,7 +5115,7 @@ void Part::slotInsertBlankPageAfterCurrentPage()
 
 void Part::slotDuplicateCurrentPage()
 {
-    if (!m_advancedModeEnabled) {
+    if (m_editingMode != EditingMode::Pages) {
         return;
     }
     duplicatePage(workspaceActivePageNumber());
@@ -4957,7 +5123,7 @@ void Part::slotDuplicateCurrentPage()
 
 void Part::slotInsertPage()
 {
-    if (!m_advancedModeEnabled) {
+    if (m_editingMode != EditingMode::Pages) {
         return;
     }
     insertPageWithDialog(workspaceActivePageNumber());
@@ -4965,7 +5131,7 @@ void Part::slotInsertPage()
 
 void Part::slotSetPageTemplate()
 {
-    if (!m_advancedModeEnabled) {
+    if (m_editingMode != EditingMode::Pages) {
         return;
     }
     const QString currentTemplate = pageTemplateFileName();
@@ -4984,7 +5150,7 @@ void Part::slotSetPageTemplate()
 
 void Part::slotInsertPageFromTemplate()
 {
-    if (!m_advancedModeEnabled) {
+    if (m_editingMode != EditingMode::Pages) {
         return;
     }
     insertPageFromTemplateWithDialog(workspaceActivePageNumber());
@@ -5245,9 +5411,311 @@ void Part::duplicatePage(int pageNumber)
     }
 }
 
+namespace {
+Okular::NormalizedRect canonicalReadingViewRectangle(const Okular::Page *page, const QRectF &rectangle)
+{
+    const double l = rectangle.left(), t = rectangle.top(), r = rectangle.right(), b = rectangle.bottom();
+    switch (page ? page->rotation() : Okular::Rotation0) {
+    case Okular::Rotation90:
+        return {t, 1.0 - r, b, 1.0 - l};
+    case Okular::Rotation180:
+        return {1.0 - r, 1.0 - b, 1.0 - l, 1.0 - t};
+    case Okular::Rotation270:
+        return {1.0 - b, l, 1.0 - t, r};
+    case Okular::Rotation0:
+        return {l, t, r, b};
+    }
+    return {l, t, r, b};
+}
+}
+
+namespace {
+using ReadingViewBatch = QList<QPair<int, QList<Okular::ReadingView>>>;
+
+bool applyReadingViewBatch(Okular::Document *document, const ReadingViewBatch &batch, QString *error)
+{
+    ReadingViewBatch previous;
+    for (const auto &entry : batch) {
+        QString readError;
+        const auto views = document->readingViews(entry.first, &readError);
+        if (!readError.isEmpty()) {
+            if (error) {
+                *error = readError;
+            }
+            return false;
+        }
+        previous.append({entry.first, views});
+    }
+    // Publishing each intermediate page would rebuild every projection N times.
+    // The caller refreshes once, and pushes the undo command outside this block.
+    const QSignalBlocker blocker(document);
+    for (qsizetype i = 0; i < batch.size(); ++i) {
+        if (!document->setReadingViews(batch[i].first, batch[i].second, error)) {
+            QString rollbackErrors;
+            for (qsizetype j = i; j >= 0; --j) {
+                QString rollbackError;
+                if (!document->setReadingViews(previous[j].first, previous[j].second, &rollbackError)) {
+                    rollbackErrors += rollbackError + QLatin1Char('\n');
+                }
+            }
+            if (error && !rollbackErrors.isEmpty()) {
+                *error += QLatin1Char('\n') + i18n("Could not restore all original Views: %1", rollbackErrors);
+            }
+            return false;
+        }
+    }
+    return true;
+}
+}
+
+bool Part::applyReadingViewsToDocument(int sourcePage)
+{
+    if (m_editingMode != EditingMode::Views || !canUsePageLevelEditing() || !m_document->canEditReadingViews() || sourcePage < 0 || sourcePage >= int(m_document->pages())) {
+        return false;
+    }
+    // Preflight every page before making any changes, including malformed data
+    // on pages that would otherwise simply be overwritten.
+    QList<QList<Okular::ReadingView>> original;
+    for (int page = 0; page < int(m_document->pages()); ++page) {
+        QString error;
+        original.append(m_document->readingViews(page, &error));
+        if (!error.isEmpty()) {
+            return false;
+        }
+    }
+    const auto source = original[sourcePage];
+    if (source.isEmpty()) {
+        return false;
+    }
+    ReadingViewBatch before;
+    ReadingViewBatch after;
+    for (int page = 0; page < original.size(); ++page) {
+        if (page == sourcePage) {
+            continue;
+        }
+        auto views = source;
+        for (auto &view : views) {
+            view.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+        }
+        before.append({page, original[page]});
+        after.append({page, views});
+    }
+    if (after.isEmpty()) {
+        return true;
+    }
+    QString error;
+    if (!applyReadingViewBatch(m_document, after, &error)) {
+        refreshReadingViews();
+        return false;
+    }
+    QStringList tokens;
+    for (const auto &entry : after) {
+        const QString token = m_document->readingViewPageToken(entry.first);
+        if (token.isEmpty()) {
+            applyReadingViewBatch(m_document, before, &error);
+            refreshReadingViews();
+            return false;
+        }
+        tokens.append(token);
+    }
+    QPointer<Part> self(this);
+    const auto apply = [self, tokens](const ReadingViewBatch &saved, QString *operationError) {
+        if (!self) {
+            return false;
+        }
+        QHash<QString, int> pagesByToken;
+        for (int page = 0; page < int(self->m_document->pages()); ++page) {
+            const QString token = self->m_document->readingViewPageToken(page);
+            if (!token.isEmpty()) {
+                pagesByToken.insert(token, page);
+            }
+        }
+        ReadingViewBatch resolved;
+        for (qsizetype i = 0; i < tokens.size(); ++i) {
+            const auto page = pagesByToken.constFind(tokens[i]);
+            if (page == pagesByToken.cend()) {
+                if (operationError) {
+                    *operationError = i18n("The page containing these Views is no longer available.");
+                }
+                return false;
+            }
+            resolved.append({page.value(), saved[i].second});
+        }
+        const bool success = applyReadingViewBatch(self->m_document, resolved, operationError);
+        self->refreshReadingViews();
+        return success;
+    };
+    m_document->pushUndoCommand(new LivePdfLinkCommand(i18nc("Undo action", "Apply Views to Entire Document"),
+        [apply, before](QString *e) { return apply(before, e); }, [apply, after](QString *e) { return apply(after, e); }));
+    refreshReadingViews();
+    return true;
+}
+
+void Part::refreshReadingViews()
+{
+    if (m_documentWorkspace) {
+        if (PageView *view = m_documentWorkspace->mainView()) {
+            view->refreshReadingViews();
+        }
+        for (PageView *view : m_documentWorkspace->auxiliaryViews()) {
+            view->refreshReadingViews();
+        }
+    } else if (m_pageView) {
+        m_pageView->refreshReadingViews();
+    }
+    updatePageEditActions();
+}
+
+bool Part::commitReadingViews(int pageNumber, const QList<Okular::ReadingView> &views, const QString &undoText)
+{
+    if (m_editingMode != EditingMode::Views || !canUsePageLevelEditing() || !m_document->canEditReadingViews() || pageNumber < 0 || pageNumber >= int(m_document->pages())) {
+        return false;
+    }
+    QString error;
+    const auto before = m_document->readingViews(pageNumber, &error);
+    if (!error.isEmpty()) {
+        KMessageBox::information(widget(), error);
+        return false;
+    }
+    if (!m_document->setReadingViews(pageNumber, views, &error)) {
+        KMessageBox::information(widget(), error.isEmpty() ? i18n("Could not update the Views.") : error);
+        return false;
+    }
+    // The backend assigns a persistent page identity on the first successful edit.
+    // Resolve it again on undo/redo, rather than assuming a logical page number
+    // still denotes the same page after insertions, moves or a save/reopen swap.
+    const QString token = m_document->readingViewPageToken(pageNumber);
+    QPointer<Part> self(this);
+    const auto apply = [self, token](const QList<Okular::ReadingView> &items, QString *operationError) {
+        if (!self || token.isEmpty()) {
+            return false;
+        }
+        const int page = self->m_document->readingViewPageForToken(token);
+        if (page < 0) {
+            if (operationError) {
+                *operationError = i18n("The page containing these Views is no longer available.");
+            }
+            return false;
+        }
+        if (!self->m_document->setReadingViews(page, items, operationError)) {
+            return false;
+        }
+        self->refreshReadingViews();
+        return true;
+    };
+    m_document->pushUndoCommand(new LivePdfLinkCommand(undoText, [apply, before](QString *e) { return apply(before, e); }, [apply, views](QString *e) { return apply(views, e); }));
+    refreshReadingViews();
+    return true;
+}
+
+void Part::addReadingView(int pageNumber, const QRectF &displayRectangle)
+{
+    if (m_editingMode != EditingMode::Views || !canUsePageLevelEditing() || !m_document->canEditReadingViews()) {
+        return;
+    }
+    QString error;
+    const auto views = m_document->readingViews(pageNumber, &error);
+    if (!error.isEmpty()) {
+        KMessageBox::information(widget(), error);
+        return;
+    }
+    int maximum = 0;
+    for (const auto &view : views) {
+        maximum = qMax(maximum, view.number);
+    }
+    if (maximum == std::numeric_limits<int>::max()) {
+        KMessageBox::information(widget(), i18n("Cannot add another View: the maximum View number has been reached. Renumber an existing View first."));
+        return;
+    }
+    addReadingViewWithNumber(pageNumber, displayRectangle, maximum + 1);
+}
+
+bool Part::addReadingViewWithNumber(int pageNumber, const QRectF &displayRectangle, int number)
+{
+    if (m_editingMode != EditingMode::Views || !canUsePageLevelEditing() || !m_document->canEditReadingViews()
+        || pageNumber < 0 || pageNumber >= int(m_document->pages()) || number <= 0 || !displayRectangle.isValid()) {
+        return false;
+    }
+    QString error;
+    auto views = m_document->readingViews(pageNumber, &error);
+    if (!error.isEmpty()) {
+        KMessageBox::information(widget(), error);
+        return false;
+    }
+    Okular::ReadingView view;
+    view.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    view.number = number;
+    view.rectangle = canonicalReadingViewRectangle(m_document->page(pageNumber), displayRectangle);
+    views.append(view);
+    return commitReadingViews(pageNumber, views, i18nc("Undo action", "Add View"));
+}
+
+void Part::editReadingViewNumber(int pageNumber, const QString &id)
+{
+    if (m_editingMode != EditingMode::Views || !canUsePageLevelEditing() || !m_document->canEditReadingViews()) {
+        return;
+    }
+    QString error;
+    auto views = m_document->readingViews(pageNumber, &error);
+    if (!error.isEmpty()) {
+        KMessageBox::information(widget(), error);
+        return;
+    }
+    for (auto &view : views) {
+        if (view.id != id) {
+            continue;
+        }
+        bool accepted = false;
+        const int number = QInputDialog::getInt(widget(), i18n("Edit View Number"), i18n("View number:"), view.number, 1, std::numeric_limits<int>::max(), 1, &accepted);
+        if (accepted && number != view.number) {
+            view.number = number;
+            commitReadingViews(pageNumber, views, i18nc("Undo action", "Edit View Number"));
+        }
+        return;
+    }
+}
+
+void Part::deleteReadingView(int pageNumber, const QString &id)
+{
+    if (m_editingMode != EditingMode::Views || !canUsePageLevelEditing() || !m_document->canEditReadingViews()) {
+        return;
+    }
+    QString error;
+    auto views = m_document->readingViews(pageNumber, &error);
+    if (!error.isEmpty()) {
+        KMessageBox::information(widget(), error);
+        return;
+    }
+    const auto count = views.removeIf([&id](const Okular::ReadingView &view) { return view.id == id; });
+    if (count) {
+        commitReadingViews(pageNumber, views, i18nc("Undo action", "Delete View"));
+    }
+}
+
+void Part::changeReadingViewRectangle(int pageNumber, const QString &id, const QRectF &displayRectangle)
+{
+    if (m_editingMode != EditingMode::Views || !canUsePageLevelEditing() || !m_document->canEditReadingViews()
+        || pageNumber < 0 || pageNumber >= int(m_document->pages()) || !displayRectangle.isValid()) {
+        return;
+    }
+    QString error;
+    auto views = m_document->readingViews(pageNumber, &error);
+    if (!error.isEmpty()) {
+        KMessageBox::information(widget(), error);
+        return;
+    }
+    for (auto &view : views) {
+        if (view.id == id) {
+            view.rectangle = canonicalReadingViewRectangle(m_document->page(pageNumber), displayRectangle);
+            commitReadingViews(pageNumber, views, i18nc("Undo action", "Change View Range"));
+            return;
+        }
+    }
+}
+
 void Part::startBatchNamedDestinationCreation()
 {
-    if (!m_advancedModeEnabled || !m_document->canEditPdfLinks()) {
+    if (m_editingMode != EditingMode::CrossReferences || !m_document->canEditPdfLinks()) {
         KMessageBox::information(widget(), i18n("Named destinations cannot be added to this document."));
         return;
     }
@@ -5365,7 +5833,7 @@ void Part::startBatchNamedDestinationCreation()
 
 void Part::addNamedDestination(int pageNumber, const Okular::NormalizedPoint &displayPosition)
 {
-    if (!m_advancedModeEnabled || !m_document->canEditPdfLinks() || pageNumber < 0 || pageNumber >= static_cast<int>(m_document->pages())) {
+    if (m_editingMode != EditingMode::CrossReferences || !m_document->canEditPdfLinks() || pageNumber < 0 || pageNumber >= static_cast<int>(m_document->pages())) {
         KMessageBox::information(widget(), i18n("A named destination cannot be added here."));
         return;
     }
@@ -5402,7 +5870,7 @@ void Part::addNamedDestination(int pageNumber, const Okular::NormalizedPoint &di
 
 bool Part::addNamedDestinationWithName(int pageNumber, const Okular::NormalizedPoint &displayPosition, const QString &name, bool replaceExistingWithoutPrompt)
 {
-    if (!m_advancedModeEnabled || !m_document->canEditPdfLinks() || pageNumber < 0 || pageNumber >= static_cast<int>(m_document->pages()) || name.isEmpty()) {
+    if (m_editingMode != EditingMode::CrossReferences || !m_document->canEditPdfLinks() || pageNumber < 0 || pageNumber >= static_cast<int>(m_document->pages()) || name.isEmpty()) {
         return false;
     }
 
@@ -5596,7 +6064,7 @@ bool Part::applyLiveNamedDestinationRename(const QString &oldName, const QString
 
 void Part::renameNamedDestination(const QString &oldName)
 {
-    if (!m_advancedModeEnabled || !m_document->canEditPdfLinks() || oldName.isEmpty()) {
+    if (m_editingMode != EditingMode::CrossReferences || !m_document->canEditPdfLinks() || oldName.isEmpty()) {
         KMessageBox::information(widget(), i18n("This named destination cannot be edited."));
         return;
     }
@@ -5644,7 +6112,7 @@ void Part::renameNamedDestination(const QString &oldName)
 
 void Part::deleteNamedDestination(const QString &name)
 {
-    if (!m_advancedModeEnabled || !m_document->canEditPdfLinks() || name.isEmpty()) {
+    if (m_editingMode != EditingMode::CrossReferences || !m_document->canEditPdfLinks() || name.isEmpty()) {
         KMessageBox::information(widget(), i18n("This named destination cannot be edited."));
         return;
     }
@@ -5685,7 +6153,7 @@ void Part::deleteNamedDestination(const QString &name)
 
 void Part::moveNamedDestination(const QString &name, int pageNumber, const Okular::NormalizedPoint &displayPosition)
 {
-    if (!m_advancedModeEnabled || !m_document->canEditPdfLinks() || name.isEmpty() || pageNumber < 0 || pageNumber >= static_cast<int>(m_document->pages())) {
+    if (m_editingMode != EditingMode::CrossReferences || !m_document->canEditPdfLinks() || name.isEmpty() || pageNumber < 0 || pageNumber >= static_cast<int>(m_document->pages())) {
         KMessageBox::information(widget(), i18n("This named destination cannot be moved here."));
         return;
     }
@@ -5743,7 +6211,7 @@ void Part::createPdfLink(int sourcePageNumber, const QRectF &normalizedLinkRecta
 
 void Part::changePdfLinkRectangle(int sourcePageNumber, const QRectF &oldNormalizedRectangle, const QRectF &newNormalizedRectangle)
 {
-    if (!m_advancedModeEnabled || !m_document->canEditPdfLinks() || sourcePageNumber < 0 || sourcePageNumber >= static_cast<int>(m_document->pages()) || !oldNormalizedRectangle.isValid() || !newNormalizedRectangle.isValid()) {
+    if (m_editingMode != EditingMode::CrossReferences || !m_document->canEditPdfLinks() || sourcePageNumber < 0 || sourcePageNumber >= static_cast<int>(m_document->pages()) || !oldNormalizedRectangle.isValid() || !newNormalizedRectangle.isValid()) {
         KMessageBox::information(widget(), i18n("This link cannot be resized."));
         return;
     }
@@ -5774,7 +6242,7 @@ void Part::deletePdfLink(int sourcePageNumber,
                          const Okular::DocumentViewport &currentDestination,
                          const QUrl &currentExternalUrl)
 {
-    if (!m_advancedModeEnabled || !m_document->canEditPdfLinks() || sourcePageNumber < 0 || sourcePageNumber >= static_cast<int>(m_document->pages())) {
+    if (m_editingMode != EditingMode::CrossReferences || !m_document->canEditPdfLinks() || sourcePageNumber < 0 || sourcePageNumber >= static_cast<int>(m_document->pages())) {
         KMessageBox::information(widget(), i18n("This link cannot be deleted."));
         return;
     }
@@ -5819,7 +6287,7 @@ void Part::deletePdfLink(int sourcePageNumber,
 
 void Part::configurePdfLink(int sourcePageNumber, const QRectF &normalizedLinkRectangle, const QString &currentDestinationName, const Okular::DocumentViewport &currentDestination, const QUrl &currentExternalUrl, bool creating)
 {
-    if (!m_advancedModeEnabled || !m_document->canEditPdfLinks() || sourcePageNumber < 0 || sourcePageNumber >= static_cast<int>(m_document->pages())) {
+    if (m_editingMode != EditingMode::CrossReferences || !m_document->canEditPdfLinks() || sourcePageNumber < 0 || sourcePageNumber >= static_cast<int>(m_document->pages())) {
         KMessageBox::information(widget(), creating ? i18n("A link cannot be created here.") : i18n("This link cannot be edited."));
         return;
     }
@@ -6267,7 +6735,7 @@ void Part::setPageRotation(int pageNumber, int rotationDegrees)
 
 void Part::movePageFromThumbnail(int sourcePage, int targetPage, bool insertAfterTarget)
 {
-    if (!m_advancedModeEnabled) {
+    if (m_editingMode != EditingMode::Pages) {
         return;
     }
 
@@ -6526,7 +6994,7 @@ void Part::showMenu(const Okular::Page *page, const QPoint point, const QString 
 
     QMenu popup;
     if (showTOCActions) {
-        if (m_advancedModeEnabled) {
+        if (m_editingMode == EditingMode::CrossReferences && canUsePageLevelEditing()) {
             popup.addAction(QIcon::fromTheme(QStringLiteral("list-add")), i18n("Add Current Page to Contents"), m_toc.data(), &TOC::addCurrentPageEntry);
             popup.addAction(QIcon::fromTheme(QStringLiteral("edit-rename")), i18n("Rename Contents Entry"), m_toc.data(), &TOC::renameCurrentEntry);
             popup.addAction(QIcon::fromTheme(QStringLiteral("edit-link"), QIcon::fromTheme(QStringLiteral("document-edit"))), i18n("Edit Contents Destination..."), m_toc.data(), &TOC::editCurrentEntryDestination);
@@ -6545,6 +7013,9 @@ void Part::showMenu(const Okular::Page *page, const QPoint point, const QString 
     const QAction *fitPageWidth = nullptr;
     const QAction *addNamedDestinationAction = nullptr;
     const QAction *createLinkAction = nullptr;
+    const QAction *addReadingViewAction = nullptr;
+    QHash<const QAction *, QString> editReadingViewActions;
+    QHash<const QAction *, QString> deleteReadingViewActions;
     const QAction *insertPageAction = nullptr;
     const QAction *insertPageFromTemplateAction = nullptr;
     const QAction *insertBlankPageAfterPageAction = nullptr;
@@ -6566,7 +7037,26 @@ void Part::showMenu(const Okular::Page *page, const QPoint point, const QString 
     if (page) {
         pageEditTargetPage = page->number();
         const bool canEditPages = canUsePageLevelEditing();
-        if (m_advancedModeEnabled && canEditPages && m_document->canEditPdfLinks() && !clickedNamedDestinations.isEmpty()) {
+        if (canEditPages && m_document->canEditReadingViews() && contextView && contextView->readingViewEditingEnabled()) {
+            int hitPage = -1;
+            const QStringList ids = contextView->readingViewsAtGlobalPos(point, &hitPage);
+            if (hitPage == page->number() && !ids.isEmpty()) {
+                const auto views = m_document->readingViews(hitPage);
+                for (const auto &view : views) {
+                    if (!ids.contains(view.id)) {
+                        continue;
+                    }
+                    const QString label = ids.size() > 1 ? i18n("View %1 (%2)", view.number, view.id.left(8)) : i18n("View %1", view.number);
+                    QMenu *menu = popup.addMenu(QIcon::fromTheme(QStringLiteral("select-rectangular")), label);
+                    editReadingViewActions.insert(menu->addAction(i18n("Edit View Number...")), view.id);
+                    deleteReadingViewActions.insert(menu->addAction(QIcon::fromTheme(QStringLiteral("edit-delete")), i18n("Delete View")), view.id);
+                }
+                popup.addSeparator();
+            }
+            addReadingViewAction = popup.addAction(QIcon::fromTheme(QStringLiteral("select-rectangular")), i18n("Draw View"));
+            reallyShow = true;
+        }
+        if (m_editingMode == EditingMode::CrossReferences && canEditPages && m_document->canEditPdfLinks() && !clickedNamedDestinations.isEmpty()) {
             if (clickedNamedDestinations.size() == 1) {
                 const QString &name = clickedNamedDestinations.constFirst();
                 popup.addAction(new OKMenuTitle(&popup, i18n("Named Destination: %1", name)));
@@ -6598,7 +7088,7 @@ void Part::showMenu(const Okular::Page *page, const QPoint point, const QString 
         if (contextView && contextView->canFitPageWidth()) {
             fitPageWidth = popup.addAction(QIcon::fromTheme(QStringLiteral("zoom-fit-best")), i18n("Fit Width"));
         }
-        if (m_advancedModeEnabled && canEditPages && m_document->canEditPdfLinks() && contextView && contextView->namedDestinationsVisible()) {
+        if (m_editingMode == EditingMode::CrossReferences && canEditPages && m_document->canEditPdfLinks() && contextView && contextView->namedDestinationsVisible()) {
             int targetPageNumber = -1;
             hasNamedDestinationPoint = contextView && contextView->mapGlobalPosToPagePoint(point, &targetPageNumber, &namedDestinationPoint) && targetPageNumber == page->number();
             if (hasNamedDestinationPoint && clickedNamedDestinations.isEmpty()) {
@@ -6607,27 +7097,27 @@ void Part::showMenu(const Okular::Page *page, const QPoint point, const QString 
             createLinkAction = popup.addAction(QIcon::fromTheme(QStringLiteral("insert-link")), i18n("Create Link..."));
         }
         bool addedPageEditAction = false;
-        if (m_advancedModeEnabled && canEditPages && (m_document->canInsertBlankPage() || m_document->canInsertPageFromPdf())) {
+        if (m_editingMode == EditingMode::Pages && canEditPages && (m_document->canInsertBlankPage() || m_document->canInsertPageFromPdf())) {
             insertPageAction = popup.addAction(QIcon::fromTheme(QStringLiteral("document-new")), i18n("Insert Page After This Page..."));
             addedPageEditAction = true;
         }
-        if (m_advancedModeEnabled && canEditPages && m_document->canInsertPageFromPdf() && QFileInfo(pageTemplateFileName()).exists()) {
+        if (m_editingMode == EditingMode::Pages && canEditPages && m_document->canInsertPageFromPdf() && QFileInfo(pageTemplateFileName()).exists()) {
             insertPageFromTemplateAction = popup.addAction(QIcon::fromTheme(QStringLiteral("document-import")), i18n("Insert Page From Template After This Page..."));
             addedPageEditAction = true;
         }
-        if (m_advancedModeEnabled && canEditPages && m_document->canInsertBlankPage()) {
+        if (m_editingMode == EditingMode::Pages && canEditPages && m_document->canInsertBlankPage()) {
             insertBlankPageAfterPageAction = popup.addAction(QIcon::fromTheme(QStringLiteral("document-new")), i18n("Insert Blank Page After This Page"));
             addedPageEditAction = true;
         }
-        if (m_advancedModeEnabled && canEditPages && m_document->canInsertPageFromPdf()) {
+        if (m_editingMode == EditingMode::Pages && canEditPages && m_document->canInsertPageFromPdf()) {
             duplicatePageAction = popup.addAction(QIcon::fromTheme(QStringLiteral("edit-copy")), i18n("Duplicate This Page"));
             addedPageEditAction = true;
         }
-        if (m_advancedModeEnabled && canEditPages && m_document->canDeletePage() && m_document->pages() > 1) {
+        if (m_editingMode == EditingMode::Pages && canEditPages && m_document->canDeletePage() && m_document->pages() > 1) {
             deletePageAction = popup.addAction(QIcon::fromTheme(QStringLiteral("edit-delete")), i18n("Delete This Page"));
             addedPageEditAction = true;
         }
-        if (m_advancedModeEnabled && canEditPages && m_document->canRotatePage()) {
+        if (m_editingMode == EditingMode::Pages && canEditPages && m_document->canRotatePage()) {
             QMenu *rotatePageMenu = popup.addMenu(QIcon::fromTheme(QStringLiteral("object-rotate-right")), i18n("Rotate This Page"));
             rotatePageLeftAction = rotatePageMenu->addAction(QIcon::fromTheme(QStringLiteral("object-rotate-left")), i18n("Rotate Left"));
             rotatePageRightAction = rotatePageMenu->addAction(QIcon::fromTheme(QStringLiteral("object-rotate-right")), i18n("Rotate Right"));
@@ -6668,7 +7158,13 @@ void Part::showMenu(const Okular::Page *page, const QPoint point, const QString 
     if (reallyShow) {
         const QAction *res = popup.exec(point);
         if (res) {
-            if (addNamedDestinationToContentsActions.contains(res)) {
+            if (editReadingViewActions.contains(res)) {
+                editReadingViewNumber(pageEditTargetPage, editReadingViewActions.value(res));
+            } else if (deleteReadingViewActions.contains(res)) {
+                deleteReadingView(pageEditTargetPage, deleteReadingViewActions.value(res));
+            } else if (res == addReadingViewAction && contextView) {
+                contextView->startReadingViewCreation();
+            } else if (addNamedDestinationToContentsActions.contains(res)) {
                 m_toc->addNamedDestinationEntry(addNamedDestinationToContentsActions.value(res));
             } else if (renameNamedDestinationActions.contains(res)) {
                 renameNamedDestination(renameNamedDestinationActions.value(res));
@@ -6869,7 +7365,10 @@ void Part::slotUpdateHamburgerMenu()
     curatedViewMenu->addAction(findActionInKPartHierarchy(QStringLiteral("view_trim_mode")));
     curatedViewMenu->addSeparator();
     curatedViewMenu->addAction(ac->action(QStringLiteral("view_toggle_forms")));
-    curatedViewMenu->addAction(ac->action(QStringLiteral("view_toggle_named_destinations")));
+    curatedViewMenu->addAction(m_editingModeSelector);
+    curatedViewMenu->addAction(m_readByViews);
+    curatedViewMenu->addAction(m_addReadingView);
+    curatedViewMenu->addAction(m_applyReadingViewsToDocument);
     m_hamburgerMenuAction->hideActionsOf(curatedViewMenu);
 
 #if HAVE_SPEECH
@@ -7463,6 +7962,7 @@ void Part::slotCopyTextSelectionOrAnnotation()
 
 void Part::slotPasteAnnotation()
 {
+    PageView *activeView = workspaceActivePageView();
     if (!m_document->isAllowed(Okular::AllowNotes) || !AnnotationPopup::clipboardHasAnnotations()) {
         return;
     }
@@ -7470,7 +7970,6 @@ void Part::slotPasteAnnotation()
     int pageNumber = -1;
     Okular::NormalizedPoint targetPoint;
     Okular::NormalizedPoint *targetPointPtr = nullptr;
-    PageView *activeView = workspaceActivePageView();
     if (activeView && activeView->mapGlobalPosToPagePoint(QCursor::pos(), &pageNumber, &targetPoint)) {
         targetPointPtr = &targetPoint;
     } else {

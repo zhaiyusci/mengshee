@@ -18,6 +18,7 @@
 #include <vector>
 
 #include "generator_pdf.h"
+#include "pdfreadingviews.h"
 
 #include "PdfPageSequenceEditor.h"
 #include "PdfAnnotationFlattener.h"
@@ -3143,6 +3144,8 @@ bool PDFGenerator::duplicatePageInDocument(int pageNumber, bool resolveDestinati
     if (!runPdfPagesOperation([&] { return PdfPageSequenceEditor::duplicatePageAfter(document, pageNumber + 1, pageNumber + 1, policy, &state); }, errorText)) {
         return false;
     }
+    // A cloned page keeps its View definitions, not the source page's undo identity.
+    MengsheePdfReadingViews::renewCopiedPageToken(document, pageNumber + 1);
     resetPageTopologyCaches();
     *insertedPage = createPageModel(pageNumber + 1);
     *editId = rememberLivePageState(state);
@@ -3167,6 +3170,7 @@ bool PDFGenerator::insertPdfPageInDocument(int insertAfterPageNumber,
     if (!runPdfPagesOperation([&] { return PdfPageSequenceEditor::insertPdfPageAfter(document, insertAfterPageNumber + 1, pdfPagesFileName(insertedFileName), pageToInsert, policy, &state); }, errorText)) {
         return false;
     }
+    MengsheePdfReadingViews::renewCopiedPageToken(document, insertAfterPageNumber + 1);
     resetPageTopologyCaches();
     *insertedPage = createPageModel(insertAfterPageNumber + 1);
     *editId = rememberLivePageState(state);
@@ -3190,13 +3194,102 @@ int PDFGenerator::pdfPageCount(const QString &inputFileName, QString *errorText)
 
 bool PDFGenerator::combinePdfFiles(const QStringList &inputFileNames, const QString &outputFileName, bool resolveDestinationConflicts, QString *errorText)
 {
+    if (errorText) {
+        errorText->clear();
+    }
+    const auto fail = [errorText](const QString &message) {
+        if (errorText) {
+            *errorText = message;
+        }
+        return false;
+    };
+    const QFileInfo destination(outputFileName);
+    if (inputFileNames.size() < 2 || outputFileName.isEmpty() || destination.isSymLink() || (destination.exists() && !destination.isFile())) {
+        return fail(i18n("Combining PDFs requires at least two inputs and a regular output file."));
+    }
+    const auto normalizedPath = [](const QFileInfo &info) {
+        const QString canonical = info.canonicalFilePath();
+        return canonical.isEmpty() ? QDir::cleanPath(info.absoluteFilePath()) : canonical;
+    };
+#ifdef Q_OS_WIN
+    constexpr Qt::CaseSensitivity pathCase = Qt::CaseInsensitive;
+#else
+    constexpr Qt::CaseSensitivity pathCase = Qt::CaseSensitive;
+#endif
+    const QString destinationPath = normalizedPath(destination);
     std::vector<std::string> inputs;
     inputs.reserve(inputFileNames.size());
     for (const QString &inputFileName : inputFileNames) {
+        if (inputFileName.isEmpty() || normalizedPath(QFileInfo(inputFileName)).compare(destinationPath, pathCase) == 0) {
+            return fail(i18n("The combined PDF must not replace any of its source files."));
+        }
         inputs.push_back(pdfPagesFileName(inputFileName));
     }
-    const auto conflictPolicy = resolveDestinationConflicts ? PdfPageSequenceEditor::NamedDestinationConflictPolicy::AddSuffixes : PdfPageSequenceEditor::NamedDestinationConflictPolicy::KeepNames;
-    return runPdfPagesOperation([&] { return PdfPageSequenceEditor::combinePdfFiles(inputs, pdfPagesFileName(outputFileName), conflictPolicy); }, errorText);
+
+    try {
+        QTemporaryDir temporary;
+        if (!temporary.isValid()) {
+            return fail(i18n("Could not create temporary files for combining PDFs."));
+        }
+        const QString combinedPath = temporary.filePath(QStringLiteral("combined.pdf"));
+        const QString preparedPath = temporary.filePath(QStringLiteral("combined-views.pdf"));
+        const auto conflictPolicy = resolveDestinationConflicts ? PdfPageSequenceEditor::NamedDestinationConflictPolicy::AddSuffixes : PdfPageSequenceEditor::NamedDestinationConflictPolicy::KeepNames;
+        if (!runPdfPagesOperation([&] { return PdfPageSequenceEditor::combinePdfFiles(inputs, pdfPagesFileName(combinedPath), conflictPolicy); }, errorText)) {
+            return false;
+        }
+        {
+            auto combined = Poppler::Document::load(combinedPath);
+            if (!combined) {
+                return fail(i18n("Could not read the temporary combined PDF."));
+            }
+            PDFDoc *core = popplerCoreDocument(combined.get());
+            if (!core) {
+                return fail(i18n("Could not access the temporary combined PDF."));
+            }
+            // Every output page is a new entity, even when the same source PDF
+            // occurs twice. Re-key only supported View metadata in this new
+            // document; never normalize identities while opening ordinary PDFs.
+            for (int page = 0; page < combined->numPages(); ++page) {
+                MengsheePdfReadingViews::renewCopiedPageToken(core, page);
+            }
+            auto converter = combined->pdfConverter();
+            converter->setOutputFileName(preparedPath);
+            converter->setPDFOptions(Poppler::PDFConverter::WithChanges);
+            if (!converter->convert()) {
+                return fail(i18n("Could not save the combined PDF's page identities."));
+            }
+        }
+        QFile input(preparedPath);
+        if (!input.open(QIODevice::ReadOnly) || input.size() <= 0) {
+            return fail(i18n("Could not read the prepared combined PDF: %1", input.errorString()));
+        }
+        QSaveFile output(outputFileName);
+        output.setDirectWriteFallback(false);
+        if (!output.open(QIODevice::WriteOnly)) {
+            return fail(i18n("Could not open the combined PDF output: %1", output.errorString()));
+        }
+        QByteArray buffer(1024 * 1024, Qt::Uninitialized);
+        while (true) {
+            const qint64 count = input.read(buffer.data(), buffer.size());
+            if (count < 0) {
+                return fail(i18n("Could not read the prepared combined PDF: %1", input.errorString()));
+            }
+            if (count == 0) {
+                break;
+            }
+            if (output.write(buffer.constData(), count) != count) {
+                return fail(i18n("Could not write the combined PDF: %1", output.errorString()));
+            }
+        }
+        if (!output.commit()) {
+            return fail(i18n("Could not commit the combined PDF: %1", output.errorString()));
+        }
+        return true;
+    } catch (const std::exception &exception) {
+        return fail(i18n("Combining PDFs failed: %1", QString::fromLocal8Bit(exception.what())));
+    } catch (...) {
+        return fail(i18n("Combining PDFs failed because of an unknown internal error."));
+    }
 }
 
 bool PDFGenerator::canDeletePage() const
@@ -3298,6 +3391,42 @@ bool PDFGenerator::rotatePageInDocument(Okular::Page *page, int pageNumber, int 
     *replacementPage = createPageModel(pageNumber);
     forgetPageModel(page);
     return true;
+}
+
+bool PDFGenerator::canEditReadingViews() const
+{
+    return QThread::currentThread() == thread() && pdfdoc && isAllowed(Okular::AllowModify) && supportsOption(SaveChanges);
+}
+
+QList<Okular::ReadingView> PDFGenerator::readingViews(int pageNumber, QString *errorText) const
+{
+    QMutexLocker locker(userMutex());
+    return MengsheePdfReadingViews::read(popplerCoreDocument(pdfdoc.get()), nativePageForLogicalPage(pageNumber), errorText);
+}
+
+bool PDFGenerator::setReadingViews(int pageNumber, const QList<Okular::ReadingView> &views, QString *errorText)
+{
+    if (!canEditReadingViews()) {
+        if (errorText) {
+            *errorText = i18n("View definitions cannot be edited in this document.");
+        }
+        return false;
+    }
+    QMutexLocker locker(userMutex());
+    return MengsheePdfReadingViews::write(popplerCoreDocument(pdfdoc.get()), nativePageForLogicalPage(pageNumber), views, errorText);
+}
+
+QString PDFGenerator::readingViewPageToken(int pageNumber) const
+{
+    QMutexLocker locker(userMutex());
+    return MengsheePdfReadingViews::pageToken(popplerCoreDocument(pdfdoc.get()), nativePageForLogicalPage(pageNumber));
+}
+
+int PDFGenerator::readingViewPageForToken(const QString &token) const
+{
+    QMutexLocker locker(userMutex());
+    const int native = MengsheePdfReadingViews::pageForToken(popplerCoreDocument(pdfdoc.get()), token);
+    return native < 0 ? -1 : m_pageOrder.indexOf(native);
 }
 
 bool PDFGenerator::canEditPdfLinks() const

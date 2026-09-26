@@ -19,6 +19,7 @@
 #include <QComboBox>
 #include <QLineEdit>
 #include <QListWidget>
+#include <QHash>
 #include <QPushButton>
 #include <QRadioButton>
 
@@ -104,6 +105,7 @@ private Q_SLOTS:
     void slotFormButtonsChangedByUndoRedo(int pageNumber, const QList<Okular::FormFieldButton *> &formButtons); // clazy:exclude=fully-qualified-moc-types https://invent.kde.org/sdk/clazy/-/issues/35
 
 private:
+    friend class FormWidgetIface;
     friend class TextAreaEdit;
     friend class FormLineEdit;
     friend class FileEdit;
@@ -112,7 +114,8 @@ private:
     friend class SignatureEdit;
 
     QList<RadioData> m_radios;
-    QHash<int, QAbstractButton *> m_buttons;
+    QMultiHash<int, QAbstractButton *> m_buttons;
+    bool m_handlingButtonClick = false;
     Okular::Document *m_doc;
 };
 
@@ -146,6 +149,7 @@ public:
 
 protected:
     virtual void slotRefresh(Okular::FormField *form);
+    bool shouldProcessFieldActions(bool onlyWhenUnfocused = false) const;
 
     FormWidgetsController *m_controller;
     Okular::FormField *m_ff;

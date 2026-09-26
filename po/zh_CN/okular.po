@@ -6228,6 +6228,206 @@ msgstr "LaTeX 字号必须是 1 到 200 磅之间的有限值（0 使用默认�
 msgid "The LaTeX renderer returned an unreadable, invalid, or oversized PDF (limit: 64 MiB)."
 msgstr "LaTeX 渲染器返回的 PDF 无法读取、格式无效或超过大小限制（64 MiB）。"
 
+#: part/pageview.cpp
+#, kde-format
+msgid "Page %1 · View %2"
+msgstr "第 %1 页 · View %2"
+
+#: part/part.cpp
+#, kde-format
+msgid "Mode"
+msgstr "模式"
+
+#: part/part.cpp
+#, kde-format
+msgid "Reading and Annotations"
+msgstr "阅读 / 批注"
+
+#: part/part.cpp
+#, kde-format
+msgid "Cross-references"
+msgstr "交叉引用"
+
+#: part/part.cpp
+#, kde-format
+msgid "OCR"
+msgstr "OCR"
+
+#: part/part.cpp
+#, kde-format
+msgid "Page Editing"
+msgstr "页面编辑"
+
+#: part/part.cpp
+#, kde-format
+msgid "View Editing"
+msgstr "View 编辑"
+
+#: part/part.rc
+#, kde-format
+msgid "Mode Tools"
+msgstr "模式工具"
+
+#: part/pageview.cpp
+#, kde-format
+msgid "Cross-reference Mode"
+msgstr "交叉引用模式"
+
+#: part/pageview.cpp
+#, kde-format
+msgid "Show and edit PDF links and named destinations"
+msgstr "显示和编辑 PDF 链接与命名目标"
+
+#: part/part.cpp
+#, kde-format
+msgid "Edit Views"
+msgstr "编辑 View"
+
+#: part/part.cpp
+#, kde-format
+msgid "Apply Views to Entire Document..."
+msgstr "将 View 划分应用到全文…"
+
+#: part/part.cpp
+#, kde-format
+msgid "Apply Views to Entire Document"
+msgstr "将 View 划分应用到全文"
+
+#: part/part.cpp
+#, kde-format
+msgctxt "Undo action"
+msgid "Apply Views to Entire Document"
+msgstr "将 View 划分应用到全文"
+
+#: part/part.cpp
+#, kde-format
+msgid "Replace the Views on all other pages with the current page's Views? Ranges are applied in relative page proportions. This operation can be undone."
+msgstr "是否用当前页的 View 划分替换其余所有页面的划分？范围将按页面相对比例应用，此操作可以撤销。"
+
+#: part/part.cpp
+#, kde-format
+msgid "Could not apply the Views to the document."
+msgstr "无法将 View 划分应用到全文。"
+
+#: part/part.cpp
+#, kde-format
+msgid "Draw rectangles to define automatically numbered Views"
+msgstr "连续画框创建 View，编号自动递增"
+
+#: part/part.cpp
+#, kde-format
+msgid "Cannot add another View: the maximum View number has been reached. Renumber an existing View first."
+msgstr "无法添加 View：编号已达到上限，请先调整现有 View 的编号。"
+
+#: part/part.cpp
+#, kde-format
+msgid "Could not restore all original Views: %1"
+msgstr "无法恢复所有原有 View：%1"
+
+#: part/part.cpp
+#, kde-format
+msgid "Read by Views"
+msgstr "按 View 阅读"
+
+#: part/part.cpp
+#, kde-format
+msgid "Display the defined Views as pages; turn off to read the original PDF pages"
+msgstr "将定义的 View 作为页面显示；关闭可恢复原 PDF 页面"
+
+#: part/part.cpp
+#, kde-format
+msgid "Add View"
+msgstr "添加 View"
+
+#: part/part.cpp
+#, kde-format
+msgid "Draw View"
+msgstr "画 View"
+
+#: part/part.cpp
+#, kde-format
+msgid "Add View..."
+msgstr "添加 View..."
+
+#: part/part.cpp
+#, kde-format
+msgid "Draw a rectangle to define a View, then assign its number"
+msgstr "框选矩形区域来定义 View，然后指定编号"
+
+#: part/part.cpp
+#, kde-format
+msgid "View number:"
+msgstr "View 编号："
+
+#: part/part.cpp
+#, kde-format
+msgid "Edit View Number"
+msgstr "修改 View 编号"
+
+#: part/part.cpp
+#, kde-format
+msgid "Edit View Number..."
+msgstr "修改 View 编号..."
+
+#: part/part.cpp
+#, kde-format
+msgid "Delete View"
+msgstr "删除 View"
+
+#: part/part.cpp
+#, kde-format
+msgid "View %1"
+msgstr "View %1"
+
+#: part/part.cpp
+#, kde-format
+msgid "View %1 (%2)"
+msgstr "View %1（%2）"
+
+#: part/part.cpp
+#, kde-format
+msgid "Could not update the Views."
+msgstr "无法更新 View。"
+
+#: part/part.cpp
+#, kde-format
+msgid "The page containing these Views is no longer available."
+msgstr "包含这些 View 的页面已不可用。"
+
+#: part/part.cpp
+#, kde-format
+msgctxt "Undo action"
+msgid "Add View"
+msgstr "添加 View"
+
+#: part/part.cpp
+#, kde-format
+msgctxt "Undo action"
+msgid "Edit View Number"
+msgstr "修改 View 编号"
+
+#: part/part.cpp
+#, kde-format
+msgctxt "Undo action"
+msgid "Delete View"
+msgstr "删除 View"
+
+#: part/part.cpp
+#, kde-format
+msgctxt "Undo action"
+msgid "Change View Range"
+msgstr "调整 View 范围"
+
+#: part/pageview.cpp
+#, kde-format
+msgid "Drag a rectangle to define a Reading View. Press Esc to cancel."
+msgstr "拖动框选矩形来定义 View，按 Esc 取消。"
+
+#: part/pageview.cpp
+#, kde-format
+msgid "The Reading View is too small. Drag a larger rectangle, or press Esc to cancel."
+msgstr "View 范围过小，请框选更大的矩形，或按 Esc 取消。"
+
 #: part/latexpdfbounds.cpp
 #, kde-format
 msgid "Could not preserve the LaTeX note's logical and painted bounds: %1"

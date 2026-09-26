@@ -11,6 +11,7 @@
 #include "document.h"
 #include "document_p.h"
 #include "documentcommands_p.h"
+#include "readingvieweditinginterface.h"
 
 #include <algorithm>
 #include <cmath>
@@ -1494,7 +1495,7 @@ void DocumentPrivate::sendGeneratorPixmapRequest()
         if (!screen) {
             screen = QGuiApplication::primaryScreen();
         }
-        const long screenSize = screen->devicePixelRatio() * screen->size().width() * screen->devicePixelRatio() * screen->size().height();
+        const qint64 screenSize = qint64(screen->devicePixelRatio() * screen->size().width() * screen->devicePixelRatio() * screen->size().height());
 
         // Make sure the page is the right size to receive the pixmap
         r->page()->setPageSize(r->observer(), r->width(), r->height());
@@ -1519,7 +1520,7 @@ void DocumentPrivate::sendGeneratorPixmapRequest()
             delete r;
         }
         // If the requested area is above 4*screenSize pixels, and we're not rendering most of the page,  switch on the tile manager
-        else if (!tilesManager && m_generator->hasFeature(Generator::TiledRendering) && (long)r->width() * (long)r->height() > 4L * screenSize && normalizedArea < 0.75) {
+        else if (!tilesManager && m_generator->hasFeature(Generator::TiledRendering) && qint64(r->width()) * r->height() > 4 * screenSize && normalizedArea < 0.75) {
             // if the image is too big. start using tiles
             qCDebug(OkularCoreDebug).nospace() << "Start using tiles on page " << r->pageNumber() << " (" << r->width() << "x" << r->height() << " px);";
 
@@ -1563,7 +1564,7 @@ void DocumentPrivate::sendGeneratorPixmapRequest()
             }
         }
         // If the requested area is below 3*screenSize pixels, switch off the tile manager
-        else if (tilesManager && (long)r->width() * (long)r->height() < 3L * screenSize) {
+        else if (tilesManager && qint64(r->width()) * r->height() < 3 * screenSize) {
             qCDebug(OkularCoreDebug).nospace() << "Stop using tiles on page " << r->pageNumber() << " (" << r->width() << "x" << r->height() << " px);";
 
             // page is too small. stop using tiles.
@@ -1571,7 +1572,7 @@ void DocumentPrivate::sendGeneratorPixmapRequest()
             r->setTile(false);
 
             request = r;
-        } else if ((long)requestRect.width() * (long)requestRect.height() > 100L * screenSize && (SettingsCore::memoryLevel() != SettingsCore::EnumMemoryLevel::Greedy)) {
+        } else if (qint64(requestRect.width()) * requestRect.height() > 100 * screenSize && (SettingsCore::memoryLevel() != SettingsCore::EnumMemoryLevel::Greedy)) {
             m_pixmapRequestsStack.pop_back();
             if (!m_warnedOutOfMemory) {
                 qCWarning(OkularCoreDebug).nospace() << "Running out of memory on page " << r->pageNumber() << " (" << r->width() << "x" << r->height() << " px);";
@@ -1718,12 +1719,74 @@ void DocumentPrivate::refreshPixmaps(int pageNumber)
         return;
     }
 
+    QSet<DocumentObserver *> inactiveObservers;
+    QSet<DocumentObserver *> unusedPixmaps;
+    for (DocumentObserver *observer : std::as_const(m_observers)) {
+        NormalizedRect visibleRect;
+        if (observer->visiblePixmapRect(pageNumber, &visibleRect) && !(visibleRect.width() > 0 && visibleRect.height() > 0)) {
+            inactiveObservers.insert(observer);
+        }
+    }
+    // Invalidation-only must also retire work queued before the document edit;
+    // otherwise a late result can repopulate the cache with stale page contents.
+    if (!inactiveObservers.isEmpty()) {
+        m_pixmapRequestsMutex.lock();
+        for (auto it = m_pixmapRequestsStack.begin(); it != m_pixmapRequestsStack.end();) {
+            PixmapRequest *request = *it;
+            if (request && request->pageNumber() == pageNumber && inactiveObservers.contains(request->observer())) {
+                it = m_pixmapRequestsStack.erase(it);
+                delete request;
+            } else {
+                ++it;
+            }
+        }
+        for (PixmapRequest *request : std::as_const(m_executingPixmapRequests)) {
+            if (request->pageNumber() == pageNumber && inactiveObservers.contains(request->observer())) {
+                if (page->d->m_pixmaps.contains(request->observer())) {
+                    unusedPixmaps.insert(request->observer());
+                }
+                cancelRenderingBecauseOf(request, nullptr);
+                // cancelRenderingBecauseOf normally lets a finished image be
+                // published. Here even that image predates the document edit.
+                request->d->mShouldAbortRender = 1;
+            }
+        }
+        m_pixmapRequestsMutex.unlock();
+    }
+
     QList<Okular::PixmapRequest *> pixmapsToRequest;
     for (const auto &[key, value] : page->d->m_pixmaps.asKeyValueRange()) {
+        NormalizedRect visibleRect;
+        if (!m_observers.contains(key)) {
+            unusedPixmaps.insert(key);
+            continue;
+        }
+        const bool ownVisibleRect = key->visiblePixmapRect(pageNumber, &visibleRect);
+        if (ownVisibleRect && !(visibleRect.width() > 0 && visibleRect.height() > 0)) {
+            unusedPixmaps.insert(key);
+            continue;
+        }
         const QSize size = value.m_pixmap->size();
         PixmapRequest *p = new PixmapRequest(key, pageNumber, size.width(), size.height(), 1 /* dpr */, 1, PixmapRequest::Asynchronous);
+        if (ownVisibleRect) {
+            p->setNormalizedRect(visibleRect);
+        }
         p->d->mForce = true;
         pixmapsToRequest << p;
+    }
+    // Delete outside the pixmap-map traversal and retire its memory accounting.
+    for (DocumentObserver *observer : std::as_const(unusedPixmaps)) {
+        page->deletePixmap(observer);
+    }
+    for (auto it = m_allocatedPixmaps.begin(); it != m_allocatedPixmaps.end();) {
+        AllocatedPixmap *allocation = *it;
+        if (allocation->page == pageNumber && unusedPixmaps.contains(allocation->observer)) {
+            m_allocatedPixmapsTotalMemory -= allocation->memory;
+            it = m_allocatedPixmaps.erase(it);
+            delete allocation;
+        } else {
+            ++it;
+        }
     }
 
     // Need to do this ↑↓ in two steps since requestPixmaps can end up calling cancelRenderingBecauseOf
@@ -1743,16 +1806,21 @@ void DocumentPrivate::refreshPixmaps(int pageNumber)
 
             PixmapRequest *p = new PixmapRequest(observer, pageNumber, tilesManager->width(), tilesManager->height(), 1 /* dpr */, 1, PixmapRequest::Asynchronous);
 
-            // Get the visible page rect
+            // Render only this observer's own region when provided. Different
+            // projections of one page may use very different raster scales.
             NormalizedRect visibleRect;
-            for (const auto *it : std::as_const(m_pageRects)) {
-                if (it->pageNumber == pageNumber) {
-                    visibleRect = it->rect;
-                    break;
+            const bool ownVisibleRect = observer->visiblePixmapRect(pageNumber, &visibleRect);
+            if (!ownVisibleRect) {
+                for (const auto *it : std::as_const(m_pageRects)) {
+                    if (it->pageNumber == pageNumber) {
+                        visibleRect = it->rect;
+                        break;
+                    }
                 }
             }
 
-            if (!visibleRect.isNull()) {
+            const bool needsRender = ownVisibleRect ? visibleRect.width() > 0 && visibleRect.height() > 0 : !visibleRect.isNull();
+            if (needsRender) {
                 p->setNormalizedRect(visibleRect);
                 p->setTile(true);
                 p->d->mForce = true;
@@ -6235,6 +6303,58 @@ bool Document::rotatePage(int pageNumber, int rotationDegrees, QString *errorTex
     d->m_pagesVector[pageNumber] = replacementPage;
     d->publishPageTopologyChange(retiredPage);
     return true;
+}
+
+bool Document::canEditReadingViews() const
+{
+    const auto *editor = dynamic_cast<ReadingViewEditingInterface *>(d->m_generator);
+    return editor && isAllowed(AllowModify) && editor->canEditReadingViews();
+}
+
+QList<ReadingView> Document::readingViews(int pageNumber, QString *errorText) const
+{
+    if (errorText) {
+        errorText->clear();
+    }
+    const auto *editor = dynamic_cast<ReadingViewEditingInterface *>(d->m_generator);
+    if (!editor || pageNumber < 0 || pageNumber >= d->m_pagesVector.size()) {
+        if (errorText) {
+            *errorText = i18n("View definitions are unavailable for this page.");
+        }
+        return {};
+    }
+    return editor->readingViews(pageNumber, errorText);
+}
+
+bool Document::setReadingViews(int pageNumber, const QList<ReadingView> &views, QString *errorText)
+{
+    if (errorText) {
+        errorText->clear();
+    }
+    auto *editor = dynamic_cast<ReadingViewEditingInterface *>(d->m_generator);
+    if (!editor || !canEditReadingViews() || pageNumber < 0 || pageNumber >= d->m_pagesVector.size()) {
+        if (errorText) {
+            *errorText = i18n("View definitions cannot be edited on this page.");
+        }
+        return false;
+    }
+    if (!editor->setReadingViews(pageNumber, views, errorText)) {
+        return false;
+    }
+    Q_EMIT readingViewsChanged(pageNumber);
+    return true;
+}
+
+QString Document::readingViewPageToken(int pageNumber) const
+{
+    const auto *editor = dynamic_cast<ReadingViewEditingInterface *>(d->m_generator);
+    return editor && pageNumber >= 0 && pageNumber < d->m_pagesVector.size() ? editor->readingViewPageToken(pageNumber) : QString();
+}
+
+int Document::readingViewPageForToken(const QString &token) const
+{
+    const auto *editor = dynamic_cast<ReadingViewEditingInterface *>(d->m_generator);
+    return editor && !token.isEmpty() ? editor->readingViewPageForToken(token) : -1;
 }
 
 bool Document::canEditPdfLinks() const

@@ -15,6 +15,7 @@
 #include "global.h"
 #include "okularcore_export.h"
 #include "pagesize.h"
+#include "readingview.h"
 #include "signatureutils.h"
 
 #include <QDomDocument>
@@ -1087,6 +1088,15 @@ public:
     /** Assigns an explicit clockwise rotation to a 0-based page. */
     bool rotatePage(int pageNumber, int rotationDegrees, QString *errorText);
 
+    /** Non-painting, manually defined page rectangles and numbers; no navigation policy. */
+    bool canEditReadingViews() const;
+    QList<ReadingView> readingViews(int pageNumber, QString *errorText = nullptr) const;
+    bool setReadingViews(int pageNumber, const QList<ReadingView> &views, QString *errorText = nullptr);
+    /** Stable page identity, available after first successful setReadingViews. */
+    QString readingViewPageToken(int pageNumber) const;
+    /** Resolves a current 0-based page, or -1 if absent/ambiguous. */
+    int readingViewPageForToken(const QString &token) const;
+
     /** Returns whether the current backend can edit PDF named destinations and internal links. */
     bool canEditPdfLinks() const;
 
@@ -1462,6 +1472,9 @@ public Q_SLOTS:
     void refreshPixmaps(int pageNumber);
 
 Q_SIGNALS:
+    /** View metadata changed; repaint editing overlays, not the PDF contents. */
+    void readingViewsChanged(int pageNumber);
+
     /**
      * This signal is emitted whenever the document is about to close.
      * @since 1.5.3

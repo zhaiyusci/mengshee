@@ -55,7 +55,7 @@ public:
     void invalidate();
     bool operator==(const AnnotationDescription &rhs) const
     {
-        return (annotation == rhs.annotation);
+        return annotation == rhs.annotation && pageViewItem == rhs.pageViewItem;
     }
     Okular::Annotation *annotation;
     PageViewItem *pageViewItem;

@@ -74,8 +74,20 @@ public:
 
     OKULARPART_EXPORT bool mapGlobalPosToPagePoint(QPoint globalPos, int *pageNumber, Okular::NormalizedPoint *point) const;
     QStringList namedDestinationsAtGlobalPos(QPoint globalPos) const;
+    OKULARPART_EXPORT bool readingViewMode() const;
+    OKULARPART_EXPORT void setReadingViewMode(bool enabled);
+    OKULARPART_EXPORT int displayedPageCount() const;
+    OKULARPART_EXPORT int displayedPageNumber() const;
+    OKULARPART_EXPORT Okular::DocumentObserver *displayedPagePixmapObserver(int index) const;
+    OKULARPART_EXPORT QSize displayedPageUncroppedSize(int index) const;
+    OKULARPART_EXPORT QString displayedPageLabel(int index) const;
+    OKULARPART_EXPORT void goToDisplayedPage(int index, bool atBottom = false);
+    // Compatibility aliases for cross-reference mode, not an umbrella editor mode.
     OKULARPART_EXPORT bool advancedModeEnabled() const;
     void setAdvancedModeEnabled(bool enabled);
+    OKULARPART_EXPORT void setCrossReferenceModeEnabled(bool enabled);
+    OKULARPART_EXPORT void setOcrModeEnabled(bool enabled);
+    OKULARPART_EXPORT bool ocrModeEnabled() const;
     OKULARPART_EXPORT bool namedDestinationsVisible() const;
     void refreshNamedDestinations();
     void setNamedDestinationMarker(const QString &name, int pageNumber, const Okular::NormalizedPoint &position);
@@ -83,6 +95,14 @@ public:
     void startNamedDestinationCreation(bool continuous = false);
     void cancelNamedDestinationCreation();
     void startLinkCreation();
+    // Reading View rectangles are display-normalized here; Part converts the
+    // temporary page rotation before writing canonical model coordinates.
+    OKULARPART_EXPORT bool readingViewEditingEnabled() const;
+    OKULARPART_EXPORT void setReadingViewEditingEnabled(bool enabled);
+    OKULARPART_EXPORT void startReadingViewCreation();
+    OKULARPART_EXPORT void cancelReadingViewCreation();
+    OKULARPART_EXPORT void refreshReadingViews();
+    OKULARPART_EXPORT QStringList readingViewsAtGlobalPos(QPoint globalPos, int *pageNumber = nullptr) const;
     OKULARPART_EXPORT bool startOcrTextEditing(int pageNumber);
     OKULARPART_EXPORT void stopOcrTextEditing();
     OKULARPART_EXPORT bool isOcrTextEditing() const;
@@ -126,6 +146,7 @@ public:
     void notifyContentsCleared(int changedFlags) override;
     void notifyZoom(int factor) override;
     bool canUnloadPixmap(int pageNum) const override;
+    bool visiblePixmapRect(int pageNumber, Okular::NormalizedRect *rect) const override;
     void notifyCurrentPageChanged(int previous, int current) override;
 
     // inherited from View
@@ -223,6 +244,8 @@ Q_SIGNALS:
     void signingFinished();
     /** Emitted whenever this view's viewport or navigation history changes. */
     void viewportStateChanged();
+    void readingViewModeChanged(bool enabled);
+    void displayedPagesChanged();
     /** Emitted when this view requests that advanced PDF editing mode changes for every workspace view. */
     void advancedModeChanged(bool enabled);
     /**
@@ -239,6 +262,10 @@ Q_SIGNALS:
     void createNamedDestinationRequested(int pageNumber, const Okular::NormalizedPoint &position);
     /** Reports that named-destination placement was cancelled with Esc, right-click, or another tool. */
     void namedDestinationCreationCancelled();
+    void createReadingViewRequested(int pageNumber, const QRectF &displayRectangle);
+    void changeReadingViewRectangleRequested(int pageNumber, const QString &id, const QRectF &displayRectangle);
+    void readingViewCreationCancelled();
+    void readingViewEditingChanged(bool enabled);
     /** Requests creating an internal or external link over a rectangle drawn in this view. */
     void createPdfLinkRequested(int sourcePageNumber, const QRectF &normalizedLinkRectangle);
     /** Requests moving or resizing a PDF link annotation in this view. */
@@ -282,11 +309,16 @@ private:
     // Notify all annotation windows of the new viewport geometry, so they could reposition themselves
     void notifyAnnotationWindowsAboutViewportBoundsChange();
     // draw background and items on the opened qpainter
-    void drawDocumentOnPainter(const QRect contentsRect, QPainter *p);
+    void drawDocumentOnPainter(const QRect contentsRect, QPainter *p, bool visibleOnly = false);
     void drawLinkHighlights(const QRect &contentsRect, QPainter *p);
     void drawNamedDestinations(const QRect &contentsRect, QPainter *p);
     void drawInternalLinkCreation(const QRect &contentsRect, QPainter *p);
     void loadNamedDestinations();
+    void drawReadingViews(const QRect &contentsRect, QPainter *p);
+    void ensureReadingViewsLoaded(int pageNumber) const;
+    bool readingViewMousePress(QMouseEvent *event);
+    bool readingViewMouseMove(QMouseEvent *event);
+    bool readingViewMouseRelease(QMouseEvent *event);
     // update item width and height using current zoom parameters
     void updateItemSize(PageViewItem *item, int colWidth, int rowHeight);
     // return the widget placed on a certain point or 0 if clicking on empty space
@@ -337,6 +369,16 @@ private:
     // used when selecting stuff, makes the view scroll as necessary to keep the mouse inside the view
     void scrollPosIntoView(const QPoint pos);
     QPoint viewportToContentArea(const Okular::DocumentViewport &vp) const;
+    int itemIndexForViewport(const Okular::DocumentViewport &vp) const;
+    PageViewItem *sourceItem(int sourcePage) const;
+    void rebuildDisplayedItems();
+    void rememberDisplayedViewport();
+    friend class ReadingPixmapObserver;
+    void requestReadingPixmaps(int newValue);
+    void scheduleReadingRenderReconcile();
+    void reconcileReadingRenderSlots();
+    void restoreReadingHistory(int direction);
+    void setReadingTextSelection(const QPoint *start = nullptr, const QPoint *end = nullptr);
 
     // called from slots to turn off trim modes mutually exclusive to id
     void updateTrimMode(int except_id);

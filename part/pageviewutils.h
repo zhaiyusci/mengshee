@@ -26,6 +26,7 @@ namespace Okular
 {
 class Movie;
 class Page;
+class DocumentObserver;
 }
 
 /**
@@ -45,6 +46,12 @@ public:
 
     const Okular::Page *page() const;
     int pageNumber() const;
+    int displayIndex = -1; // Layout identity; pageNumber() always remains the source page.
+    Okular::DocumentObserver *readingRenderObserver = nullptr; // Borrowed visible render slot; never owns this item.
+    QString readingViewId;
+    QString readingIdentity; // persistent page identity + page-local View UUID
+    int readingViewNumber = 0;
+    Okular::NormalizedRect readingCrop{0, 0, 1, 1}; // native orientation, before viewer rotation
     double zoomFactor() const;
     bool isVisible() const;
     QSet<FormWidgetIface *> &formWidgets();

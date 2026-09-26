@@ -30,7 +30,7 @@ class Q_DECL_EXPORT PagePainter
 public:
     // list of flags passed to the painting function. by OR-ing those flags
     // you can decide whether or not to permit drawing of a certain feature.
-    enum PagePainterFlags { Accessibility = 1, EnhanceLinks = 2, EnhanceImages = 4, Highlights = 8, TextSelection = 16, Annotations = 32 };
+    enum PagePainterFlags { Accessibility = 1, EnhanceLinks = 2, EnhanceImages = 4, Highlights = 8, TextSelection = 16, Annotations = 32, ProjectedViewRaster = 64 };
 
     /**
      * Draw @p page on @p destPainter.

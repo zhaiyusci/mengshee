@@ -24,6 +24,7 @@
 #include <core/document.h>
 #include <core/generator.h>
 #include <core/printoptionswidget.h>
+#include <core/readingvieweditinginterface.h>
 #include <interfaces/configinterface.h>
 #include <interfaces/printinterface.h>
 #include <interfaces/saveinterface.h>
@@ -46,7 +47,7 @@ class PopplerAnnotationProxy;
  * contents from out OutputDevs when rendering finishes.
  *
  */
-class PDFGenerator : public Okular::Generator, public Okular::ConfigInterface, public Okular::PrintInterface, public Okular::SaveInterface, public Okular::PageInsertionInterface, public Okular::PdfLinkEditingInterface, public Okular::PdfOcrInterface
+class PDFGenerator : public Okular::Generator, public Okular::ConfigInterface, public Okular::PrintInterface, public Okular::SaveInterface, public Okular::PageInsertionInterface, public Okular::PdfLinkEditingInterface, public Okular::PdfOcrInterface, public Okular::ReadingViewEditingInterface
 {
     Q_OBJECT
     Q_INTERFACES(Okular::Generator)
@@ -131,6 +132,11 @@ public:
     bool movePageInDocument(int sourcePageNumber, int destinationPageNumber, QString *errorText) override;
     bool canRotatePage() const override;
     bool rotatePageInDocument(Okular::Page *page, int pageNumber, int rotationDegrees, Okular::Page **replacementPage, QString *errorText) override;
+    bool canEditReadingViews() const override;
+    QList<Okular::ReadingView> readingViews(int pageNumber, QString *errorText) const override;
+    bool setReadingViews(int pageNumber, const QList<Okular::ReadingView> &views, QString *errorText) override;
+    QString readingViewPageToken(int pageNumber) const override;
+    int readingViewPageForToken(const QString &token) const override;
     bool canEditPdfLinks() const override;
     bool setNamedDestination(const QString &name, int pageNumber, double normalizedX, double normalizedY, QString *errorText) override;
     bool renameNamedDestination(const QString &oldName, const QString &newName, QString *errorText) override;

@@ -10,6 +10,15 @@
 // clazy:excludeall=qstring-allocations
 
 #include <QSignalSpy>
+#include <QInputDialog>
+#include <QCheckBox>
+#include <QElapsedTimer>
+#include "../gui/toolbarbuttonheight.h"
+#include <QUuid>
+#include <QLoggingCategory>
+#include <QRegularExpression>
+#include <atomic>
+#include <cmath>
 #include <QTableWidget>
 #include <QDialogButtonBox>
 #include "PdfPageSequenceEditor.h"
@@ -26,10 +35,13 @@
 #include "../core/page.h"
 #include "../gui/tocmodel.h"
 #include "../part/documentworkspace.h"
+#include "../part/annotationpopup.h"
 #include "../part/findbar.h"
 #include "../part/pageview.h"
 #include "../part/ocrtextlayout.h"
 #include "../part/part.h"
+#include "../part/editingmode.h"
+#include <KSelectAction>
 #include "../part/presentationwidget.h"
 #include "../part/sidebar.h"
 #include "../part/toc.h"
@@ -138,6 +150,29 @@ private Q_SLOTS:
     void testLatexNoteOnRotatedPage();
     void testLatexAppearanceResizeHistory_data();
     void testLatexAppearanceResizeHistory();
+    void testReadingViewsMetadata_data();
+    void testReadingViewsMetadata();
+    void testReadingViewsHistoryAndPageIdentity();
+    void testReadingViewsMouseEditing();
+    void testReadingViewsUnsupportedMetadata();
+    void testReadingViewModeProjection_data();
+    void testReadingViewModeProjection();
+    void testReadingViewModeNavigation();
+    void testReadingViewModeContinuousRendering();
+    void testReadingViewModeIndependentFrames();
+    void testReadingViewModeExternalNavigation();
+    void testReadingViewModeTextSelection();
+    void testReadingViewModeAnnotations_data();
+    void testReadingViewModeAnnotations();
+    void testReadingViewModeFormReplicas();
+    void testReadingViewTemplateApply();
+    void testReadingViewTemplateRejectsUnsupported();
+    void testUnifiedEditingModes();
+    void testToolbarButtonHeights_data();
+    void testToolbarButtonHeights();
+    void testReadingViewNativeRaster();
+    void testReadingViewHighlightInteraction_data();
+    void testReadingViewHighlightInteraction();
     void testDeletePagePreservesInternalLinks();
     void testDuplicatePagePreservesInternalLinks();
     void testInsertPdfPagePreservesInternalLinks();
@@ -834,8 +869,8 @@ void PartTest::testNamedDestinationOverlay()
     QAction *toggle = part.actionCollection()->action(QStringLiteral("view_toggle_named_destinations"));
     QVERIFY(toggle);
     QVERIFY(toggle->isCheckable());
-    QVERIFY(toggle->isEnabled());
-    QCOMPARE(toggle->text(), i18n("Advanced Mode"));
+    QVERIFY(!toggle->isVisible()); // compatibility alias, not a second user-facing mode switch
+    QCOMPARE(toggle->text(), i18n("Cross-reference Mode"));
     QAction *insertPage = part.actionCollection()->action(QStringLiteral("tools_insert_page"));
     QVERIFY(insertPage);
     QAction *batchNamedDestinations = part.actionCollection()->action(QStringLiteral("advanced_add_named_destinations_from_template"));
@@ -846,7 +881,7 @@ void PartTest::testNamedDestinationOverlay()
     QVERIFY(!part.m_pageView->namedDestinationsVisible());
     toggle->setChecked(true);
     QVERIFY(toggle->isChecked());
-    QVERIFY(insertPage->isVisible());
+    QVERIFY(!insertPage->isVisible()); // page editing is a separate mode
     QVERIFY(batchNamedDestinations->isVisible());
     QVERIFY(batchNamedDestinations->isEnabled());
     QVERIFY(part.m_pageView->advancedModeEnabled());
@@ -2720,6 +2755,1318 @@ void PartTest::testLatexAppearanceResizeHistory()
     QCOMPARE(saveImage(reopened, dir.filePath(QStringLiteral("grown.pdf"))), full);
 }
 
+namespace {
+// Count actual generator submissions, not UI request attempts or repaints.
+std::atomic<int> readingRenderSubmissions{0};
+std::atomic<qint64> readingLargestRender{0};
+QtMessageHandler previousReadingMessageHandler = nullptr;
+QLoggingCategory::CategoryFilter previousReadingCategoryFilter = nullptr;
+
+void readingRenderCategoryFilter(QLoggingCategory *category)
+{
+    if (previousReadingCategoryFilter) previousReadingCategoryFilter(category);
+    if (QByteArray(category->categoryName()) == "org.jairy.mengshee.core") category->setEnabled(QtDebugMsg, true);
+}
+
+void readingRenderMessageHandler(QtMsgType type, const QMessageLogContext &context, const QString &message)
+{
+    if (message.startsWith(QStringLiteral("sending request observer="))) {
+        ++readingRenderSubmissions;
+        static const QRegularExpression dimensions(QStringLiteral(" ([0-9]+)x([0-9]+)@"));
+        const auto match = dimensions.match(message);
+        if (match.hasMatch()) {
+            const qint64 pixels = match.captured(1).toLongLong() * match.captured(2).toLongLong();
+            qint64 previous = readingLargestRender.load();
+            while (pixels > previous && !readingLargestRender.compare_exchange_weak(previous, pixels)) {}
+        }
+        return;
+    }
+    if (type == QtDebugMsg && QByteArray(context.category) == "org.jairy.mengshee.core") return;
+    if (previousReadingMessageHandler) previousReadingMessageHandler(type, context, message);
+}
+
+struct ReadingRenderTrace {
+    ReadingRenderTrace()
+    {
+        readingRenderSubmissions = 0;
+        readingLargestRender = 0;
+        previousReadingCategoryFilter = QLoggingCategory::installFilter(readingRenderCategoryFilter);
+        previousReadingMessageHandler = qInstallMessageHandler(readingRenderMessageHandler);
+    }
+    ~ReadingRenderTrace()
+    {
+        qInstallMessageHandler(previousReadingMessageHandler);
+        QLoggingCategory::installFilter(previousReadingCategoryFilter);
+        previousReadingCategoryFilter = nullptr;
+    }
+};
+
+bool writeReadingViewFixture(const QString &path, int rotation = 0, const QByteArray &metadata = {}, bool withText = false)
+{
+    QByteArray paint("0 0 1 rg 30 40 60 50 re f\n");
+    if (withText) {
+        paint += "0 0 0 rg BT /F1 12 Tf 25 125 Td (LEFT) Tj 105 0 Td (RIGHT) Tj ET\nBT /F1 12 Tf 25 60 Td (HIDDEN) Tj ET\n";
+    }
+    const QByteArray resources = withText ? QByteArray("<< /Font << /F1 5 0 R >> >>") : QByteArray("<< >>");
+    QList<QByteArray> objects{
+        "<< /Type /Catalog /Pages 2 0 R >>",
+        "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        QByteArray("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 220 180] /CropBox [10 20 210 160] /UserUnit 2 /Rotate ") + QByteArray::number(rotation)
+            + " /Resources " + resources + " /Contents 4 0 R " + metadata + " >>",
+        QByteArray("<< /Length ") + QByteArray::number(paint.size()) + ">>\nstream\n" + paint + "endstream"};
+    if (withText) {
+        objects.append("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>");
+    }
+    QByteArray pdf("%PDF-1.7\n");
+    QList<qsizetype> offsets;
+    for (int i = 0; i < objects.size(); ++i) {
+        offsets.append(pdf.size());
+        pdf += QByteArray::number(i + 1) + " 0 obj\n" + objects[i] + "\nendobj\n";
+    }
+    const auto xref = pdf.size();
+    pdf += "xref\n0 " + QByteArray::number(objects.size() + 1) + "\n0000000000 65535 f \n";
+    for (auto offset : offsets) {
+        pdf += QByteArray::number(offset).rightJustified(10, '0') + " 00000 n \n";
+    }
+    pdf += "trailer\n<< /Size " + QByteArray::number(objects.size() + 1) + " /Root 1 0 R >>\nstartxref\n" + QByteArray::number(xref) + "\n%%EOF\n";
+    QFile file(path);
+    return file.open(QIODevice::WriteOnly) && file.write(pdf) == pdf.size();
+}
+
+QImage readingViewPdfPixels(const QString &path)
+{
+    auto pdf = Poppler::Document::load(path);
+    if (!pdf) {
+        return {};
+    }
+    auto page = pdf->page(0);
+    return page ? page->renderToImage(96, 96) : QImage();
+}
+
+bool readingViewRectClose(const Okular::NormalizedRect &a, const Okular::NormalizedRect &b)
+{
+    return qAbs(a.left - b.left) < 1e-9 && qAbs(a.top - b.top) < 1e-9 && qAbs(a.right - b.right) < 1e-9 && qAbs(a.bottom - b.bottom) < 1e-9;
+}
+}
+
+void PartTest::testReadingViewsMetadata_data()
+{
+    QTest::addColumn<int>("rotation");
+    for (int angle : {0, 90, 180, 270}) {
+        QTest::newRow(qPrintable(QString::number(angle))) << angle;
+    }
+}
+
+void PartTest::testReadingViewsMetadata()
+{
+    QFETCH(int, rotation);
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString input = dir.filePath(QStringLiteral("source.pdf"));
+    const QString saved = dir.filePath(QStringLiteral("saved.pdf"));
+    QVERIFY(writeReadingViewFixture(input, rotation));
+    const QImage original = readingViewPdfPixels(input);
+    QVERIFY(!original.isNull());
+    Part part(nullptr, {});
+    QVERIFY(openDocument(&part, input));
+    QVERIFY(part.m_document->canEditReadingViews());
+    QString error;
+    QVERIFY(part.m_document->readingViews(0, &error).isEmpty());
+    QVERIFY(error.isEmpty());
+    QVERIFY(part.m_document->readingViewPageToken(0).isEmpty());
+    const QList<ReadingView> views{{QStringLiteral("b99f36a5-bb53-4cf0-9a8e-069b84c4df33"), 7, NormalizedRect(.1, .12, .43, .83)},
+                                  {QStringLiteral("488284dd-125e-4c0b-8e72-3169a11ef171"), 7, NormalizedRect(.05, .05, .96, .18)}};
+    QVERIFY2(part.m_document->setReadingViews(0, views, &error), qPrintable(error));
+    const QString token = part.m_document->readingViewPageToken(0);
+    QVERIFY(!token.isEmpty());
+    QCOMPARE(part.m_document->readingViewPageForToken(token), 0);
+    const auto actual = part.m_document->readingViews(0, &error);
+    QCOMPARE(actual.size(), 2);
+    for (int i = 0; i < views.size(); ++i) {
+        QCOMPARE(actual[i].id, views[i].id);
+        QCOMPARE(actual[i].number, views[i].number); // duplicate/non-contiguous labels are legal
+        QVERIFY(readingViewRectClose(actual[i].rectangle, views[i].rectangle));
+    }
+    auto invalid = views;
+    invalid[0].number = 0;
+    QVERIFY(!part.m_document->setReadingViews(0, invalid, &error));
+    invalid = views;
+    invalid[1].id = invalid[0].id;
+    QVERIFY(!part.m_document->setReadingViews(0, invalid, &error));
+    invalid = views;
+    invalid[0].rectangle.left = invalid[0].rectangle.right;
+    QVERIFY(!part.m_document->setReadingViews(0, invalid, &error));
+    QCOMPARE(part.m_document->readingViews(0).size(), 2);
+    QVERIFY2(part.m_document->saveChanges(saved, &error), qPrintable(error));
+    QCOMPARE(readingViewPdfPixels(saved), original); // not annotations or painted PDF content
+    Part reopened(nullptr, {});
+    QVERIFY(openDocument(&reopened, saved));
+    QCOMPARE(reopened.m_document->readingViewPageToken(0), token);
+    const auto restored = reopened.m_document->readingViews(0, &error);
+    QCOMPARE(restored.size(), 2);
+    for (int i = 0; i < views.size(); ++i) {
+        QCOMPARE(restored[i].id, views[i].id);
+        QCOMPARE(restored[i].number, views[i].number);
+        QVERIFY(readingViewRectClose(restored[i].rectangle, views[i].rectangle));
+    }
+    QVERIFY(reopened.m_document->setReadingViews(0, {}, &error));
+    QVERIFY(reopened.m_document->readingViews(0).isEmpty());
+    QCOMPARE(reopened.m_document->readingViewPageToken(0), token);
+    if (rotation == 0) {
+        const QString combined = dir.filePath(QStringLiteral("combined.pdf"));
+        QVERIFY2(reopened.m_document->combinePdfFiles({saved, saved}, combined, true, &error), qPrintable(error));
+        Part merged(nullptr, {});
+        QVERIFY(openDocument(&merged, combined));
+        QCOMPARE(merged.m_document->pages(), 2u);
+        const QString firstToken = merged.m_document->readingViewPageToken(0);
+        const QString secondToken = merged.m_document->readingViewPageToken(1);
+        QVERIFY(!firstToken.isEmpty() && !secondToken.isEmpty() && firstToken != secondToken);
+        QCOMPARE(merged.m_document->readingViewPageForToken(firstToken), 0);
+        QCOMPARE(merged.m_document->readingViewPageForToken(secondToken), 1);
+        QVERIFY(merged.m_document->setReadingViews(0, {}, &error));
+        QCOMPARE(merged.m_document->readingViews(1).size(), 2);
+    }
+}
+
+void PartTest::testReadingViewsHistoryAndPageIdentity()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString input = dir.filePath(QStringLiteral("source.pdf"));
+    QVERIFY(QFile::copy(QStringLiteral(KDESRCDIR "data/simple-multipage.pdf"), input));
+    Part part(nullptr, {});
+    QVERIFY(openDocument(&part, input));
+    part.setEditingMode(EditingMode::Views);
+    part.m_document->setRotation(Okular::Rotation0);
+    QCOMPARE(part.m_document->page(0)->rotation(), Okular::Rotation0);
+    const auto viewport = part.m_document->viewport().toString();
+    QVERIFY(part.addReadingViewWithNumber(0, QRectF(.1, .1, .35, .7), 9));
+    QCOMPARE(part.m_document->viewport().toString(), viewport); // defining a View is not navigation
+    auto views = part.m_document->readingViews(0);
+    QCOMPARE(views.size(), 1);
+    const QString id = views[0].id;
+    const QString token = part.m_document->readingViewPageToken(0);
+    QVERIFY(part.isModified());
+    QTimer::singleShot(50, [] {
+        if (auto *dialog = qobject_cast<QInputDialog *>(QApplication::activeModalWidget())) {
+            dialog->setIntValue(23);
+            dialog->accept();
+        }
+    });
+    part.editReadingViewNumber(0, id);
+    QCOMPARE(part.m_document->readingViews(0)[0].number, 23);
+    QCOMPARE(part.m_document->readingViews(0)[0].id, id);
+    part.m_document->undo();
+    QCOMPARE(part.m_document->readingViews(0)[0].number, 9);
+    QVERIFY(!part.m_advancedModeEnabled);
+    QVERIFY(part.m_pageView->readingViewEditingEnabled());
+    QVERIFY(part.canUsePageLevelEditing());
+    QCOMPARE(part.m_document->page(0)->rotation(), Okular::Rotation0);
+    part.changeReadingViewRectangle(0, id, QRectF(.12, .15, .3, .6));
+    QVERIFY(readingViewRectClose(part.m_document->readingViews(0)[0].rectangle, NormalizedRect(.12, .15, .42, .75)));
+    part.m_document->undo();
+    QVERIFY(readingViewRectClose(part.m_document->readingViews(0)[0].rectangle, views[0].rectangle));
+    part.m_document->redo();
+    const QString savedHistory = dir.filePath(QStringLiteral("saved-history.pdf"));
+    QVERIFY(part.saveAs(QUrl::fromLocalFile(savedHistory), Part::NoSaveAsFlags));
+    QVERIFY(!part.isModified());
+    QVERIFY(part.m_pageView->readingViewEditingEnabled());
+    QCOMPARE(part.m_document->readingViewPageToken(0), token);
+    QVERIFY(part.m_document->canUndo());
+    part.m_document->undo();
+    QVERIFY(part.isModified());
+    QVERIFY(readingViewRectClose(part.m_document->readingViews(0)[0].rectangle, views[0].rectangle));
+    part.m_document->redo();
+    QVERIFY(!part.isModified());
+    part.deleteReadingView(0, id);
+    QVERIFY(part.m_document->readingViews(0).isEmpty());
+    part.m_document->undo();
+    QCOMPARE(part.m_document->readingViews(0)[0].id, id);
+    QString error;
+    // A page move outside the view command cannot redirect its undo to another page.
+    QVERIFY2(part.m_document->movePage(0, 1, &error), qPrintable(error));
+    QCOMPARE(part.m_document->readingViewPageForToken(token), 1);
+    part.m_document->undo();
+    QVERIFY(readingViewRectClose(part.m_document->readingViews(1)[0].rectangle, views[0].rectangle));
+    QVERIFY(part.m_document->readingViews(0).isEmpty());
+    quint64 duplicateToken = 0;
+    QVERIFY2(part.m_document->duplicatePage(1, true, &duplicateToken, &error), qPrintable(error));
+    QCOMPARE(part.m_document->readingViews(2).size(), 1);
+    QVERIFY(part.m_document->readingViewPageToken(2) != token);
+    QCOMPARE(part.m_document->readingViewPageForToken(token), 1);
+    const auto copy = part.m_document->readingViews(2);
+    QVERIFY(part.m_document->setReadingViews(1, {}, &error));
+    QCOMPARE(part.m_document->readingViews(2)[0].id, copy[0].id);
+    quint64 removed = 0;
+    QVERIFY2(part.m_document->detachPage(2, &removed, &error), qPrintable(error));
+    QCOMPARE(part.m_document->readingViewPageForToken(part.m_document->readingViewPageToken(1)), 1);
+    QVERIFY2(part.m_document->attachPage(1, removed, &error), qPrintable(error));
+    QCOMPARE(part.m_document->readingViews(2)[0].id, copy[0].id);
+    part.m_document->setRotation(Okular::Rotation90);
+    QVERIFY(part.addReadingViewWithNumber(0, QRectF(.1, .2, .3, .4), 11));
+    QVERIFY(readingViewRectClose(part.m_document->readingViews(0)[0].rectangle, NormalizedRect(.2, .6, .6, .9)));
+    part.m_document->undo();
+    QVERIFY(part.m_document->readingViews(0).isEmpty());
+    part.m_document->setRotation(Okular::Rotation0);
+}
+
+void PartTest::testReadingViewsMouseEditing()
+{
+    QTemporaryDir dir;
+    const QString input = dir.filePath(QStringLiteral("mouse.pdf"));
+    QVERIFY(writeReadingViewFixture(input));
+    Part part(nullptr, {});
+    QVERIFY(openDocument(&part, input));
+    part.widget()->resize(1100, 800);
+    part.widget()->show();
+    QVERIFY(QTest::qWaitForWindowExposed(part.widget()));
+    auto *modeSelector = qobject_cast<KSelectAction *>(part.actionCollection()->action(QStringLiteral("editing_mode_selector")));
+    QVERIFY(modeSelector && modeSelector->isEnabled());
+    modeSelector->actions().at(int(EditingMode::Views))->trigger();
+    QVERIFY(!part.m_advancedModeEnabled);
+    QVERIFY(part.m_pageView->readingViewEditingEnabled());
+    QTRY_VERIFY(part.m_document->page(0)->hasPixmap(part.m_pageView));
+    QWidget *canvas = part.m_pageView->viewport();
+    const auto pointAt = [&](double nx, double ny) {
+        QPoint best(-1, -1);
+        double distance = 1e20;
+        for (int y = 4; y < canvas->height() - 4; y += 4) {
+            for (int x = 4; x < canvas->width() - 4; x += 4) {
+                int page = -1;
+                NormalizedPoint point;
+                if (!part.m_pageView->mapGlobalPosToPagePoint(canvas->mapToGlobal(QPoint(x, y)), &page, &point) || page != 0) {
+                    continue;
+                }
+                const double d = (point.x - nx) * (point.x - nx) + (point.y - ny) * (point.y - ny);
+                if (d < distance) {
+                    distance = d;
+                    best = QPoint(x, y);
+                }
+            }
+        }
+        return distance < .002 ? best : QPoint(-1, -1);
+    };
+    const QPoint start = pointAt(.15, .2), end = pointAt(.7, .75);
+    QVERIFY(start.x() >= 0 && end.x() >= 0);
+    QSignalSpy created(part.m_pageView, SIGNAL(createReadingViewRequested(int,QRectF)));
+    QVERIFY(created.isValid());
+    QAction *add = part.actionCollection()->action(QStringLiteral("advanced_add_reading_view"));
+    QVERIFY(add && add->isEnabled() && add->isVisible());
+    // Entering the editor only exposes existing ranges; it must not arm drawing.
+    QTest::mousePress(canvas, Qt::LeftButton, Qt::NoModifier, start);
+    QTest::mouseMove(canvas, end);
+    QTest::mouseRelease(canvas, Qt::LeftButton, Qt::NoModifier, end);
+    QCOMPARE(created.count(), 0);
+    QVERIFY(part.m_document->readingViews(0).isEmpty());
+    add->trigger();
+    QTest::mousePress(canvas, Qt::LeftButton, Qt::NoModifier, start);
+    QTest::mouseMove(canvas, end);
+    QTest::mouseRelease(canvas, Qt::LeftButton, Qt::NoModifier, end);
+    QCOMPARE(created.count(), 1);
+    auto views = part.m_document->readingViews(0);
+    QCOMPARE(views.size(), 1);
+    QCOMPARE(views[0].number, 1);
+    QVERIFY(!QApplication::activeModalWidget());
+    views[0].number = 17;
+    QString error;
+    QVERIFY(part.m_document->setReadingViews(0, views, &error));
+    // Draw again without reactivating the tool, including after metadata refresh.
+    const QPoint secondStart = pointAt(.8, .2), secondEnd = pointAt(.95, .75);
+    QVERIFY(secondStart.x() >= 0 && secondEnd.x() >= 0);
+    QTest::mousePress(canvas, Qt::LeftButton, Qt::NoModifier, secondStart);
+    QTest::mouseMove(canvas, secondEnd);
+    QTest::mouseRelease(canvas, Qt::LeftButton, Qt::NoModifier, secondEnd);
+    QCOMPARE(created.count(), 2);
+    QCOMPARE(part.m_document->readingViews(0).size(), 2);
+    QCOMPARE(part.m_document->readingViews(0)[1].number, 18);
+    QVERIFY(!QApplication::activeModalWidget());
+    part.m_document->undo();
+    QCOMPARE(part.m_document->readingViews(0).size(), 1);
+    const auto before = views[0];
+    const QPoint middle = pointAt((before.rectangle.left + before.rectangle.right) / 2, (before.rectangle.top + before.rectangle.bottom) / 2);
+    QVERIFY(part.m_pageView->readingViewsAtGlobalPos(canvas->mapToGlobal(middle)).isEmpty()); // preserve ordinary text/link interaction
+    const QPoint corner = pointAt(before.rectangle.left, before.rectangle.top);
+    QVERIFY(part.m_pageView->readingViewsAtGlobalPos(canvas->mapToGlobal(corner)).contains(before.id));
+    QSignalSpy changed(part.m_pageView, SIGNAL(changeReadingViewRectangleRequested(int,QString,QRectF)));
+    QVERIFY(changed.isValid());
+    QTest::mousePress(canvas, Qt::LeftButton, Qt::NoModifier, corner);
+    QTest::mouseMove(canvas, corner + QPoint(28, 20));
+    QTest::mouseRelease(canvas, Qt::LeftButton, Qt::NoModifier, corner + QPoint(28, 20));
+    QCOMPARE(changed.count(), 1);
+    QVERIFY(!readingViewRectClose(part.m_document->readingViews(0)[0].rectangle, before.rectangle));
+    part.m_document->undo();
+    QVERIFY(readingViewRectClose(part.m_document->readingViews(0)[0].rectangle, before.rectangle));
+    // With the View selected, drag a handle rather than moving the entire range.
+    QTest::mouseClick(canvas, Qt::LeftButton, Qt::NoModifier, corner);
+    const QPoint bottomRight = pointAt(before.rectangle.right, before.rectangle.bottom);
+    QTest::mousePress(canvas, Qt::LeftButton, Qt::NoModifier, bottomRight);
+    QTest::mouseMove(canvas, bottomRight - QPoint(24, 20));
+    QTest::mouseRelease(canvas, Qt::LeftButton, Qt::NoModifier, bottomRight - QPoint(24, 20));
+    QCOMPARE(changed.count(), 2);
+    const auto resized = part.m_document->readingViews(0)[0].rectangle;
+    QVERIFY(qAbs(resized.left - before.rectangle.left) < 1e-9);
+    QVERIFY(qAbs(resized.top - before.rectangle.top) < 1e-9);
+    QVERIFY(resized.right < before.rectangle.right && resized.bottom < before.rectangle.bottom);
+    part.m_document->undo();
+    QVERIFY(readingViewRectClose(part.m_document->readingViews(0)[0].rectangle, before.rectangle));
+    add->trigger();
+    QTest::mousePress(canvas, Qt::LeftButton, Qt::NoModifier, middle);
+    QTest::mouseMove(canvas, middle + QPoint(20, 20));
+    QTest::keyClick(part.m_pageView, Qt::Key_Escape);
+    QTest::mouseRelease(canvas, Qt::LeftButton, Qt::NoModifier, middle + QPoint(20, 20));
+    QCOMPARE(created.count(), 2);
+    QCOMPARE(part.m_document->readingViews(0).size(), 1);
+    part.setEditingMode(EditingMode::CrossReferences);
+    QVERIFY(!part.m_pageView->readingViewEditingEnabled());
+    part.setEditingMode(EditingMode::Views);
+    QVERIFY(part.m_pageView->readingViewEditingEnabled());
+    QVERIFY(part.m_pageView->readingViewsAtGlobalPos(canvas->mapToGlobal(corner)).contains(before.id));
+    modeSelector->actions().at(int(EditingMode::Reading))->trigger();
+    QVERIFY(!part.m_pageView->readingViewEditingEnabled());
+    QVERIFY(!add->isEnabled() || !add->isVisible());
+    QVERIFY(part.m_pageView->readingViewsAtGlobalPos(canvas->mapToGlobal(corner)).isEmpty());
+    QCOMPARE(part.m_document->readingViews(0)[0].id, before.id);
+}
+
+void PartTest::testReadingViewModeProjection_data()
+{
+    QTest::addColumn<int>("nativeRotation");
+    QTest::addColumn<int>("viewerRotation");
+    for (int native : {0, 90, 270}) {
+        for (int viewer : {0, 1}) {
+            QTest::newRow(qPrintable(QStringLiteral("native-%1-viewer-%2").arg(native).arg(viewer))) << native << viewer;
+        }
+    }
+}
+
+void PartTest::testReadingViewModeProjection()
+{
+    QFETCH(int, nativeRotation);
+    QFETCH(int, viewerRotation);
+    QTemporaryDir dir;
+    const QString input = dir.filePath(QStringLiteral("projection.pdf"));
+    QVERIFY(writeReadingViewFixture(input, nativeRotation));
+    Part part(nullptr, {});
+    QVERIFY(openDocument(&part, input));
+    const QList<ReadingView> definitions{{QStringLiteral("b99f36a5-bb53-4cf0-9a8e-069b84c4df33"), 9, NormalizedRect(0, .1, .45, .9)},
+                                        {QStringLiteral("488284dd-125e-4c0b-8e72-3169a11ef171"), 2, NormalizedRect(.55, .2, 1, .8)},
+                                        {QStringLiteral("90b59bba-c120-4057-ad74-95b0d64e2016"), 2, NormalizedRect(.55, .2, 1, .8)}};
+    QString error;
+    QVERIFY2(part.m_document->setReadingViews(0, definitions, &error), qPrintable(error));
+    const auto before = part.m_document->readingViews(0);
+    const bool wasModified = part.isModified();
+    part.m_document->setRotation(viewerRotation);
+    part.widget()->resize(1100, 800);
+    part.widget()->show();
+    QVERIFY(QTest::qWaitForWindowExposed(part.widget()));
+    PageView *view = part.m_pageView;
+    Okular::View *capabilities = view;
+    capabilities->setCapability(Okular::View::Continuous, false);
+    capabilities->setCapability(Okular::View::ZoomModality, int(PageView::ZoomFitPage));
+    capabilities->setCapability(Okular::View::ViewModeModality, int(Okular::Settings::EnumViewMode::Single));
+    const QVariant zoomMode = capabilities->capability(Okular::View::ZoomModality);
+    const QVariant continuous = capabilities->capability(Okular::View::Continuous);
+    view->setReadingViewMode(true);
+    QVERIFY(view->readingViewMode());
+    QCOMPARE(part.m_document->pages(), 1u);
+    QCOMPARE(view->displayedPageCount(), 3);
+    QVERIFY(view->displayedPageLabel(0).contains(QStringLiteral("2")));
+    QVERIFY(view->displayedPageLabel(2).contains(QStringLiteral("9")));
+    QCOMPARE(capabilities->capability(Okular::View::ZoomModality), zoomMode);
+    QCOMPARE(capabilities->capability(Okular::View::Continuous), continuous);
+    view->goToDisplayedPage(0);
+    QTRY_COMPARE(view->displayedPageNumber(), 0);
+    view->goToDisplayedPage(1);
+    QTRY_COMPARE(view->displayedPageNumber(), 1);
+    QCOMPARE(view->documentViewport().pageNumber, 0);
+    QVERIFY(!view->viewportHistoryAtBegin());
+    view->goToPreviousViewport();
+    QTRY_COMPARE(view->displayedPageNumber(), 0);
+    view->goToNextViewport();
+    QTRY_COMPARE(view->displayedPageNumber(), 1);
+    // Two distinct Views with exactly the same crop must remain separately navigable.
+    view->goToDisplayedPage(2);
+    QTRY_COMPARE(view->displayedPageNumber(), 2);
+    int sourcePage = -1;
+    NormalizedPoint point;
+    QTRY_VERIFY(view->mapGlobalPosToPagePoint(view->viewport()->mapToGlobal(view->viewport()->rect().center()), &sourcePage, &point));
+    QCOMPARE(sourcePage, 0);
+    if (viewerRotation == 0) {
+        QVERIFY(point.x >= 0 && point.x <= .45 && point.y >= .1 && point.y <= .9);
+    } else {
+        QVERIFY(point.x >= .1 && point.x <= .9 && point.y >= 0 && point.y <= .45);
+    }
+    QCOMPARE(part.m_document->readingViews(0), before);
+    QCOMPARE(part.isModified(), wasModified);
+    auto renumbered = before;
+    renumbered[0].number = 1;
+    QVERIFY(part.m_document->setReadingViews(0, renumbered, &error));
+    QTRY_COMPARE(view->displayedPageNumber(), 0); // same UUID, new presentation order
+    view->goToPreviousViewport();
+    QTRY_COMPARE(view->displayedPageNumber(), 2); // old #2b, not the old integer index
+    view->goToNextViewport();
+    QTRY_COMPARE(view->displayedPageNumber(), 0);
+    QVERIFY(part.m_document->setReadingViews(0, before, &error));
+    QTRY_COMPARE(view->displayedPageNumber(), 2);
+    view->setReadingViewMode(false);
+    QVERIFY(!view->readingViewMode());
+    QCOMPARE(view->displayedPageCount(), 1);
+    QCOMPARE(view->displayedPageNumber(), 0);
+    QCOMPARE(capabilities->capability(Okular::View::ZoomModality), zoomMode);
+    QCOMPARE(capabilities->capability(Okular::View::Continuous), continuous);
+    QCOMPARE(part.m_document->readingViews(0), before);
+    part.m_document->setRotation(Okular::Rotation0);
+}
+
+void PartTest::testReadingViewModeNavigation()
+{
+    Part part(nullptr, {});
+    QVERIFY(openDocument(&part, QStringLiteral(KDESRCDIR "data/simple-multipage.pdf")));
+    part.m_document->setRotation(Okular::Rotation0);
+    QString error;
+    const QList<ReadingView> definitions{{QStringLiteral("b99f36a5-bb53-4cf0-9a8e-069b84c4df33"), 9, NormalizedRect(.05, .05, .45, .95)},
+                                        {QStringLiteral("488284dd-125e-4c0b-8e72-3169a11ef171"), 2, NormalizedRect(.55, .05, .95, .95)}};
+    QVERIFY2(part.m_document->setReadingViews(0, definitions, &error), qPrintable(error));
+    const int sourceCount = int(part.m_document->pages());
+    QVERIFY(sourceCount >= 2);
+    part.widget()->resize(1100, 800);
+    part.widget()->show();
+    QVERIFY(QTest::qWaitForWindowExposed(part.widget()));
+    PageView *view = part.m_pageView;
+    static_cast<Okular::View *>(view)->setCapability(Okular::View::Continuous, false);
+    static_cast<Okular::View *>(view)->setCapability(Okular::View::ZoomModality, int(PageView::ZoomFitPage));
+    static_cast<Okular::View *>(view)->setCapability(Okular::View::ViewModeModality, int(Okular::Settings::EnumViewMode::Single));
+    QAction *mode = part.actionCollection()->action(QStringLiteral("view_read_by_views"));
+    QVERIFY(mode && mode->isCheckable() && mode->isEnabled());
+    mode->setChecked(true);
+    QVERIFY(view->readingViewMode());
+    QAction *paste = part.actionCollection()->action(QStringLiteral("annotation_paste"));
+    QVERIFY(paste);
+    // Reading Views must not disable annotation tools or paste merely because
+    // the displayed page is a projection of a source PDF page.
+    QCOMPARE(view->displayedPageCount(), sourceCount + 1);
+    view->goToDisplayedPage(0);
+    QTRY_VERIFY(part.m_nextPage->isEnabled());
+    part.m_nextPage->trigger();
+    QTRY_COMPARE(view->displayedPageNumber(), 1);
+    QCOMPARE(view->documentViewport().pageNumber, 0);
+    part.m_nextPage->trigger();
+    QTRY_COMPARE(view->displayedPageNumber(), 2);
+    QCOMPARE(view->documentViewport().pageNumber, 1); // whole-page fallback, not omitted
+    part.m_prevPage->trigger();
+    QTRY_COMPARE(view->displayedPageNumber(), 1);
+    part.m_endOfDocument->trigger();
+    QTRY_COMPARE(view->displayedPageNumber(), sourceCount);
+    QTRY_VERIFY(!part.m_nextPage->isEnabled());
+    part.m_beginningOfDocument->trigger();
+    QTRY_COMPARE(view->displayedPageNumber(), 0);
+    QTRY_VERIFY(!part.m_prevPage->isEnabled());
+    const auto editors = part.widget()->findChildren<QLineEdit *>(QStringLiteral("readingPageNumber"));
+    QVERIFY(!editors.isEmpty());
+    QLineEdit *editor = editors.constFirst();
+    editor->setText(QStringLiteral("3"));
+    QTest::keyClick(editor, Qt::Key_Return);
+    QTRY_COMPARE(view->displayedPageNumber(), 2);
+    view->goToDisplayedPage(0);
+    QTest::keyClick(view, Qt::Key_Right);
+    QTRY_COMPARE(view->displayedPageNumber(), 1);
+    mode->setChecked(false);
+    QCOMPARE(view->displayedPageCount(), sourceCount);
+    QCOMPARE(view->displayedPageNumber(), view->documentViewport().pageNumber);
+    QCOMPARE(part.m_document->readingViews(0).size(), 2);
+}
+
+void PartTest::testReadingViewModeContinuousRendering()
+{
+    QTemporaryDir dir;
+    const QString input = dir.filePath(QStringLiteral("scales.pdf"));
+    QVERIFY(writeReadingViewFixture(input));
+    Part part(nullptr, {});
+    QVERIFY(openDocument(&part, input));
+    part.m_document->setRotation(Okular::Rotation0);
+    QString error;
+    const QList<ReadingView> definitions{{QStringLiteral("b99f36a5-bb53-4cf0-9a8e-069b84c4df33"), 1, NormalizedRect(.12, .55, .15, .65)},
+                                        {QStringLiteral("488284dd-125e-4c0b-8e72-3169a11ef171"), 2, NormalizedRect(0, 0, 1, 1)}};
+    QVERIFY2(part.m_document->setReadingViews(0, definitions, &error), qPrintable(error));
+    part.widget()->resize(1200, 850);
+    part.widget()->show();
+    QVERIFY(QTest::qWaitForWindowExposed(part.widget()));
+    PageView *view = part.m_pageView;
+    Okular::View *capabilities = view;
+    capabilities->setCapability(Okular::View::ViewModeModality, int(Okular::Settings::EnumViewMode::Facing));
+    capabilities->setCapability(Okular::View::Continuous, true);
+    capabilities->setCapability(Okular::View::ZoomModality, int(PageView::ZoomFitPage));
+    view->setReadingViewMode(true);
+    QCOMPARE(view->displayedPageCount(), 2);
+    view->goToDisplayedPage(0);
+    // Both virtual pages use the same source page but radically different scales.
+    // Test actual pixels, not merely the existence of a pixmap for one scale.
+    const auto bothPagesPainted = [&] {
+        const QImage image = view->viewport()->grab().toImage();
+        bool left = false, right = false;
+        for (int y = 8; y < image.height() - 8; y += 8) {
+            for (int x = 8; x < image.width() - 8; x += 8) {
+                const QColor color = image.pixelColor(x, y);
+                if (color.blue() > 220 && color.red() < 35 && color.green() < 35) {
+                    (x < image.width() / 2 ? left : right) = true;
+                }
+            }
+        }
+        return left && right;
+    };
+    QTRY_VERIFY_WITH_TIMEOUT(bothPagesPainted(), 15000);
+    view->viewport()->update();
+    QCoreApplication::processEvents();
+    QVERIFY(bothPagesPainted());
+    const QString evidence = qEnvironmentVariable("MENGSHEE_VIEW_READING_EVIDENCE");
+    if (!evidence.isEmpty()) {
+        QVERIFY(view->viewport()->grab().save(evidence));
+    }
+    capabilities->setCapability(Okular::View::ViewModeModality, int(Okular::Settings::EnumViewMode::Single));
+    capabilities->setCapability(Okular::View::Continuous, true);
+    view->goToDisplayedPage(1);
+    QTRY_COMPARE(view->displayedPageNumber(), 1);
+    QCOMPARE(view->documentViewport().pageNumber, 0);
+    view->setReadingViewMode(false);
+    QCOMPARE(view->displayedPageCount(), 1);
+}
+
+void PartTest::testReadingViewModeIndependentFrames()
+{
+    QTemporaryDir dir;
+    const QString input = dir.filePath(QStringLiteral("frames.pdf"));
+    QVERIFY(writeReadingViewFixture(input));
+    Part part(nullptr, {});
+    QVERIFY(openDocument(&part, input));
+    QString error;
+    const QList<ReadingView> definitions{{QStringLiteral("b99f36a5-bb53-4cf0-9a8e-069b84c4df33"), 1, NormalizedRect(0, 0, .5, 1)},
+                                        {QStringLiteral("488284dd-125e-4c0b-8e72-3169a11ef171"), 2, NormalizedRect(.5, 0, 1, 1)}};
+    QVERIFY(part.m_document->setReadingViews(0, definitions, &error));
+    part.widget()->resize(1200, 850);
+    part.widget()->show();
+    QVERIFY(QTest::qWaitForWindowExposed(part.widget()));
+    PageView *main = part.m_pageView;
+    main->setReadingViewMode(true);
+    main->goToDisplayedPage(1);
+    part.openAuxiliaryView(main, DocumentViewport(0), QStringLiteral("Independent frame"));
+    QTRY_COMPARE(part.m_documentWorkspace->auxiliaryViewCount(), 1);
+    PageView *auxiliary = part.m_documentWorkspace->auxiliaryViews().constFirst();
+    auxiliary->setReadingViewMode(false);
+    QVERIFY(main->readingViewMode());
+    QCOMPARE(main->displayedPageCount(), 2);
+    QCOMPARE(main->displayedPageNumber(), 1);
+    QCOMPARE(auxiliary->displayedPageCount(), 1);
+    QTRY_COMPARE(part.workspaceActivePageView(), auxiliary);
+    QAction *mode = part.actionCollection()->action(QStringLiteral("view_read_by_views"));
+    QVERIFY(mode);
+    QTRY_VERIFY(!mode->isChecked());
+    mode->setChecked(true);
+    QVERIFY(auxiliary->readingViewMode());
+    auxiliary->goToDisplayedPage(0);
+    QCOMPARE(main->displayedPageNumber(), 1);
+    QCOMPARE(auxiliary->displayedPageNumber(), 0);
+    part.m_documentWorkspace->promoteView(auxiliary);
+    QCOMPARE(part.m_documentWorkspace->mainView(), auxiliary);
+    QVERIFY(auxiliary->readingViewMode() && main->readingViewMode());
+    QCOMPARE(auxiliary->displayedPageNumber(), 0);
+    QCOMPARE(main->displayedPageNumber(), 1);
+    part.m_documentWorkspace->closeAllAuxiliaryViews();
+    QCOMPARE(part.m_documentWorkspace->auxiliaryViewCount(), 0);
+    QCOMPARE(auxiliary->displayedPageCount(), 2);
+}
+
+void PartTest::testReadingViewModeExternalNavigation()
+{
+    QTemporaryDir dir;
+    const QString input = dir.filePath(QStringLiteral("external.pdf"));
+    QVERIFY(writeReadingViewFixture(input));
+    Part part(nullptr, {});
+    QVERIFY(openDocument(&part, input));
+    part.m_document->setRotation(Okular::Rotation0);
+    QString error;
+    const QList<ReadingView> definitions{{QStringLiteral("b99f36a5-bb53-4cf0-9a8e-069b84c4df33"), 1, NormalizedRect(.1, .1, .4, .8)},
+                                        {QStringLiteral("488284dd-125e-4c0b-8e72-3169a11ef171"), 2, NormalizedRect(.6, .1, .9, .8)}};
+    QVERIFY(part.m_document->setReadingViews(0, definitions, &error));
+    part.widget()->resize(1100, 800);
+    part.widget()->show();
+    QVERIFY(QTest::qWaitForWindowExposed(part.widget()));
+    PageView *view = part.m_pageView;
+    view->setReadingViewMode(true);
+    DocumentViewport target(0);
+    target.rePos.enabled = true;
+    target.rePos.pos = DocumentViewport::Center;
+    target.rePos.normalizedX = .75;
+    target.rePos.normalizedY = .4;
+    view->goToDocumentViewport(target, false);
+    QTRY_COMPARE(view->displayedPageNumber(), 1);
+    QVERIFY(view->readingViewMode());
+    target.rePos.normalizedX = .5;
+    target.rePos.normalizedY = .95; // outside every View: the user's switch still governs display mode
+    view->goToDocumentViewport(target, false);
+    QVERIFY(view->readingViewMode());
+    QCOMPARE(view->documentViewport().pageNumber, 0);
+    QAction *mode = part.actionCollection()->action(QStringLiteral("view_read_by_views"));
+    QVERIFY(mode);
+    QTRY_VERIFY(mode->isChecked());
+    QCOMPARE(part.m_document->readingViews(0).size(), 2);
+}
+
+void PartTest::testReadingViewModeTextSelection()
+{
+    QTemporaryDir dir;
+    const QString input = dir.filePath(QStringLiteral("selection.pdf"));
+    QVERIFY(writeReadingViewFixture(input, 0, {}, true));
+    Part part(nullptr, {});
+    QVERIFY(openDocument(&part, input));
+    part.m_document->setRotation(Okular::Rotation0);
+    QString error;
+    const QList<ReadingView> definitions{{QStringLiteral("b99f36a5-bb53-4cf0-9a8e-069b84c4df33"), 2, NormalizedRect(.05, .1, .45, .4)},
+                                        {QStringLiteral("488284dd-125e-4c0b-8e72-3169a11ef171"), 1, NormalizedRect(.55, .1, .95, .4)}};
+    QVERIFY(part.m_document->setReadingViews(0, definitions, &error));
+    part.widget()->resize(1100, 800);
+    part.widget()->show();
+    QVERIFY(QTest::qWaitForWindowExposed(part.widget()));
+    PageView *view = part.m_pageView;
+    view->setReadingViewMode(true);
+    part.m_document->requestTextPage(0);
+    QTRY_VERIFY(part.m_document->page(0)->hasTextPage());
+    QVERIFY(QMetaObject::invokeMethod(view, "selectAll"));
+    QVERIFY(view->hasTextSelection());
+    QVERIFY(QMetaObject::invokeMethod(view, "copyTextSelection"));
+    const QString selected = QApplication::clipboard()->text();
+    QVERIFY2(selected.contains(QStringLiteral("RIGHT")) && selected.contains(QStringLiteral("LEFT")), qPrintable(selected));
+    QVERIFY2(!selected.contains(QStringLiteral("HIDDEN")), qPrintable(selected));
+    QVERIFY2(selected.indexOf(QStringLiteral("RIGHT")) < selected.indexOf(QStringLiteral("LEFT")), qPrintable(selected));
+    QCOMPARE(part.m_document->pages(), 1u);
+    QVERIFY(part.m_document->page(0)->annotations().isEmpty());
+    view->setReadingViewMode(false);
+}
+
+void PartTest::testReadingViewModeAnnotations_data()
+{
+    QTest::addColumn<int>("nativeRotation");
+    QTest::addColumn<int>("viewerRotation");
+    QTest::newRow("plain") << 0 << 0;
+    QTest::newRow("native-90") << 90 << 0;
+    QTest::newRow("viewer-90") << 0 << 1;
+    QTest::newRow("native-90-viewer-270") << 90 << 3;
+}
+
+void PartTest::testReadingViewModeAnnotations()
+{
+    QFETCH(int, nativeRotation);
+    QFETCH(int, viewerRotation);
+    QTemporaryDir dir;
+    const QString input = dir.filePath(QStringLiteral("annotate.pdf"));
+    const QString saved = dir.filePath(QStringLiteral("annotated.pdf"));
+    QVERIFY(writeReadingViewFixture(input, nativeRotation));
+    Part part(nullptr, {});
+    QVERIFY(openDocument(&part, input));
+    QString error;
+    const QList<ReadingView> definitions{{QStringLiteral("b99f36a5-bb53-4cf0-9a8e-069b84c4df33"), 1, NormalizedRect(0, 0, 1, 1)},
+                                        {QStringLiteral("488284dd-125e-4c0b-8e72-3169a11ef171"), 2, NormalizedRect(.2, .2, .8, .8)}};
+    QVERIFY(part.m_document->setReadingViews(0, definitions, &error));
+    part.m_document->setRotation(viewerRotation);
+    part.widget()->resize(1100, 800);
+    part.widget()->show();
+    QVERIFY(QTest::qWaitForWindowExposed(part.widget()));
+    PageView *view = part.m_pageView;
+    Okular::View *capabilities = view;
+    capabilities->setCapability(Okular::View::Continuous, false);
+    capabilities->setCapability(Okular::View::ViewModeModality, int(Okular::Settings::EnumViewMode::Single));
+    capabilities->setCapability(Okular::View::ZoomModality, int(PageView::ZoomFitPage));
+    view->setReadingViewMode(true);
+    view->goToDisplayedPage(1);
+    QTRY_COMPARE(view->displayedPageNumber(), 1);
+    QWidget *canvas = view->viewport();
+    const QPoint a = canvas->rect().center() - QPoint(35, 25);
+    const QPoint b = canvas->rect().center() + QPoint(35, 25);
+    NormalizedPoint pa, pb;
+    int pageA = -1, pageB = -1;
+    QTRY_VERIFY(view->mapGlobalPosToPagePoint(canvas->mapToGlobal(a), &pageA, &pa));
+    QVERIFY(view->mapGlobalPosToPagePoint(canvas->mapToGlobal(b), &pageB, &pb));
+    QCOMPARE(pageA, 0);
+    QCOMPARE(pageB, 0);
+    QAction *rectangle = part.actionCollection()->action(QStringLiteral("annotation_rectangle"));
+    QVERIFY(rectangle && rectangle->isEnabled());
+    rectangle->trigger();
+    QTest::mousePress(canvas, Qt::LeftButton, Qt::NoModifier, a);
+    QTest::mouseMove(canvas, b);
+    QTest::mouseRelease(canvas, Qt::LeftButton, Qt::NoModifier, b);
+    QTRY_COMPARE(part.m_document->page(0)->annotations().size(), 1);
+    Annotation *annotation = part.m_document->page(0)->annotations().constFirst();
+    const NormalizedRect displayed = annotation->transformedBoundingRectangle();
+    QVERIFY(qAbs(displayed.left - qMin(pa.x, pb.x)) < .01);
+    QVERIFY(qAbs(displayed.top - qMin(pa.y, pb.y)) < .01);
+    QVERIFY(qAbs(displayed.right - qMax(pa.x, pb.x)) < .01);
+    QVERIFY(qAbs(displayed.bottom - qMax(pa.y, pb.y)) < .01);
+    const auto originalRectangle = annotation->boundingRectangle();
+    QVERIFY(part.isModified());
+    QVERIFY(view->readingViewMode());
+    part.m_document->undo();
+    QVERIFY(part.m_document->page(0)->annotations().isEmpty());
+    part.m_document->redo();
+    QCOMPARE(part.m_document->page(0)->annotations().size(), 1);
+    annotation = part.m_document->page(0)->annotations().constFirst();
+    QVERIFY(readingViewRectClose(annotation->boundingRectangle(), originalRectangle));
+    QVERIFY(QMetaObject::invokeMethod(view, "slotSetMouseNormal"));
+    AnnotationPopup clipboard(part.m_document, AnnotationPopup::SingleAnnotationMode, part.widget());
+    clipboard.addAnnotation(annotation, 0);
+    clipboard.doCopyAnnotation({annotation, 0});
+    QVERIFY(AnnotationPopup::clipboardHasAnnotations());
+    QAction *paste = part.actionCollection()->action(QStringLiteral("annotation_paste"));
+    QVERIFY(paste);
+    QTRY_VERIFY(paste->isEnabled());
+    QTest::mouseMove(canvas, canvas->rect().center());
+    paste->trigger();
+    QTRY_COMPARE(part.m_document->page(0)->annotations().size(), 2);
+    QCOMPARE(part.m_document->pages(), 1u); // virtual page 1 must never become source page 1
+    part.m_document->undo();
+    QCOMPARE(part.m_document->page(0)->annotations().size(), 1);
+    part.m_document->redo();
+    QCOMPARE(part.m_document->page(0)->annotations().size(), 2);
+    view->goToDisplayedPage(0);
+    QCOMPARE(part.m_document->page(0)->annotations().size(), 2);
+    view->setReadingViewMode(false);
+    QCOMPARE(part.m_document->page(0)->annotations().size(), 2);
+    QVERIFY(readingViewRectClose(part.m_document->page(0)->annotations().constFirst()->boundingRectangle(), originalRectangle));
+    QVERIFY2(part.m_document->saveChanges(saved, &error), qPrintable(error));
+    Part reopened(nullptr, {});
+    QVERIFY(openDocument(&reopened, saved));
+    QCOMPARE(reopened.m_document->page(0)->annotations().size(), 2);
+    const auto restored = reopened.m_document->page(0)->annotations().constFirst()->boundingRectangle();
+    QVERIFY(qAbs(restored.left - originalRectangle.left) < 1e-5);
+    QVERIFY(qAbs(restored.top - originalRectangle.top) < 1e-5);
+    QVERIFY(qAbs(restored.right - originalRectangle.right) < 1e-5);
+    QVERIFY(qAbs(restored.bottom - originalRectangle.bottom) < 1e-5);
+    part.m_document->setRotation(Okular::Rotation0);
+}
+
+void PartTest::testReadingViewModeFormReplicas()
+{
+    Part part(nullptr, {});
+    QVERIFY(openDocument(&part, QStringLiteral(KDESRCDIR "data/formSamples.pdf")));
+    part.m_document->setRotation(Okular::Rotation0);
+    FormFieldButton *field = nullptr;
+    for (FormField *candidate : part.m_document->page(0)->formFields()) {
+        auto *button = dynamic_cast<FormFieldButton *>(candidate);
+        if (button && button->buttonType() == FormFieldButton::CheckBox && !button->isReadOnly() && button->isVisible()) {
+            field = button;
+            break;
+        }
+    }
+    QVERIFY(field);
+    const bool initial = field->state();
+    QString error;
+    const QList<ReadingView> definitions{{QStringLiteral("b99f36a5-bb53-4cf0-9a8e-069b84c4df33"), 1, NormalizedRect(0, 0, 1, 1)},
+                                        {QStringLiteral("488284dd-125e-4c0b-8e72-3169a11ef171"), 2, NormalizedRect(0, 0, 1, 1)}};
+    QVERIFY(part.m_document->setReadingViews(0, definitions, &error));
+    part.widget()->resize(1200, 900);
+    part.widget()->show();
+    QVERIFY(QTest::qWaitForWindowExposed(part.widget()));
+    PageView *view = part.m_pageView;
+    Okular::View *capabilities = view;
+    capabilities->setCapability(Okular::View::ViewModeModality, int(Okular::Settings::EnumViewMode::Facing));
+    capabilities->setCapability(Okular::View::Continuous, true);
+    capabilities->setCapability(Okular::View::ZoomModality, int(PageView::ZoomFitPage));
+    view->setReadingViewMode(true);
+    view->goToDisplayedPage(0);
+    QAction *forms = part.actionCollection()->action(QStringLiteral("view_toggle_forms"));
+    QVERIFY(forms && forms->isEnabled());
+    if (!forms->isChecked()) {
+        forms->trigger();
+    }
+    const auto replicas = [&] {
+        QList<QCheckBox *> result;
+        for (auto *box : view->findChildren<QCheckBox *>()) {
+            const QVariant id = box->property("pdfFormFieldId");
+            if (id.isValid() && id.toInt() == field->id()) {
+                result.append(box);
+            }
+        }
+        return result;
+    };
+    QTRY_COMPARE(replicas().size(), 2);
+    auto boxes = replicas();
+    QTRY_VERIFY(boxes[0]->isVisible() && boxes[1]->isVisible());
+    QVERIFY(boxes[0]->isEnabled() && boxes[1]->isEnabled());
+    QCOMPARE(boxes[0]->isChecked(), initial);
+    QCOMPARE(boxes[1]->isChecked(), initial);
+    QTest::mouseClick(boxes[1], Qt::LeftButton);
+    QTRY_COMPARE(field->state(), !initial);
+    QTRY_COMPARE(boxes[0]->isChecked(), !initial);
+    QTRY_COMPARE(boxes[1]->isChecked(), !initial);
+    part.m_document->undo();
+    QTRY_COMPARE(field->state(), initial);
+    QTRY_COMPARE(boxes[0]->isChecked(), initial);
+    QTRY_COMPARE(boxes[1]->isChecked(), initial);
+    part.m_document->redo();
+    QTRY_COMPARE(field->state(), !initial);
+    QTRY_COMPARE(boxes[0]->isChecked(), !initial);
+    QTRY_COMPARE(boxes[1]->isChecked(), !initial);
+    QVERIFY(view->readingViewMode());
+    capabilities->setCapability(Okular::View::ViewModeModality, int(Okular::Settings::EnumViewMode::Single));
+    view->setReadingViewMode(false);
+}
+
+void PartTest::testUnifiedEditingModes()
+{
+    QTemporaryDir dir;
+    const QString input = dir.filePath(QStringLiteral("modes.pdf"));
+    QVERIFY(writeReadingViewFixture(input, 0, {}, true));
+    Part part(nullptr, {});
+    QVERIFY(openDocument(&part, input));
+    part.widget()->resize(1100, 800);
+    part.widget()->show();
+    QVERIFY(QTest::qWaitForWindowExposed(part.widget()));
+    auto *selector = qobject_cast<KSelectAction *>(part.actionCollection()->action(QStringLiteral("editing_mode_selector")));
+    QVERIFY(selector);
+    QCOMPARE(selector->actions().size(), 5);
+    QCOMPARE(selector->currentItem(), int(EditingMode::Reading));
+    auto *named = part.actionCollection()->action(QStringLiteral("advanced_add_named_destination"));
+    auto *ocr = part.actionCollection()->action(QStringLiteral("advanced_recognize_english_text"));
+    auto *ocrEdit = part.actionCollection()->action(QStringLiteral("advanced_edit_ocr_text"));
+    auto *insert = part.actionCollection()->action(QStringLiteral("tools_insert_page"));
+    auto *draw = part.actionCollection()->action(QStringLiteral("advanced_add_reading_view"));
+    auto *apply = part.actionCollection()->action(QStringLiteral("view_apply_views_to_document"));
+    auto *highlight = part.actionCollection()->action(QStringLiteral("annotation_highlighter"));
+    QVERIFY(named && ocr && ocrEdit && insert && draw && apply && highlight);
+    QVERIFY(!part.actionCollection()->action(QStringLiteral("view_toggle_named_destinations"))->isVisible());
+    QString error;
+    const QList<ReadingView> views{{QStringLiteral("b99f36a5-bb53-4cf0-9a8e-069b84c4df33"), 1, NormalizedRect(.05, .1, .45, .4)}};
+    QVERIFY(part.m_document->setReadingViews(0, views, &error));
+    PageView *main = part.m_pageView;
+    main->setReadingViewMode(true);
+    highlight->trigger();
+    QVERIFY(highlight->isChecked());
+    QSignalSpy created(main, SIGNAL(createReadingViewRequested(int,QRectF)));
+    for (EditingMode mode : {EditingMode::CrossReferences, EditingMode::Ocr, EditingMode::Pages, EditingMode::Views, EditingMode::Reading}) {
+        selector->actions().at(int(mode))->trigger();
+        QCOMPARE(part.m_editingMode, mode);
+        QCOMPARE(selector->currentItem(), int(mode));
+        QCOMPARE(main->namedDestinationsVisible(), mode == EditingMode::CrossReferences);
+        QCOMPARE(main->ocrModeEnabled(), mode == EditingMode::Ocr);
+        QCOMPARE(main->readingViewEditingEnabled(), mode == EditingMode::Views);
+        QCOMPARE(named->isVisible(), mode == EditingMode::CrossReferences);
+        QCOMPARE(ocr->isVisible(), mode == EditingMode::Ocr);
+        QCOMPARE(ocrEdit->isVisible(), mode == EditingMode::Ocr);
+        QCOMPARE(insert->isVisible(), mode == EditingMode::Pages);
+        QCOMPARE(draw->isVisible(), mode == EditingMode::Views);
+        QCOMPARE(apply->isVisible(), mode == EditingMode::Views);
+        QVERIFY(main->readingViewMode());
+        QVERIFY(!main->isOcrTextEditing());
+        QVERIFY(highlight->isEnabled());
+        QVERIFY(highlight->isChecked()); // changing task groups does not select another mouse tool
+        QCOMPARE(part.m_document->readingViews(0), views);
+    }
+    QCOMPARE(created.count(), 0);
+    selector->actions().at(int(EditingMode::Views))->trigger();
+    QSignalSpy drawingCancelled(main, SIGNAL(readingViewCreationCancelled()));
+    draw->trigger();
+    const int previousCancellationCount = drawingCancelled.count();
+    selector->actions().at(int(EditingMode::CrossReferences))->trigger();
+    QVERIFY(drawingCancelled.count() > previousCancellationCount);
+    QCOMPARE(part.m_document->readingViews(0), views);
+    QSignalSpy namingCancelled(main, SIGNAL(namedDestinationCreationCancelled()));
+    named->trigger();
+    selector->actions().at(int(EditingMode::Ocr))->trigger();
+    QVERIFY(namingCancelled.count() > 0);
+    QVERIFY(!main->isOcrTextEditing());
+
+    // New frames inherit the task mode, while their reading projection is independent.
+    selector->actions().at(int(EditingMode::Views))->trigger();
+    auto *openAuxiliary = part.actionCollection()->action(QStringLiteral("open_auxiliary_view"));
+    QVERIFY(openAuxiliary && openAuxiliary->isEnabled());
+    openAuxiliary->trigger();
+    QTRY_COMPARE(part.m_documentWorkspace->auxiliaryViewCount(), 1);
+    PageView *auxiliary = part.m_documentWorkspace->auxiliaryViews().constFirst();
+    QVERIFY(auxiliary->readingViewEditingEnabled());
+    auxiliary->setReadingViewMode(false);
+    for (EditingMode mode : {EditingMode::Ocr, EditingMode::CrossReferences, EditingMode::Pages, EditingMode::Views, EditingMode::Reading}) {
+        selector->actions().at(int(mode))->trigger();
+        for (PageView *frame : {main, auxiliary}) {
+            QCOMPARE(frame->ocrModeEnabled(), mode == EditingMode::Ocr);
+            QCOMPARE(frame->namedDestinationsVisible(), mode == EditingMode::CrossReferences);
+            QCOMPARE(frame->readingViewEditingEnabled(), mode == EditingMode::Views);
+            QVERIFY(!frame->isOcrTextEditing());
+        }
+        QVERIFY(main->readingViewMode());
+        QVERIFY(!auxiliary->readingViewMode());
+        QCOMPARE(selector->currentItem(), int(mode));
+    }
+}
+
+void PartTest::testToolbarButtonHeights_data()
+{
+    QTest::addColumn<int>("iconSize");
+    QTest::addColumn<int>("pointSize");
+    QTest::addColumn<int>("buttonStyle");
+    for (int icon : {16, 24}) {
+        for (int font : {9, 13}) {
+            for (int style : {int(Qt::ToolButtonIconOnly), int(Qt::ToolButtonTextBesideIcon)}) {
+                QTest::newRow(qPrintable(QStringLiteral("icon%1-font%2-style%3").arg(icon).arg(font).arg(style))) << icon << font << style;
+            }
+        }
+    }
+}
+
+void PartTest::testToolbarButtonHeights()
+{
+    QFETCH(int, iconSize);
+    QFETCH(int, pointSize);
+    QFETCH(int, buttonStyle);
+    QToolBar toolbar;
+    toolbar.resize(900, 100);
+    toolbar.setIconSize(QSize(iconSize, iconSize));
+    toolbar.setToolButtonStyle(Qt::ToolButtonStyle(buttonStyle));
+    QFont font = toolbar.font();
+    font.setPointSize(pointSize);
+    toolbar.setFont(font);
+    QPixmap pixmap(24, 24);
+    pixmap.fill(Qt::blue);
+    auto *reference = toolbar.addAction(QIcon(pixmap), QStringLiteral("Pin"));
+    auto *edit = toolbar.addAction(QStringLiteral("编辑 View"));
+    edit->setCheckable(true);
+    auto *draw = toolbar.addAction(QIcon(pixmap), QStringLiteral("画 View"));
+    auto *modeCombo = new QComboBox(&toolbar);
+    modeCombo->addItems({QStringLiteral("阅读 / 批注"), QStringLiteral("交叉引用"), QStringLiteral("OCR")});
+    toolbar.addWidget(modeCombo);
+    auto *referenceButton = qobject_cast<QToolButton *>(toolbar.widgetForAction(reference));
+    auto *editButton = qobject_cast<QToolButton *>(toolbar.widgetForAction(edit));
+    auto *drawButton = qobject_cast<QToolButton *>(toolbar.widgetForAction(draw));
+    QVERIFY(referenceButton && editButton && drawButton);
+    const int editWidth = editButton->sizeHint().width();
+    ToolbarButtonHeight::install(&toolbar);
+    ToolbarButtonHeight::install(&toolbar); // activation of another tab is idempotent
+    toolbar.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&toolbar));
+    const auto aligned = [&] {
+        const int height = referenceButton->height();
+        const int center = referenceButton->mapTo(&toolbar, QPoint(0, height / 2)).y();
+        for (auto *button : {referenceButton, editButton, drawButton}) {
+            if (button->height() != height || height < button->sizeHint().height()
+                || button->mapTo(&toolbar, QPoint(0, button->height() / 2)).y() != center) return false;
+        }
+        return modeCombo->height() == height && modeCombo->sizeHint().height() <= height
+            && modeCombo->mapTo(&toolbar, QPoint(0, height / 2)).y() == center;
+    };
+    QTRY_VERIFY(aligned());
+    QVERIFY(edit->icon().isNull()); // no replacement icon or text removal to mask the height mismatch
+    QCOMPARE(edit->text(), QStringLiteral("编辑 View"));
+    QCOMPARE(editButton->sizeHint().width(), editWidth);
+    QCOMPARE(editButton->toolButtonStyle(), Qt::ToolButtonStyle(buttonStyle));
+    QTest::mouseClick(editButton, Qt::LeftButton);
+    QVERIFY(edit->isChecked());
+    draw->setVisible(false);
+    draw->setVisible(true);
+    font.setPointSize(pointSize + 3);
+    toolbar.setFont(font);
+    toolbar.setIconSize(QSize(iconSize + 8, iconSize + 8));
+    QTRY_VERIFY(aligned());
+    auto *late = toolbar.addAction(QStringLiteral("Later text button"));
+    auto *lateButton = qobject_cast<QToolButton *>(toolbar.widgetForAction(late));
+    QVERIFY(lateButton);
+    QTRY_COMPARE(lateButton->height(), referenceButton->height());
+}
+
+void PartTest::testReadingViewNativeRaster()
+{
+    QTemporaryDir dir;
+    const QString input = dir.filePath(QStringLiteral("native-raster.pdf"));
+    QVERIFY(writeReadingViewFixture(input, 0, {}, true));
+    Part part(nullptr, {});
+    QVERIFY(openDocument(&part, input));
+    part.m_document->setRotation(Okular::Rotation0);
+    QString error;
+    const QList<ReadingView> definitions{{QStringLiteral("b99f36a5-bb53-4cf0-9a8e-069b84c4df33"), 1, NormalizedRect(.12, .55, .15, .65)},
+                                        {QStringLiteral("488284dd-125e-4c0b-8e72-3169a11ef171"), 2, NormalizedRect(0, 0, 1, 1)}};
+    QVERIFY(part.m_document->setReadingViews(0, definitions, &error));
+    part.widget()->resize(1200, 850);
+    part.widget()->show();
+    QVERIFY(QTest::qWaitForWindowExposed(part.widget()));
+    PageView *view = part.m_pageView;
+    Okular::View *capabilities = view;
+    capabilities->setCapability(Okular::View::ViewModeModality, int(Okular::Settings::EnumViewMode::Facing));
+    capabilities->setCapability(Okular::View::Continuous, true);
+    capabilities->setCapability(Okular::View::ZoomModality, int(PageView::ZoomFitPage));
+    ReadingRenderTrace trace;
+    view->setReadingViewMode(true);
+    view->goToDisplayedPage(0);
+    QTRY_VERIFY(view->displayedPagePixmapObserver(0));
+    QTRY_VERIFY(view->displayedPagePixmapObserver(1));
+    QVERIFY(view->displayedPagePixmapObserver(0) != view->displayedPagePixmapObserver(1));
+    const double dpr = view->devicePixelRatioF();
+    const auto ready = [&](int index, const NormalizedRect &region) {
+        const QSize size = view->displayedPageUncroppedSize(index);
+        auto *observer = view->displayedPagePixmapObserver(index);
+        return observer && !size.isEmpty() && part.m_document->page(0)->hasPixmap(observer, int(std::ceil(size.width() * dpr)), int(std::ceil(size.height() * dpr)), region);
+    };
+    const NormalizedRect tinyInterior(.125, .56, .145, .64);
+    const NormalizedRect wholeInterior(.1, .1, .9, .9);
+    QTRY_VERIFY_WITH_TIMEOUT(ready(0, tinyInterior) && ready(1, wholeInterior), 15000);
+    const QSize nativeSize = view->displayedPageUncroppedSize(0);
+    QVERIFY(double(nativeSize.width()) * nativeSize.height() * dpr * dpr > 16.0 * 1024 * 1024);
+    QVERIFY(readingRenderSubmissions.load() > 0); // validate the instrumentation, not just an empty counter
+    const qint64 budget = qint64(view->viewport()->width()) * view->viewport()->height() * dpr * dpr * 16;
+    QVERIFY2(readingLargestRender.load() <= budget, qPrintable(QString::number(readingLargestRender.load())));
+    // Annotation refresh must retain each observer's own ROI instead of expanding
+    // the tiny View's high-resolution request to the whole source page.
+    auto *annotation = new GeomAnnotation;
+    annotation->setBoundingRectangle(NormalizedRect(.126, .57, .14, .6));
+    annotation->style().setColor(Qt::red);
+    annotation->style().setWidth(2);
+    part.m_document->addPageAnnotation(0, annotation);
+    QTRY_VERIFY_WITH_TIMEOUT(ready(0, tinyInterior) && ready(1, wholeInterior), 15000);
+    QVERIFY(readingLargestRender.load() <= budget);
+    part.m_document->undo();
+    QTRY_VERIFY_WITH_TIMEOUT(ready(0, tinyInterior) && ready(1, wholeInterior), 15000);
+    QVERIFY(readingLargestRender.load() <= budget);
+    qInfo() << "View native raster DPR" << dpr << "uncropped" << nativeSize
+            << "actual generator submissions" << readingRenderSubmissions.load() << "largest raster pixels" << readingLargestRender.load();
+    view->setReadingViewMode(false);
+    QCoreApplication::processEvents();
+}
+
+void PartTest::testReadingViewHighlightInteraction_data()
+{
+    QTest::addColumn<int>("viewCount");
+    QTest::newRow("two-views") << 2;
+    QTest::newRow("thousand-views") << 1000;
+}
+
+void PartTest::testReadingViewHighlightInteraction()
+{
+    QFETCH(int, viewCount);
+    QTemporaryDir dir;
+    const QString input = dir.filePath(QStringLiteral("highlight-performance.pdf"));
+    QVERIFY(writeReadingViewFixture(input, 0, {}, true));
+    Part part(nullptr, {});
+    QVERIFY(openDocument(&part, input));
+    part.m_document->setRotation(Okular::Rotation0);
+    QString error;
+    QList<ReadingView> definitions{{QStringLiteral("b99f36a5-bb53-4cf0-9a8e-069b84c4df33"), 1, NormalizedRect(.05, .1, .45, .4)},
+                                  {QStringLiteral("488284dd-125e-4c0b-8e72-3169a11ef171"), 2, NormalizedRect(.05, .1, .45, .4)}};
+    for (int i = 2; i < viewCount; ++i) definitions.append({QUuid::createUuid().toString(QUuid::WithoutBraces), i + 1, definitions[0].rectangle});
+    QVERIFY(part.m_document->setReadingViews(0, definitions, &error));
+    part.widget()->resize(1200, 850);
+    part.widget()->show();
+    QVERIFY(QTest::qWaitForWindowExposed(part.widget()));
+    PageView *view = part.m_pageView;
+    Okular::View *capabilities = view;
+    capabilities->setCapability(Okular::View::ViewModeModality, int(Okular::Settings::EnumViewMode::Facing));
+    capabilities->setCapability(Okular::View::Continuous, true);
+    capabilities->setCapability(Okular::View::ZoomModality, int(PageView::ZoomFitPage));
+    view->setReadingViewMode(true);
+    view->goToDisplayedPage(0);
+    const double dpr = view->devicePixelRatioF();
+    const auto ready = [&] {
+        int visible = 0;
+        for (int i = 0; i < viewCount; ++i) {
+            auto *observer = view->displayedPagePixmapObserver(i);
+            if (!observer) continue;
+            ++visible;
+            NormalizedRect region;
+            if (!observer->visiblePixmapRect(0, &region)) return false;
+            const QSize size = view->displayedPageUncroppedSize(i);
+            if (!part.m_document->page(0)->hasPixmap(observer, int(std::ceil(size.width() * dpr)), int(std::ceil(size.height() * dpr)), region)) return false;
+        }
+        return visible >= 2;
+    };
+    QTRY_VERIFY_WITH_TIMEOUT(ready(), 15000);
+    part.m_document->requestTextPage(0);
+    QTRY_VERIFY(part.m_document->page(0)->hasTextPage());
+    QWidget *canvas = view->viewport();
+    const auto pointAt = [&](double nx, double ny) {
+        QPoint best(-1, -1);
+        double distance = 1e20;
+        for (int y = 3; y < canvas->height() - 3; y += 3) {
+            for (int x = 3; x < canvas->width() / 2; x += 3) {
+                NormalizedPoint point;
+                int page = -1;
+                if (!view->mapGlobalPosToPagePoint(canvas->mapToGlobal(QPoint(x, y)), &page, &point) || page != 0) continue;
+                const double delta = (point.x - nx) * (point.x - nx) + (point.y - ny) * (point.y - ny);
+                if (delta < distance) { distance = delta; best = QPoint(x, y); }
+            }
+        }
+        return distance < .001 ? best : QPoint(-1, -1);
+    };
+    const QPoint begin = pointAt(.072, .22), end = pointAt(.24, .22);
+    QVERIFY(begin.x() >= 0 && end.x() >= 0);
+    auto *highlighter = part.actionCollection()->action(QStringLiteral("annotation_highlighter"));
+    QVERIFY(highlighter && highlighter->isEnabled());
+    highlighter->trigger();
+    QCoreApplication::processEvents();
+    ReadingRenderTrace trace;
+    QTest::mousePress(canvas, Qt::LeftButton, Qt::NoModifier, begin);
+    QList<qint64> timings;
+    for (int i = 1; i <= 200; ++i) {
+        QElapsedTimer timer;
+        timer.start();
+        const QPoint point = begin + (end - begin) * i / 200;
+        QTest::mouseMove(canvas, point, 0);
+        QCoreApplication::sendPostedEvents(nullptr, QEvent::UpdateRequest);
+        QCoreApplication::processEvents();
+        timings.append(timer.nsecsElapsed());
+    }
+    QCOMPARE(readingRenderSubmissions.load(), 0); // preview is not a fresh PDF render per mouse move
+    QTest::mouseRelease(canvas, Qt::LeftButton, Qt::NoModifier, end);
+    QTRY_COMPARE(part.m_document->page(0)->annotations().size(), 1);
+    QCOMPARE(part.m_document->page(0)->annotations().constFirst()->subType(), Annotation::AHighlight);
+    QTRY_VERIFY_WITH_TIMEOUT(ready(), 15000);
+    // Cache dimensions alone do not prove a forced refresh has finished. Check
+    // the highlight pixels in every visible replica, not just the edited one.
+    const auto allHighlighted = [&] {
+        const QImage image = canvas->grab().toImage();
+        for (int column = 0; column < 2; ++column) {
+            bool sawHighlight = false;
+            const int firstX = image.width() * (.5 * column + .035);
+            const int lastX = image.width() * (.5 * column + .24);
+            for (int y = 0; y < image.height(); y += 3) {
+                int black = 0, yellow = 0, samples = 0;
+                for (int x = firstX; x < lastX; x += 3) {
+                    const QColor color = image.pixelColor(x, y);
+                    ++samples;
+                    if (color.red() < 64 && color.green() < 64 && color.blue() < 64) ++black;
+                    if (color.red() > 180 && color.green() > 180 && color.blue() < 180) ++yellow;
+                }
+                // Ignore horizontal page borders, but reject any visible copy
+                // of the fixture's black text that still lacks its highlight.
+                if (black > 3 && black < samples * .75 && yellow < 3) return false;
+                sawHighlight |= yellow > 3;
+            }
+            if (!sawHighlight) return false;
+        }
+        return true;
+    };
+    QTRY_VERIFY_WITH_TIMEOUT(allHighlighted(), 15000);
+    const QString artifacts = qEnvironmentVariable("MENGSHEE_VIEW_RENDERING_ARTIFACTS");
+    if (!artifacts.isEmpty()) {
+        QVERIFY(canvas->grab().save(QDir(artifacts).filePath(QStringLiteral("highlight-dpr-%1-views-%2.png").arg(dpr).arg(viewCount))));
+    }
+    std::sort(timings.begin(), timings.end());
+    qInfo() << "View highlighter count" << viewCount << "DPR" << dpr << "200 moves p50/p95 ms" << timings[100] / 1e6 << timings[190] / 1e6
+            << "generator submissions after release" << readingRenderSubmissions.load();
+    QVERIFY(view->readingViewMode());
+    part.m_document->undo();
+    QVERIFY(part.m_document->page(0)->annotations().isEmpty());
+    QTRY_VERIFY_WITH_TIMEOUT(ready(), 15000);
+    view->setReadingViewMode(false);
+}
+
+void PartTest::testReadingViewTemplateApply()
+{
+    QTemporaryDir dir;
+    const QString input = dir.filePath(QStringLiteral("template.pdf"));
+    QVERIFY(QFile::copy(QStringLiteral(KDESRCDIR "data/simple-multipage.pdf"), input));
+    Part part(nullptr, {});
+    QVERIFY(openDocument(&part, input));
+    part.setEditingMode(EditingMode::Views);
+    part.m_document->setRotation(Okular::Rotation0);
+    auto *applyAction = part.actionCollection()->action(QStringLiteral("view_apply_views_to_document"));
+    QVERIFY(applyAction);
+    QVERIFY(!part.m_advancedModeEnabled);
+    const QList<ReadingView> source{{QStringLiteral("b99f36a5-bb53-4cf0-9a8e-069b84c4df33"), 9, NormalizedRect(.03, .1, .47, .9)},
+                                   {QStringLiteral("488284dd-125e-4c0b-8e72-3169a11ef171"), 2, NormalizedRect(.52, .2, .97, .88)}};
+    const QList<ReadingView> previous{{QStringLiteral("90b59bba-c120-4057-ad74-95b0d64e2016"), 5, NormalizedRect(.1, .1, .9, .9)}};
+    QString error;
+    QVERIFY(part.m_document->setReadingViews(0, source, &error));
+    QVERIFY(part.m_document->setReadingViews(1, previous, &error));
+    const QString sourceToken = part.m_document->readingViewPageToken(0);
+    const QString targetToken = part.m_document->readingViewPageToken(1);
+    QTRY_VERIFY(applyAction->isEnabled());
+    QTimer::singleShot(50, [] {
+        if (auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget())) dialog->reject();
+    });
+    applyAction->trigger();
+    QCOMPARE(part.m_document->readingViews(1), previous); // cancelled overwrite leaves every target intact
+    QVERIFY(part.m_document->readingViews(2).isEmpty());
+    QVERIFY(part.applyReadingViewsToDocument(0));
+    QVERIFY(part.isModified());
+    QCOMPARE(part.m_document->readingViews(0), source);
+    QCOMPARE(part.m_document->readingViewPageToken(1), targetToken);
+    QList<QList<ReadingView>> applied;
+    QSet<QString> ids{source[0].id, source[1].id};
+    const int count = int(part.m_document->pages());
+    QVERIFY(count >= 3);
+    for (int page = 1; page < count; ++page) {
+        const auto definitions = part.m_document->readingViews(page);
+        QCOMPARE(definitions.size(), 2);
+        for (int i = 0; i < 2; ++i) {
+            QCOMPARE(definitions[i].number, source[i].number);
+            QVERIFY(readingViewRectClose(definitions[i].rectangle, source[i].rectangle));
+            QVERIFY(!ids.contains(definitions[i].id));
+            ids.insert(definitions[i].id);
+        }
+        applied.append(definitions);
+    }
+    part.m_document->undo(); // one undo restores all pages, not one page at a time
+    QCOMPARE(part.m_document->readingViews(0), source);
+    QCOMPARE(part.m_document->readingViews(1), previous);
+    for (int page = 2; page < count; ++page) {
+        QVERIFY(part.m_document->readingViews(page).isEmpty());
+    }
+    part.m_document->redo();
+    for (int page = 1; page < count; ++page) {
+        QCOMPARE(part.m_document->readingViews(page), applied[page - 1]);
+    }
+    const QString saved = dir.filePath(QStringLiteral("saved-template.pdf"));
+    QVERIFY(part.saveAs(QUrl::fromLocalFile(saved), Part::NoSaveAsFlags));
+    QVERIFY(!part.isModified());
+    // Retained history resolves page identities after save/reload and a page move.
+    QVERIFY(part.m_document->movePage(0, 2, &error));
+    QCOMPARE(part.m_document->readingViewPageForToken(sourceToken), 2);
+    part.m_document->undo();
+    QCOMPARE(part.m_document->readingViews(2), source);
+    QCOMPARE(part.m_document->readingViews(part.m_document->readingViewPageForToken(targetToken)), previous);
+    part.m_document->redo();
+    QCOMPARE(part.m_document->readingViews(2), source);
+    QCOMPARE(part.m_document->readingViews(part.m_document->readingViewPageForToken(targetToken)), applied[0]);
+    Part reopened(nullptr, {});
+    QVERIFY(openDocument(&reopened, saved));
+    QCOMPARE(reopened.m_document->readingViews(0), source);
+    QCOMPARE(reopened.m_document->readingViews(1), applied[0]);
+}
+
+void PartTest::testReadingViewTemplateRejectsUnsupported()
+{
+    QTemporaryDir dir;
+    const QString plain = dir.filePath(QStringLiteral("plain.pdf"));
+    const QString unknown = dir.filePath(QStringLiteral("unknown.pdf"));
+    const QString combined = dir.filePath(QStringLiteral("combined.pdf"));
+    QVERIFY(writeReadingViewFixture(plain));
+    QVERIFY(writeReadingViewFixture(unknown, 0, "/MengsheeViews << /Version 77 /Items [] >>"));
+    Part part(nullptr, {});
+    QVERIFY(openDocument(&part, plain));
+    QString error;
+    QVERIFY2(part.m_document->combinePdfFiles({plain, plain, unknown}, combined, true, &error), qPrintable(error));
+    QVERIFY(openDocument(&part, combined));
+    part.setEditingMode(EditingMode::Views);
+    const QList<ReadingView> source{{QStringLiteral("b99f36a5-bb53-4cf0-9a8e-069b84c4df33"), 1, NormalizedRect(.1, .1, .45, .9)}};
+    QVERIFY(part.m_document->setReadingViews(0, source, &error));
+    const QString pageOneToken = part.m_document->readingViewPageToken(1);
+    QVERIFY(!part.applyReadingViewsToDocument(0));
+    QCOMPARE(part.m_document->readingViews(0), source);
+    QVERIFY(part.m_document->readingViews(1).isEmpty());
+    QCOMPARE(part.m_document->readingViewPageToken(1), pageOneToken); // no partial application before failure
+    error.clear();
+    part.m_document->readingViews(2, &error);
+    QVERIFY(!error.isEmpty());
+}
+
+void PartTest::testReadingViewsUnsupportedMetadata()
+{
+    QTemporaryDir dir;
+    const QString input = dir.filePath(QStringLiteral("future.pdf"));
+    QVERIFY(writeReadingViewFixture(input, 0, "/MengsheeViews << /Version 999 /Items [] >>"));
+    Part part(nullptr, {});
+    QVERIFY(openDocument(&part, input));
+    QString error;
+    QVERIFY(part.m_document->readingViews(0, &error).isEmpty());
+    QVERIFY(!error.isEmpty());
+    QVERIFY(!part.m_document->setReadingViews(0, {}, &error));
+    QVERIFY(!error.isEmpty());
+}
+
 void PartTest::testDeletePagePreservesInternalLinks()
 {
     QTemporaryDir tempDir;
@@ -4324,7 +5671,7 @@ void PartTest::testOcrTextLayout()
         part.widget()->resize(1100, 800);
         part.widget()->show();
         QVERIFY(QTest::qWaitForWindowExposed(part.widget()));
-        part.actionCollection()->action(QStringLiteral("view_toggle_named_destinations"))->setChecked(true);
+        part.setEditingMode(EditingMode::Ocr);
         part.actionCollection()->action(QStringLiteral("advanced_edit_ocr_text"))->trigger();
         QVERIFY(part.m_pageView->isOcrTextEditing());
         QVERIFY(part.m_pageView->viewport()->grab().save(output + QStringLiteral("-natural.png")));
@@ -4409,7 +5756,9 @@ void PartTest::testOcrTextLayerEditing()
     QVERIFY(recognize && edit);
     QVERIFY(!recognize->isVisible());
     QVERIFY(!edit->isVisible());
-    part.actionCollection()->action(QStringLiteral("view_toggle_named_destinations"))->setChecked(true);
+    part.setEditingMode(EditingMode::Ocr);
+    QVERIFY(!part.m_pageView->namedDestinationsVisible());
+    QVERIFY(!part.m_pageView->isOcrTextEditing()); // mode selection does not start a tool
     QVERIFY(recognize->isVisible());
     QVERIFY(recognize->isEnabled());
     QVERIFY(edit && edit->isEnabled() && edit->isVisible());
@@ -4800,6 +6149,7 @@ void PartTest::testTypewriterAnnotTool()
     QAction *typeWriterAction = part.actionCollection()->action(QStringLiteral("annotation_typewriter"));
     QVERIFY(typeWriterAction);
 
+    const auto existingAnnotations = part.m_document->page(0)->annotations();
     typeWriterAction->trigger();
 
     QTest::qWait(1000); // Wait for the "add new note" dialog to appear
@@ -4807,9 +6157,16 @@ void PartTest::testTypewriterAnnotTool()
 
     QTest::mouseClick(part.m_pageView->viewport(), Qt::LeftButton, Qt::NoModifier, QPoint(width * 0.5, height * 0.2));
 
-    Annotation *annot = part.m_document->page(0)->annotations().constFirst();
-    TextAnnotation *ta = static_cast<TextAnnotation *>(annot);
+    QTRY_COMPARE(part.m_document->page(0)->annotations().size(), existingAnnotations.size() + 1);
+    Annotation *annot = nullptr;
+    for (Annotation *candidate : part.m_document->page(0)->annotations()) {
+        if (!existingAnnotations.contains(candidate)) {
+            annot = candidate;
+            break;
+        }
+    }
     QVERIFY(annot);
+    TextAnnotation *ta = dynamic_cast<TextAnnotation *>(annot);
     QVERIFY(ta);
     QCOMPARE(annot->subType(), Okular::Annotation::AText);
     QCOMPARE(annot->style().color(), QColor(255, 255, 255, 0));

@@ -20,11 +20,15 @@
 #include <KLocalizedString>
 #include <KStandardAction>
 #include <QAction>
+#include <QApplication>
+#include <QScopedValueRollback>
+#include <QSignalBlocker>
 #include <QButtonGroup>
 #include <QEvent>
 #include <QKeyEvent>
 #include <QMenu>
 #include <QPainter>
+#include <QRegion>
 #include <QStylePainter>
 #include <QUrl>
 
@@ -120,6 +124,7 @@ void FormWidgetsController::registerRadioButton(FormWidgetIface *fwButton, Okula
     QList<RadioData>::iterator it = m_radios.begin(), itEnd = m_radios.end();
     const int id = formButton->id();
     m_buttons.insert(id, button);
+    connect(button, &QObject::destroyed, this, [this, id, button] { m_buttons.remove(id, button); });
     for (; it != itEnd; ++it) {
         const RadioData &rd = *it;
         const QList<int>::const_iterator idsIt = std::find(rd.ids.begin(), rd.ids.end(), id);
@@ -140,10 +145,9 @@ void FormWidgetsController::registerRadioButton(FormWidgetIface *fwButton, Okula
     newdata.group->addButton(button);
     newdata.group->setId(button, id);
 
-    // Groups of 1 (like checkboxes) can't be exclusive
-    if (siblings.isEmpty()) {
-        newdata.group->setExclusive(false);
-    }
+    // Exclusivity belongs to logical PDF fields, not to their visual replicas.
+    // Several buttons may represent the same checked field at once.
+    newdata.group->setExclusive(false);
 
     connect(newdata.group, QOverload<QAbstractButton *>::of(&QButtonGroup::buttonClicked), this, &FormWidgetsController::slotButtonClicked);
     m_radios.append(newdata);
@@ -176,41 +180,40 @@ bool FormWidgetsController::shouldFormWidgetBeShown(Okular::FormField *form)
 
 void FormWidgetsController::slotButtonClicked(QAbstractButton *button)
 {
-    int pageNumber = -1;
-    CheckBoxEdit *check = qobject_cast<CheckBoxEdit *>(button);
-    if (check) {
-        // Checkboxes need to be uncheckable so if clicking a checked one
-        // disable the exclusive status temporarily and uncheck it
-        Okular::FormFieldButton *formButton = static_cast<Okular::FormFieldButton *>(check->formField());
-        if (formButton->state()) {
-            const bool wasExclusive = button->group()->exclusive();
-            button->group()->setExclusive(false);
-            check->setChecked(false);
-            button->group()->setExclusive(wasExclusive);
-        }
-        pageNumber = check->pageItem()->pageNumber();
-    } else if (const RadioButtonEdit *radio = qobject_cast<RadioButtonEdit *>(button)) {
-        pageNumber = radio->pageItem()->pageNumber();
+    auto *widget = dynamic_cast<FormWidgetIface *>(button);
+    if (!widget || !widget->pageItem() || !button->group()) {
+        return;
     }
-
-    const QList<QAbstractButton *> buttons = button->group()->buttons();
+    auto *clickedField = static_cast<Okular::FormFieldButton *>(widget->formField());
+    auto *check = qobject_cast<CheckBoxEdit *>(button);
+    const bool newState = check ? !clickedField->state() : true;
+    const bool exclusive = !clickedField->siblings().isEmpty();
+    const auto buttons = button->group()->buttons();
     QList<bool> checked;
     QList<bool> prevChecked;
     QList<Okular::FormFieldButton *> formButtons;
 
-    for (QAbstractButton *btn : buttons) {
-        checked.append(btn->isChecked());
-        Okular::FormFieldButton *formButton = static_cast<Okular::FormFieldButton *>(dynamic_cast<FormWidgetIface *>(btn)->formField());
-        formButtons.append(formButton);
-        prevChecked.append(formButton->state());
+    for (QAbstractButton *replica : buttons) {
+        auto *field = static_cast<Okular::FormFieldButton *>(dynamic_cast<FormWidgetIface *>(replica)->formField());
+        const bool state = field == clickedField ? newState : (exclusive && newState ? false : field->state());
+        // Synchronize replicas before the model notification, without generating
+        // another user operation for the same field.
+        const QSignalBlocker blocker(replica);
+        replica->setChecked(state);
+        if (!formButtons.contains(field)) {
+            formButtons.append(field);
+            checked.append(state);
+            prevChecked.append(field->state());
+        }
     }
-    if (checked != prevChecked) {
-        Q_EMIT formButtonsChangedByWidget(pageNumber, formButtons, checked);
+    {
+        const QScopedValueRollback<bool> handlingClick(m_handlingButtonClick, true);
+        if (checked != prevChecked) {
+            Q_EMIT formButtonsChangedByWidget(widget->pageItem()->pageNumber(), formButtons, checked);
+        }
     }
     if (check) {
-        // The formButtonsChangedByWidget signal changes the value of the underlying
-        // Okular::FormField of the checkbox. We need to execute the activation
-        // action after this.
+        // Run once for the logical click, after the underlying field is updated.
         check->doActivateAction();
     }
 }
@@ -219,26 +222,31 @@ void FormWidgetsController::slotFormButtonsChangedByUndoRedo(int pageNumber, con
 {
     QList<int> extraPages;
     for (const Okular::FormFieldButton *formButton : formButtons) {
-        int id = formButton->id();
-        QAbstractButton *button = m_buttons[id];
-        int itemPageNumber = -1;
-        if (const CheckBoxEdit *check = qobject_cast<CheckBoxEdit *>(button)) {
-            itemPageNumber = check->pageItem()->pageNumber();
-            Q_EMIT refreshFormWidget(check->formField());
-        } else if (const RadioButtonEdit *radio = qobject_cast<RadioButtonEdit *>(button)) {
-            itemPageNumber = radio->pageItem()->pageNumber();
+        const auto replicas = m_buttons.values(formButton->id());
+        if (replicas.isEmpty()) {
+            continue;
         }
-        // temporarily disable exclusiveness of the button group
-        // since it breaks doing/redoing steps into which all the checkboxes
-        // are unchecked
-        const bool wasExclusive = button->group()->exclusive();
-        button->group()->setExclusive(false);
-        bool checked = formButton->state();
-        button->setChecked(checked);
-        button->group()->setExclusive(wasExclusive);
-        button->setFocus();
-        if (itemPageNumber != -1 && itemPageNumber != pageNumber) {
-            extraPages << itemPageNumber;
+        QAbstractButton *focusTarget = replicas.first();
+        for (QAbstractButton *button : replicas) {
+            if (button->hasFocus()) {
+                focusTarget = button;
+            }
+        }
+        if (auto *check = qobject_cast<CheckBoxEdit *>(focusTarget)) {
+            // One model notification fans out to every instance of this field.
+            Q_EMIT refreshFormWidget(check->formField());
+        }
+        for (QAbstractButton *button : replicas) {
+            const auto *widget = dynamic_cast<FormWidgetIface *>(button);
+            const int itemPageNumber = widget && widget->pageItem() ? widget->pageItem()->pageNumber() : -1;
+            const QSignalBlocker blocker(button);
+            button->setChecked(formButton->state());
+            if (itemPageNumber != -1 && itemPageNumber != pageNumber && !extraPages.contains(itemPageNumber)) {
+                extraPages << itemPageNumber;
+            }
+        }
+        if (!m_handlingButtonClick) {
+            focusTarget->setFocus();
         }
     }
     Q_EMIT changed(pageNumber);
@@ -323,6 +331,7 @@ FormWidgetIface::FormWidgetIface(QWidget *w, Okular::FormField *ff)
     , m_widget(w)
     , m_pageItem(nullptr)
 {
+    m_widget->setProperty("pdfFormFieldId", m_ff->id());
     if (!m_ff->uiName().isEmpty()) {
         m_widget->setToolTip(m_ff->uiName());
     }
@@ -370,6 +379,7 @@ void FormWidgetIface::setPageItem(PageViewItem *pageItem)
 void FormWidgetIface::setFormField(Okular::FormField *field)
 {
     m_ff = field;
+    m_widget->setProperty("pdfFormFieldId", field->id());
 }
 
 Okular::FormField *FormWidgetIface::formField() const
@@ -394,9 +404,51 @@ void FormWidgetIface::slotRefresh(Okular::FormField *form)
     if (m_ff != form) {
         return;
     }
-    setVisibility(form->isVisible() && m_controller->shouldFormWidgetBeShown(form));
+    bool visible = form->isVisible() && m_controller->shouldFormWidgetBeShown(form);
+    if (m_pageItem) {
+        visible = visible && m_pageItem->isVisible();
+        QWidget *viewport = m_widget->parentWidget();
+        auto *view = viewport ? qobject_cast<PageView *>(viewport->parentWidget()) : nullptr;
+        if (view) {
+            const QRect itemRect = m_pageItem->croppedGeometry().translated(-view->contentAreaPosition());
+            const QRect clipped = m_widget->geometry().intersected(itemRect);
+            visible = visible && !clipped.isEmpty();
+            if (!clipped.isEmpty()) {
+                m_widget->setMask(QRegion(clipped.translated(-m_widget->pos())));
+            }
+        }
+    }
+    setVisibility(visible);
 
     m_widget->setEnabled(!form->isReadOnly());
+}
+
+bool FormWidgetIface::shouldProcessFieldActions(bool onlyWhenUnfocused) const
+{
+    if (!onlyWhenUnfocused && m_controller->m_handlingButtonClick) {
+        return false;
+    }
+    // Replicas share a field and controller, but are separate viewport children.
+    // Visual synchronization must not execute field scripts once per replica.
+    QWidget *parent = m_widget->parentWidget();
+    if (!parent) {
+        return !onlyWhenUnfocused || !m_widget->hasFocus();
+    }
+    const FormWidgetIface *representative = nullptr;
+    const auto widgets = parent->findChildren<QWidget *>(QString(), Qt::FindDirectChildrenOnly);
+    for (QWidget *widget : widgets) {
+        const auto *replica = dynamic_cast<FormWidgetIface *>(widget);
+        if (!replica || replica->m_ff != m_ff || replica->m_controller != m_controller) {
+            continue;
+        }
+        if (!representative) {
+            representative = replica;
+        }
+        if (onlyWhenUnfocused && (widget->hasFocus() || widget->isAncestorOf(QApplication::focusWidget()))) {
+            return false;
+        }
+    }
+    return !representative || representative == this;
 }
 
 PushButtonEdit::PushButtonEdit(Okular::FormFieldButton *button, PageView *pageView)
@@ -449,7 +501,9 @@ void CheckBoxEdit::slotRefresh(Okular::FormField *form)
     bool newState = button->state();
     if (oldState != newState) {
         setChecked(button->state());
-        doActivateAction();
+        if (shouldProcessFieldActions()) {
+            doActivateAction();
+        }
     }
 }
 
@@ -505,7 +559,7 @@ void RadioButtonEdit::slotRefresh(Okular::FormField *form)
     bool newState = button->state();
     if (oldState != newState) {
         setChecked(button->state());
-        if (form->activationAction()) {
+        if (form->activationAction() && shouldProcessFieldActions()) {
             m_controller->signalAction(form->activationAction());
         }
     }
@@ -688,7 +742,7 @@ void FormLineEdit::slotHandleTextChangedByUndoRedo(int pageNumber, Okular::FormF
     m_prevAnchorPos = anchorPos;
 
     // If the contents of the box have already lost focus, we need to run all the keystroke, validation, formatting scripts again.
-    if (!hasFocus()) { // if lineEdit already had focus, undoing/redoing will still retain the focus and these scripts would execute when focus is lost or enter key is pressed.
+    if (shouldProcessFieldActions(true)) { // An editing replica runs these scripts on focus loss or Enter instead.
         m_controller->document()->processKVCFActions(textForm);
     }
 }
@@ -821,7 +875,7 @@ void TextAreaEdit::slotHandleTextChangedByUndoRedo(int pageNumber, Okular::FormF
     setTextCursor(c);
 
     // If the contents of the box have already lost focus, we need to run all the keystroke, validation, formatting scripts again.
-    if (!hasFocus()) { // if lineEdit already had focus, undoing/redoing will still retain the focus and these scripts would execute when focus is lost or enter key is pressed.
+    if (shouldProcessFieldActions(true)) { // An editing replica runs these scripts on focus loss or Enter instead.
         m_controller->document()->processKVCFActions(textForm);
     }
 }
@@ -970,7 +1024,9 @@ void FileEdit::slotHandleFileChangedByUndoRedo(int pageNumber, Okular::FormField
     connect(lineEdit(), &QLineEdit::cursorPositionChanged, this, &FileEdit::slotChanged);
     m_prevCursorPos = cursorPos;
     m_prevAnchorPos = anchorPos;
-    setFocus();
+    if (shouldProcessFieldActions(true)) {
+        setFocus();
+    }
 }
 
 ListEdit::ListEdit(Okular::FormFieldChoice *choice, PageView *pageView)
@@ -1033,7 +1089,9 @@ void ListEdit::slotHandleFormListChangedByUndoRedo(int pageNumber, Okular::FormF
     }
     connect(this, &QListWidget::itemSelectionChanged, this, &ListEdit::slotSelectionChanged);
 
-    setFocus();
+    if (shouldProcessFieldActions(true)) {
+        setFocus();
+    }
 }
 
 void ListEdit::slotRefresh(Okular::FormField *form)
@@ -1162,7 +1220,9 @@ void ComboEdit::slotHandleFormComboChangedByUndoRedo(int pageNumber, Okular::For
     lineEdit()->setCursorPosition(anchorPos);
     lineEdit()->cursorForward(true, cursorPos - anchorPos);
     connect(lineEdit(), &QLineEdit::cursorPositionChanged, this, &ComboEdit::slotValueChanged);
-    setFocus();
+    if (shouldProcessFieldActions(true)) {
+        setFocus();
+    }
 }
 
 void ComboEdit::contextMenuEvent(QContextMenuEvent *event)

@@ -18,6 +18,7 @@
 namespace Okular
 {
 class Page;
+class NormalizedRect;
 
 /**
  * @short Base class for objects being notified when something changes.
@@ -103,6 +104,15 @@ public:
      * Returns true per default.
      */
     virtual bool canUnloadPixmap(int page) const;
+
+    /**
+     * Supplies this observer's visible region in normalized, rotated page
+     * coordinates for pixmap refreshes. Return true to override the document's
+     * shared visible region; an empty rectangle then requests invalidation only,
+     * without rendering. Return false (the default) to retain legacy behavior.
+     * Implementations returning true must initialize @p rect when non-null.
+     */
+    virtual bool visiblePixmapRect(int pageNumber, NormalizedRect *rect) const;
 
     /**
      * This method is called after the current page of the document has been entered.

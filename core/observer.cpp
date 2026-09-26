@@ -47,6 +47,11 @@ bool DocumentObserver::canUnloadPixmap(int) const
     return true;
 }
 
+bool DocumentObserver::visiblePixmapRect(int, NormalizedRect *) const
+{
+    return false;
+}
+
 void DocumentObserver::notifyCurrentPageChanged(int, int)
 {
 }

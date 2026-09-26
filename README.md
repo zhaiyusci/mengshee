@@ -99,6 +99,10 @@ https://github.com/zhaiyusci/mengshee/releases
 - `docs/template-note-pdf-spec.md`
   - PDF representation, JSON payload, expression language, predefined
     variables, and refresh rules for template notes.
+- `docs/editing-modes.md`
+  - Unified task selector for reading/annotations, cross-references, OCR, page editing and View editing; reading projection stays independent.
+- `docs/reading-views.md`
+  - View editing with continuous drawing, automatic numbering and document-wide layout copying; optional page-like display.
 - `docs/page-editing-annotation-model.md`
   - Live document model for page editing and annotation preservation.
 - `README.local-components.md`

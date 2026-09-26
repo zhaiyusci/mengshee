@@ -9,6 +9,9 @@
 #include <QTest>
 
 #include <QMenu>
+#include <QComboBox>
+#include <QToolButton>
+#include <QDir>
 #include <QTabBar>
 #include <QTabWidget>
 #include <QToolBar>
@@ -59,6 +62,7 @@ private Q_SLOTS:
     void init();
     void cleanup();
 
+    void testModeSelectorToolBar();
     void testAnnotationToolBar();
     void testAnnotationToolBar_data();
     void testAnnotationToolBarActionsEnabledState();
@@ -85,7 +89,7 @@ Shell *findShell(Shell *ignore = nullptr)
 void AnnotationToolBarTest::initMain()
 {
     // Ensure consistent configs/caches and Default UI
-    QTemporaryDir homeDir;
+    static QTemporaryDir homeDir;
     Q_ASSERT(homeDir.isValid());
     QByteArray homePath = QFile::encodeName(homeDir.path());
     qputenv("USERPROFILE", homePath);
@@ -97,6 +101,12 @@ void AnnotationToolBarTest::initMain()
 void AnnotationToolBarTest::initTestCase()
 {
     QStandardPaths::setTestModeEnabled(true);
+    const QString iconPath = qEnvironmentVariable("MENGSHEE_TEST_ICON_PATH");
+    if (!iconPath.isEmpty()) {
+        QIcon::setThemeSearchPaths({iconPath});
+        QIcon::setThemeName(QStringLiteral("breeze"));
+        QApplication::setStyle(QStringLiteral("breeze"));
+    }
     // Don't pollute people's okular settings
     Okular::Settings::instance(QStringLiteral("annotationtoolbartest"));
 }
@@ -122,6 +132,99 @@ bool AnnotationToolBarTest::simulateAddPopupAnnotation(Okular::Part *part, int m
     QTest::mouseClick(pageView(part)->viewport(), Qt::LeftButton, Qt::NoModifier, QPoint(mouseX, mouseY));
     bool annotationAdded = partDocument(part)->page(0)->annotations().size() == annotationCount + 1;
     return annotationAdded;
+}
+
+void AnnotationToolBarTest::testModeSelectorToolBar()
+{
+    Okular::Settings::self()->setShellOpenFileInTabs(true);
+    const QString options = ShellUtils::serializeOptions(false, false, false, false, false, QString(), QString(), QString());
+    QCOMPARE(Okular::main({QStringLiteral(KDESRCDIR "data/file1.pdf"), QStringLiteral(KDESRCDIR "data/file2.pdf")}, options), Okular::Success);
+    Shell *shell = findShell();
+    QVERIFY(shell);
+    shell->resize(1400, 850);
+    QVERIFY(QTest::qWaitForWindowExposed(shell));
+    QCOMPARE(shell->m_tabs.size(), 2);
+    shell->m_tabWidget->setCurrentIndex(0);
+    auto *part = dynamic_cast<Okular::Part *>(shell->m_tabs.constFirst().part);
+    QVERIFY(part);
+    auto *toolbar = shell->findChild<QToolBar *>(QStringLiteral("mainToolBar"));
+    auto *tools = shell->findChild<QToolBar *>(QStringLiteral("advancedToolBar"));
+    auto *annotationToolbar = shell->findChild<QToolBar *>(QStringLiteral("annotationToolBar"));
+    auto *mainToolbar = toolbar;
+    QVERIFY(annotationToolbar);
+    QVERIFY(toolbar && tools && mainToolbar);
+    auto *mode = qobject_cast<KSelectAction *>(part->actionCollection()->action(QStringLiteral("editing_mode_selector")));
+    QVERIFY(mode);
+    auto *combo = qobject_cast<QComboBox *>(toolbar->widgetForAction(mode));
+    QVERIFY(combo);
+    QCOMPARE(combo->count(), 5);
+    auto *pin = part->actionCollection()->action(QStringLiteral("open_auxiliary_view"));
+    auto *highlight = part->actionCollection()->action(QStringLiteral("annotation_highlighter"));
+    QVERIFY(pin && highlight);
+    auto *pinButton = qobject_cast<QToolButton *>(toolbar->widgetForAction(pin));
+    QVERIFY(pinButton);
+    QVERIFY(toolbar->actions().indexOf(mode) > toolbar->actions().indexOf(pin));
+    QVERIFY(mainToolbar->actions().contains(mode));
+    QVERIFY(!annotationToolbar->actions().contains(mode));
+    QCOMPARE(mainToolbar->actions().constLast(), mode);
+    QVERIFY(mainToolbar->actions().contains(part->actionCollection()->action(QStringLiteral("view_read_by_views"))));
+    QVERIFY(!part->actionCollection()->action(QStringLiteral("view_edit_views")));
+    QVERIFY(!mainToolbar->actions().contains(part->actionCollection()->action(QStringLiteral("view_toggle_named_destinations"))));
+    highlight->trigger();
+    QVERIFY(highlight->isChecked());
+    // Drive the actual combo, not merely the underlying QAction list.
+    combo->setFocus();
+    QTest::keyClick(combo, Qt::Key_End);
+    for (int index = 4; index >= 0; --index) {
+        QTRY_COMPARE(mode->currentItem(), index);
+        QTRY_COMPARE(combo->currentIndex(), index);
+        QTRY_VERIFY(toolbar->isVisible());
+        QTRY_COMPARE(tools->isVisible(), index != 0);
+        QVERIFY(highlight->isEnabled());
+        QVERIFY(highlight->isChecked());
+        QCOMPARE(pageView(part)->readingViewEditingEnabled(), index == 4);
+        QCOMPARE(pageView(part)->ocrModeEnabled(), index == 2);
+        QCOMPARE(pageView(part)->namedDestinationsVisible(), index == 1);
+        QVERIFY(!pageView(part)->isOcrTextEditing());
+        QTRY_COMPARE(combo->height(), pinButton->height());
+        QTRY_COMPARE(combo->mapTo(toolbar, QPoint(0, combo->height() / 2)).y(), pinButton->mapTo(toolbar, QPoint(0, pinButton->height() / 2)).y());
+        const QString artifacts = qEnvironmentVariable("MENGSHEE_MODE_ARTIFACTS");
+        if (!artifacts.isEmpty()) {
+            QVERIFY(QDir().mkpath(artifacts));
+            QVERIFY(shell->grab().save(QDir(artifacts).filePath(QStringLiteral("mode-%1.png").arg(index))));
+        }
+        if (index) QTest::keyClick(combo, Qt::Key_Up);
+    }
+    // GUI merging must restore each document's mode, not turn it into Reading.
+    mode->actions().at(2)->trigger();
+    shell->m_tabWidget->setCurrentIndex(1);
+    auto *secondPart = dynamic_cast<Okular::Part *>(shell->m_tabs.at(1).part);
+    QVERIFY(secondPart);
+    auto *secondMode = qobject_cast<KSelectAction *>(secondPart->actionCollection()->action(QStringLiteral("editing_mode_selector")));
+    QVERIFY(secondMode);
+    QCOMPARE(secondMode->currentItem(), 0);
+    secondMode->actions().at(3)->trigger();
+    shell->m_tabWidget->setCurrentIndex(0);
+    QCOMPARE(mode->currentItem(), 2);
+    toolbar = shell->findChild<QToolBar *>(QStringLiteral("mainToolBar"));
+    QVERIFY(toolbar); // XMLGUI may replace toolbar widgets while switching clients.
+    auto *restoredCombo = qobject_cast<QComboBox *>(toolbar->widgetForAction(mode));
+    QVERIFY(restoredCombo);
+    QCOMPARE(restoredCombo->currentIndex(), 2);
+    QVERIFY(pageView(part)->ocrModeEnabled());
+    QCOMPARE(secondMode->currentItem(), 3);
+    part->actionCollection()->action(QStringLiteral("open_auxiliary_view"))->trigger();
+    toolbar = shell->findChild<QToolBar *>(QStringLiteral("mainToolBar"));
+    QVERIFY(toolbar);
+    auto *auxiliaryCombo = qobject_cast<QComboBox *>(toolbar->widgetForAction(mode));
+    QVERIFY(auxiliaryCombo);
+    QCOMPARE(auxiliaryCombo->currentIndex(), 2);
+    tools = shell->findChild<QToolBar *>(QStringLiteral("advancedToolBar"));
+    QVERIFY(tools);
+    QTRY_VERIFY(tools->isVisible());
+    pinButton = qobject_cast<QToolButton *>(toolbar->widgetForAction(pin));
+    QVERIFY(pinButton);
+    QTRY_COMPARE(auxiliaryCombo->height(), pinButton->height());
 }
 
 void AnnotationToolBarTest::testAnnotationToolBar()
@@ -178,16 +281,22 @@ void AnnotationToolBarTest::testAnnotationToolBar()
     QCOMPARE(annToolBar->contextMenuPolicy(), Qt::PreventContextMenu);
     QVERIFY(!annToolBar->toggleViewAction()->isVisible());
 
-    QAction *advancedMode = part->actionCollection()->action(QStringLiteral("view_toggle_named_destinations"));
-    QVERIFY(advancedMode);
-    advancedMode->setChecked(true);
-    QTRY_VERIFY(annToolBar->isVisible());
-    QTRY_VERIFY(advancedToolBar->isVisible());
-    QVERIFY(advancedToolBar->geometry().top() > mainToolBar->geometry().top());
-    QCOMPARE(advancedToolBar->geometry().top(), annToolBar->geometry().top());
-    QCOMPARE(advancedToolBar->contextMenuPolicy(), Qt::PreventContextMenu);
-    QVERIFY(!advancedToolBar->toggleViewAction()->isVisible());
-    advancedMode->setChecked(false);
+    auto *mode = qobject_cast<KSelectAction *>(part->actionCollection()->action(QStringLiteral("editing_mode_selector")));
+    QVERIFY(mode);
+    QCOMPARE(mode->actions().size(), 5);
+    QVERIFY(!annToolBar->actions().contains(mode));
+    QVERIFY(mainToolBar->actions().contains(mode));
+    for (int index : {1, 2, 3, 4}) {
+        mode->actions().at(index)->trigger();
+        QTRY_VERIFY(annToolBar->isVisible());
+        QTRY_VERIFY(advancedToolBar->isVisible());
+        QVERIFY(advancedToolBar->geometry().top() > mainToolBar->geometry().top());
+        QCOMPARE(advancedToolBar->geometry().top(), annToolBar->geometry().top());
+        QCOMPARE(advancedToolBar->contextMenuPolicy(), Qt::PreventContextMenu);
+        QVERIFY(!advancedToolBar->toggleViewAction()->isVisible());
+        QVERIFY(aContinuousMode->isEnabled());
+    }
+    mode->actions().at(0)->trigger();
     QTRY_VERIFY(annToolBar->isVisible());
     QTRY_VERIFY(!advancedToolBar->isVisible());
 

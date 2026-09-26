@@ -122,7 +122,7 @@ void PagePainter::paintCroppedPageOnPainter(QPainter *destPainter,
         /** 1B - IF NO PIXMAP, DRAW EMPTY PAGE **/
         const double pixmapRescaleRatio = !pixmap.isNull() ? dScaledWidth / (double)pixmap.width() : -1;
         const long pixmapPixels = !pixmap.isNull() ? (long)pixmap.width() * (long)pixmap.height() : 0;
-        if (pixmap.isNull() || pixmapRescaleRatio > 20.0 || pixmapRescaleRatio < 0.25 || (dScaledWidth > pixmap.width() && pixmapPixels > 60000000L)) {
+        if (pixmap.isNull() || (!(flags & ProjectedViewRaster) && (pixmapRescaleRatio > 20.0 || pixmapRescaleRatio < 0.25 || (dScaledWidth > pixmap.width() && pixmapPixels > 60000000L)))) {
             // draw something on the blank page: the okular icon or a cross (as a fallback)
             if (!busyPixmap()->isNull()) {
                 busyPixmap->setDevicePixelRatio(dpr);
@@ -250,13 +250,27 @@ void PagePainter::paintCroppedPageOnPainter(QPainter *destPainter,
 
                     if (tilePixmap->width() == dTileRect.width() && tilePixmap->height() == dTileRect.height()) {
                         destPainter->drawPixmap(limitsInTile, *tilePixmap, dLimitsInTile.translated(-dTileRect.topLeft()));
+                    } else if (flags & ProjectedViewRaster) {
+                        destPainter->save();
+                        destPainter->setRenderHint(QPainter::SmoothPixmapTransform);
+                        const QTransform scale(double(tilePixmap->width()) / dTileRect.width(), 0, 0, double(tilePixmap->height()) / dTileRect.height(), 0, 0);
+                        destPainter->drawPixmap(limitsInTile, *tilePixmap, scale.mapRect(QRectF(dLimitsInTile.translated(-dTileRect.topLeft()))));
+                        destPainter->restore();
                     } else {
                         destPainter->drawPixmap(tileRect, *tilePixmap, tilePixmap->rect());
                     }
                 }
             }
         } else {
-            destPainter->drawPixmap(limits, pixmap.scaled(dScaledWidth, dScaledHeight), dLimitsInPixmap);
+            if (flags & ProjectedViewRaster) {
+                destPainter->save();
+                destPainter->setRenderHint(QPainter::SmoothPixmapTransform, pixmap.width() != dScaledWidth || pixmap.height() != dScaledHeight);
+                const QTransform scale(double(pixmap.width()) / dScaledWidth, 0, 0, double(pixmap.height()) / dScaledHeight, 0, 0);
+                destPainter->drawPixmap(QRectF(limits), pixmap, scale.mapRect(QRectF(dLimitsInPixmap)));
+                destPainter->restore();
+            } else {
+                destPainter->drawPixmap(limits, pixmap.scaled(dScaledWidth, dScaledHeight), dLimitsInPixmap);
+            }
         }
 
         // 4A.2. active painter is the one passed to this method
@@ -288,14 +302,23 @@ void PagePainter::paintCroppedPageOnPainter(QPainter *destPainter,
                         const double xScale = tilePixmap->width() / (double)dTileRect.width();
                         const double yScale = tilePixmap->height() / (double)dTileRect.height();
                         const QTransform transform(xScale, 0, 0, yScale, 0, 0);
+                        p.save();
+                        if (flags & ProjectedViewRaster) p.setRenderHint(QPainter::SmoothPixmapTransform);
                         p.drawPixmap(limitsInTile.translated(-limits.topLeft()), *tilePixmap, transform.mapRect(dLimitsInTile).translated(-transform.mapRect(dTileRect).topLeft()));
+                        p.restore();
                     }
                 }
             }
         } else {
             // 4B.1. draw the page pixmap: normal or scaled
 
-            p.drawPixmap(QRectF(0, 0, limits.width(), limits.height()), pixmap.scaled(dScaledWidth, dScaledHeight), dLimitsInPixmap);
+            if (flags & ProjectedViewRaster) {
+                p.setRenderHint(QPainter::SmoothPixmapTransform, pixmap.width() != dScaledWidth || pixmap.height() != dScaledHeight);
+                const QTransform scale(double(pixmap.width()) / dScaledWidth, 0, 0, double(pixmap.height()) / dScaledHeight, 0, 0);
+                p.drawPixmap(QRectF(0, 0, limits.width(), limits.height()), pixmap, scale.mapRect(QRectF(dLimitsInPixmap)));
+            } else {
+                p.drawPixmap(QRectF(0, 0, limits.width(), limits.height()), pixmap.scaled(dScaledWidth, dScaledHeight), dLimitsInPixmap);
+            }
         }
 
         p.end();
