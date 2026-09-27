@@ -203,6 +203,15 @@ QString normalizedPdfBase14FontName(const QString &fontName)
 struct ParsedLatexNoteData {
     bool valid = false;
     QString type;
+    int order = 0;
+    int id = 0;
+    QString label;
+    Okular::Annotation::LatexNoteType noteType() const
+    {
+        if (type == QLatin1String("numbered-callout") || type == QLatin1String("ordered-callout")) return Okular::Annotation::LatexNoteOrderedCallout;
+        if (type == QLatin1String("callout")) return Okular::Annotation::LatexNoteCallout;
+        return type == QLatin1String("boxed") ? Okular::Annotation::LatexNoteBoxed : Okular::Annotation::LatexNotePlain;
+    }
     double layoutWidthPoints = 0.0;
     double paddingPoints = Okular::LatexNoteGeometry::defaultPaddingPoints();
     double fontSizePoints = 0.0;
@@ -337,8 +346,22 @@ ParsedLatexNoteData parseLatexNoteData(const QString &json)
     }
 
     const QString type = root.value(QStringLiteral("type")).toString();
-    if (type != QLatin1String("plain") && type != QLatin1String("boxed") && type != QLatin1String("callout")) {
+    if (type != QLatin1String("plain") && type != QLatin1String("boxed") && type != QLatin1String("callout") && type != QLatin1String("ordered-callout") && type != QLatin1String("numbered-callout")) {
         return data;
+    }
+    if (type == QLatin1String("ordered-callout") || type == QLatin1String("numbered-callout")) {
+        const auto positiveInteger = [](const QJsonValue &value) {
+            const double number = value.toDouble(0.0);
+            return value.isDouble() && std::isfinite(number) && number >= 1.0 && number <= std::numeric_limits<int>::max() && std::floor(number) == number ? static_cast<int>(number) : 0;
+        };
+        data.order = positiveInteger(root.value(QStringLiteral("order")));
+        data.id = type == QLatin1String("ordered-callout") && !root.contains(QStringLiteral("id")) ? data.order : positiveInteger(root.value(QStringLiteral("id")));
+        if (data.order == 0 || data.id == 0) return data;
+        if (root.contains(QStringLiteral("label"))) {
+            const QJsonValue label = root.value(QStringLiteral("label"));
+            if (!label.isString() || label.toString().size() > 4096) return data;
+            data.label = label.toString();
+        }
     }
 
     data.valid = true;
@@ -388,8 +411,8 @@ QString latexNoteDataForStampAnnotation(const Okular::StampAnnotation *annotatio
         return QString();
     }
 
-    const QString type =
-        annotation->latexNoteType() == Okular::Annotation::LatexNoteCallout ? QStringLiteral("callout") : (annotation->latexNoteType() == Okular::Annotation::LatexNoteBoxed ? QStringLiteral("boxed") : QStringLiteral("plain"));
+    const QString type = annotation->isNumberedCallout() ? QStringLiteral("numbered-callout")
+        : (annotation->isLatexCallout() ? QStringLiteral("callout") : (annotation->latexNoteType() == Okular::Annotation::LatexNoteBoxed ? QStringLiteral("boxed") : QStringLiteral("plain")));
 
     QJsonObject layout;
     layout.insert(QStringLiteral("widthPt"), annotation->latexLayoutWidth());
@@ -407,10 +430,15 @@ QString latexNoteDataForStampAnnotation(const Okular::StampAnnotation *annotatio
     QJsonObject root;
     root.insert(QStringLiteral("version"), LatexNoteDataVersion);
     root.insert(QStringLiteral("type"), type);
+    if (annotation->isNumberedCallout()) {
+        root.insert(QStringLiteral("id"), annotation->numberedCalloutId());
+        root.insert(QStringLiteral("order"), annotation->orderedCalloutNumber());
+        root.insert(QStringLiteral("label"), annotation->numberedCalloutLabel());
+    }
     root.insert(QStringLiteral("layout"), layout);
     root.insert(QStringLiteral("style"), style);
 
-    if (annotation->latexNoteType() == Okular::Annotation::LatexNoteCallout) {
+    if (annotation->isLatexCallout()) {
         QJsonObject callout;
         callout.insert(QStringLiteral("boxRectPt"), rectToJsonArray(normRectToPageRectF(annotation->boundingRectangle(), page)));
 
@@ -443,7 +471,7 @@ Poppler::StampAnnotation::CustomPdfAppearanceOptions latexStampAppearanceOptions
     QRectF appearanceRectPoints = boxRectPoints;
     const double borderWidth = annotation->style().width();
 
-    if (annotation->latexNoteType() == Okular::Annotation::LatexNoteCallout) {
+    if (annotation->isLatexCallout()) {
         const QPointF pointA = normPointToPagePointF(annotation->latexCalloutPoint(0), page);
         const QPointF pointB = normPointToPagePointF(annotation->latexCalloutPoint(1), page);
         const QPointF pointC = normPointToPagePointF(annotation->latexCalloutPoint(2), page);
@@ -451,6 +479,9 @@ Poppler::StampAnnotation::CustomPdfAppearanceOptions latexStampAppearanceOptions
         appearanceRectPoints = QRectF(QPointF(std::min({boxRectPoints.left(), pointA.x(), pointB.x(), pointC.x()}) - linePadding, std::min({boxRectPoints.top(), pointA.y(), pointB.y(), pointC.y()}) - linePadding),
                                       QPointF(std::max({boxRectPoints.right(), pointA.x(), pointB.x(), pointC.x()}) + linePadding, std::max({boxRectPoints.bottom(), pointA.y(), pointB.y(), pointC.y()}) + linePadding))
                                    .normalized();
+        if (annotation->isOrderedCallout()) {
+            appearanceRectPoints = appearanceRectPoints.united(MengsheeLatexAppearance::orderedCalloutBadgeRect(boxRectPoints, annotation->orderedCalloutNumber(), annotation->numberedCalloutLabel()));
+        }
         if (expandedBoundary) {
             *expandedBoundary = normRectToRectF(pageRectToNormRect(appearanceRectPoints, page->pageSizeF()));
         }
@@ -467,7 +498,7 @@ Poppler::StampAnnotation::CustomPdfAppearanceOptions latexStampAppearanceOptions
     options.frameRect = QRectF(frameX, frameY, frameWidth, frameHeight);
     options.alignContentToFrameTopLeft = true;
     options.contentFrameInset = contentInset;
-    if (annotation->latexNoteType() == Okular::Annotation::LatexNoteBoxed || annotation->latexNoteType() == Okular::Annotation::LatexNoteCallout) {
+    if (annotation->latexNoteType() == Okular::Annotation::LatexNoteBoxed || annotation->isLatexCallout()) {
         options.borderWidth = qMax(0.0, borderWidth);
         options.fillColor = annotation->latexFillColor();
         options.borderColor = annotation->latexBorderColor().isValid() ? annotation->latexBorderColor() : QColor(Qt::black);
@@ -476,7 +507,7 @@ Poppler::StampAnnotation::CustomPdfAppearanceOptions latexStampAppearanceOptions
         options.fillColor = Qt::transparent;
         options.borderColor = Qt::transparent;
     }
-    if (annotation->latexNoteType() == Okular::Annotation::LatexNoteCallout) {
+    if (annotation->isLatexCallout()) {
         QVector<QPointF> leaderLine;
         leaderLine
             << QPointF(normPointToPagePointF(annotation->latexCalloutPoint(0), page).x() - appearanceRectPoints.left(), normPointToPagePointF(annotation->latexCalloutPoint(0), page).y() - appearanceRectPoints.top())
@@ -901,6 +932,10 @@ static bool updatePopplerAnnotationFromOkularAnnotation(const Okular::StampAnnot
 #ifdef POPPLER_QT6_HAS_ANNOTATION_CUSTOM_SCALAR_PROPERTIES
     pStampAnnotation->removeCustomProperty(TemplateNoteDataKey);
     if (oStampAnnotation->isOkularLatex()) {
+        if (document && nativePage >= 0 && oStampAnnotation->isNumberedCallout() && (oStampAnnotation->orderedCalloutNumber() <= 0 || oStampAnnotation->numberedCalloutId() <= 0)) {
+            qCWarning(OkularPdfDebug) << "Numbered callout must receive a positive ID and display order before appearance composition";
+            return false;
+        }
         pStampAnnotation->setCustomStringProperty(LatexNoteDataKey, latexNoteDataForStampAnnotation(oStampAnnotation, page));
         // Creation first populates an untied Qt annotation. Compose only after
         // addAnnotation has bound it to the destination Core document/XRef.
@@ -923,7 +958,9 @@ static bool updatePopplerAnnotationFromOkularAnnotation(const Okular::StampAnnot
             pStampAnnotation->setBoundary(expandedBoundary);
         }
         QString error;
-        const bool updated = MengsheeLatexAppearance::rebuild(document, nativePage, pStampAnnotation, hasSourceFile ? pdfAppearanceFile : QString(), appearanceOptions, preservedRaw, &error);
+        const bool updated = MengsheeLatexAppearance::rebuild(document, nativePage, pStampAnnotation, hasSourceFile ? pdfAppearanceFile : QString(), appearanceOptions, preservedRaw, &error,
+                                                              oStampAnnotation->isOrderedCallout() ? oStampAnnotation->orderedCalloutNumber() : 0,
+                                                              oStampAnnotation->isNumberedCallout() ? oStampAnnotation->numberedCalloutLabel() : QString());
         if (!updated) {
             if (oStampAnnotation->isLatexCallout()) {
                 pStampAnnotation->setBoundary(oldBoundary);
@@ -1751,8 +1788,10 @@ static Okular::Annotation *createAnnotationFromPopplerAnnotation(const Poppler::
     oStampAnn->setOkularLatex(latexNoteData.valid);
     if (latexNoteData.valid) {
         oStampAnn->setStampIconName(QStringLiteral("latex-notes"));
-        oStampAnn->setLatexNoteType(latexNoteData.type == QLatin1String("callout") ? Okular::Annotation::LatexNoteCallout
-                                                                                   : (latexNoteData.type == QLatin1String("boxed") ? Okular::Annotation::LatexNoteBoxed : Okular::Annotation::LatexNotePlain));
+        oStampAnn->setLatexNoteType(latexNoteData.noteType());
+        oStampAnn->setOrderedCalloutNumber(latexNoteData.order);
+        oStampAnn->setNumberedCalloutId(latexNoteData.id);
+        oStampAnn->setNumberedCalloutLabel(latexNoteData.label);
         oStampAnn->setLatexPadding(latexNoteData.paddingPoints);
         oStampAnn->setLatexFontSize(latexNoteData.fontSizePoints);
         oStampAnn->setLatexLayoutWidth(latexNoteData.layoutWidthPoints);
@@ -1760,7 +1799,7 @@ static Okular::Annotation *createAnnotationFromPopplerAnnotation(const Poppler::
         oStampAnn->setLatexFillColor(latexNoteData.fillColor);
         oStampAnn->setLatexBorderColor(latexNoteData.borderColor);
         oStampAnn->style().setWidth(latexNoteData.type == QLatin1String("plain") ? 0.0 : latexNoteData.borderWidthPoints);
-        if (latexNoteData.type == QLatin1String("callout") && latexNoteData.hasNormalizedCalloutPoints) {
+        if (oStampAnn->isLatexCallout() && latexNoteData.hasNormalizedCalloutPoints) {
             for (int i = 0; i < 3; ++i) {
                 oStampAnn->setLatexCalloutPoint(latexNoteData.normalizedCalloutPoints[i], i);
             }
@@ -1961,8 +2000,10 @@ Okular::Annotation *createAnnotationFromPopplerAnnotation(Poppler::Annotation *p
             Poppler::StampAnnotation *pStampAnn = static_cast<Poppler::StampAnnotation *>(popplerAnnotation);
             const ParsedLatexNoteData latexNoteData = parseLatexNoteData(pStampAnn->customStringProperty(LatexNoteDataKey));
             if (latexNoteData.valid) {
-                oStampAnn->setLatexNoteType(latexNoteData.type == QLatin1String("callout") ? Okular::Annotation::LatexNoteCallout
-                                                                                           : (latexNoteData.type == QLatin1String("boxed") ? Okular::Annotation::LatexNoteBoxed : Okular::Annotation::LatexNotePlain));
+                oStampAnn->setLatexNoteType(latexNoteData.noteType());
+                oStampAnn->setOrderedCalloutNumber(latexNoteData.order);
+                oStampAnn->setNumberedCalloutId(latexNoteData.id);
+                oStampAnn->setNumberedCalloutLabel(latexNoteData.label);
                 oStampAnn->setLatexFillColor(latexNoteData.fillColor);
                 oStampAnn->setLatexBorderColor(latexNoteData.borderColor);
                 oStampAnn->setLatexPadding(latexNoteData.paddingPoints);

@@ -6263,6 +6263,194 @@ msgstr "页面编辑"
 msgid "View Editing"
 msgstr "View 编辑"
 
+#: part/part.cpp
+#, kde-format
+msgid "Proofread"
+msgstr "校对"
+
+#: part/annotationactionhandler.cpp
+#, kde-format
+msgctxt "@action:intoolbar Annotation tool"
+msgid "Numbered Callout"
+msgstr "编号引出标注"
+
+#: gui/guiutils.cpp
+#, kde-format
+msgid "Numbered Callout"
+msgstr "编号引出标注"
+
+#: part/annotationactionhandler.cpp
+#, kde-format
+msgctxt "@info:tooltip"
+msgid "Add a Numbered Callout with an automatic Internal ID and displayed number"
+msgstr "添加自动分配内部 ID 和显示序号的编号引出标注"
+
+#: core/document.cpp part/pageviewannotator.cpp
+#, kde-format
+msgid "The Numbered Callout number limit has been reached."
+msgstr "编号引出标注已达到序号上限。"
+
+#: part/annotationpropertiesdialog.cpp
+#, kde-format
+msgid "Internal ID:"
+msgstr "内部 ID："
+
+#: part/annotationpropertiesdialog.cpp
+#, kde-format
+msgid "Displayed number:"
+msgstr "显示序号："
+
+#: part/annotationpropertiesdialog.cpp part/annotationactionhandler.cpp
+#, kde-format
+msgctxt "@info:tooltip"
+msgid "Renumber all Numbered Callouts by page, then Internal ID. Changing an ID does not renumber automatically."
+msgstr "按实际页序、再按内部 ID 重新编排全文编号引出标注的显示序号。修改 ID 不会自动重排，请手动执行全文重新编号。"
+
+#: part/annotationactionhandler.cpp
+#, kde-format
+msgctxt "@action"
+msgid "Renumber Numbered Callouts"
+msgstr "全文重新编号引出标注"
+
+#: part/annotationactionhandler.cpp
+#, kde-format
+msgid "Could not renumber Numbered Callouts. %1"
+msgstr "无法重新编号引出标注。%1"
+
+#: part/annotwindow.cpp
+#, kde-format
+msgctxt "@info:tooltip"
+msgid "Changing the Internal ID does not automatically renumber callouts."
+msgstr "修改内部 ID 不会自动重新编号引出标注。"
+
+#: part/annotationactionhandler.cpp
+#, kde-format
+msgctxt "@action"
+msgid "Numbered Callout Format..."
+msgstr "编号引出标注格式…"
+
+#: part/annotationactionhandler.cpp
+#, kde-format
+msgid "Numbered Callout Format"
+msgstr "编号引出标注格式"
+
+#: part/annotationactionhandler.cpp
+#, kde-format
+msgid "Whole document: 1, 2, 3..."
+msgstr "全文连续：1、2、3…"
+
+#: part/annotationactionhandler.cpp
+#, kde-format
+msgid "Each page: 1, 2, 3..."
+msgstr "每页从 1 开始：1、2、3…"
+
+#: part/annotationactionhandler.cpp
+#, kde-format
+msgid "Page-local: 1-1, 1-2..."
+msgstr "页码-页内序号：1-1、1-2…"
+
+#: part/annotationactionhandler.cpp
+#, kde-format
+msgid "Custom template"
+msgstr "自定义模板"
+
+#: part/annotationactionhandler.cpp
+#, kde-format
+msgid "Use {n} for the number and {page} for the physical page. The template must contain {n}."
+msgstr "用 {n} 表示序号，用 {page} 表示实际页码。模板必须包含 {n}。"
+
+#: part/annotationactionhandler.cpp
+#, kde-format
+msgid "Restart numbering on each page"
+msgstr "每页重新从 1 开始编号"
+
+#: part/annotationactionhandler.cpp
+#, kde-format
+msgid "Template:"
+msgstr "模板："
+
+#: part/annotationactionhandler.cpp
+#, kde-format
+msgid "Examples (page 1, page 1, page 2): %1, %2, %3"
+msgstr "示例（第 1 页、第 1 页、第 2 页）：%1、%2、%3"
+
+#: core/document.cpp
+#, kde-format
+msgid "Change Numbered Callout Format"
+msgstr "更改编号引出标注格式"
+
+#: core/document.cpp
+#, kde-format
+msgid "Could not restore Numbered Callout format. %1"
+msgstr "无法恢复编号引出标注格式。%1"
+
+#: core/document.cpp
+#, kde-format
+msgid "Use at most 256 characters, include {n}, and use only {page} and {n} placeholders without line breaks."
+msgstr "模板最多 256 个字符，必须包含 {n}，仅支持 {page} 和 {n} 占位符，且不能包含换行。"
+
+#: core/document.cpp
+#, kde-format
+msgid "Numbered Callout format cannot be changed in this document."
+msgstr "无法更改此文档的编号引出标注格式。"
+
+#: part/annotationactionhandler.cpp
+#, kde-format
+msgctxt "@action"
+msgid "Export Numbered Callouts to CSV"
+msgstr "将编号引出标注导出为 CSV"
+
+#: part/annotationactionhandler.cpp
+#, kde-format
+msgctxt "@title:window"
+msgid "Export Numbered Callouts to CSV"
+msgstr "将编号引出标注导出为 CSV"
+
+#: part/annotationactionhandler.cpp
+#, kde-format
+msgid "CSV files (*.csv)"
+msgstr "CSV 文件 (*.csv)"
+
+#: part/annotationactionhandler.cpp
+#, kde-format
+msgid "Could not export Numbered Callouts to CSV. %1"
+msgstr "无法将编号引出标注导出为 CSV。%1"
+
+#: core/document.cpp
+#, kde-format
+msgid "Open a document before exporting Numbered Callouts."
+msgstr "请先打开文档，再导出编号引出标注。"
+
+#: core/document.cpp
+#, kde-format
+msgid "Choose a regular output file for the CSV."
+msgstr "请选择普通文件作为 CSV 输出文件。"
+
+#: core/document.cpp
+#, kde-format
+msgid "The CSV must be saved to a different file. Your source document will not be overwritten."
+msgstr "CSV 必须另存为其他文件，不会覆盖源文档。"
+
+#: core/document.cpp part/pageviewannotator.cpp
+#, kde-format
+msgid "The Numbered Callout ID limit has been reached."
+msgstr "编号引出标注已达到内部 ID 上限。"
+
+#: core/document.cpp
+#, kde-format
+msgid "A Numbered Callout has no valid internal ID."
+msgstr "有一个编号引出标注缺少有效的内部 ID。"
+
+#: core/document.cpp
+#, kde-format
+msgid "Cannot renumber a locked or read-only Numbered Callout."
+msgstr "无法为已锁定或只读的编号引出标注重新编号。"
+
+#: core/document.cpp
+#, kde-format
+msgid "Renumber Callouts"
+msgstr "重新编号引出标注"
+
 #: part/part.rc
 #, kde-format
 msgid "Mode Tools"

@@ -569,6 +569,29 @@ public:
      */
     void addPageAnnotation(int page, Annotation *annotation);
 
+    /** Next document-wide Numbered Callout display number, or zero if exhausted. */
+    int nextOrderedCalloutNumber() const;
+    /** Next automatically assigned sorting ID, independent of display numbers. */
+    int nextNumberedCalloutId() const;
+    int nextNumberedCalloutNumber(int page) const;
+    QString numberedCalloutNumberingPattern() const;
+    bool numberedCalloutNumberingRestartsPerPage() const;
+    bool canEditNumberedCalloutNumbering() const;
+    bool canRenderNumberedCalloutNumbering(QString *error = nullptr) const;
+    /** Persist numbering settings and renumber all existing callouts in one undo step. */
+    bool setNumberedCalloutNumbering(const QString &pattern, bool restartPerPage, QString *error = nullptr);
+    /** Renumber by physical page then ID, preserving IDs, in one undo operation.
+     * Equal IDs retain their relative order in the page's annotation list.
+     * Returns false without changes if any affected annotation is not editable.
+     */
+    bool renumberNumberedCallouts(QString *error = nullptr);
+    /** Export all Numbered Callouts as Excel-compatible UTF-8 CSV without edits.
+     * Rows use physical page then current sequence counter; fields are page (1-based),
+     * internal ID, visible label and LaTeX source. Formula-like source and formatted
+     * labels are escaped for spreadsheet safety.
+     */
+    bool exportNumberedCalloutsCsv(const QString &fileName, QString *error = nullptr) const;
+
     /**
      * Returns an opaque copy of the native appearance currently used to draw
      * @p annotation, if the active generator provides one.

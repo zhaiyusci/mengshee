@@ -120,7 +120,8 @@ AnnotationInfo getAnnotationInfo(const Okular::Annotation *ann)
     }
     case Okular::Annotation::AStamp:
         if (ann->isOkularLatex()) {
-            info.caption = ann->isLatexCallout() ? i18n("LaTeX Callout") : (ann->style().width() > 0.0 ? i18n("LaTeX Inline Note") : i18n("LaTeX Note"));
+            info.caption = ann->isNumberedCallout() ? i18n("Numbered Callout")
+                : ann->isLatexCallout() ? i18n("LaTeX Callout") : (ann->style().width() > 0.0 ? i18n("LaTeX Inline Note") : i18n("LaTeX Note"));
             info.iconName = QStringLiteral("text-x-tex");
         } else {
             info.caption = hasComment ? i18n("Stamp with Comment") : i18n("Stamp");

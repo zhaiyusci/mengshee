@@ -30,6 +30,8 @@ class LatexRenderer;
 class KTextEdit;
 class MovableTitle;
 class QCloseEvent;
+class QSpinBox;
+class QLabel;
 class QWidget;
 
 #if HAVE_QSCINTILLA
@@ -71,6 +73,13 @@ private:
     int m_prevCursorPos;
     int m_prevAnchorPos;
     QString m_lastLatexNoteCompileSource;
+    QWidget *m_numberedCalloutControls = nullptr;
+    QSpinBox *m_numberedCalloutId = nullptr;
+    QLabel *m_numberedCalloutLabel = nullptr;
+    int m_displayedNumberedCalloutId = -1;
+
+    void refreshNumberedCalloutControls();
+    void commitNumberedCalloutId();
 
     void commitWindowText();
     void updateLatexNoteAppearance();

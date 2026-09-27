@@ -193,6 +193,7 @@ private:
     Okular::NormalizedRect m_previewBoundingRect;
     bool m_hasPreviewBoundingRect;
     Okular::NormalizedPoint m_originalCalloutPoints[3];
+    QPointF m_calloutDragDelta;
     Okular::NormalizedRect m_originalCalloutBoundingRect;
     bool m_hasOriginalCalloutGeometry;
     QList<Okular::NormalizedPoint> m_originalLinePoints;

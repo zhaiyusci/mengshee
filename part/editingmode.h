@@ -14,6 +14,7 @@ enum class EditingMode {
     Ocr,
     Pages,
     Views,
+    Proofread,
 };
 }
 

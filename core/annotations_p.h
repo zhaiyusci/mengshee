@@ -68,6 +68,9 @@ public:
 
     bool m_okularLatex = false;
     Annotation::LatexNoteType m_latexNoteType = Annotation::LatexNotePlain;
+    int m_orderedCalloutNumber = 0;
+    int m_numberedCalloutId = 0;
+    QString m_numberedCalloutLabel;
     bool m_latexCallout = false;
     NormalizedPoint m_latexCalloutPoints[3];
     NormalizedPoint m_transformedLatexCalloutPoints[3];

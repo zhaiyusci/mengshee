@@ -899,7 +899,12 @@ void Annotation::setLatexNoteType(LatexNoteType type)
 {
     Q_D(Annotation);
     d->m_latexNoteType = type;
-    d->m_latexCallout = type == LatexNoteCallout;
+    d->m_latexCallout = type == LatexNoteCallout || type == LatexNoteOrderedCallout;
+    if (type != LatexNoteOrderedCallout) {
+        d->m_orderedCalloutNumber = 0;
+        d->m_numberedCalloutId = 0;
+        d->m_numberedCalloutLabel.clear();
+    }
 }
 
 Annotation::LatexNoteType Annotation::latexNoteType() const
@@ -913,9 +918,14 @@ void Annotation::setLatexCallout(bool callout)
     Q_D(Annotation);
     d->m_latexCallout = callout;
     if (callout) {
-        d->m_latexNoteType = LatexNoteCallout;
-    } else if (d->m_latexNoteType == LatexNoteCallout) {
+        if (d->m_latexNoteType != LatexNoteOrderedCallout) {
+            d->m_latexNoteType = LatexNoteCallout;
+        }
+    } else if (d->m_latexNoteType == LatexNoteCallout || d->m_latexNoteType == LatexNoteOrderedCallout) {
         d->m_latexNoteType = LatexNotePlain;
+        d->m_orderedCalloutNumber = 0;
+        d->m_numberedCalloutId = 0;
+        d->m_numberedCalloutLabel.clear();
     }
 }
 
@@ -923,6 +933,65 @@ bool Annotation::isLatexCallout() const
 {
     Q_D(const Annotation);
     return d->m_latexCallout;
+}
+
+bool Annotation::isOrderedCallout() const
+{
+    Q_D(const Annotation);
+    return d->m_latexNoteType == LatexNoteOrderedCallout;
+}
+
+bool Annotation::isNumberedCallout() const
+{
+    return isOrderedCallout();
+}
+
+int Annotation::numberedCalloutId() const
+{
+    Q_D(const Annotation);
+    return d->m_numberedCalloutId;
+}
+
+void Annotation::setNumberedCalloutId(int id)
+{
+    Q_D(Annotation);
+    if (id >= 0 && isNumberedCallout()) {
+        d->m_numberedCalloutId = id;
+    }
+}
+
+QString Annotation::numberedCalloutLabel() const
+{
+    Q_D(const Annotation);
+    if (!isNumberedCallout()) {
+        return {};
+    }
+    return !d->m_numberedCalloutLabel.isEmpty() ? d->m_numberedCalloutLabel : (d->m_orderedCalloutNumber > 0 ? QString::number(d->m_orderedCalloutNumber) : QString());
+}
+
+void Annotation::setNumberedCalloutLabel(const QString &label)
+{
+    Q_D(Annotation);
+    if (isNumberedCallout()) {
+        d->m_numberedCalloutLabel = label;
+    }
+}
+
+int Annotation::orderedCalloutNumber() const
+{
+    Q_D(const Annotation);
+    return d->m_orderedCalloutNumber;
+}
+
+void Annotation::setOrderedCalloutNumber(int number)
+{
+    Q_D(Annotation);
+    if (number >= 0 && d->m_latexNoteType == LatexNoteOrderedCallout) {
+        if (number != d->m_orderedCalloutNumber) {
+            d->m_numberedCalloutLabel.clear();
+        }
+        d->m_orderedCalloutNumber = number;
+    }
 }
 
 void Annotation::setLatexCalloutPoint(const NormalizedPoint &point, int index)
@@ -1138,7 +1207,15 @@ void Annotation::store(QDomNode &annNode, QDomDocument &document) const
         e.setAttribute(QStringLiteral("okularLatex"), QStringLiteral("1"));
     }
     if (storeLatexMetadata && d->m_latexNoteType != LatexNotePlain) {
-        e.setAttribute(QStringLiteral("latexNoteType"), d->m_latexNoteType == LatexNoteCallout ? QStringLiteral("callout") : QStringLiteral("boxed"));
+        e.setAttribute(QStringLiteral("latexNoteType"), d->m_latexNoteType == LatexNoteOrderedCallout ? QStringLiteral("numbered-callout")
+            : d->m_latexNoteType == LatexNoteCallout ? QStringLiteral("callout") : QStringLiteral("boxed"));
+    }
+    if (storeLatexMetadata && d->m_latexNoteType == LatexNoteOrderedCallout) {
+        e.setAttribute(QStringLiteral("orderedCalloutNumber"), d->m_orderedCalloutNumber);
+        e.setAttribute(QStringLiteral("numberedCalloutId"), d->m_numberedCalloutId);
+        if (!d->m_numberedCalloutLabel.isEmpty()) {
+            e.setAttribute(QStringLiteral("numberedCalloutLabel"), d->m_numberedCalloutLabel);
+        }
     }
     if (storeLatexMetadata && d->m_latexCallout) {
         e.setAttribute(QStringLiteral("latexCallout"), QStringLiteral("1"));
@@ -1385,8 +1462,8 @@ void AnnotationPrivate::setAnnotationProperties(const QDomNode &node)
         const QString type = e.attribute(QStringLiteral("latexNoteType"));
         if (type == QLatin1String("boxed")) {
             m_latexNoteType = Annotation::LatexNoteBoxed;
-        } else if (type == QLatin1String("callout")) {
-            m_latexNoteType = Annotation::LatexNoteCallout;
+        } else if (type == QLatin1String("callout") || type == QLatin1String("ordered-callout") || type == QLatin1String("numbered-callout")) {
+            m_latexNoteType = type == QLatin1String("callout") ? Annotation::LatexNoteCallout : Annotation::LatexNoteNumberedCallout;
             m_latexCallout = true;
         } else {
             m_latexNoteType = Annotation::LatexNotePlain;
@@ -1394,9 +1471,29 @@ void AnnotationPrivate::setAnnotationProperties(const QDomNode &node)
     }
     if (e.hasAttribute(QStringLiteral("latexCallout"))) {
         m_latexCallout = e.attribute(QStringLiteral("latexCallout")).toInt() != 0;
-        if (m_latexCallout) {
+        if (m_latexCallout && m_latexNoteType != Annotation::LatexNoteOrderedCallout) {
             m_latexNoteType = Annotation::LatexNoteCallout;
         }
+    }
+    if (m_latexNoteType == Annotation::LatexNoteOrderedCallout) {
+        m_latexCallout = true;
+        bool validNumber = false;
+        const int number = e.attribute(QStringLiteral("orderedCalloutNumber")).toInt(&validNumber);
+        m_orderedCalloutNumber = validNumber && number > 0 ? number : 0;
+        m_numberedCalloutLabel = e.attribute(QStringLiteral("numberedCalloutLabel"));
+        // Old Ordered Callouts had only a display number. Preserve their
+        // existing order as the initial ID, without renumbering on load.
+        if (e.hasAttribute(QStringLiteral("numberedCalloutId"))) {
+            bool validId = false;
+            const int id = e.attribute(QStringLiteral("numberedCalloutId")).toInt(&validId);
+            m_numberedCalloutId = validId && id > 0 ? id : 0;
+        } else {
+            m_numberedCalloutId = m_orderedCalloutNumber;
+        }
+    } else {
+        m_orderedCalloutNumber = 0;
+        m_numberedCalloutId = 0;
+        m_numberedCalloutLabel.clear();
     }
     if (e.hasAttribute(QStringLiteral("latexLayoutWidth"))) {
         bool ok = false;

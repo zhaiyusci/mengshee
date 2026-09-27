@@ -23,6 +23,7 @@
 #include <core/annotations.h>
 #include <core/document.h>
 #include <core/generator.h>
+#include <core/numberedcalloutnumberinginterface.h>
 #include <core/printoptionswidget.h>
 #include <core/readingvieweditinginterface.h>
 #include <interfaces/configinterface.h>
@@ -47,7 +48,7 @@ class PopplerAnnotationProxy;
  * contents from out OutputDevs when rendering finishes.
  *
  */
-class PDFGenerator : public Okular::Generator, public Okular::ConfigInterface, public Okular::PrintInterface, public Okular::SaveInterface, public Okular::PageInsertionInterface, public Okular::PdfLinkEditingInterface, public Okular::PdfOcrInterface, public Okular::ReadingViewEditingInterface
+class PDFGenerator : public Okular::Generator, public Okular::ConfigInterface, public Okular::PrintInterface, public Okular::SaveInterface, public Okular::PageInsertionInterface, public Okular::PdfLinkEditingInterface, public Okular::PdfOcrInterface, public Okular::ReadingViewEditingInterface, public Okular::NumberedCalloutNumberingInterface
 {
     Q_OBJECT
     Q_INTERFACES(Okular::Generator)
@@ -132,6 +133,10 @@ public:
     bool movePageInDocument(int sourcePageNumber, int destinationPageNumber, QString *errorText) override;
     bool canRotatePage() const override;
     bool rotatePageInDocument(Okular::Page *page, int pageNumber, int rotationDegrees, Okular::Page **replacementPage, QString *errorText) override;
+    bool canEditNumberedCalloutNumbering() const override;
+    bool validateNumberedCalloutLabel(const QString &label, QString *errorText) const override;
+    QString numberedCalloutNumberingJson() const override;
+    bool setNumberedCalloutNumberingJson(const QString &json, QString *errorText) override;
     bool canEditReadingViews() const override;
     QList<Okular::ReadingView> readingViews(int pageNumber, QString *errorText) const override;
     bool setReadingViews(int pageNumber, const QList<Okular::ReadingView> &views, QString *errorText) override;

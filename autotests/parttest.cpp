@@ -10,8 +10,16 @@
 // clazy:excludeall=qstring-allocations
 
 #include <QSignalSpy>
+#include <QJsonDocument>
+#include <QFileDialog>
+#include <QJsonObject>
+#include <QSpinBox>
+#include <QLabel>
+#include <KLocalizedString>
+#include <QScopeGuard>
 #include <QInputDialog>
 #include <QCheckBox>
+#include <QComboBox>
 #include <QElapsedTimer>
 #include "../gui/toolbarbuttonheight.h"
 #include <QUuid>
@@ -150,6 +158,16 @@ private Q_SLOTS:
     void testLatexNoteOnRotatedPage();
     void testLatexAppearanceResizeHistory_data();
     void testLatexAppearanceResizeHistory();
+    void testOrderedCalloutHistoryAndAppearance_data();
+    void testOrderedCalloutHistoryAndAppearance();
+    void testOrderedCalloutToolModes();
+    void testNumberedCalloutReordering();
+    void testNumberedCalloutCsvExport();
+    void testNumberedCalloutFormats_data();
+    void testNumberedCalloutFormats();
+    void testNumberedCalloutPopupAndFormat();
+    void testCalloutMouseGeometry_data();
+    void testCalloutMouseGeometry();
     void testReadingViewsMetadata_data();
     void testReadingViewsMetadata();
     void testReadingViewsHistoryAndPageIdentity();
@@ -2756,6 +2774,1064 @@ void PartTest::testLatexAppearanceResizeHistory()
 }
 
 namespace {
+bool writeOrderedCalloutTestPdf(const QString &fileName, int pages, bool appearance = false)
+{
+    QPdfWriter writer(fileName);
+    writer.setResolution(72);
+    writer.setPageSize(QPageSize(QSizeF(300, 400), QPageSize::Point));
+    writer.setPageMargins(QMarginsF());
+    QPainter painter(&writer);
+    if (!painter.isActive()) {
+        return false;
+    }
+    for (int page = 0; page < pages; ++page) {
+        if (page && !writer.newPage()) {
+            return false;
+        }
+        painter.fillRect(QRect(0, 0, 300, 400), Qt::white);
+        if (appearance) {
+            painter.fillRect(QRect(100, 100, 100, 100), QColor(40, 100, 180));
+        }
+    }
+    return painter.end();
+}
+}
+
+void PartTest::testOrderedCalloutHistoryAndAppearance_data()
+{
+    QTest::addColumn<int>("rotation");
+    QTest::newRow("rotation-0") << 0;
+    QTest::newRow("rotation-90") << 90;
+    QTest::newRow("rotation-180") << 180;
+    QTest::newRow("rotation-270") << 270;
+}
+
+void PartTest::testOrderedCalloutHistoryAndAppearance()
+{
+    QFETCH(int, rotation);
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const QString working = directory.filePath(QStringLiteral("document.pdf"));
+    const QString source = directory.filePath(QStringLiteral("appearance.pdf"));
+    QVERIFY(writeOrderedCalloutTestPdf(working, 2));
+    QVERIFY(writeOrderedCalloutTestPdf(source, 1, true));
+    Part part(nullptr, {});
+    QVERIFY(openDocument(&part, working));
+    part.setEditingMode(EditingMode::Pages);
+    if (rotation) {
+        part.setPageRotation(0, rotation);
+        part.setPageRotation(1, rotation);
+    }
+    auto *document = part.m_document;
+    const auto create = [&](int page, bool ordered) {
+        auto *note = new StampAnnotation;
+        note->setOkularLatex(true);
+        note->setLatexNoteType(ordered ? Annotation::LatexNoteOrderedCallout : Annotation::LatexNoteCallout);
+        note->setContents(QStringLiteral("Ordered appearance regression"));
+        note->setBoundingRectangle(NormalizedRect(.2, .2, .5, .4));
+        note->setLatexAppearancePdfFileName(source);
+        note->setLatexPadding(3);
+        note->setLatexFillColor(Qt::white);
+        note->setLatexBorderColor(Qt::black);
+        note->style().setWidth(2);
+        note->setLatexCalloutPoint(NormalizedPoint(.08, .48), 0);
+        note->setLatexCalloutPoint(NormalizedPoint(.15, .3), 1);
+        note->setLatexCalloutPoint(NormalizedPoint(.2, .3), 2);
+        if (!document->page(page)->annotations().isEmpty()) {
+            note->setBoundingRectangle(NormalizedRect(.6, .6, .9, .8));
+            note->setLatexCalloutPoint(NormalizedPoint(.48, .88), 0);
+            note->setLatexCalloutPoint(NormalizedPoint(.55, .7), 1);
+            note->setLatexCalloutPoint(NormalizedPoint(.6, .7), 2);
+        }
+        document->addPageAnnotation(page, note);
+        return note;
+    };
+    auto *first = create(0, true);
+    const QString firstName = first->uniqueName();
+    QCOMPARE(first->orderedCalloutNumber(), 1);
+    auto *ordinary = create(1, false);
+    const QString ordinaryName = ordinary->uniqueName();
+    QVERIFY(!ordinary->isOrderedCallout());
+    QCOMPARE(ordinary->orderedCalloutNumber(), 0);
+    auto *second = create(1, true);
+    const QString secondName = second->uniqueName();
+    QCOMPARE(second->orderedCalloutNumber(), 2);
+    auto *third = create(0, true);
+    const QString thirdName = third->uniqueName();
+    QCOMPARE(third->orderedCalloutNumber(), 3);
+    QCOMPARE(document->nextOrderedCalloutNumber(), 4);
+
+    document->removePageAnnotation(1, second);
+    QCOMPARE(first->orderedCalloutNumber(), 1);
+    QCOMPARE(third->orderedCalloutNumber(), 3);
+    document->undo();
+    QVERIFY(document->page(1)->annotation(secondName));
+    QCOMPARE(document->page(1)->annotation(secondName)->orderedCalloutNumber(), 2);
+    document->redo();
+    QVERIFY(!document->page(1)->annotation(secondName));
+    auto *fourth = create(1, true);
+    const QString fourthName = fourth->uniqueName();
+    QCOMPARE(fourth->orderedCalloutNumber(), 4);
+    document->undo();
+    QVERIFY(!document->page(1)->annotation(fourthName));
+    document->redo();
+    QVERIFY(document->page(1)->annotation(fourthName));
+    QCOMPARE(document->page(1)->annotation(fourthName)->orderedCalloutNumber(), 4);
+
+    // Model a pre-existing imported number: new annotations use the maximum,
+    // rather than the number of annotations or a page-local counter.
+    third = static_cast<StampAnnotation *>(document->page(0)->annotation(thirdName));
+    QVERIFY(third);
+    document->prepareToModifyAnnotationProperties(third);
+    third->setOrderedCalloutNumber(40);
+    document->modifyPageAnnotationProperties(0, third);
+    QCOMPARE(document->nextOrderedCalloutNumber(), 41);
+    auto *fifth = create(1, true);
+    QCOMPARE(fifth->orderedCalloutNumber(), 41);
+
+    AnnotationPopup popup(document, AnnotationPopup::SingleAnnotationMode, part.widget());
+    first = static_cast<StampAnnotation *>(document->page(0)->annotation(firstName));
+    QVERIFY(first);
+    popup.addAnnotation(first, 0);
+    popup.doCopyAnnotation({first, 0});
+    const int previousCount = document->page(1)->annotations().size();
+    popup.pasteAnnotationToPage(1);
+    QCOMPARE(document->page(1)->annotations().size(), previousCount + 1);
+    auto *pasted = document->page(1)->annotations().constLast();
+    const QString pastedName = pasted->uniqueName();
+    QVERIFY(pasted->isOrderedCallout());
+    QCOMPARE(pasted->orderedCalloutNumber(), 42);
+    document->undo();
+    QVERIFY(!document->page(1)->annotation(pastedName));
+    document->redo();
+    QVERIFY(document->page(1)->annotation(pastedName));
+    QCOMPARE(document->page(1)->annotation(pastedName)->orderedCalloutNumber(), 42);
+    QVERIFY(document->annotationAppearance(first));
+
+    const auto saveImage = [](Part &editor, const QString &fileName) -> QImage {
+        QString error;
+        if (!editor.m_document->saveChanges(fileName, &error)) {
+            qWarning() << error;
+            return {};
+        }
+        auto pdf = Poppler::Document::load(fileName);
+        if (!pdf) {
+            return {};
+        }
+        pdf->setRenderHint(Poppler::Document::Antialiasing, true);
+        pdf->setRenderHint(Poppler::Document::TextAntialiasing, true);
+        auto page = pdf->page(0);
+        return page ? page->renderToImage(144, 144) : QImage();
+    };
+    const QImage originalImage = saveImage(part, directory.filePath(QStringLiteral("original.pdf")));
+    QVERIFY(!originalImage.isNull());
+    QVERIFY(QFile::remove(source));
+    QCOMPARE(saveImage(part, directory.filePath(QStringLiteral("without-source.pdf"))), originalImage);
+    // Only the order changes. A different rendered page proves that the number
+    // is in the PDF appearance, not merely an application overlay or metadata.
+    document->prepareToModifyAnnotationProperties(first);
+    first->setOrderedCalloutNumber(17);
+    document->modifyPageAnnotationProperties(0, first);
+    const QImage renumberedImage = saveImage(part, directory.filePath(QStringLiteral("renumbered.pdf")));
+    QVERIFY(!renumberedImage.isNull());
+    QVERIFY(renumberedImage != originalImage);
+    document->undo();
+    first = static_cast<StampAnnotation *>(document->page(0)->annotation(firstName));
+    QVERIFY(first);
+    QCOMPARE(first->orderedCalloutNumber(), 1);
+    QCOMPARE(saveImage(part, directory.filePath(QStringLiteral("number-undo.pdf"))), originalImage);
+
+    const NormalizedRect resized(.2, .2, .57, .43);
+    document->prepareToModifyAnnotationProperties(first);
+    first->setBoundingRectangle(resized);
+    first->setLatexBorderColor(Qt::red);
+    first->style().setWidth(3);
+    document->modifyPageAnnotationProperties(0, first);
+    QVERIFY(first->isOrderedCallout());
+    QCOMPARE(first->orderedCalloutNumber(), 1);
+    const NormalizedPoint points[] = {first->latexCalloutPoint(0), first->latexCalloutPoint(1), first->latexCalloutPoint(2)};
+    const QString saved = directory.filePath(QStringLiteral("resized.pdf"));
+    const QImage resizedImage = saveImage(part, saved);
+    QVERIFY(!resizedImage.isNull());
+    QVERIFY(resizedImage != originalImage);
+    document->undo();
+    QCOMPARE(saveImage(part, directory.filePath(QStringLiteral("resize-undo.pdf"))), originalImage);
+    document->redo();
+    QCOMPARE(saveImage(part, directory.filePath(QStringLiteral("resize-redo.pdf"))), resizedImage);
+
+    Part reopened(nullptr, {});
+    QVERIFY(openDocument(&reopened, saved));
+    auto *restored = reopened.m_document->page(0)->annotation(firstName);
+    QVERIFY(restored);
+    QVERIFY(restored->isOrderedCallout());
+    QVERIFY(restored->isLatexCallout());
+    QCOMPARE(restored->latexNoteType(), Annotation::LatexNoteOrderedCallout);
+    QCOMPARE(restored->orderedCalloutNumber(), 1);
+    QCOMPARE(restored->boundingRectangle(), resized);
+    QCOMPARE(restored->latexBorderColor(), QColor(Qt::red));
+    QCOMPARE(restored->style().width(), 3.0);
+    for (int i = 0; i < 3; ++i) {
+        QVERIFY(qAbs(restored->latexCalloutPoint(i).x - points[i].x) < 0.00001);
+        QVERIFY(qAbs(restored->latexCalloutPoint(i).y - points[i].y) < 0.00001);
+    }
+    const auto *restoredOrdinary = reopened.m_document->page(1)->annotation(ordinaryName);
+    QVERIFY(restoredOrdinary);
+    QVERIFY(!restoredOrdinary->isOrderedCallout());
+    QCOMPARE(restoredOrdinary->orderedCalloutNumber(), 0);
+    const auto *restoredPaste = reopened.m_document->page(1)->annotation(pastedName);
+    QVERIFY(restoredPaste);
+    QCOMPARE(restoredPaste->orderedCalloutNumber(), 42);
+    QCOMPARE(saveImage(reopened, directory.filePath(QStringLiteral("reopened.pdf"))), resizedImage);
+}
+
+void PartTest::testOrderedCalloutToolModes()
+{
+    const QString previousAuthor = Settings::identityAuthor();
+    const auto restoreAuthor = qScopeGuard([previousAuthor] { Settings::setIdentityAuthor(previousAuthor); });
+    Settings::setIdentityAuthor(QStringLiteral("Ordered Callout Test"));
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const QString working = directory.filePath(QStringLiteral("tool.pdf"));
+    QVERIFY(writeOrderedCalloutTestPdf(working, 2));
+    Part part(nullptr, {});
+    QVERIFY(openDocument(&part, working));
+    QString error;
+    const QList<ReadingView> views{{QStringLiteral("0d0e4ebc-284b-45e9-aeef-03d5c24b3ef7"), 1, NormalizedRect(.05, .05, .95, .95)}};
+    QVERIFY2(part.m_document->setReadingViews(0, views, &error), qPrintable(error));
+    part.widget()->resize(900, 900);
+    part.widget()->show();
+    QVERIFY(QTest::qWaitForWindowExposed(part.widget()));
+    auto *tool = part.actionCollection()->action(QStringLiteral("annotation_add_ordered_callout"));
+    auto *readByViews = part.actionCollection()->action(QStringLiteral("view_read_by_views"));
+    QVERIFY(tool);
+    QVERIFY(readByViews);
+    auto *view = part.m_pageView.data();
+    const auto editIdInDialog = [&](Annotation *annotation, int page, int id) {
+        AnnotationPopup popup(part.m_document, AnnotationPopup::SingleAnnotationMode, part.widget());
+        popup.addAnnotation(annotation, page);
+        QMenu menu;
+        popup.addActionsToMenu(&menu);
+        QAction *properties = nullptr;
+        for (auto *candidate : menu.actions()) {
+            if (candidate->text() == i18n("&Properties")) properties = candidate;
+        }
+        if (!properties) return false;
+        bool inspected = false;
+        QTimer::singleShot(0, [&] {
+            auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+            if (!dialog) return;
+            auto *spin = dialog->findChild<QSpinBox *>(QStringLiteral("numberedCalloutInternalId"));
+            auto *label = dialog->findChild<QLabel *>(QStringLiteral("numberedCalloutDisplayedNumber"));
+            inspected = spin && spin->isEnabled() && label
+                && label->text() == QString::number(annotation->orderedCalloutNumber());
+            if (spin) spin->setValue(id);
+            inspected = QMetaObject::invokeMethod(dialog, "slotapply") && inspected;
+            dialog->reject();
+        });
+        properties->trigger();
+        return inspected;
+    };
+    auto *renumber = part.actionCollection()->action(QStringLiteral("annotation_renumber_callouts"));
+    auto *latexCallout = part.actionCollection()->action(QStringLiteral("annotation_add_latex_callout"));
+    QVERIFY(renumber && latexCallout);
+    int expected = 0;
+    for (bool projected : {false, true}) {
+        readByViews->setChecked(projected);
+        part.setEditingMode(EditingMode::Proofread);
+        part.actionCollection()->action(QStringLiteral("view_fit_to_page"))->trigger();
+        QCoreApplication::processEvents();
+        QVERIFY(tool->isVisible() && tool->isEnabled());
+        const QVariant zoom = static_cast<Okular::View *>(view)->capability(Okular::View::Zoom);
+        tool->trigger();
+        QCOMPARE(part.m_editingMode, EditingMode::Proofread);
+        QCOMPARE(view->readingViewMode(), projected);
+        QCOMPARE(static_cast<Okular::View *>(view)->capability(Okular::View::Zoom), zoom);
+        const QPoint position = view->viewport()->rect().center();
+        int sourcePage = -1;
+        NormalizedPoint sourcePoint;
+        QVERIFY(view->mapGlobalPosToPagePoint(view->viewport()->mapToGlobal(position), &sourcePage, &sourcePoint));
+        const int count = part.m_document->page(sourcePage)->annotations().size();
+        QTest::mouseClick(view->viewport(), Qt::LeftButton, Qt::NoModifier, position);
+        QTRY_COMPARE(part.m_document->page(sourcePage)->annotations().size(), count + 1);
+        auto *annotation = part.m_document->page(sourcePage)->annotations().constLast();
+        const QString name = annotation->uniqueName();
+        const int originalId = annotation->numberedCalloutId();
+        QVERIFY(annotation->isOrderedCallout());
+        QVERIFY(annotation->isLatexCallout());
+        ++expected;
+        QCOMPARE(annotation->orderedCalloutNumber(), expected);
+        QCOMPARE(originalId, expected);
+        QCOMPARE(part.m_editingMode, EditingMode::Proofread);
+        QCOMPARE(view->readingViewMode(), projected);
+        QCOMPARE(static_cast<Okular::View *>(view)->capability(Okular::View::Zoom), zoom);
+
+        // Creation is a Proofread entry point; existing annotations remain
+        // editable in every mode. Never trigger hidden QAction entries.
+        for (EditingMode mode : {EditingMode::Reading, EditingMode::CrossReferences, EditingMode::Ocr, EditingMode::Pages, EditingMode::Views, EditingMode::Proofread}) {
+            part.setEditingMode(mode);
+            QCOMPARE(tool->isVisible(), mode == EditingMode::Proofread);
+            QCOMPARE(renumber->isVisible(), mode == EditingMode::Proofread);
+            if (mode == EditingMode::Proofread) {
+                QVERIFY(tool->isEnabled());
+                QVERIFY(renumber->isEnabled());
+            }
+            QVERIFY(latexCallout->isEnabled());
+            annotation = part.m_document->page(sourcePage)->annotation(name);
+            QVERIFY(annotation);
+            QVERIFY(part.m_document->canModifyPageAnnotation(annotation));
+            QVERIFY(editIdInDialog(annotation, sourcePage, originalId + 100));
+            QCOMPARE(annotation->numberedCalloutId(), originalId + 100);
+            QCOMPARE(annotation->orderedCalloutNumber(), expected);
+            part.m_document->undo();
+            annotation = part.m_document->page(sourcePage)->annotation(name);
+            QVERIFY(annotation);
+            QCOMPARE(annotation->numberedCalloutId(), originalId);
+            QCOMPARE(annotation->orderedCalloutNumber(), expected);
+            QVERIFY(annotation->isNumberedCallout());
+            QCOMPARE(part.m_document->page(sourcePage)->annotations().size(), count + 1);
+            QCOMPARE(part.m_editingMode, mode);
+            QCOMPARE(view->readingViewMode(), projected);
+        }
+    }
+}
+
+void PartTest::testNumberedCalloutFormats_data()
+{
+    QTest::addColumn<QString>("pattern");
+    QTest::addColumn<bool>("perPage");
+    QTest::newRow("global") << QStringLiteral("{n}") << false;
+    QTest::newRow("per-page") << QStringLiteral("{n}") << true;
+    QTest::newRow("page-number") << QStringLiteral("{page}-{n}") << true;
+    QTest::newRow("custom-global") << QStringLiteral("(P{page}:{n})") << false;
+    QTest::newRow("custom-unicode") << QStringLiteral("第{page}页({n})") << true;
+}
+
+void PartTest::testNumberedCalloutFormats()
+{
+    QFETCH(QString, pattern);
+    QFETCH(bool, perPage);
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const QString working = directory.filePath(QStringLiteral("document.pdf"));
+    const QString source = directory.filePath(QStringLiteral("source.pdf"));
+    QVERIFY(writeOrderedCalloutTestPdf(working, 2));
+    QVERIFY(writeOrderedCalloutTestPdf(source, 1, true));
+    Part part(nullptr, {});
+    QVERIFY(openDocument(&part, working));
+    auto *document = part.m_document;
+    const auto create = [&](int page) {
+        auto *note = new StampAnnotation;
+        note->setOkularLatex(true);
+        note->setLatexNoteType(Annotation::LatexNoteNumberedCallout);
+        const double offset = document->page(page)->annotations().isEmpty() ? 0 : .4;
+        note->setBoundingRectangle(NormalizedRect(.2 + offset, .2 + offset, .5 + offset, .4 + offset));
+        note->setLatexAppearancePdfFileName(source);
+        note->setLatexFillColor(Qt::white);
+        note->setLatexBorderColor(Qt::black);
+        note->setContents(QStringLiteral("\\alpha"));
+        document->addPageAnnotation(page, note);
+        return note;
+    };
+    auto *a = create(1);
+    auto *b = create(0);
+    auto *c = create(0);
+    QString error;
+    QVERIFY(QFile::remove(source));
+    QVERIFY2(document->setNumberedCalloutNumbering(pattern, perPage, &error), qPrintable(error));
+    const auto label = [&](int page, int number) {
+        QString result = pattern;
+        return result.replace(QStringLiteral("{page}"), QString::number(page)).replace(QStringLiteral("{n}"), QString::number(number));
+    };
+    QCOMPARE(document->numberedCalloutNumberingPattern(), pattern);
+    QCOMPARE(document->numberedCalloutNumberingRestartsPerPage(), perPage);
+    QCOMPARE(a->numberedCalloutLabel(), label(2, perPage ? 1 : 3));
+    QCOMPARE(b->numberedCalloutLabel(), label(1, 1));
+    QCOMPARE(c->numberedCalloutLabel(), label(1, 2));
+    QCOMPARE(a->numberedCalloutId(), 1);
+    QCOMPARE(b->numberedCalloutId(), 2);
+    QCOMPARE(c->numberedCalloutId(), 3);
+    document->undo();
+    QCOMPARE(document->numberedCalloutNumberingPattern(), QStringLiteral("{n}"));
+    QVERIFY(!document->numberedCalloutNumberingRestartsPerPage());
+    QCOMPARE(a->numberedCalloutLabel(), QStringLiteral("1"));
+    QCOMPARE(b->numberedCalloutLabel(), QStringLiteral("2"));
+    QCOMPARE(c->numberedCalloutLabel(), QStringLiteral("3"));
+    document->redo();
+    QCOMPARE(c->numberedCalloutLabel(), label(1, 2));
+    // A no-op must not consume another undo item.
+    QVERIFY(document->renumberNumberedCallouts(&error));
+    document->undo();
+    QCOMPARE(b->numberedCalloutLabel(), QStringLiteral("2"));
+    document->redo();
+
+    const QString saved = directory.filePath(QStringLiteral("formatted.pdf"));
+    QVERIFY2(document->saveChanges(saved, &error), qPrintable(error));
+    const auto image = [](const QString &file) {
+        const auto pdf = Poppler::Document::load(file);
+        return pdf ? pdf->page(0)->renderToImage(144, 144) : QImage();
+    };
+    const QImage formattedImage = image(saved);
+    QVERIFY(!formattedImage.isNull());
+    // Same sequence, different label: prove backend AP uses label rather than int.
+    QVERIFY(document->setNumberedCalloutNumbering(QStringLiteral("X{page}-[{n}]"), perPage, &error));
+    const QString changed = directory.filePath(QStringLiteral("changed.pdf"));
+    QVERIFY(document->saveChanges(changed, &error));
+    QVERIFY(image(changed) != formattedImage);
+    document->undo();
+    QCOMPARE(b->numberedCalloutLabel(), label(1, 1));
+    QVERIFY(document->saveChanges(changed, &error));
+    QCOMPARE(image(changed), formattedImage);
+
+    Part reopened(nullptr, {});
+    QVERIFY(openDocument(&reopened, saved));
+    auto *loaded = reopened.m_document;
+    QCOMPARE(loaded->numberedCalloutNumberingPattern(), pattern);
+    QCOMPARE(loaded->numberedCalloutNumberingRestartsPerPage(), perPage);
+    QCOMPARE(loaded->page(0)->annotations().at(0)->numberedCalloutLabel(), label(1, 1));
+    QCOMPARE(loaded->page(1)->annotations().at(0)->numberedCalloutLabel(), label(2, perPage ? 1 : 3));
+    QCOMPARE(loaded->nextNumberedCalloutNumber(1), perPage ? 2 : 4);
+    QVERIFY(writeOrderedCalloutTestPdf(source, 1, true));
+    auto *added = new StampAnnotation;
+    added->setOkularLatex(true);
+    added->setLatexNoteType(Annotation::LatexNoteNumberedCallout);
+    added->setBoundingRectangle(NormalizedRect(.6, .6, .9, .8));
+    added->setLatexAppearancePdfFileName(source);
+    loaded->addPageAnnotation(1, added);
+    QCOMPARE(added->numberedCalloutId(), 4);
+    QCOMPARE(added->numberedCalloutLabel(), label(2, perPage ? 2 : 4));
+    const QString csv = directory.filePath(QStringLiteral("formatted.csv"));
+    QVERIFY(loaded->exportNumberedCalloutsCsv(csv, &error));
+    QFile exported(csv);
+    QVERIFY(exported.open(QIODevice::ReadOnly));
+    const QByteArray csvData = exported.readAll();
+    QVERIFY(csvData.contains(added->numberedCalloutLabel().toUtf8()));
+    QCOMPARE(added->numberedCalloutLabel(), label(2, perPage ? 2 : 4));
+    // Active page editing reloads the backend. Preserve the Catalog setting and
+    // use the new physical page index on explicit renumber, not stale labels.
+    quint64 editId = 0;
+    QVERIFY2(loaded->insertBlankPage(0, 256, 256, &editId, &error), qPrintable(error));
+    QCOMPARE(loaded->pages(), 3u);
+    QCOMPARE(loaded->numberedCalloutNumberingPattern(), pattern);
+    QCOMPARE(loaded->numberedCalloutNumberingRestartsPerPage(), perPage);
+    QVERIFY2(loaded->renumberNumberedCallouts(&error), qPrintable(error));
+    QCOMPARE(loaded->page(2)->annotations().at(0)->numberedCalloutLabel(), label(3, perPage ? 1 : 3));
+    QCOMPARE(loaded->page(2)->annotations().at(1)->numberedCalloutLabel(), label(3, perPage ? 2 : 4));
+}
+
+void PartTest::testNumberedCalloutPopupAndFormat()
+{
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const QString working = directory.filePath(QStringLiteral("document.pdf"));
+    const QString source = directory.filePath(QStringLiteral("source.pdf"));
+    QVERIFY(writeOrderedCalloutTestPdf(working, 2));
+    QVERIFY(writeOrderedCalloutTestPdf(source, 1, true));
+    Part part(nullptr, {});
+    QVERIFY(openDocument(&part, working));
+    auto *document = part.m_document;
+    QString error;
+    // Empty-document settings are real PDF data and participate in undo/save.
+    QVERIFY(document->setNumberedCalloutNumbering(QStringLiteral("P{page}-{n}"), true, &error));
+    document->undo();
+    QCOMPARE(document->numberedCalloutNumberingPattern(), QStringLiteral("{n}"));
+    document->redo();
+    const QString emptySaved = directory.filePath(QStringLiteral("empty-formatted.pdf"));
+    QVERIFY(document->saveChanges(emptySaved, &error));
+    Part emptyReopened(nullptr, {});
+    QVERIFY(openDocument(&emptyReopened, emptySaved));
+    QCOMPARE(emptyReopened.m_document->numberedCalloutNumberingPattern(), QStringLiteral("P{page}-{n}"));
+    QVERIFY(emptyReopened.m_document->numberedCalloutNumberingRestartsPerPage());
+    QVERIFY(emptyReopened.m_document->page(0)->annotations().isEmpty());
+    for (const QString &invalid : QStringList{QString(), QStringLiteral("{page}"), QStringLiteral("{x}-{n}"), QStringLiteral("{n}\n"), QString(257, QLatin1Char('x')) + QStringLiteral("{n}")}) {
+        QVERIFY(!document->setNumberedCalloutNumbering(invalid, false, &error));
+        QVERIFY(!error.isEmpty());
+        QCOMPARE(document->numberedCalloutNumberingPattern(), QStringLiteral("P{page}-{n}"));
+    }
+    auto *note = new StampAnnotation;
+    note->setOkularLatex(true);
+    note->setLatexNoteType(Annotation::LatexNoteNumberedCallout);
+    note->setContents(QStringLiteral("\\alpha"));
+    note->setBoundingRectangle(NormalizedRect(.2, .2, .5, .4));
+    note->setLatexAppearancePdfFileName(source);
+    document->addPageAnnotation(0, note);
+    QCOMPARE(note->numberedCalloutLabel(), QStringLiteral("P1-1"));
+    part.widget()->show();
+    QVERIFY(QMetaObject::invokeMethod(part.m_pageView, "openAnnotationWindow", Qt::DirectConnection, Q_ARG(Okular::Annotation *, note), Q_ARG(int, 0)));
+    auto *id = part.widget()->findChild<QSpinBox *>(QStringLiteral("numberedCalloutPopupId"));
+    auto *display = part.widget()->findChild<QLabel *>(QStringLiteral("numberedCalloutPopupLabel"));
+    QVERIFY(id && display);
+    QVERIFY(id->isVisible() && id->isEnabled());
+    auto *idEditor = id->findChild<QLineEdit *>();
+    QVERIFY(idEditor);
+    part.m_pageView->viewport()->setCursor(Qt::OpenHandCursor);
+    QTest::mouseMove(idEditor, idEditor->rect().center());
+    QCOMPARE(id->parentWidget()->cursor().shape(), Qt::ArrowCursor);
+    QCOMPARE(id->cursor().shape(), Qt::ArrowCursor);
+    QCOMPARE(idEditor->cursor().shape(), Qt::IBeamCursor);
+    // The spin buttons are painted by QSpinBox, not by its text editor.
+    QTest::mouseMove(id, QPoint(id->width() - 3, id->height() / 4));
+    QCOMPARE(id->cursor().shape(), Qt::ArrowCursor);
+    QTest::mouseMove(id, QPoint(id->width() - 3, 3 * id->height() / 4));
+    QCOMPARE(id->cursor().shape(), Qt::ArrowCursor);
+    QCOMPARE(part.m_pageView->viewport()->cursor().shape(), Qt::OpenHandCursor);
+    QCOMPARE(display->text(), QStringLiteral("P1-1"));
+    id->setValue(99);
+    QVERIFY(QMetaObject::invokeMethod(id, "editingFinished"));
+    QCOMPARE(note->numberedCalloutId(), 99);
+    QCOMPARE(note->numberedCalloutLabel(), QStringLiteral("P1-1"));
+    QCOMPARE(note->contents(), QStringLiteral("\\alpha"));
+    document->undo();
+    QCOMPARE(note->numberedCalloutId(), 1);
+    QCOMPARE(id->value(), 1);
+    document->redo();
+    QCOMPARE(id->value(), 99);
+    const QString artifacts = qEnvironmentVariable("MENGSHEE_ORDERED_CALLOUT_ARTIFACTS");
+    if (!artifacts.isEmpty()) {
+        QVERIFY(id->window()->grab().save(artifacts + QStringLiteral("/popup-id.png")));
+    }
+
+    part.setEditingMode(EditingMode::Proofread);
+    auto *action = part.actionCollection()->action(QStringLiteral("annotation_numbered_callout_format"));
+    QVERIFY(action && action->isEnabled() && action->isVisible());
+    bool sawDialog = false;
+    QTimer::singleShot(0, part.widget(), [&] {
+        auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+        if (!dialog) return;
+        auto *preset = dialog->findChild<QComboBox *>(QStringLiteral("numberedCalloutFormatPreset"));
+        auto *pattern = dialog->findChild<QLineEdit *>(QStringLiteral("numberedCalloutFormatPattern"));
+        auto *scope = dialog->findChild<QCheckBox *>(QStringLiteral("numberedCalloutFormatRestartPerPage"));
+        auto *buttons = dialog->findChild<QDialogButtonBox *>();
+        if (!preset || !pattern || !scope || !buttons) { dialog->reject(); return; }
+        sawDialog = true;
+        preset->setCurrentIndex(3);
+        pattern->setText(QStringLiteral("第{page}页({n})"));
+        scope->setChecked(true);
+        if (!artifacts.isEmpty()) {
+            dialog->grab().save(artifacts + QStringLiteral("/format-dialog.png"));
+        }
+        buttons->button(QDialogButtonBox::Ok)->click();
+    });
+    action->trigger();
+    QVERIFY(sawDialog);
+    QCOMPARE(note->numberedCalloutLabel(), QStringLiteral("第1页(1)"));
+    QCOMPARE(display->text(), note->numberedCalloutLabel());
+    QCOMPARE(id->value(), 99);
+    document->undo();
+    QCOMPARE(display->text(), QStringLiteral("P1-1"));
+    QCOMPARE(id->value(), 99);
+    document->redo();
+    QCOMPARE(display->text(), QStringLiteral("第1页(1)"));
+    document->prepareToModifyAnnotationProperties(note);
+    note->setFlags(note->flags() | Annotation::DenyWrite);
+    document->modifyPageAnnotationProperties(0, note);
+    QVERIFY(!id->isEnabled());
+    QVERIFY(!document->setNumberedCalloutNumbering(QStringLiteral("({n})"), false, &error));
+    QCOMPARE(document->numberedCalloutNumberingPattern(), QStringLiteral("第{page}页({n})"));
+    QCOMPARE(note->numberedCalloutLabel(), QStringLiteral("第1页(1)"));
+    document->undo();
+    QVERIFY(id->isEnabled());
+    document->setAnnotationEditingEnabled(false);
+    QVERIFY(!document->canEditNumberedCalloutNumbering());
+    QVERIFY(!action->isEnabled());
+    QVERIFY(!id->isEnabled());
+}
+
+void PartTest::testNumberedCalloutCsvExport()
+{
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const QString working = directory.filePath(QStringLiteral("document.pdf"));
+    const QString source = directory.filePath(QStringLiteral("appearance.pdf"));
+    QVERIFY(writeOrderedCalloutTestPdf(working, 2));
+    QVERIFY(writeOrderedCalloutTestPdf(source, 1, true));
+    const auto bytes = [](const QString &path) {
+        QFile file(path);
+        return file.open(QIODevice::ReadOnly) ? file.readAll() : QByteArray();
+    };
+    const QByteArray originalPdf = bytes(working);
+    const QByteArray header = QByteArray::fromHex("efbbbf") + QByteArrayLiteral("Page,Internal ID,Number,LaTeX\r\n");
+    Part part(nullptr, {});
+    QVERIFY(openDocument(&part, working));
+    auto *document = part.m_document;
+    QString error;
+    const QString output = directory.filePath(QStringLiteral("notes.csv"));
+    QVERIFY(document->exportNumberedCalloutsCsv(output, &error));
+    QCOMPARE(bytes(output), header); // An empty document still exports its schema.
+    const auto create = [&](int page, const QString &contents, bool numbered = true) {
+        auto *note = new StampAnnotation;
+        note->setOkularLatex(true);
+        note->setLatexNoteType(numbered ? Annotation::LatexNoteNumberedCallout : Annotation::LatexNoteCallout);
+        note->setContents(contents);
+        note->setBoundingRectangle(NormalizedRect(.3, .3, .7, .5));
+        note->setLatexAppearancePdfFileName(source);
+        note->setLatexFillColor(Qt::white);
+        note->setLatexBorderColor(Qt::black);
+        note->setLatexCalloutPoint(NormalizedPoint(.1, .6), 0);
+        note->setLatexCalloutPoint(NormalizedPoint(.2, .4), 1);
+        note->setLatexCalloutPoint(NormalizedPoint(.3, .4), 2);
+        document->addPageAnnotation(page, note);
+        return note;
+    };
+    auto *a = create(1, QStringLiteral("\\alpha"));
+    auto *b = create(0, QStringLiteral("中文,\"引号\"\r\n\\frac{1}{2}"));
+    auto *c = create(0, QStringLiteral("=1+1"));
+    auto *d = create(1, QStringLiteral(" \t@SUM(1,2)"));
+    create(0, QStringLiteral("ordinary excluded"), false);
+    document->prepareToModifyAnnotationProperties(b);
+    b->setNumberedCalloutId(70);
+    b->setOrderedCalloutNumber(8);
+    b->setFlags(b->flags() | Annotation::DenyWrite);
+    document->modifyPageAnnotationProperties(0, b);
+    document->prepareToModifyAnnotationProperties(c);
+    c->setNumberedCalloutId(50);
+    c->setOrderedCalloutNumber(2);
+    document->modifyPageAnnotationProperties(0, c);
+    QVERIFY(!document->canModifyPageAnnotation(b));
+    const QList<ReadingView> views{{QStringLiteral("2230d2b0-85a8-4a3b-9b27-b808868939a4"), 1, NormalizedRect(.01, .01, .1, .1)}};
+    QVERIFY(document->setReadingViews(0, views, &error));
+    part.m_pageView->setReadingViewMode(true); // None of page 0's notes is in this crop.
+    document->setAnnotationEditingEnabled(false);
+    QVERIFY(!document->canModifyPageAnnotation(a));
+    QVERIFY(QFile::remove(source)); // CSV needs no renderer or temporary appearance source.
+    part.setEditingMode(EditingMode::Proofread);
+    auto *exportAction = part.actionCollection()->action(QStringLiteral("annotation_export_numbered_callouts"));
+    QVERIFY(exportAction && exportAction->isVisible() && exportAction->isEnabled());
+
+    const QByteArray expected = header + QStringLiteral("1,50,2,\"'=1+1\"\r\n1,70,8,\"中文,\"\"引号\"\"\r\n\\frac{1}{2}\"\r\n2,1,1,\"\\alpha\"\r\n2,4,4,\"' \t@SUM(1,2)\"\r\n").toUtf8();
+    const bool undoBefore = document->canUndo();
+    const bool redoBefore = document->canRedo();
+    QVERIFY2(document->exportNumberedCalloutsCsv(output, &error), qPrintable(error));
+    QCOMPARE(bytes(output), expected);
+    QCOMPARE(bytes(working), originalPdf);
+    QCOMPARE(document->canUndo(), undoBefore);
+    QCOMPARE(document->canRedo(), redoBefore);
+    QCOMPARE(b->orderedCalloutNumber(), 8);
+    QCOMPARE(b->numberedCalloutId(), 70);
+    QCOMPARE(c->contents(), QStringLiteral("=1+1"));
+    QCOMPARE(d->contents(), QStringLiteral(" \t@SUM(1,2)"));
+    QVERIFY(part.m_pageView->readingViewMode());
+
+    // Exercise the actual toolbar action and file picker, including Cancel.
+    const bool nativeDialogs = QCoreApplication::testAttribute(Qt::AA_DontUseNativeDialogs);
+    QCoreApplication::setAttribute(Qt::AA_DontUseNativeDialogs, true);
+    const auto restoreDialogs = qScopeGuard([=] { QCoreApplication::setAttribute(Qt::AA_DontUseNativeDialogs, nativeDialogs); });
+    bool sawDialog = false;
+    const QString uiOutput = directory.filePath(QStringLiteral("ui.csv"));
+    QTimer::singleShot(0, part.widget(), [&] {
+        if (auto *dialog = qobject_cast<QFileDialog *>(QApplication::activeModalWidget())) {
+            sawDialog = true;
+            dialog->selectFile(uiOutput);
+            QMetaObject::invokeMethod(dialog, "accept");
+        }
+    });
+    exportAction->trigger();
+    QVERIFY(sawDialog);
+    QCOMPARE(bytes(uiOutput), expected);
+    QTimer::singleShot(0, part.widget(), [] {
+        if (auto *dialog = qobject_cast<QFileDialog *>(QApplication::activeModalWidget())) dialog->reject();
+    });
+    exportAction->trigger();
+    QCOMPARE(bytes(uiOutput), expected);
+    QVERIFY(!document->exportNumberedCalloutsCsv(working, &error));
+    QVERIFY(!error.isEmpty());
+    QCOMPARE(bytes(working), originalPdf);
+    QVERIFY(!document->exportNumberedCalloutsCsv(directory.path(), &error));
+    QVERIFY(!document->exportNumberedCalloutsCsv(directory.filePath(QStringLiteral("absent/fail.csv")), &error));
+    QCOMPARE(bytes(output), expected);
+    part.closeUrl(false);
+    QVERIFY(!document->exportNumberedCalloutsCsv(output, &error));
+    QCOMPARE(bytes(output), expected);
+}
+
+void PartTest::testNumberedCalloutReordering()
+{
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const QString working = directory.filePath(QStringLiteral("document.pdf"));
+    const QString source = directory.filePath(QStringLiteral("appearance.pdf"));
+    QVERIFY(writeOrderedCalloutTestPdf(working, 2));
+    QVERIFY(writeOrderedCalloutTestPdf(source, 1, true));
+    Part part(nullptr, {});
+    QVERIFY(openDocument(&part, working));
+    auto *document = part.m_document;
+    const auto create = [&](int page) {
+        auto *note = new StampAnnotation;
+        note->setOkularLatex(true);
+        note->setLatexNoteType(Annotation::LatexNoteNumberedCallout);
+        const bool first = document->page(page)->annotations().isEmpty();
+        note->setBoundingRectangle(first ? NormalizedRect(.2, .2, .5, .4) : NormalizedRect(.6, .6, .9, .8));
+        note->setLatexAppearancePdfFileName(source);
+        note->setLatexFillColor(Qt::yellow);
+        note->setLatexBorderColor(Qt::blue);
+        note->style().setWidth(2);
+        const double offset = first ? 0.0 : 0.4;
+        note->setLatexCalloutPoint(NormalizedPoint(.08 + offset, .48 + offset), 0);
+        note->setLatexCalloutPoint(NormalizedPoint(.15 + offset, .3 + offset), 1);
+        note->setLatexCalloutPoint(NormalizedPoint(.2 + offset, .3 + offset), 2);
+        document->addPageAnnotation(page, note);
+        return note;
+    };
+    auto *a = create(1);
+    auto *b = create(0);
+    auto *c = create(0);
+    auto *d = create(1);
+    QCOMPARE(a->numberedCalloutId(), 1);
+    QCOMPARE(d->numberedCalloutId(), 4);
+    const auto setId = [&](int page, Annotation *note, int id) {
+        document->prepareToModifyAnnotationProperties(note);
+        note->setNumberedCalloutId(id);
+        document->modifyPageAnnotationProperties(page, note);
+    };
+    const auto editIdInDialog = [&](Annotation *note, int page, int id, bool editable) {
+        AnnotationPopup popup(document, AnnotationPopup::SingleAnnotationMode, part.widget());
+        popup.addAnnotation(note, page);
+        QMenu menu;
+        popup.addActionsToMenu(&menu);
+        QAction *properties = nullptr;
+        for (auto *candidate : menu.actions()) {
+            if (candidate->text() == i18n("&Properties")) properties = candidate;
+        }
+        if (!properties) return false;
+        bool inspected = false;
+        QTimer::singleShot(0, [&] {
+            auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+            if (!dialog) return;
+            auto *spin = dialog->findChild<QSpinBox *>(QStringLiteral("numberedCalloutInternalId"));
+            auto *label = dialog->findChild<QLabel *>(QStringLiteral("numberedCalloutDisplayedNumber"));
+            inspected = spin && label && spin->isEnabled() == editable && spin->minimum() == 1
+                && label->text() == QString::number(note->orderedCalloutNumber());
+            if (spin) spin->setValue(id);
+            inspected = QMetaObject::invokeMethod(dialog, "slotapply") && inspected;
+            dialog->reject();
+        });
+        properties->trigger();
+        return inspected;
+    };
+    QVERIFY(editIdInDialog(a, 1, 10, true));
+    QCOMPARE(a->numberedCalloutId(), 10);
+    QCOMPARE(a->orderedCalloutNumber(), 1);
+    document->undo();
+    QCOMPARE(a->numberedCalloutId(), 1);
+    document->redo();
+    QCOMPARE(a->numberedCalloutId(), 10);
+    setId(0, b, 30);
+    setId(0, c, 20);
+    setId(1, d, 5);
+    QCOMPARE(a->orderedCalloutNumber(), 1); // Editing ID is not automatic renumbering.
+    QCOMPARE(d->orderedCalloutNumber(), 4);
+    QCOMPARE(document->nextNumberedCalloutId(), 31);
+    const auto numbers = [&] { return QList<int>{a->orderedCalloutNumber(), b->orderedCalloutNumber(), c->orderedCalloutNumber(), d->orderedCalloutNumber()}; };
+    const auto ids = [&] { return QList<int>{a->numberedCalloutId(), b->numberedCalloutId(), c->numberedCalloutId(), d->numberedCalloutId()}; };
+    const QList<int> original{1, 2, 3, 4};
+    const QList<int> sorted{4, 2, 1, 3};
+    const QList<int> stableIds{10, 30, 20, 5};
+    const auto saveImages = [&](const QString &fileName) {
+        QString error;
+        QList<QImage> images;
+        if (!document->saveChanges(fileName, &error)) return images;
+        auto pdf = Poppler::Document::load(fileName);
+        if (!pdf) return images;
+        for (int page = 0; page < 2; ++page) images.append(pdf->page(page)->renderToImage(144, 144));
+        return images;
+    };
+    const auto before = saveImages(directory.filePath(QStringLiteral("before.pdf")));
+    QCOMPARE(before.size(), 2);
+    QVERIFY(QFile::remove(source)); // All subsequent AP changes use preserved Fm0.
+    auto *action = part.actionCollection()->action(QStringLiteral("annotation_renumber_callouts"));
+    QVERIFY(action);
+    QVERIFY(!action->isVisible());
+    part.setEditingMode(EditingMode::Proofread);
+    QVERIFY(action->isVisible());
+    QVERIFY(action->isEnabled());
+    action->trigger();
+    QCOMPARE(numbers(), sorted);
+    QCOMPARE(ids(), stableIds);
+    const QString saved = directory.filePath(QStringLiteral("numbered.pdf"));
+    const auto after = saveImages(saved);
+    QCOMPARE(after.size(), 2);
+    QVERIFY(after[0] != before[0]);
+    QVERIFY(after[1] != before[1]);
+    document->undo(); // One undo restores every page.
+    QCOMPARE(numbers(), original);
+    QCOMPARE(ids(), stableIds);
+    QCOMPARE(saveImages(directory.filePath(QStringLiteral("undo.pdf"))), before);
+    document->redo();
+    QCOMPARE(numbers(), sorted);
+    QCOMPARE(saveImages(directory.filePath(QStringLiteral("redo.pdf"))), after);
+    QString error;
+    QVERIFY(document->renumberNumberedCallouts(&error)); // A no-op creates no undo item.
+    document->undo();
+    QCOMPARE(numbers(), original);
+    document->redo();
+
+    Part reopened(nullptr, {});
+    QVERIFY(openDocument(&reopened, saved));
+    auto *restored = reopened.m_document->page(1)->annotation(a->uniqueName());
+    QVERIFY(restored);
+    QCOMPARE(restored->numberedCalloutId(), 10);
+    QCOMPARE(restored->orderedCalloutNumber(), 4);
+    QCOMPARE(reopened.m_document->nextNumberedCalloutId(), 31);
+
+    // Metadata round-trip and compatibility with old Ordered Callout PDFs.
+    auto pdf = Poppler::Document::load(saved);
+    QVERIFY(pdf);
+    for (int page = 0; page < 2; ++page) {
+        auto nativePage = pdf->page(page);
+        const auto annotations = nativePage->annotations();
+        for (const auto &annotation : annotations) {
+            auto metadata = QJsonDocument::fromJson(annotation->customStringProperty(QStringLiteral("LatexNoteData")).toUtf8()).object();
+            QCOMPARE(metadata.value(QStringLiteral("type")).toString(), QStringLiteral("numbered-callout"));
+            QVERIFY(metadata.value(QStringLiteral("id")).toInt() > 0);
+            metadata.insert(QStringLiteral("type"), QStringLiteral("ordered-callout"));
+            metadata.remove(QStringLiteral("id"));
+            annotation->setCustomStringProperty(QStringLiteral("LatexNoteData"), QString::fromUtf8(QJsonDocument(metadata).toJson(QJsonDocument::Compact)));
+        }
+    }
+    const QString legacy = directory.filePath(QStringLiteral("legacy.pdf"));
+    std::unique_ptr<Poppler::PDFConverter> converter(pdf->pdfConverter());
+    converter->setOutputFileName(legacy);
+    converter->setPDFOptions(Poppler::PDFConverter::WithChanges);
+    QVERIFY(converter->convert());
+    Part legacyPart(nullptr, {});
+    QVERIFY(openDocument(&legacyPart, legacy));
+    const auto *migrated = legacyPart.m_document->page(1)->annotation(a->uniqueName());
+    QVERIFY(migrated && migrated->isNumberedCallout());
+    QCOMPARE(migrated->numberedCalloutId(), 4);
+    QCOMPARE(migrated->orderedCalloutNumber(), 4);
+
+    // Preflight all changes before touching even the first editable page.
+    setId(0, c, 40);
+    const auto prior = numbers();
+    document->prepareToModifyAnnotationProperties(b);
+    b->setFlags(b->flags() | Annotation::DenyWrite);
+    document->modifyPageAnnotationProperties(0, b);
+    QVERIFY(editIdInDialog(b, 0, 99, false));
+    QCOMPARE(b->numberedCalloutId(), 30);
+    QVERIFY(!document->renumberNumberedCallouts(&error));
+    QVERIFY(!error.isEmpty());
+    QCOMPARE(numbers(), prior);
+    document->undo();
+    QVERIFY(document->renumberNumberedCallouts(&error));
+    QCOMPARE(b->orderedCalloutNumber(), 1);
+    QCOMPARE(c->orderedCalloutNumber(), 2);
+    QCOMPARE(c->numberedCalloutId(), 40);
+    // Equal IDs retain the persisted annotation-list order on that page.
+    setId(0, c, 30);
+    QVERIFY(document->renumberNumberedCallouts(&error));
+    QCOMPARE(b->orderedCalloutNumber(), 1);
+    QCOMPARE(c->orderedCalloutNumber(), 2);
+}
+
+void PartTest::testCalloutMouseGeometry_data()
+{
+    QTest::addColumn<int>("kind");
+    QTest::addColumn<int>("rotation");
+    QTest::addColumn<bool>("projected");
+    const char *names[] = {"freetext", "latex", "ordered"};
+    for (int kind = 0; kind < 3; ++kind) {
+        for (int rotation : {0, 90}) {
+            for (bool projected : {false, true}) {
+                const QByteArray name = QByteArray(names[kind]) + '-' + QByteArray::number(rotation) + (projected ? "-views" : "-pages");
+                QTest::newRow(name.constData()) << kind << rotation << projected;
+            }
+        }
+    }
+}
+
+void PartTest::testCalloutMouseGeometry()
+{
+    QFETCH(int, kind);
+    QFETCH(int, rotation);
+    QFETCH(bool, projected);
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const QString working = directory.filePath(QStringLiteral("callout.pdf"));
+    const QString source = directory.filePath(QStringLiteral("body.pdf"));
+    QVERIFY(writeOrderedCalloutTestPdf(working, 1));
+    QVERIFY(writeOrderedCalloutTestPdf(source, 1, true));
+    Part part(nullptr, {});
+    QVERIFY(openDocument(&part, working));
+    if (rotation) {
+        part.setPageRotation(0, rotation);
+    }
+    auto *document = part.m_document;
+    Annotation *note = nullptr;
+    if (kind == 0) {
+        auto *text = new TextAnnotation;
+        text->setTextType(TextAnnotation::InPlace);
+        text->setInplaceIntent(TextAnnotation::Callout);
+        text->setInplaceBorderColor(Qt::black);
+        note = text;
+    } else {
+        note = new StampAnnotation;
+        note->setOkularLatex(true);
+        note->setLatexNoteType(kind == 2 ? Annotation::LatexNoteOrderedCallout : Annotation::LatexNoteCallout);
+        note->setLatexAppearancePdfFileName(source);
+        note->setLatexPadding(3);
+        note->setLatexFillColor(Qt::white);
+        note->setLatexBorderColor(Qt::black);
+    }
+    note->setContents(QStringLiteral("Callout mouse regression"));
+    note->setBoundingRectangle(NormalizedRect(.4, .3, .7, .5));
+    note->style().setColor(Qt::white);
+    note->style().setWidth(1);
+    const NormalizedPoint initialPoints[] = {{.18, .5}, {.3, .4}, {.4, .4}};
+    for (int i = 0; i < 3; ++i) {
+        if (kind == 0) {
+            static_cast<TextAnnotation *>(note)->setInplaceCallout(initialPoints[i], i);
+        } else {
+            note->setLatexCalloutPoint(initialPoints[i], i);
+        }
+    }
+    document->addPageAnnotation(0, note);
+    const QString name = note->uniqueName();
+    QString error;
+    const QList<ReadingView> views{{QStringLiteral("f50ae514-b116-4a30-9561-e8e95c6596b4"), 1, NormalizedRect(.05, .05, .95, .95)}};
+    QVERIFY2(document->setReadingViews(0, views, &error), qPrintable(error));
+    part.m_pageView->setReadingViewMode(projected);
+    part.widget()->resize(1000, 900);
+    part.widget()->show();
+    QVERIFY(QTest::qWaitForWindowExposed(part.widget()));
+    QVERIFY(QMetaObject::invokeMethod(part.m_pageView, "slotSetMouseNormal"));
+    part.actionCollection()->action(QStringLiteral("view_fit_to_page"))->trigger();
+    QCoreApplication::processEvents();
+    auto *view = part.m_pageView.data();
+    auto *canvas = view->viewport();
+
+    // Recover the source-page-to-viewport mapping instead of assuming a full
+    // page fills the viewport (cropped Views and PDF rotation change its size).
+    QPoint origin(-1, -1);
+    NormalizedPoint base, horizontal, vertical;
+    for (int y = 16; y + 2 < canvas->height() && origin.x() < 0; y += 16) {
+        for (int x = 16; x + 2 < canvas->width(); x += 16) {
+            int page = -1;
+            const QPoint pixel(x, y);
+            if (view->mapGlobalPosToPagePoint(canvas->mapToGlobal(pixel), &page, &base) && page == 0
+                && view->mapGlobalPosToPagePoint(canvas->mapToGlobal(pixel + QPoint(2, 0)), &page, &horizontal) && page == 0
+                && view->mapGlobalPosToPagePoint(canvas->mapToGlobal(pixel + QPoint(0, 2)), &page, &vertical) && page == 0) {
+                origin = pixel;
+                break;
+            }
+        }
+    }
+    QVERIFY(origin.x() >= 0);
+    QVERIFY(horizontal.x > base.x && vertical.y > base.y);
+    const auto pixel = [&](const NormalizedPoint &point) {
+        return origin + QPoint(qRound(2 * (point.x - base.x) / (horizontal.x - base.x)), qRound(2 * (point.y - base.y) / (vertical.y - base.y)));
+    };
+    const auto drag = [&](const NormalizedPoint &from, const NormalizedPoint &to) {
+        QTest::mouseMove(canvas, pixel(from));
+        QTest::mousePress(canvas, Qt::LeftButton, Qt::NoModifier, pixel(from));
+        // Small steps exercise cumulative leader motion. A single jump misses
+        // the bug where snapping the anchor discards each incremental delta.
+        for (int step = 1; step <= 20; ++step) {
+            const NormalizedPoint intermediate(from.x + (to.x - from.x) * step / 20.0, from.y + (to.y - from.y) * step / 20.0);
+            QTest::mouseMove(canvas, pixel(intermediate), 1);
+        }
+        QTest::mouseRelease(canvas, Qt::LeftButton, Qt::NoModifier, pixel(to));
+        QCoreApplication::processEvents();
+    };
+    struct Geometry {
+        NormalizedRect box;
+        NormalizedPoint points[3];
+        int number;
+    };
+    const auto geometry = [&] {
+        const auto *annotation = document->page(0)->annotation(name);
+        Geometry state{annotation->boundingRectangle(), {}, annotation->orderedCalloutNumber()};
+        for (int i = 0; i < 3; ++i) {
+            state.points[i] = kind == 0 ? static_cast<const TextAnnotation *>(annotation)->inplaceCallout(i) : annotation->latexCalloutPoint(i);
+        }
+        return state;
+    };
+    const auto near = [](const NormalizedPoint &a, const NormalizedPoint &b, double tolerance = .00001) {
+        return qAbs(a.x - b.x) < tolerance && qAbs(a.y - b.y) < tolerance;
+    };
+    const auto same = [&](const Geometry &a, const Geometry &b) {
+        return near(NormalizedPoint(a.box.left, a.box.top), NormalizedPoint(b.box.left, b.box.top))
+            && near(NormalizedPoint(a.box.right, a.box.bottom), NormalizedPoint(b.box.right, b.box.bottom))
+            && near(a.points[0], b.points[0]) && near(a.points[1], b.points[1]) && near(a.points[2], b.points[2]) && a.number == b.number;
+    };
+    const auto undoRedo = [&](const Geometry &before, const Geometry &after) {
+        document->undo();
+        const bool restored = same(geometry(), before);
+        document->redo();
+        return restored && same(geometry(), after);
+    };
+    const auto attached = [&](const Geometry &state) {
+        const auto &b = state.box;
+        const auto &anchor = state.points[2];
+        const auto &knee = state.points[1];
+        if (near(anchor, NormalizedPoint(b.left, (b.top + b.bottom) / 2)) || near(anchor, NormalizedPoint(b.right, (b.top + b.bottom) / 2))) {
+            return qAbs(knee.y - anchor.y) < .00001;
+        }
+        if (near(anchor, NormalizedPoint((b.left + b.right) / 2, b.top)) || near(anchor, NormalizedPoint((b.left + b.right) / 2, b.bottom))) {
+            return qAbs(knee.x - anchor.x) < .00001;
+        }
+        return false;
+    };
+    QTest::mouseClick(canvas, Qt::LeftButton, Qt::NoModifier, pixel(NormalizedPoint(.65, .45)));
+    QCoreApplication::processEvents();
+
+    auto before = geometry();
+    drag(before.points[0], NormalizedPoint(.14, .46));
+    auto after = geometry();
+    QVERIFY(near(after.points[0], NormalizedPoint(.14, .46), .007));
+    QCOMPARE(after.box, before.box);
+    QVERIFY(attached(after));
+    QVERIFY(undoRedo(before, after));
+
+    before = geometry();
+    drag(before.points[1], NormalizedPoint(.25, .46));
+    after = geometry();
+    QVERIFY(qAbs(after.points[1].x - .25) < .007);
+    QVERIFY(near(after.points[0], before.points[0]));
+    QVERIFY(near(after.points[2], before.points[2]));
+    QVERIFY(attached(after)); // knee's y is constrained, not the requested .46
+    QVERIFY(undoRedo(before, after));
+
+    before = geometry();
+    drag(before.points[2], NormalizedPoint(.56, .23));
+    after = geometry();
+    QVERIFY(near(after.points[2], NormalizedPoint((after.box.left + after.box.right) / 2, after.box.top)));
+    QVERIFY(near(after.points[0], before.points[0]));
+    QVERIFY(attached(after));
+    QVERIFY(undoRedo(before, after));
+
+    // Put the anchor on a vertical edge before the height resize below: its
+    // midpoint must then actually move, catching a stale leader after resize.
+    before = geometry();
+    drag(before.points[2], NormalizedPoint(.82, .4));
+    after = geometry();
+    QVERIFY(near(after.points[2], NormalizedPoint(after.box.right, (after.box.top + after.box.bottom) / 2)));
+    QVERIFY(near(after.points[0], before.points[0]));
+    QVERIFY(attached(after));
+    QVERIFY(undoRedo(before, after));
+
+    before = geometry();
+    drag(NormalizedPoint(.65, .45), NormalizedPoint(.69, .49));
+    after = geometry();
+    QVERIFY(after.box.left > before.box.left + .02 && after.box.top > before.box.top + .02);
+    QVERIFY(near(after.points[0], before.points[0]));
+    QVERIFY(attached(after));
+    QVERIFY(undoRedo(before, after));
+
+    before = geometry();
+    // RH_Bottom changes only height: the cached source PDF suffices for LaTeX,
+    // avoiding a width reflow that would require an external TeX renderer.
+    const NormalizedPoint bottom((before.box.left + before.box.right) / 2, before.box.bottom);
+    drag(bottom, NormalizedPoint(bottom.x, bottom.y + .07));
+    after = geometry();
+    QVERIFY(after.box.bottom > before.box.bottom + .04);
+    QVERIFY(near(after.points[0], before.points[0]));
+    QVERIFY(attached(after));
+    QCOMPARE(after.number, kind == 2 ? 1 : 0);
+    QVERIFY(undoRedo(before, after));
+    QCOMPARE(document->page(0)->annotation(name)->isOrderedCallout(), kind == 2);
+    QCOMPARE(view->readingViewMode(), projected);
+}
+
+namespace {
 // Count actual generator submissions, not UI request attempts or repaints.
 std::atomic<int> readingRenderSubmissions{0};
 std::atomic<qint64> readingLargestRender{0};
@@ -3621,7 +4697,8 @@ void PartTest::testUnifiedEditingModes()
     QVERIFY(QTest::qWaitForWindowExposed(part.widget()));
     auto *selector = qobject_cast<KSelectAction *>(part.actionCollection()->action(QStringLiteral("editing_mode_selector")));
     QVERIFY(selector);
-    QCOMPARE(selector->actions().size(), 5);
+    QCOMPARE(selector->actions().size(), 6);
+    QCOMPARE(int(EditingMode::Proofread), 5);
     QCOMPARE(selector->currentItem(), int(EditingMode::Reading));
     auto *named = part.actionCollection()->action(QStringLiteral("advanced_add_named_destination"));
     auto *ocr = part.actionCollection()->action(QStringLiteral("advanced_recognize_english_text"));
@@ -3630,7 +4707,12 @@ void PartTest::testUnifiedEditingModes()
     auto *draw = part.actionCollection()->action(QStringLiteral("advanced_add_reading_view"));
     auto *apply = part.actionCollection()->action(QStringLiteral("view_apply_views_to_document"));
     auto *highlight = part.actionCollection()->action(QStringLiteral("annotation_highlighter"));
-    QVERIFY(named && ocr && ocrEdit && insert && draw && apply && highlight);
+    auto *numbered = part.actionCollection()->action(QStringLiteral("annotation_add_ordered_callout"));
+    auto *renumber = part.actionCollection()->action(QStringLiteral("annotation_renumber_callouts"));
+    auto *latexCallout = part.actionCollection()->action(QStringLiteral("annotation_add_latex_callout"));
+    QVERIFY(named && ocr && ocrEdit && insert && draw && apply && highlight && numbered && renumber && latexCallout);
+    QVERIFY(!numbered->isVisible());
+    QVERIFY(!renumber->isVisible());
     QVERIFY(!part.actionCollection()->action(QStringLiteral("view_toggle_named_destinations"))->isVisible());
     QString error;
     const QList<ReadingView> views{{QStringLiteral("b99f36a5-bb53-4cf0-9a8e-069b84c4df33"), 1, NormalizedRect(.05, .1, .45, .4)}};
@@ -3640,7 +4722,7 @@ void PartTest::testUnifiedEditingModes()
     highlight->trigger();
     QVERIFY(highlight->isChecked());
     QSignalSpy created(main, SIGNAL(createReadingViewRequested(int,QRectF)));
-    for (EditingMode mode : {EditingMode::CrossReferences, EditingMode::Ocr, EditingMode::Pages, EditingMode::Views, EditingMode::Reading}) {
+    for (EditingMode mode : {EditingMode::CrossReferences, EditingMode::Ocr, EditingMode::Pages, EditingMode::Views, EditingMode::Proofread, EditingMode::Reading}) {
         selector->actions().at(int(mode))->trigger();
         QCOMPARE(part.m_editingMode, mode);
         QCOMPARE(selector->currentItem(), int(mode));
@@ -3653,6 +4735,14 @@ void PartTest::testUnifiedEditingModes()
         QCOMPARE(insert->isVisible(), mode == EditingMode::Pages);
         QCOMPARE(draw->isVisible(), mode == EditingMode::Views);
         QCOMPARE(apply->isVisible(), mode == EditingMode::Views);
+        QCOMPARE(numbered->isVisible(), mode == EditingMode::Proofread);
+        QCOMPARE(renumber->isVisible(), mode == EditingMode::Proofread);
+        if (mode == EditingMode::Proofread) {
+            QVERIFY(numbered->isEnabled());
+            QVERIFY(renumber->isEnabled());
+        }
+        QVERIFY(latexCallout->isEnabled());
+        QVERIFY(latexCallout->isVisible());
         QVERIFY(main->readingViewMode());
         QVERIFY(!main->isOcrTextEditing());
         QVERIFY(highlight->isEnabled());
@@ -3682,7 +4772,7 @@ void PartTest::testUnifiedEditingModes()
     PageView *auxiliary = part.m_documentWorkspace->auxiliaryViews().constFirst();
     QVERIFY(auxiliary->readingViewEditingEnabled());
     auxiliary->setReadingViewMode(false);
-    for (EditingMode mode : {EditingMode::Ocr, EditingMode::CrossReferences, EditingMode::Pages, EditingMode::Views, EditingMode::Reading}) {
+    for (EditingMode mode : {EditingMode::Ocr, EditingMode::CrossReferences, EditingMode::Pages, EditingMode::Views, EditingMode::Proofread, EditingMode::Reading}) {
         selector->actions().at(int(mode))->trigger();
         for (PageView *frame : {main, auxiliary}) {
             QCOMPARE(frame->ocrModeEnabled(), mode == EditingMode::Ocr);
@@ -3692,6 +4782,14 @@ void PartTest::testUnifiedEditingModes()
         }
         QVERIFY(main->readingViewMode());
         QVERIFY(!auxiliary->readingViewMode());
+        QCOMPARE(numbered->isVisible(), mode == EditingMode::Proofread);
+        QCOMPARE(renumber->isVisible(), mode == EditingMode::Proofread);
+        if (mode == EditingMode::Proofread) {
+            QVERIFY(numbered->isEnabled());
+            QVERIFY(renumber->isEnabled());
+        }
+        QVERIFY(latexCallout->isEnabled());
+        QCOMPARE(part.m_editingMode, mode);
         QCOMPARE(selector->currentItem(), int(mode));
     }
 }
@@ -6797,7 +7895,9 @@ int main(int argc, char *argv[])
     Okular::Settings::instance(QStringLiteral("okularparttest"));
 
     QApplication app(argc, argv);
-    app.setApplicationName(QStringLiteral("okularparttest"));
+    // On Windows the extensionless KConfig file above occupies that basename
+    // under LocalAppData. Keep the application's cache directory distinct.
+    app.setApplicationName(QStringLiteral("okularparttest-app"));
     app.setOrganizationDomain(QStringLiteral("kde.org"));
     app.setQuitOnLastWindowClosed(false);
 

@@ -15,6 +15,13 @@
 #include <algorithm>
 #include <cmath>
 #include <vector>
+#include <map>
+#include <set>
+#include <iterator>
+#include <QFontDatabase>
+#include <QGlyphRun>
+#include <QPainterPath>
+#include <QTextLayout>
 
 namespace MengsheeLatexAppearance
 {
@@ -24,6 +31,80 @@ struct RawSourceData {
     Object form;
     QRectF box; // PDF coordinates, not Qt screen coordinates
 };
+
+namespace {
+struct BadgeLabel {
+    QString text;
+    double width = 0;
+    bool ascii = true;
+    bool valid = true;
+    QPainterPath outline;
+};
+
+BadgeLabel badgeLabel(int order, const QString &formatted)
+{
+    BadgeLabel result;
+    result.text = formatted.isEmpty() ? QString::number(order) : formatted;
+    if (result.text.size() > 4096 || QString::fromUtf8(result.text.toUtf8()) != result.text) { result.valid = false; return result; }
+    for (QChar c : result.text) {
+        if (c.unicode() < 32 || c.unicode() > 126) result.ascii = false;
+    }
+    if (result.ascii) {
+        // Standard Helvetica-Bold WinAnsi advances, ASCII 32..126 (1/1000 em).
+        static constexpr int widths[] = {
+            278,333,474,556,556,889,722,238,333,333,389,584,278,333,278,278,
+            556,556,556,556,556,556,556,556,556,556,333,333,584,584,584,611,
+            975,722,722,722,722,667,611,778,722,278,556,722,611,833,722,778,
+            667,778,722,667,611,722,667,944,667,667,611,333,278,333,584,556,
+            333,556,611,556,611,556,333,611,611,278,278,556,278,889,611,611,
+            611,611,389,556,333,611,556,778,556,556,500,389,280,389,584
+        };
+        static_assert(std::size(widths) == 95);
+        int advance = 0;
+        for (QChar c : result.text) advance += widths[c.unicode() - 32];
+        result.width = advance * 9.0 / 1000.0;
+        return result;
+    }
+    // Shape Unicode with Qt's font fallback, then store actual glyph outlines
+    // in the PDF. Reopening never depends on a viewer's font substitution.
+    QFont font = QFontDatabase::systemFont(QFontDatabase::GeneralFont);
+    font.setPixelSize(90);
+    font.setWeight(QFont::Bold);
+    QTextLayout layout(result.text, font);
+    layout.beginLayout();
+    QTextLine line = layout.createLine();
+    if (line.isValid()) line.setLineWidth(1000000);
+    layout.endLayout();
+    if (!line.isValid() || line.textLength() != result.text.size()) { result.valid = false; return result; }
+    QPainterPath path;
+    path.setFillRule(Qt::WindingFill);
+    for (const QGlyphRun &run : layout.glyphRuns()) {
+        const auto indexes = run.glyphIndexes();
+        const auto positions = run.positions();
+        for (qsizetype i = 0; i < indexes.size(); ++i) {
+            if (indexes[i] == 0) { result.valid = false; return result; }
+            const QPainterPath glyph = run.rawFont().pathForGlyph(indexes[i]);
+            const auto space = run.rawFont().glyphIndexesForString(QStringLiteral(" "));
+            if (glyph.isEmpty() && (space.isEmpty() || indexes[i] != space.front())) { result.valid = false; return result; }
+            path.addPath(QTransform::fromTranslate(positions[i].x(), positions[i].y()).map(glyph));
+        }
+    }
+    const QRectF bounds = path.boundingRect();
+    if (bounds.isEmpty()) { result.valid = false; return result; }
+    const double scale = std::min(0.1, 9.0 / bounds.height());
+    result.outline = QTransform::fromScale(scale, -scale).map(path);
+    result.width = result.outline.boundingRect().width();
+    return result;
+}
+}
+
+QRectF orderedCalloutBadgeRect(const QRectF &frame, int orderedNumber, const QString &formattedLabel)
+{
+    if (orderedNumber <= 0 || !frame.isValid()) return {};
+    const BadgeLabel label = badgeLabel(orderedNumber, formattedLabel);
+    if (!label.valid) return {};
+    return QRectF(frame.left(), frame.bottom(), std::max(14.0, label.width + 6.0), 14.0);
+}
 
 namespace
 {
@@ -146,7 +227,7 @@ bool validateOptions(const Poppler::StampAnnotation::CustomPdfAppearanceOptions 
     return true;
 }
 
-Object buildForm(XRef *xref, const Object &rawForm, const QRectF &sourceBox, const Poppler::StampAnnotation::CustomPdfAppearanceOptions &options, double opacity)
+Object buildForm(XRef *xref, const Object &rawForm, const QRectF &sourceBox, const Poppler::StampAnnotation::CustomPdfAppearanceOptions &options, double opacity, int orderedNumber, const QString &formattedLabel)
 {
     const QSizeF outer = options.outerSize.isValid() ? options.outerSize : sourceBox.size();
     const bool framed = options.frameRect.isValid();
@@ -211,11 +292,64 @@ Object buildForm(XRef *xref, const Object &rawForm, const QRectF &sourceBox, con
         out += "1 0 0 1 " + number(offset.x() - sourceBox.x()) + ' ' + number(offset.y() - sourceBox.y()) + " cm\n/Fm0 Do\nQ\n";
     }
 
+    if (orderedNumber > 0) {
+        const BadgeLabel shaped = badgeLabel(orderedNumber, formattedLabel);
+        const QRectF badge = orderedCalloutBadgeRect(frame, orderedNumber, formattedLabel);
+        const double fontSize = 9.0;
+        const double textWidth = shaped.width;
+        const double textX = badge.left() + (badge.width() - textWidth) / 2.0;
+        const double baseline = badge.top() + (badge.height() - fontSize * 0.718) / 2.0;
+        // Deliberately outside the source-only clip; never scale the body to
+        // make room for the badge, and never bake it into the raw Fm0 source.
+        const QColor textColor = options.fillColor.isValid() ? options.fillColor : QColor(Qt::transparent);
+        out += "q\n/BadgeBoxGS gs\n";
+        color(out, border, true);
+        color(out, border, false);
+        out += "0.75 w\n[] 0 d\n0 j\n";
+        boxPath(out, badge.adjusted(0.375, 0.375, -0.375, -0.375), 6);
+        out += "B\n/BadgeTextGS gs\n";
+        color(out, textColor, true);
+        if (shaped.ascii) {
+            QByteArray literal = shaped.text.toLatin1();
+            literal.replace("\\", "\\\\");
+            literal.replace("(", "\\(");
+            literal.replace(")", "\\)");
+            out += "BT\n/OrderBadgeFont 9 Tf\n0 Tc 0 Tw 100 Tz 0 Ts 0 Tr\n1 0 0 1 " + number(textX) + ' ' + number(baseline) + " Tm\n(" + literal + ") Tj\nET\n";
+        } else {
+            const QRectF ink = shaped.outline.boundingRect();
+            const QPainterPath path = QTransform::fromTranslate(badge.center().x() - ink.center().x(), badge.center().y() - ink.center().y()).map(shaped.outline);
+            for (int i = 0; i < path.elementCount(); ++i) {
+                const auto e = path.elementAt(i);
+                if (e.isMoveTo() || e.isLineTo()) {
+                    out += number(e.x) + ' ' + number(e.y) + (e.isMoveTo() ? " m\n" : " l\n");
+                } else if (e.type == QPainterPath::CurveToElement) {
+                    const auto c2 = path.elementAt(++i);
+                    const auto end = path.elementAt(++i);
+                    out += number(e.x) + ' ' + number(e.y) + ' ' + number(c2.x) + ' ' + number(c2.y) + ' ' + number(end.x) + ' ' + number(end.y) + " c\n";
+                }
+            }
+            out += "f\n";
+        }
+        out += "Q\n";
+    }
+
     auto *gs = new Dict(xref);
     gs->set("CA", Object(opacity));
     gs->set("ca", Object(opacity));
     auto *states = new Dict(xref);
     states->set("GS0", Object(gs));
+    if (orderedNumber > 0) {
+        // ExtGState alpha replaces the inherited GS0 value. Include annotation
+        // opacity exactly once, independently for background and foreground.
+        const auto badgeState = [xref, opacity](double colorAlpha) {
+            auto *state = new Dict(xref);
+            state->set("CA", Object(opacity * colorAlpha));
+            state->set("ca", Object(opacity * colorAlpha));
+            return Object(state);
+        };
+        states->set("BadgeBoxGS", badgeState(border.alphaF()));
+        states->set("BadgeTextGS", badgeState(options.fillColor.isValid() ? options.fillColor.alphaF() : 0.0));
+    }
     auto *forms = new Dict(xref);
     // Never put the previous outer AP here: it contains a destructive frame clip.
     // Retaining this raw Form even for an empty inner frame makes growth reversible.
@@ -223,6 +357,17 @@ Object buildForm(XRef *xref, const Object &rawForm, const QRectF &sourceBox, con
     auto *resources = new Dict(xref);
     resources->set("ExtGState", Object(states));
     resources->set("XObject", Object(forms));
+    if (orderedNumber > 0) {
+        auto *font = new Dict(xref);
+        font->set("Type", Object(objName, "Font"));
+        font->set("Subtype", Object(objName, "Type1"));
+        font->set("BaseFont", Object(objName, "Helvetica-Bold"));
+        font->set("Encoding", Object(objName, "WinAnsiEncoding"));
+        Object fontObject(font);
+        auto *fonts = new Dict(xref);
+        fonts->set("OrderBadgeFont", Object(xref->addIndirectObject(fontObject)));
+        resources->set("Font", Object(fonts));
+    }
     auto *bounds = new Array(xref);
     bounds->add(Object(0.0));
     bounds->add(Object(0.0));
@@ -239,6 +384,49 @@ Object buildForm(XRef *xref, const Object &rawForm, const QRectF &sourceBox, con
     const Goffset length = static_cast<Goffset>(bytes->size());
     return Object(std::make_unique<AppearanceStream>(std::move(bytes), 0, length, Object(dict)));
 }
+}
+
+void refreshAnnotationPageBindings(Poppler::Document *document, const QList<Poppler::Annotation *> &annotations)
+{
+    PDFDoc *core = popplerCoreDocument(document);
+    if (!core || annotations.isEmpty()) return;
+    struct Binding {
+        ::Page *page = nullptr;
+        std::shared_ptr<Annot> annotation;
+    };
+    using Key = std::pair<int, int>;
+    std::map<Key, Binding> live;
+    for (int pageIndex = 1; pageIndex <= core->getNumPages(); ++pageIndex) {
+        ::Page *page = core->getPage(pageIndex);
+        Annots *annots = page ? page->getAnnots() : nullptr;
+        if (!annots) continue;
+        for (const auto &annotation : annots->getAnnots()) {
+            const Ref ref = annotation->getRef();
+            if (ref.num <= 0) continue;
+            const auto [entry, inserted] = live.emplace(Key(ref.num, ref.gen), Binding{page, annotation});
+            // Malformed PDFs may share one annotation across pages. Never pick
+            // an arbitrary page for such an ambiguous object identity.
+            if (!inserted && entry->second.page != page) entry->second = {};
+        }
+    }
+    QList<Poppler::Annotation *> pending = annotations;
+    std::set<Poppler::AnnotationPrivate *> visited;
+    while (!pending.isEmpty()) {
+        Poppler::Annotation *wrapper = pending.takeLast();
+        if (!wrapper) continue;
+        auto *data = (wrapper->*AnnotationDataAccess::member()).data();
+        if (!data || !visited.insert(data).second || !data->pdfAnnot || !data->parentDoc || data->parentDoc->doc.get() != core || data->pdfAnnot->getDoc() != core) continue;
+        // Revisions can hold their own Qt wrappers, sharing the same page cache.
+        for (const auto &revision : data->revisions) pending.append(revision.get());
+        const Ref ref = data->pdfAnnot->getRef();
+        const auto found = live.find(Key(ref.num, ref.gen));
+        if (found == live.end() || !found->second.annotation || found->second.annotation->getType() != data->pdfAnnot->getType()) continue;
+        // Do not dereference the old pdfPage: the page-tree editor destroyed it.
+        // Keep the Qt wrapper/data identity (and Core undo targets), but replace
+        // BOTH native handles. The fresh Annots constructor assigned pageNum.
+        data->pdfAnnot = found->second.annotation;
+        data->pdfPage = found->second.page;
+    }
 }
 
 bool RawSource::isValid() const
@@ -313,11 +501,25 @@ bool rebuild(Poppler::Document *document,
              const QString &sourcePdf,
              const Poppler::StampAnnotation::CustomPdfAppearanceOptions &options,
              const RawSource &preserved,
-             QString *error)
+             QString *error,
+             int orderedNumber,
+             const QString &formattedLabel)
 {
     auto native = findStamp(document, nativePage, stamp, error);
     if (!native || !validateOptions(options, error)) {
         return false;
+    }
+    if (orderedNumber < 0) {
+        return fail(error, "Invalid ordered callout number.");
+    }
+    if (orderedNumber > 0) {
+        if (!badgeLabel(orderedNumber, formattedLabel).valid) {
+            return fail(error, "The formatted callout label is too long or contains unavailable glyphs.");
+        }
+        const QRectF outerBounds = QRectF(QPointF(0, 0), options.outerSize).adjusted(-0.000001, -0.000001, 0.000001, 0.000001);
+        if (!options.frameRect.isValid() || !outerBounds.contains(orderedCalloutBadgeRect(options.frameRect, orderedNumber, formattedLabel))) {
+            return fail(error, "Ordered callout appearance bounds do not include its badge.");
+        }
     }
     const double opacity = stamp->style().opacity();
     if (!std::isfinite(opacity) || opacity < 0.0 || opacity > 1.0) {
@@ -344,7 +546,7 @@ bool rebuild(Poppler::Document *document,
         }
         return false;
     }
-    Object form = buildForm(native->getDoc()->getXRef(), source.data->form, source.data->box, options, opacity);
+    Object form = buildForm(native->getDoc()->getXRef(), source.data->form, source.data->box, options, opacity, orderedNumber, formattedLabel);
     native->setNewAppearance(std::move(form));
     if (error) {
         error->clear();

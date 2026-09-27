@@ -497,3 +497,35 @@ msgstr "扁平化 PDF 导出失败：%1"
 #: generator_pdf.cpp
 msgid "Flattened PDF export failed because of an unknown internal error."
 msgstr "由于未知的内部错误，扁平化 PDF 导出失败。"
+
+#: generator_pdf.cpp
+msgid "Cannot render this numbering format with the available fonts."
+msgstr "现有字体无法呈现此编号格式。"
+
+#: generator_pdf.cpp
+msgid "Numbered callout numbering cannot be edited in this document."
+msgstr "无法在此文档中修改编号引出标注的编号设置。"
+
+#: generator_pdf.cpp
+msgid "Numbered callout numbering JSON exceeds the 16 KiB limit."
+msgstr "编号引出标注设置的 JSON 超出 16 KiB 限制。"
+
+#: generator_pdf.cpp
+msgid "Numbered callout numbering JSON contains invalid Unicode."
+msgstr "编号引出标注设置的 JSON 含无效 Unicode 字符。"
+
+#: generator_pdf.cpp
+msgid "Numbered callout numbering must be a valid JSON object."
+msgstr "编号引出标注设置必须是有效的 JSON 对象。"
+
+#: generator_pdf.cpp
+msgid "Numbered callout numbering requires version 1, a string pattern and a boolean restartPerPage."
+msgstr "编号设置需要版本 1、字符串格式模板和布尔值 restartPerPage。"
+
+#: generator_pdf.cpp
+msgid "The numbering pattern must contain {n} and be at most 256 characters long."
+msgstr "编号模板必须包含 {n}，且长度不超过 256 个字符。"
+
+#: generator_pdf.cpp
+msgid "Only {page} and {n} placeholders are allowed in the numbering pattern."
+msgstr "编号模板只允许使用 {page} 和 {n} 占位符。"

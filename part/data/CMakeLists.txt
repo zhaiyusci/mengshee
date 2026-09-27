@@ -19,6 +19,7 @@ install(FILES
    annotation-image-note.svg
    annotation-inline-note.svg
    annotation-latex-callout.svg
+   annotation-ordered-callout.svg
    annotation-latex-inline-note.svg
    annotation-latex-note.svg
    annotation-line-width.svg

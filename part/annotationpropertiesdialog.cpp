@@ -17,6 +17,8 @@
 #include <QLayout>
 #include <QPushButton>
 #include <QTextEdit>
+#include <QSpinBox>
+#include <limits>
 
 // local includes
 #include "annotationwidgets.h"
@@ -126,6 +128,23 @@ AnnotsPropertiesDialog::AnnotsPropertiesDialog(QWidget *parent, Okular::Document
     AuthorEdit->setEnabled(canEditAnnotations);
     gridlayout->addRow(i18n("&Author:"), AuthorEdit);
 
+    if (ann->isNumberedCallout()) {
+        m_numberedCalloutId = new QSpinBox(page);
+        m_numberedCalloutId->setObjectName(QStringLiteral("numberedCalloutInternalId"));
+        m_numberedCalloutId->setRange(1, std::numeric_limits<int>::max());
+        m_numberedCalloutId->setValue(ann->numberedCalloutId());
+        m_numberedCalloutId->setKeyboardTracking(false);
+        m_numberedCalloutId->setEnabled(canEditAnnotations);
+        m_numberedCalloutId->setToolTip(i18nc("@info:tooltip", "Renumber all Numbered Callouts by page, then Internal ID. Changing an ID does not renumber automatically."));
+        gridlayout->addRow(i18n("Internal ID:"), m_numberedCalloutId);
+        auto *displayedNumber = new QLabel(ann->numberedCalloutLabel(), page);
+        displayedNumber->setTextFormat(Qt::PlainText);
+        displayedNumber->setObjectName(QStringLiteral("numberedCalloutDisplayedNumber"));
+        displayedNumber->setTextInteractionFlags(Qt::TextSelectableByMouse);
+        gridlayout->addRow(i18n("Displayed number:"), displayedNumber);
+        connect(m_numberedCalloutId, &QSpinBox::valueChanged, this, &AnnotsPropertiesDialog::setModified);
+    }
+
     tmplabel = new QLabel(page);
     tmplabel->setText(QLocale().toString(ann->creationDate(), QLocale::LongFormat));
     tmplabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
@@ -217,13 +236,16 @@ void AnnotsPropertiesDialog::setCaptionTextbyAnnotType()
 
 void AnnotsPropertiesDialog::setModified()
 {
+    if (!m_document->canModifyPageAnnotation(m_annot)) {
+        return;
+    }
     modified = true;
     button(QDialogButtonBox::Apply)->setEnabled(true);
 }
 
 void AnnotsPropertiesDialog::slotapply()
 {
-    if (!modified) {
+    if (!modified || !m_document->canModifyPageAnnotation(m_annot)) {
         return;
     }
 
@@ -232,6 +254,9 @@ void AnnotsPropertiesDialog::slotapply()
 
     m_document->prepareToModifyAnnotationProperties(m_annot);
     m_annot->setAuthor(AuthorEdit->text());
+    if (m_numberedCalloutId) {
+        m_annot->setNumberedCalloutId(m_numberedCalloutId->value());
+    }
     m_annot->setModificationDate(QDateTime::currentDateTime());
 
     m_annotWidget->applyChanges();

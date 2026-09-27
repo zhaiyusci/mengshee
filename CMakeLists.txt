@@ -452,6 +452,7 @@ install( FILES
            core/document.h
            core/readingview.h
            core/readingvieweditinginterface.h
+           core/numberedcalloutnumberinginterface.h
            core/fontinfo.h
            core/form.h
            core/generator.h

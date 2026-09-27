@@ -741,7 +741,9 @@ public:
     {
         LatexNotePlain,
         LatexNoteBoxed,
-        LatexNoteCallout
+        LatexNoteCallout,
+        LatexNoteOrderedCallout,
+        LatexNoteNumberedCallout = LatexNoteOrderedCallout // compatibility with saved/older callers
     };
 
     /**
@@ -763,6 +765,21 @@ public:
      * Returns whether this LaTeX-backed annotation is a stamp-based callout.
      */
     bool isLatexCallout() const;
+
+    /** Whether this is the automatically numbered LaTeX callout variant. */
+    bool isOrderedCallout() const;
+    bool isNumberedCallout() const;
+
+    /** Editable sorting ID, independent of the displayed/reorderable number. */
+    int numberedCalloutId() const;
+    void setNumberedCalloutId(int id);
+    /** Visible label; legacy annotations fall back to their decimal number. */
+    QString numberedCalloutLabel() const;
+    void setNumberedCalloutLabel(const QString &label);
+
+    /** Document-wide number; zero means not yet assigned or not ordered. */
+    int orderedCalloutNumber() const;
+    void setOrderedCalloutNumber(int number);
 
     /**
      * Sets one control point for a stamp-based LaTeX callout.

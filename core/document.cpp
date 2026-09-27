@@ -12,6 +12,9 @@
 #include "document_p.h"
 #include "documentcommands_p.h"
 #include "readingvieweditinginterface.h"
+#include "numberedcalloutnumberinginterface.h"
+#include <QJsonDocument>
+#include <QJsonObject>
 
 #include <algorithm>
 #include <cmath>
@@ -35,6 +38,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QSaveFile>
 #include <filesystem>
 #include <QLabel>
 #include <QMap>
@@ -4068,10 +4072,315 @@ void Document::recalculateForms()
     d->recalculateForms();
 }
 
+namespace {
+bool validNumberedCalloutPattern(const QString &pattern)
+{
+    if (pattern.size() > 256 || !pattern.contains(QStringLiteral("{n}"))) {
+        return false;
+    }
+    QString literals = pattern;
+    literals.replace(QStringLiteral("{n}"), QString());
+    literals.replace(QStringLiteral("{page}"), QString());
+    if (literals.contains(QLatin1Char('{')) || literals.contains(QLatin1Char('}'))) {
+        return false;
+    }
+    for (QChar ch : pattern) {
+        if (ch.category() == QChar::Other_Control || ch == QChar(0x2028) || ch == QChar(0x2029)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+QString numberedCalloutLabelFor(const QString &pattern, int page, int number)
+{
+    QString label = pattern;
+    label.replace(QStringLiteral("{page}"), QString::number(page + 1));
+    label.replace(QStringLiteral("{n}"), QString::number(number));
+    return label;
+}
+}
+
+QString Document::numberedCalloutNumberingPattern() const
+{
+    const auto *editor = dynamic_cast<const NumberedCalloutNumberingInterface *>(d->m_generator);
+    const auto config = editor ? QJsonDocument::fromJson(editor->numberedCalloutNumberingJson().toUtf8()).object() : QJsonObject();
+    const QString pattern = config.value(QStringLiteral("pattern")).toString();
+    return validNumberedCalloutPattern(pattern) ? pattern : QStringLiteral("{n}");
+}
+
+bool Document::numberedCalloutNumberingRestartsPerPage() const
+{
+    const auto *editor = dynamic_cast<const NumberedCalloutNumberingInterface *>(d->m_generator);
+    const auto config = editor ? QJsonDocument::fromJson(editor->numberedCalloutNumberingJson().toUtf8()).object() : QJsonObject();
+    return config.value(QStringLiteral("restartPerPage")).toBool(false);
+}
+
+bool Document::canEditNumberedCalloutNumbering() const
+{
+    const auto *editor = dynamic_cast<const NumberedCalloutNumberingInterface *>(d->m_generator);
+    return isOpened() && d->m_annotationEditingEnabled && isAllowed(AllowNotes) && editor && editor->canEditNumberedCalloutNumbering();
+}
+
+bool Document::canRenderNumberedCalloutNumbering(QString *errorText) const
+{
+    const auto *editor = dynamic_cast<const NumberedCalloutNumberingInterface *>(d->m_generator);
+    return !editor || editor->validateNumberedCalloutLabel(numberedCalloutLabelFor(numberedCalloutNumberingPattern(), 0, 1), errorText);
+}
+
+int Document::nextNumberedCalloutNumber(int page) const
+{
+    if (!isValidPageIndex(d->m_pagesVector, page)) {
+        return 0;
+    }
+    if (!numberedCalloutNumberingRestartsPerPage()) {
+        return nextOrderedCalloutNumber();
+    }
+    int maximum = 0;
+    for (const Annotation *annotation : d->m_pagesVector[page]->annotations()) {
+        if (annotation->subType() == Annotation::AStamp && annotation->isOkularLatex() && annotation->isNumberedCallout()) {
+            maximum = std::max(maximum, annotation->orderedCalloutNumber());
+        }
+    }
+    return maximum == INT_MAX ? 0 : maximum + 1;
+}
+
+int Document::nextOrderedCalloutNumber() const
+{
+    int maximum = 0;
+    for (const Page *page : std::as_const(d->m_pagesVector)) {
+        for (const Annotation *annotation : page->annotations()) {
+            if (annotation->subType() == Annotation::AStamp && annotation->isOkularLatex() && annotation->isOrderedCallout()) {
+                maximum = std::max(maximum, annotation->orderedCalloutNumber());
+            }
+        }
+    }
+    return maximum == INT_MAX ? 0 : maximum + 1;
+}
+
+int Document::nextNumberedCalloutId() const
+{
+    int maximum = 0;
+    for (const Page *page : std::as_const(d->m_pagesVector)) {
+        for (const Annotation *annotation : page->annotations()) {
+            if (annotation->subType() == Annotation::AStamp && annotation->isOkularLatex() && annotation->isNumberedCallout()) {
+                maximum = std::max(maximum, annotation->numberedCalloutId());
+            }
+        }
+    }
+    return maximum == INT_MAX ? 0 : maximum + 1;
+}
+
+bool Document::exportNumberedCalloutsCsv(const QString &fileName, QString *errorText) const
+{
+    if (errorText) {
+        errorText->clear();
+    }
+    const auto fail = [errorText](const QString &message) {
+        if (errorText) {
+            *errorText = message;
+        }
+        return false;
+    };
+    if (QThread::currentThread() != thread() || !isOpened()) {
+        return fail(i18n("Open a document before exporting Numbered Callouts."));
+    }
+    const QFileInfo target(fileName);
+    if (fileName.isEmpty() || target.isSymLink() || (target.exists() && !target.isFile())) {
+        return fail(i18n("Choose a regular output file for the CSV."));
+    }
+    const auto nativePath = [](const QString &path) {
+#ifdef Q_OS_WIN
+        return std::filesystem::path(path.toStdWString());
+#else
+        return std::filesystem::path(QFile::encodeName(path).constData());
+#endif
+    };
+    QStringList sources{d->m_docFileName};
+    if (d->m_url.isLocalFile()) {
+        sources.append(d->m_url.toLocalFile());
+    }
+    for (const QString &source : std::as_const(sources)) {
+        if (target.exists() && QFileInfo::exists(source)) {
+            std::error_code ec;
+            const bool equivalent = std::filesystem::equivalent(nativePath(source), nativePath(fileName), ec);
+            if (ec || equivalent) {
+                return fail(i18n("The CSV must be saved to a different file. Your source document will not be overwritten."));
+            }
+        }
+    }
+    // Quote source verbatim except the leading apostrophe required to prevent
+    // spreadsheet formula execution. Quoting alone does not neutralize formulas.
+    const auto sourceCell = [](QString source) -> QString {
+        qsizetype first = 0;
+        while (first < source.size() && (source[first].isSpace() || source[first].unicode() < 0x20 || source[first].unicode() == 0xfeff)) {
+            ++first;
+        }
+        const bool formula = first < source.size() && QStringLiteral("=+-@").contains(source[first]);
+        const bool leadingControl = !source.isEmpty() && QStringLiteral("\t\r\n").contains(source.front());
+        if (formula || leadingControl) {
+            source.prepend(QLatin1Char('\''));
+        }
+        source.replace(QLatin1Char('"'), QStringLiteral("\"\""));
+        return QLatin1Char('"') + source + QLatin1Char('"');
+    };
+    QSaveFile output(fileName);
+    if (!output.open(QIODevice::WriteOnly)) {
+        return fail(output.errorString());
+    }
+    const QByteArray header = QByteArray::fromHex("efbbbf") + QByteArrayLiteral("Page,Internal ID,Number,LaTeX\r\n");
+    if (output.write(header) != header.size()) {
+        return fail(output.errorString());
+    }
+    for (int page = 0; page < d->m_pagesVector.size(); ++page) {
+        QList<const Annotation *> notes;
+        for (const Annotation *annotation : d->m_pagesVector[page]->annotations()) {
+            if (annotation->subType() == Annotation::AStamp && annotation->isOkularLatex() && annotation->isNumberedCallout()) {
+                notes.append(annotation);
+            }
+        }
+        std::stable_sort(notes.begin(), notes.end(), [](const Annotation *a, const Annotation *b) { return a->orderedCalloutNumber() < b->orderedCalloutNumber(); });
+        for (const Annotation *annotation : std::as_const(notes)) {
+            const QString sequence = QString::number(annotation->orderedCalloutNumber());
+            const QString label = annotation->numberedCalloutLabel();
+            // Preserve custom labels such as 1-1 as text rather than Excel dates.
+            const QString numberCell = label == sequence ? sequence : sourceCell(QLatin1Char('\'') + label);
+            const QByteArray row = (QString::number(page + 1) + QLatin1Char(',') + QString::number(annotation->numberedCalloutId()) + QLatin1Char(',')
+                + numberCell + QLatin1Char(',') + sourceCell(annotation->contents()) + QStringLiteral("\r\n")).toUtf8();
+            if (output.write(row) != row.size()) {
+                return fail(output.errorString());
+            }
+        }
+    }
+    if (!output.commit()) {
+        return fail(output.errorString());
+    }
+    return true;
+}
+
+bool Document::renumberNumberedCallouts(QString *errorText)
+{
+    return setNumberedCalloutNumbering(numberedCalloutNumberingPattern(), numberedCalloutNumberingRestartsPerPage(), errorText);
+}
+
+bool Document::setNumberedCalloutNumbering(const QString &pattern, bool restartPerPage, QString *errorText)
+{
+    if (errorText) {
+        errorText->clear();
+    }
+    if (!validNumberedCalloutPattern(pattern)) {
+        if (errorText) {
+            *errorText = i18n("Use at most 256 characters, include {n}, and use only {page} and {n} placeholders without line breaks.");
+        }
+        return false;
+    }
+    const bool changeFormat = pattern != numberedCalloutNumberingPattern() || restartPerPage != numberedCalloutNumberingRestartsPerPage();
+    auto *editor = dynamic_cast<NumberedCalloutNumberingInterface *>(d->m_generator);
+    if (!isOpened() || (changeFormat && !canEditNumberedCalloutNumbering())) {
+        if (errorText) {
+            *errorText = i18n("Numbered Callout format cannot be changed in this document.");
+        }
+        return false;
+    }
+    if (editor && !editor->validateNumberedCalloutLabel(numberedCalloutLabelFor(pattern, 0, 1), errorText)) {
+        return false;
+    }
+    struct Change {
+        int page;
+        Annotation *annotation;
+        int number;
+        QString label;
+    };
+    QList<Change> changes;
+    qint64 next = 0;
+    for (int pageNumber = 0; pageNumber < d->m_pagesVector.size(); ++pageNumber) {
+        if (restartPerPage) {
+            next = 0;
+        }
+        QList<Annotation *> notes;
+        for (Annotation *annotation : d->m_pagesVector[pageNumber]->annotations()) {
+            if (annotation->subType() == Annotation::AStamp && annotation->isOkularLatex() && annotation->isNumberedCallout()) {
+                if (annotation->numberedCalloutId() <= 0) {
+                    if (errorText) *errorText = i18n("A Numbered Callout has no valid internal ID.");
+                    return false;
+                }
+                notes.append(annotation);
+            }
+        }
+        std::stable_sort(notes.begin(), notes.end(), [](const Annotation *a, const Annotation *b) { return a->numberedCalloutId() < b->numberedCalloutId(); });
+        for (Annotation *annotation : std::as_const(notes)) {
+            if (++next > INT_MAX) {
+                if (errorText) *errorText = i18n("The Numbered Callout number limit has been reached.");
+                return false;
+            }
+            const QString label = numberedCalloutLabelFor(pattern, pageNumber, static_cast<int>(next));
+            if (annotation->orderedCalloutNumber() != next || annotation->numberedCalloutLabel() != label) {
+                if (editor && !editor->validateNumberedCalloutLabel(label, errorText)) {
+                    return false;
+                }
+                if (!canModifyPageAnnotation(annotation)) {
+                    if (errorText) *errorText = i18n("Cannot renumber a locked or read-only Numbered Callout.");
+                    return false;
+                }
+                changes.append({pageNumber, annotation, static_cast<int>(next), label});
+            }
+        }
+    }
+    // Validate the entire operation first, and avoid an empty undo entry.
+    if (changes.isEmpty() && !changeFormat) {
+        return true;
+    }
+    QString beforeJson;
+    QString afterJson;
+    if (changeFormat) {
+        beforeJson = editor->numberedCalloutNumberingJson();
+        QJsonObject config;
+        config.insert(QStringLiteral("version"), 1);
+        config.insert(QStringLiteral("pattern"), pattern);
+        config.insert(QStringLiteral("restartPerPage"), restartPerPage);
+        afterJson = QString::fromUtf8(QJsonDocument(config).toJson(QJsonDocument::Compact));
+        // Fail before changing annotations or creating an undo item.
+        if (!editor->setNumberedCalloutNumberingJson(afterJson, errorText)) {
+            return false;
+        }
+    }
+    d->m_undoStack->beginMacro(changeFormat ? i18n("Change Numbered Callout Format") : i18n("Renumber Callouts"));
+    if (changeFormat) {
+        d->m_undoStack->push(new NumberedCalloutNumberingCommand(d, beforeJson, afterJson));
+    }
+    for (const Change &change : std::as_const(changes)) {
+        prepareToModifyAnnotationProperties(change.annotation);
+        change.annotation->setOrderedCalloutNumber(change.number);
+        change.annotation->setNumberedCalloutLabel(change.label);
+        change.annotation->setModificationDate(QDateTime::currentDateTime());
+        modifyPageAnnotationProperties(change.page, change.annotation);
+    }
+    d->m_undoStack->endMacro();
+    return true;
+}
+
 void Document::addPageAnnotation(int page, Annotation *annotation)
 {
     if (!annotation || !isValidPageIndex(d->m_pagesVector, page)) {
         return;
+    }
+
+    // Allocate only for a new insertion, including pasted copies. The undo
+    // command retains this number on redo; reopening a PDF does not come here.
+    if (annotation->subType() == Annotation::AStamp && annotation->isOkularLatex() && annotation->isOrderedCallout()) {
+        const int number = nextNumberedCalloutNumber(page);
+        if (!number) {
+            Q_EMIT error(i18n("The Numbered Callout number limit has been reached."), 5000);
+            return;
+        }
+        const int id = nextNumberedCalloutId();
+        if (!id) {
+            Q_EMIT error(i18n("The Numbered Callout ID limit has been reached."), 5000);
+            return;
+        }
+        annotation->setOrderedCalloutNumber(number);
+        annotation->setNumberedCalloutId(id);
+        annotation->setNumberedCalloutLabel(numberedCalloutLabelFor(numberedCalloutNumberingPattern(), page, number));
     }
 
     // Transform annotation's base boundary rectangle into unrotated coordinates

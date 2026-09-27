@@ -5,6 +5,7 @@
 */
 
 #include "annotationactionhandler.h"
+#include "core/document.h"
 
 // qt includes
 #include <QActionGroup>
@@ -14,6 +15,8 @@
 #include <QColorDialog>
 #include <QComboBox>
 #include <QDialog>
+#include <QDir>
+#include <QPointer>
 #include <QDialogButtonBox>
 #include <QDomDocument>
 #include <QDoubleSpinBox>
@@ -22,6 +25,9 @@
 #include <QFormLayout>
 #include <QFont>
 #include <QHash>
+#include <QLabel>
+#include <QLineEdit>
+#include <QPushButton>
 #include <QMenu>
 #include <QPainter>
 #include <QPainterPath>
@@ -123,6 +129,10 @@ public:
         , aAddLatexNote(nullptr)
         , aAddLatexInlineNote(nullptr)
         , aAddLatexCallout(nullptr)
+        , aAddOrderedCallout(nullptr)
+        , aNumberedCalloutFormat(nullptr)
+        , aRenumberCallouts(nullptr)
+        , aExportNumberedCallouts(nullptr)
         , aAddTemplateNote(nullptr)
         , aAddToQuickTools(nullptr)
         , aContinuousMode(nullptr)
@@ -180,7 +190,8 @@ public:
     void selectTool(const BuiltinToolSpec &toolSpec);
     void slotStampToolSelected(const QString &stamp);
     void slotSelectCustomStamp();
-    void slotAddLatexNote(bool boxed = false, bool callout = false);
+    void slotAddLatexNote(bool boxed = false, bool callout = false, bool ordered = false);
+    void slotNumberedCalloutFormat();
     void slotAddTemplateNote();
     void slotQuickToolSelected(int favToolId);
     void slotSetColor(AnnotationColor colorType, const QColor &color = QColor());
@@ -207,6 +218,10 @@ public:
     QAction *aAddLatexNote;
     QAction *aAddLatexInlineNote;
     QAction *aAddLatexCallout;
+    QAction *aAddOrderedCallout;
+    QAction *aNumberedCalloutFormat;
+    QAction *aRenumberCallouts;
+    QAction *aExportNumberedCallouts;
     QAction *aAddTemplateNote;
     QAction *aAddToQuickTools;
     KToggleAction *aContinuousMode;
@@ -786,7 +801,7 @@ void AnnotationActionHandlerPrivate::slotSelectCustomStamp()
     slotStampToolSelected(customStampFile);
 }
 
-void AnnotationActionHandlerPrivate::slotAddLatexNote(bool boxed, bool callout)
+void AnnotationActionHandlerPrivate::slotAddLatexNote(bool boxed, bool callout, bool ordered)
 {
     const QString latexInput = QStringLiteral("\\LaTeX");
     QColor textColor = currentTextColor.isValid() && currentTextColor.alpha() != 0 ? currentTextColor : Qt::black;
@@ -799,10 +814,101 @@ void AnnotationActionHandlerPrivate::slotAddLatexNote(bool boxed, bool callout)
         borderColor = textColor;
     }
 
-    selectedBuiltinTool = annotator->selectLatexStampTool(LatexNoteUtils::defaultLatexAppearancePdfFileName(), latexInput, boxed, textColor, fillColor, borderColor, callout);
+    selectedBuiltinTool = annotator->selectLatexStampTool(LatexNoteUtils::defaultLatexAppearancePdfFileName(), latexInput, boxed, textColor, fillColor, borderColor, callout, ordered);
     if (selectedBuiltinTool != -1) {
         updateConfigActions(callout ? QStringLiteral("note-callout") : (boxed ? QStringLiteral("note-inline") : QStringLiteral("typewriter")));
     }
+}
+
+void AnnotationActionHandlerPrivate::slotNumberedCalloutFormat()
+{
+    const QPointer<Okular::Document> document = qobject_cast<Okular::Document *>(annotator->parent());
+    if (!document || !document->canEditNumberedCalloutNumbering()) {
+        return;
+    }
+    QDialog dialog(QApplication::activeWindow());
+    dialog.setObjectName(QStringLiteral("numberedCalloutFormatDialog"));
+    dialog.setWindowTitle(i18n("Numbered Callout Format"));
+    auto *layout = new QVBoxLayout(&dialog);
+    auto *form = new QFormLayout;
+    layout->addLayout(form);
+    auto *preset = new QComboBox(&dialog);
+    preset->setObjectName(QStringLiteral("numberedCalloutFormatPreset"));
+    preset->addItems({i18n("Whole document: 1, 2, 3..."), i18n("Each page: 1, 2, 3..."), i18n("Page-local: 1-1, 1-2..."), i18n("Custom template")});
+    auto *pattern = new QLineEdit(document->numberedCalloutNumberingPattern(), &dialog);
+    pattern->setObjectName(QStringLiteral("numberedCalloutFormatPattern"));
+    pattern->setMaxLength(256);
+    pattern->setToolTip(i18n("Use {n} for the number and {page} for the physical page. The template must contain {n}."));
+    auto *restart = new QCheckBox(i18n("Restart numbering on each page"), &dialog);
+    restart->setObjectName(QStringLiteral("numberedCalloutFormatRestartPerPage"));
+    restart->setChecked(document->numberedCalloutNumberingRestartsPerPage());
+    form->addRow(i18n("Format:"), preset);
+    form->addRow(i18n("Template:"), pattern);
+    form->addRow(restart);
+    auto *preview = new QLabel(&dialog);
+    preview->setObjectName(QStringLiteral("numberedCalloutFormatPreview"));
+    preview->setTextFormat(Qt::PlainText);
+    preview->setWordWrap(true);
+    layout->addWidget(preview);
+    auto *errorLabel = new QLabel(&dialog);
+    errorLabel->setObjectName(QStringLiteral("numberedCalloutFormatError"));
+    errorLabel->setTextFormat(Qt::PlainText);
+    errorLabel->setWordWrap(true);
+    errorLabel->hide();
+    layout->addWidget(errorLabel);
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Apply | QDialogButtonBox::Cancel, &dialog);
+    layout->addWidget(buttons);
+    int initialPreset = 3;
+    if (pattern->text() == QLatin1String("{n}")) {
+        initialPreset = restart->isChecked() ? 1 : 0;
+    } else if (pattern->text() == QLatin1String("{page}-{n}") && restart->isChecked()) {
+        initialPreset = 2;
+    }
+    preset->setCurrentIndex(initialPreset);
+    const auto updatePreview = [=] {
+        const auto example = [=](int page, int number) {
+            QString text = pattern->text();
+            text.replace(QStringLiteral("{page}"), QString::number(page));
+            text.replace(QStringLiteral("{n}"), QString::number(number));
+            return text;
+        };
+        preview->setText(i18n("Examples (page 1, page 1, page 2): %1, %2, %3", example(1, 1), example(1, 2), example(2, restart->isChecked() ? 1 : 3)));
+        errorLabel->hide();
+    };
+    const auto updatePreset = [=](int index) {
+        const bool custom = index == 3;
+        pattern->setReadOnly(!custom);
+        restart->setEnabled(custom);
+        if (!custom) {
+            pattern->setText(index == 2 ? QStringLiteral("{page}-{n}") : QStringLiteral("{n}"));
+            restart->setChecked(index != 0);
+        }
+        updatePreview();
+    };
+    QObject::connect(preset, &QComboBox::currentIndexChanged, &dialog, updatePreset);
+    QObject::connect(pattern, &QLineEdit::textChanged, &dialog, updatePreview);
+    QObject::connect(restart, &QCheckBox::toggled, &dialog, updatePreview);
+    updatePreset(initialPreset);
+    const auto apply = [&] {
+        if (!document) {
+            dialog.reject();
+            return false;
+        }
+        QString error;
+        if (!document->setNumberedCalloutNumbering(pattern->text(), restart->isChecked(), &error)) {
+            errorLabel->setText(error);
+            errorLabel->show();
+            return false;
+        }
+        errorLabel->hide();
+        return true;
+    };
+    QObject::connect(buttons->button(QDialogButtonBox::Apply), &QPushButton::clicked, &dialog, apply);
+    QObject::connect(buttons, &QDialogButtonBox::accepted, &dialog, [&] {
+        if (apply()) dialog.accept();
+    });
+    QObject::connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    dialog.exec();
 }
 
 void AnnotationActionHandlerPrivate::slotAddTemplateNote()
@@ -992,6 +1098,46 @@ AnnotationActionHandler::AnnotationActionHandler(PageViewAnnotator *parent, KAct
     d->aAddLatexCallout->setIcon(d->mengsheeIcon(QStringLiteral("annotation-latex-callout.svg")));
     d->aAddLatexCallout->setToolTip(i18nc("@info:tooltip", "Add a stamp-based LaTeX callout note"));
     connect(d->aAddLatexCallout, &QAction::triggered, this, [this]() { d->slotAddLatexNote(true, true); });
+    d->aAddOrderedCallout = new QAction(d->mengsheeIcon(QStringLiteral("annotation-ordered-callout.svg")), i18nc("@action:intoolbar Annotation tool", "Numbered Callout"), this);
+    d->aAddOrderedCallout->setToolTip(i18nc("@info:tooltip", "Add a Numbered Callout with an automatic Internal ID and displayed number"));
+    connect(d->aAddOrderedCallout, &QAction::triggered, this, [this]() { d->slotAddLatexNote(true, true, true); });
+    d->aNumberedCalloutFormat = new QAction(QIcon::fromTheme(QStringLiteral("format-list-ordered")), i18nc("@action", "Numbered Callout Format..."), this);
+    connect(d->aNumberedCalloutFormat, &QAction::triggered, this, [this] { d->slotNumberedCalloutFormat(); });
+    d->aRenumberCallouts = new QAction(QIcon::fromTheme(QStringLiteral("view-sort-ascending")), i18nc("@action", "Renumber Numbered Callouts"), this);
+    d->aRenumberCallouts->setToolTip(i18nc("@info:tooltip", "Renumber all Numbered Callouts by page, then Internal ID. Changing an ID does not renumber automatically."));
+    connect(d->aRenumberCallouts, &QAction::triggered, this, [this] {
+        // The shared annotator is owned by the document, not an individual frame.
+        auto *document = qobject_cast<Okular::Document *>(d->annotator->parent());
+        if (!document) {
+            return;
+        }
+        QString error;
+        if (!document->renumberNumberedCallouts(&error)) {
+            KMessageBox::error(QApplication::activeWindow(), i18n("Could not renumber Numbered Callouts. %1", error));
+        }
+    });
+    d->aExportNumberedCallouts = new QAction(QIcon::fromTheme(QStringLiteral("document-export")), i18nc("@action", "Export Numbered Callouts to CSV"), this);
+    connect(d->aExportNumberedCallouts, &QAction::triggered, this, [this] {
+        const QPointer<Okular::Document> document = qobject_cast<Okular::Document *>(d->annotator->parent());
+        if (!document || !document->isOpened()) {
+            return;
+        }
+        const QUrl url = document->currentDocument();
+        QString baseName = QFileInfo(url.fileName()).completeBaseName();
+        if (baseName.isEmpty()) {
+            baseName = QStringLiteral("document");
+        }
+        const QString directory = url.isLocalFile() ? QFileInfo(url.toLocalFile()).absolutePath() : QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
+        const QString suggestedFile = QDir(directory).filePath(baseName + QStringLiteral("-numbered-callouts.csv"));
+        const QString fileName = QFileDialog::getSaveFileName(QApplication::activeWindow(), i18nc("@title:window", "Export Numbered Callouts to CSV"), suggestedFile, i18n("CSV files (*.csv)"));
+        if (fileName.isEmpty() || !document || !document->isOpened()) {
+            return;
+        }
+        QString error;
+        if (!document->exportNumberedCalloutsCsv(fileName, &error)) {
+            KMessageBox::error(QApplication::activeWindow(), i18n("Could not export Numbered Callouts to CSV. %1", error));
+        }
+    });
     d->aAddTemplateNote = new QAction(QIcon::fromTheme(QStringLiteral("insert-text")), i18nc("@action:intoolbar Annotation tool", "Add Template Note"), this);
     d->aAddTemplateNote->setToolTip(i18nc("@info:tooltip", "Add a template annotation such as an auto-updating page number"));
     connect(d->aAddTemplateNote, &QAction::triggered, this, [this]() { d->slotAddTemplateNote(); });
@@ -1115,6 +1261,10 @@ AnnotationActionHandler::AnnotationActionHandler(PageViewAnnotator *parent, KAct
     ac->addAction(QStringLiteral("annotation_add_latex_note"), d->aAddLatexNote);
     ac->addAction(QStringLiteral("annotation_add_latex_inline_note"), d->aAddLatexInlineNote);
     ac->addAction(QStringLiteral("annotation_add_latex_callout"), d->aAddLatexCallout);
+    ac->addAction(QStringLiteral("annotation_add_ordered_callout"), d->aAddOrderedCallout);
+    ac->addAction(QStringLiteral("annotation_numbered_callout_format"), d->aNumberedCalloutFormat);
+    ac->addAction(QStringLiteral("annotation_renumber_callouts"), d->aRenumberCallouts);
+    ac->addAction(QStringLiteral("annotation_export_numbered_callouts"), d->aExportNumberedCallouts);
     ac->addAction(QStringLiteral("annotation_add_template_note"), d->aAddTemplateNote);
     ac->addAction(QStringLiteral("annotation_favorites"), d->aQuickTools);
     ac->addAction(QStringLiteral("annotation_bookmark"), d->aAddToQuickTools);
@@ -1172,6 +1322,11 @@ void AnnotationActionHandler::setToolsEnabled(bool on)
     d->aAddLatexNote->setEnabled(on);
     d->aAddLatexInlineNote->setEnabled(on);
     d->aAddLatexCallout->setEnabled(on);
+    d->aAddOrderedCallout->setEnabled(on);
+    d->aRenumberCallouts->setEnabled(on);
+    const auto *document = qobject_cast<Okular::Document *>(d->annotator->parent());
+    d->aExportNumberedCallouts->setEnabled(document && document->isOpened());
+    d->aNumberedCalloutFormat->setEnabled(document && document->canEditNumberedCalloutNumbering());
     d->aAddTemplateNote->setEnabled(on);
     d->aContinuousMode->setEnabled(on);
 }

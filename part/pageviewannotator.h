@@ -117,7 +117,7 @@ public:
     // selects a stamp tool and sets the stamp symbol
     int selectStampTool(const QString &stampSymbol);
     // selects a Stamp tool backed by a rendered LaTeX appearance
-    int selectLatexStampTool(const QString &pdfAppearanceFile, const QString &contents, bool boxed, const QColor &textColor, const QColor &fillColor, const QColor &borderColor, bool callout = false);
+    int selectLatexStampTool(const QString &pdfAppearanceFile, const QString &contents, bool boxed, const QColor &textColor, const QColor &fillColor, const QColor &borderColor, bool callout = false, bool ordered = false);
     // selects a FreeText tool backed by Mengshee template note metadata
     int selectTemplateTextTool(const QString &templateData, const QString &contents);
     // selects the active quick tool

@@ -433,8 +433,10 @@ public:
             if (latexStamp) {
                 sa->setOkularLatex(true);
                 sa->setFlags(sa->flags() | Okular::Annotation::FixedRotation);
-                const bool latexCallout = m_annotElement.attribute(QStringLiteral("latexCallout")).toInt() != 0;
-                sa->setLatexNoteType(latexCallout ? Okular::Annotation::LatexNoteCallout : (boxedLatexStamp ? Okular::Annotation::LatexNoteBoxed : Okular::Annotation::LatexNotePlain));
+                const bool orderedCallout = m_annotElement.attribute(QStringLiteral("orderedCallout")).toInt() != 0;
+                const bool latexCallout = orderedCallout || m_annotElement.attribute(QStringLiteral("latexCallout")).toInt() != 0;
+                sa->setLatexNoteType(orderedCallout ? Okular::Annotation::LatexNoteOrderedCallout
+                                                  : (latexCallout ? Okular::Annotation::LatexNoteCallout : (boxedLatexStamp ? Okular::Annotation::LatexNoteBoxed : Okular::Annotation::LatexNotePlain)));
                 sa->setLatexAppearancePdfFileName(latexAppearancePdfFileName);
                 QColor textColor = m_annotElement.hasAttribute(QStringLiteral("textColor")) ? QColor(m_annotElement.attribute(QStringLiteral("textColor"))) : Qt::black;
                 if (!textColor.isValid() || textColor.alpha() == 0) {
@@ -1785,11 +1787,30 @@ QRect PageViewAnnotator::performRouteMouseOrTabletEvent(const AnnotatorEngine::E
         // apply engine data to the Annotation's and reset engine
         const QList<Okular::Annotation *> annotations = m_engine->end();
         bool detachAfterCreation = false;
+        QString numberedCalloutRenderError;
         PageViewItem *createdStampPageItem = nullptr;
         Okular::Annotation *createdStampAnnotation = nullptr;
         // attach the newly filled annotations to the page
         for (Okular::Annotation *annotation : annotations) {
             if (!annotation) {
+                continue;
+            }
+            if (annotation->isOrderedCallout() && m_document->nextNumberedCalloutNumber(m_lockedItem->pageNumber()) == 0) {
+                delete annotation;
+                detachAfterCreation = true;
+                KMessageBox::information(m_pageView, i18n("The Numbered Callout number limit has been reached."));
+                continue;
+            }
+            if (annotation->isOrderedCallout() && m_document->nextNumberedCalloutId() == 0) {
+                delete annotation;
+                detachAfterCreation = true;
+                KMessageBox::information(m_pageView, i18n("The Numbered Callout ID limit has been reached."));
+                continue;
+            }
+
+            if (annotation->isOrderedCallout() && !m_document->canRenderNumberedCalloutNumbering(&numberedCalloutRenderError)) {
+                delete annotation;
+                detachAfterCreation = true;
                 continue;
             }
 
@@ -1888,6 +1909,10 @@ QRect PageViewAnnotator::performRouteMouseOrTabletEvent(const AnnotatorEngine::E
             detachAnnotation();
         }
 
+        // Tool detachment clears the old hint, so report validation errors last.
+        if (!numberedCalloutRenderError.isEmpty()) {
+            m_pageView->displayMessage(numberedCalloutRenderError, QString(), PageViewMessage::Error);
+        }
         if (createdStampPageItem && createdStampAnnotation) {
             Q_EMIT annotationCreated(createdStampPageItem, createdStampAnnotation);
         }
@@ -2129,6 +2154,7 @@ int PageViewAnnotator::selectStampTool(const QString &stampSymbol)
     annotationElement.removeAttribute(QStringLiteral("latexVariant"));
     annotationElement.removeAttribute(QStringLiteral("latexBoxed"));
     annotationElement.removeAttribute(QStringLiteral("latexCallout"));
+    annotationElement.removeAttribute(QStringLiteral("orderedCallout"));
     annotationElement.removeAttribute(QStringLiteral("latexAppearancePdfFileName"));
     annotationElement.removeAttribute(QStringLiteral("latexPadding"));
     annotationElement.removeAttribute(QStringLiteral("latexFontSize"));
@@ -2140,8 +2166,24 @@ int PageViewAnnotator::selectStampTool(const QString &stampSymbol)
     return stampToolId;
 }
 
-int PageViewAnnotator::selectLatexStampTool(const QString &pdfAppearanceFile, const QString &contents, bool boxed, const QColor &textColor, const QColor &fillColor, const QColor &borderColor, bool callout)
+int PageViewAnnotator::selectLatexStampTool(const QString &pdfAppearanceFile, const QString &contents, bool boxed, const QColor &textColor, const QColor &fillColor, const QColor &borderColor, bool callout, bool ordered)
 {
+    if (ordered && !m_document->numberedCalloutNumberingRestartsPerPage() && m_document->nextOrderedCalloutNumber() == 0) {
+        KMessageBox::information(m_pageView, i18n("The Numbered Callout number limit has been reached."));
+        return -1;
+    }
+    if (ordered && m_document->nextNumberedCalloutId() == 0) {
+        KMessageBox::information(m_pageView, i18n("The Numbered Callout ID limit has been reached."));
+        return -1;
+    }
+    if (ordered) {
+        QString error;
+        if (!m_document->canRenderNumberedCalloutNumbering(&error)) {
+            m_pageView->displayMessage(error, QString(), PageViewMessage::Error);
+            return -1;
+        }
+    }
+    callout = callout || ordered;
     const QString toolType = QStringLiteral("stamp");
     if (!m_transientToolsDefinition) {
         m_transientToolsDefinition = new AnnotationTools();
@@ -2165,6 +2207,7 @@ int PageViewAnnotator::selectLatexStampTool(const QString &pdfAppearanceFile, co
     annotationElement.setAttribute(QStringLiteral("latexVariant"), callout ? QStringLiteral("callout") : (boxed ? QStringLiteral("inline") : QStringLiteral("note")));
     annotationElement.setAttribute(QStringLiteral("latexBoxed"), (boxed || callout) ? QStringLiteral("1") : QStringLiteral("0"));
     annotationElement.setAttribute(QStringLiteral("latexCallout"), callout ? QStringLiteral("1") : QStringLiteral("0"));
+    annotationElement.setAttribute(QStringLiteral("orderedCallout"), ordered ? QStringLiteral("1") : QStringLiteral("0"));
     if (pdfAppearanceFile.isEmpty()) {
         annotationElement.removeAttribute(QStringLiteral("latexAppearancePdfFileName"));
     } else {
@@ -2233,6 +2276,7 @@ int PageViewAnnotator::selectTemplateTextTool(const QString &templateData, const
     annotationElement.removeAttribute(QStringLiteral("latexVariant"));
     annotationElement.removeAttribute(QStringLiteral("latexBoxed"));
     annotationElement.removeAttribute(QStringLiteral("latexCallout"));
+    annotationElement.removeAttribute(QStringLiteral("orderedCallout"));
     annotationElement.removeAttribute(QStringLiteral("latexAppearancePdfFileName"));
     annotationElement.removeAttribute(QStringLiteral("latexPadding"));
     annotationElement.removeAttribute(QStringLiteral("latexFontSize"));

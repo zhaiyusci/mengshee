@@ -13,6 +13,8 @@
 #include "debug_p.h"
 #include "document_p.h"
 #include "form.h"
+#include "generator.h"
+#include "numberedcalloutnumberinginterface.h"
 #include "page.h"
 #include "page_p.h"
 #include "utils_p.h"
@@ -21,6 +23,35 @@
 
 namespace Okular
 {
+NumberedCalloutNumberingCommand::NumberedCalloutNumberingCommand(DocumentPrivate *document, const QString &before, const QString &after)
+    : m_document(document), m_before(before), m_after(after)
+{
+    setText(i18n("Change Numbered Callout Format"));
+}
+
+void NumberedCalloutNumberingCommand::apply(const QString &json)
+{
+    auto *editor = dynamic_cast<NumberedCalloutNumberingInterface *>(m_document->m_generator);
+    QString error;
+    if (!editor || !editor->setNumberedCalloutNumberingJson(json, &error)) {
+        Q_EMIT m_document->m_parent->error(i18n("Could not restore Numbered Callout format. %1", error), 5000);
+    }
+}
+
+void NumberedCalloutNumberingCommand::undo()
+{
+    apply(m_before);
+}
+
+void NumberedCalloutNumberingCommand::redo()
+{
+    if (m_firstRedo) {
+        m_firstRedo = false;
+    } else {
+        apply(m_after);
+    }
+}
+
 void moveViewportIfBoundingRectNotFullyVisible(Okular::NormalizedRect boundingRect, DocumentPrivate *docPriv, int pageNumber)
 {
     if (!docPriv || !docPriv->m_parent) {

@@ -11,7 +11,7 @@ while keeping Okular-specific editing state in one private JSON payload.
   stream.
 - Okular-specific state should not be spread across many custom PDF dictionary
   keys.
-- The three user-facing variants should be expressed by one explicit `type`
+- The user-facing variants should be expressed by one explicit `type`
   field, not by many boolean marker fields.
 
 ## Annotation Shape
@@ -94,7 +94,44 @@ Fields:
 : Required integer. For this specification, the value is `20260610`.
 
 `type`
-: Required string. One of `"plain"`, `"boxed"`, or `"callout"`.
+: Required string. One of `"plain"`, `"boxed"`, `"callout"`, or `"numbered-callout"`.
+Readers also accept the legacy `"ordered-callout"` spelling.
+
+`id`
+: Required for `"numbered-callout"`: a positive integer up to `2147483647`.
+An editable sorting ID, independent of the displayed number. New annotations,
+including pasted copies, receive the document-wide maximum ID plus one.
+Legacy `"ordered-callout"` records lacking this field initialize ID from `order`.
+
+`order`
+: Required for numbered callouts: a positive integer up to `2147483647`.
+This is the sequence counter, not necessarily the visible text. New annotations
+receive the maximum counter plus one within the configured scope (document or page).
+Explicit renumbering sorts by physical page then numeric ID and assigns counters
+1..N, resetting on each page when configured. IDs stay unchanged; equal IDs retain
+page annotation-list order. The whole format/renumber operation is undoable together.
+
+`label`
+: Optional string containing the actual visible badge text. Missing/empty labels
+fall back to decimal `order` for old documents. Readers reject non-string or over
+4096-character labels. New writers store the formatted label alongside `order`.
+
+Document-wide numbering settings are separate from annotation JSON: the Catalog
+key `/MengsheeNumberedCalloutNumbering` is a UTF-8 JSON string with `version: 1`,
+`pattern` and boolean `restartPerPage`. The pattern must contain `{n}`, may also
+contain `{page}` (1-based physical page), and is at most 256 characters with no
+control characters, line breaks or other brace placeholders. Missing settings
+mean `{n}` and `restartPerPage: false`. Settings persist even without annotations.
+
+The complete display label is drawn in a badge above the body's top-left corner
+inside the same AP: badge fill/stroke use the callout border color, and digits
+use its fill color, with their respective alpha and annotation opacity.
+Its extent is included in `/Rect` and `/BBox`; the body rectangle and LaTeX
+layout do not change. ASCII labels use escaped Helvetica-Bold text with exact font
+widths. Non-ASCII labels use shaped fallback-font glyph outlines in the AP, so saved
+PDFs do not depend on those fonts at viewing time. Unsupported glyphs are rejected
+before applying a numbering format rather than silently writing replacement boxes.
+See [Numbered Callouts](ordered-callouts.md).
 
 `layout.widthPt`
 : Optional number in PDF points. `0` or absence means natural width. A positive
@@ -131,7 +168,7 @@ no stroke.
 and `1` for boxed/callout notes.
 
 `callout`
-: Required only when `type` is `"callout"`. Stores the editable callout
+: Required when `type` is `"callout"`, `"numbered-callout"`, or legacy `"ordered-callout"`. Stores the editable callout
 geometry.
 
 Unknown JSON fields must be preserved when possible. Readers may ignore fields

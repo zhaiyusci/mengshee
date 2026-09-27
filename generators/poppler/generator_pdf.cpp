@@ -19,6 +19,7 @@
 
 #include "generator_pdf.h"
 #include "pdfreadingviews.h"
+#include "latexappearance.h"
 
 #include "PdfPageSequenceEditor.h"
 #include "PdfAnnotationFlattener.h"
@@ -37,6 +38,9 @@
 #include <QTemporaryDir>
 #include <QImage>
 #include <QImageReader>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonParseError>
 #include <QLayout>
 #include <QMutex>
 #include <QPainter>
@@ -83,8 +87,11 @@
 #include "popplerversion.h"
 
 #include "popplercorebridge.h"
+#include <Dict.h>
 #include <Outline.h>
 #include <PDFDoc.h>
+#include <XRef.h>
+#include <goo/GooString.h>
 
 #include <functional>
 
@@ -98,6 +105,8 @@ Q_DECLARE_METATYPE(Poppler::FontInfo)
 
 static const int defaultPageWidth = 595;
 static const int defaultPageHeight = 842;
+static constexpr char numberedCalloutNumberingKey[] = "MengsheeNumberedCalloutNumbering";
+static constexpr int numberedCalloutNumberingMaxBytes = 16 * 1024;
 
 class PDFOptionsPage : public Okular::PrintOptionsWidget
 {
@@ -938,6 +947,21 @@ void PDFGenerator::forgetPageModel(Okular::Page *page)
 
 void PDFGenerator::resetPageTopologyCaches()
 {
+    // Live /Pages edits invalidated every cached Poppler Core Page. Existing
+    // Okular models survive insert/move, so their Qt annotation wrappers must
+    // be rebound before a boundary getter or subsequent property edit uses
+    // AnnotationPrivate::pdfPage. Resolve by PDF Ref, not old page index/NM.
+    QList<Poppler::Annotation *> wrappers;
+    if (document()) {
+        for (int pageIndex = 0; pageIndex < document()->pages(); ++pageIndex) {
+            const Okular::Page *page = document()->page(pageIndex);
+            if (!page) continue;
+            for (Okular::Annotation *annotation : page->annotations()) {
+                if (auto *wrapper = qvariant_cast<Poppler::Annotation *>(annotation->nativeId())) wrappers.append(wrapper);
+            }
+        }
+    }
+    MengsheeLatexAppearance::refreshAnnotationPageBindings(pdfdoc.get(), wrappers);
     const int pageCount = pdfdoc ? pdfdoc->numPages() : 0;
     rectsGenerated.fill(false, pageCount);
     m_pageOrder.resize(pageCount);
@@ -3390,6 +3414,132 @@ bool PDFGenerator::rotatePageInDocument(Okular::Page *page, int pageNumber, int 
     resetPageTopologyCaches();
     *replacementPage = createPageModel(pageNumber);
     forgetPageModel(page);
+    return true;
+}
+
+bool PDFGenerator::canEditNumberedCalloutNumbering() const
+{
+    return canEditReadingViews();
+}
+
+bool PDFGenerator::validateNumberedCalloutLabel(const QString &label, QString *errorText) const
+{
+    if (errorText) errorText->clear();
+    // Match actual composition, including Qt fallback glyph availability and
+    // the shared label-length limit, before Core changes any metadata.
+    const QRectF badge = MengsheeLatexAppearance::orderedCalloutBadgeRect(QRectF(0, 0, 100, 40), 1, label);
+    if (!badge.isValid() || !std::isfinite(badge.x()) || !std::isfinite(badge.y()) || !std::isfinite(badge.width()) || !std::isfinite(badge.height())
+        || badge.width() > 50000.0 || badge.height() > 50000.0) {
+        if (errorText) *errorText = i18n("Cannot render this numbering format with the available fonts.");
+        return false;
+    }
+    return true;
+}
+
+QString PDFGenerator::numberedCalloutNumberingJson() const
+{
+    QMutexLocker locker(userMutex());
+    PDFDoc *document = popplerCoreDocument(pdfdoc.get());
+    XRef *xref = document ? document->getXRef() : nullptr;
+    if (!xref) {
+        return {};
+    }
+    const Object catalog = xref->getCatalog();
+    if (!catalog.isDict()) {
+        return {};
+    }
+    const Object stored = catalog.dictLookup(numberedCalloutNumberingKey);
+    if (!stored.isString() || stored.getString()->size() > numberedCalloutNumberingMaxBytes) {
+        return {};
+    }
+    // This private key contains raw UTF-8, not a PDF text string (PDFDocEncoding
+    // or UTF-16). Do not parse/reserialize: undo must retain the original JSON.
+    const GooString *value = stored.getString();
+    return QString::fromUtf8(value->c_str(), static_cast<qsizetype>(value->size()));
+}
+
+bool PDFGenerator::setNumberedCalloutNumberingJson(const QString &json, QString *errorText)
+{
+    if (errorText) {
+        errorText->clear();
+    }
+    const auto fail = [errorText](const QString &message) {
+        if (errorText) {
+            *errorText = message;
+        }
+        return false;
+    };
+    if (!canEditNumberedCalloutNumbering()) {
+        return fail(i18n("Numbered callout numbering cannot be edited in this document."));
+    }
+
+    // Validate everything before touching the Catalog. Empty input is the
+    // explicit removal operation used by undo, not a default configuration.
+    if (json.size() > numberedCalloutNumberingMaxBytes) {
+        return fail(i18n("Numbered callout numbering JSON exceeds the 16 KiB limit."));
+    }
+    const QByteArray utf8 = json.toUtf8();
+    if (utf8.size() > numberedCalloutNumberingMaxBytes) {
+        return fail(i18n("Numbered callout numbering JSON exceeds the 16 KiB limit."));
+    }
+    if (QString::fromUtf8(utf8) != json) {
+        return fail(i18n("Numbered callout numbering JSON contains invalid Unicode."));
+    }
+    if (!json.isEmpty()) {
+        QJsonParseError parseError;
+        const QJsonDocument parsed = QJsonDocument::fromJson(utf8, &parseError);
+        if (parseError.error != QJsonParseError::NoError || !parsed.isObject()) {
+            return fail(i18n("Numbered callout numbering must be a valid JSON object."));
+        }
+        const QJsonObject object = parsed.object();
+        const QJsonValue version = object.value(QStringLiteral("version"));
+        const QJsonValue patternValue = object.value(QStringLiteral("pattern"));
+        const QJsonValue restartPerPage = object.value(QStringLiteral("restartPerPage"));
+        if (!version.isDouble() || version.toDouble() != 1.0 || !patternValue.isString() || !restartPerPage.isBool()) {
+            return fail(i18n("Numbered callout numbering requires version 1, a string pattern and a boolean restartPerPage."));
+        }
+        const QString pattern = patternValue.toString();
+        if (pattern.size() > 256 || !pattern.contains(QStringLiteral("{n}"))) {
+            return fail(i18n("The numbering pattern must contain {n} and be at most 256 characters long."));
+        }
+        for (qsizetype i = 0; i < pattern.size();) {
+            if (pattern.at(i) == QLatin1Char('{')) {
+                if (pattern.mid(i, 3) == QLatin1String("{n}")) {
+                    i += 3;
+                } else if (pattern.mid(i, 6) == QLatin1String("{page}")) {
+                    i += 6;
+                } else {
+                    return fail(i18n("Only {page} and {n} placeholders are allowed in the numbering pattern."));
+                }
+            } else if (pattern.at(i) == QLatin1Char('}')) {
+                return fail(i18n("Only {page} and {n} placeholders are allowed in the numbering pattern."));
+            } else {
+                ++i;
+            }
+        }
+    }
+
+    QMutexLocker locker(userMutex());
+    PDFDoc *document = popplerCoreDocument(pdfdoc.get());
+    XRef *xref = document ? document->getXRef() : nullptr;
+    if (!xref) {
+        return fail(i18n("The PDF document is not available."));
+    }
+    const Ref root = xref->getRoot();
+    const Object catalog = xref->getCatalog();
+    if (root.num <= 0 || root.num >= xref->getNumObjects() || root.gen < 0 || !catalog.isDict()) {
+        return fail(i18n("The PDF document has no valid Catalog dictionary."));
+    }
+
+    // Object::copy() shares dictionaries. Copy the dictionary itself so that
+    // the live Catalog is unchanged until the single root-object commit.
+    Object updatedCatalog(new Dict(catalog.getDict()));
+    if (json.isEmpty()) {
+        updatedCatalog.getDict()->remove(numberedCalloutNumberingKey);
+    } else {
+        updatedCatalog.dictSet(numberedCalloutNumberingKey, Object(std::make_unique<GooString>(utf8.constData(), static_cast<size_t>(utf8.size()))));
+    }
+    xref->setModifiedObject(&updatedCatalog, root);
     return true;
 }
 

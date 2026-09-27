@@ -31,6 +31,22 @@ public:
     virtual bool refreshInternalPageReferences(const QList<Okular::Page *> &newPagesVector) = 0;
 };
 
+class NumberedCalloutNumberingCommand : public OkularUndoCommand
+{
+public:
+    // The initial backend write has already succeeded before this command is pushed.
+    NumberedCalloutNumberingCommand(DocumentPrivate *document, const QString &before, const QString &after);
+    void undo() override;
+    void redo() override;
+    bool refreshInternalPageReferences(const QList<Page *> &) override { return true; }
+private:
+    void apply(const QString &json);
+    DocumentPrivate *m_document;
+    QString m_before;
+    QString m_after;
+    bool m_firstRedo = true;
+};
+
 class AddAnnotationCommand : public OkularUndoCommand
 {
 public:

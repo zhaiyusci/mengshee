@@ -53,12 +53,168 @@ class LatexFrameClippingTest : public QObject
 {
     Q_OBJECT
 private Q_SLOTS:
+    void orderedCalloutBadge_data();
+    void orderedCalloutBadge();
     void innerClip_data();
     void innerClip();
     void genericBackendKeepsItsPolicy();
     void reopenAndGrowFromRawSource();
     void rejectForeignOrUnboundSource();
 };
+
+void LatexFrameClippingTest::orderedCalloutBadge_data()
+{
+    QTest::addColumn<int>("number");
+    QTest::addColumn<double>("opacity");
+    QTest::addColumn<QColor>("borderColor");
+    QTest::addColumn<QColor>("fillColor");
+    QTest::addColumn<QString>("palette");
+    QTest::addColumn<QString>("formattedLabel");
+    for (int number : {1, 12, 2147483647}) {
+        for (double opacity : {1., .5}) {
+            const auto add = [number, opacity](const QString &palette, const QColor &border, const QColor &fill, const QString &label = QString()) {
+                QString name = QStringLiteral("number%1-alpha%2").arg(number).arg(opacity);
+                if (palette != QLatin1String("opaque")) name += QLatin1Char('-') + palette;
+                QTest::newRow(qPrintable(name)) << number << opacity << border << fill << palette << label;
+            };
+            add(QStringLiteral("opaque"), Qt::blue, Qt::yellow);
+            if (number == 12) {
+                add(QStringLiteral("half-border"), QColor(0, 0, 255, 128), Qt::yellow);
+                add(QStringLiteral("half-text"), Qt::blue, QColor(255, 255, 0, 128));
+                add(QStringLiteral("half-both"), QColor(0, 0, 255, 128), QColor(255, 255, 0, 128));
+                add(QStringLiteral("clear-border"), QColor(0, 0, 255, 0), Qt::yellow);
+                add(QStringLiteral("clear-text"), Qt::blue, QColor(255, 255, 0, 0));
+                add(QStringLiteral("clear-both"), QColor(0, 0, 255, 0), QColor(255, 255, 0, 0));
+                add(QStringLiteral("missing-fill"), Qt::blue, QColor());
+                add(QStringLiteral("label-page"), Qt::blue, Qt::yellow, QStringLiteral("P2-12"));
+                add(QStringLiteral("label-parens"), Qt::blue, Qt::yellow, QStringLiteral("(12)"));
+                add(QStringLiteral("label-escaped"), Qt::blue, Qt::yellow, QStringLiteral("P\\(12)"));
+                add(QStringLiteral("label-chinese"), Qt::blue, Qt::yellow, QStringLiteral("第2页-12号"));
+                add(QStringLiteral("label-chinese-alpha"), QColor(0, 0, 255, 128), QColor(255, 255, 0, 128), QStringLiteral("第2页-12号"));
+            }
+        }
+    }
+}
+
+void LatexFrameClippingTest::orderedCalloutBadge()
+{
+    QFETCH(int, number);
+    QFETCH(double, opacity);
+    QFETCH(QColor, borderColor);
+    QFETCH(QColor, fillColor);
+    QFETCH(QString, palette);
+    QFETCH(QString, formattedLabel);
+    QTemporaryDir dir;
+    const QString input = dir.filePath(QStringLiteral("page.pdf"));
+    const QString source = dir.filePath(QStringLiteral("source.pdf"));
+    const QString saved = dir.filePath(QStringLiteral("ordered.pdf"));
+    // Binary-exact normalized geometry avoids serialization rounding moving
+    // aliased glyph/stroke edges across a pixel boundary on save/reopen.
+    QVERIFY(writePdf(input, 256, 256, {}));
+    QVERIFY(writePdf(source, 80, 35, "0 0 1 rg 0 0 80 35 re f\n"));
+    auto document = Poppler::Document::load(input);
+    QVERIFY(document);
+    auto page = document->page(0);
+    auto annotation = std::make_unique<Poppler::StampAnnotation>();
+    annotation->setBoundary(QRectF(.125, .125, .5, .5));
+    auto style = annotation->style();
+    style.setOpacity(opacity);
+    annotation->setStyle(style);
+    page->addAnnotation(annotation.get());
+    Poppler::StampAnnotation::CustomPdfAppearanceOptions options;
+    options.outerSize = QSizeF(128, 128);
+    options.frameRect = QRectF(24, 40, 80, 40);
+    options.alignContentToFrameTopLeft = true;
+    options.contentFrameInset = 2;
+    options.borderWidth = 1;
+    options.fillColor = fillColor;
+    options.borderColor = borderColor;
+    options.leaderLine = {QPointF(8, 8), QPointF(15, 50), QPointF(24, 50)};
+    QString error;
+    QVERIFY2(MengsheeLatexAppearance::rebuild(document.get(), 0, annotation.get(), source, options, {}, &error), qPrintable(error));
+    const QImage ordinary = page->renderToImage(288, 288);
+    QVERIFY2(MengsheeLatexAppearance::rebuild(document.get(), 0, annotation.get(), source, options, {}, &error, number, formattedLabel), qPrintable(error));
+    const QImage ordered = page->renderToImage(288, 288);
+    QVERIFY(!ordered.isNull());
+    const QRectF badge = MengsheeLatexAppearance::orderedCalloutBadgeRect(options.frameRect, number, formattedLabel);
+    if (!formattedLabel.isEmpty()) {
+        QVERIFY(badge.width() > MengsheeLatexAppearance::orderedCalloutBadgeRect(options.frameRect, number).width());
+    }
+    QCOMPARE(badge.left(), options.frameRect.left());
+    QCOMPARE(badge.top(), options.frameRect.bottom()); // PDF y-up: above the body, not on top of its text
+    QVERIFY(badge.height() > 0);
+    const auto pixels = [](const QRectF &pdfRect) {
+        return QRectF((32 + pdfRect.x()) * 4, (256 - 96 - pdfRect.y() - pdfRect.height()) * 4, pdfRect.width() * 4, pdfRect.height() * 4).toAlignedRect();
+    };
+    const double boxAlpha = opacity * borderColor.alphaF();
+    const double textAlpha = opacity * (fillColor.isValid() ? fillColor.alphaF() : 0.0);
+    if (boxAlpha > 0 || textAlpha > 0) {
+        QVERIFY(ordinary.copy(pixels(badge)) != ordered.copy(pixels(badge)));
+    } else {
+        QCOMPARE(ordinary.copy(pixels(badge)), ordered.copy(pixels(badge)));
+    }
+    // The tab inverts the body's BLUE outline/YELLOW fill, not a hard-coded
+    // black/white palette. Check full-coverage pixels against source-over math;
+    // allow one channel unit solely for the renderer's integer alpha rounding.
+    const auto over = [](const QColor &foreground, double alpha, const QColor &background) {
+        return QColor(qRound(foreground.red() * alpha + background.red() * (1 - alpha)),
+                      qRound(foreground.green() * alpha + background.green() * (1 - alpha)),
+                      qRound(foreground.blue() * alpha + background.blue() * (1 - alpha)));
+    };
+    const QColor expectedBox = over(borderColor, boxAlpha, Qt::white);
+    const QColor expectedText = over(fillColor.isValid() ? fillColor : QColor(Qt::transparent), textAlpha, expectedBox);
+    const auto near = [](const QColor &a, const QColor &b) {
+        return qAbs(a.red() - b.red()) <= 1 && qAbs(a.green() - b.green()) <= 1 && qAbs(a.blue() - b.blue()) <= 1;
+    };
+    int backgroundPixels = 0;
+    int textPixels = 0;
+    const QRect badgeInterior = pixels(badge.adjusted(2, 2, -2, -2));
+    for (int y = badgeInterior.top(); y <= badgeInterior.bottom(); ++y) {
+        for (int x = badgeInterior.left(); x <= badgeInterior.right(); ++x) {
+            const QColor actual = ordered.pixelColor(x, y);
+            backgroundPixels += near(actual, expectedBox);
+            textPixels += near(actual, expectedText);
+            if (textAlpha == 0) QVERIFY(near(actual, expectedBox)); // No white fallback for transparent text.
+        }
+    }
+    QVERIFY(backgroundPixels > 10);
+    if (textAlpha > 0) QVERIFY(textPixels > 5);
+    QCOMPARE(ordinary.copy(pixels(options.frameRect.adjusted(2, 2, -2, -2))), ordered.copy(pixels(options.frameRect.adjusted(2, 2, -2, -2))));
+    // Pixels outside the tab stay exactly as for an ordinary callout.
+    const QRect changedArea = pixels(badge).adjusted(-2, -2, 2, 2);
+    for (int y = 0; y < ordered.height(); ++y) {
+        for (int x = 0; x < ordered.width(); ++x) {
+            if (!changedArea.contains(x, y)) QCOMPARE(ordered.pixel(x, y), ordinary.pixel(x, y));
+        }
+    }
+    auto converter = document->pdfConverter();
+    converter->setOutputFileName(saved);
+    converter->setPDFOptions(Poppler::PDFConverter::WithChanges);
+    QVERIFY(converter->convert());
+    QVERIFY(QFile::remove(source));
+    auto reopened = Poppler::Document::load(saved);
+    QVERIFY(reopened);
+    auto reopenedPage = reopened->page(0);
+    const QImage reopenedImage = reopenedPage->renderToImage(288, 288);
+    const QString artifacts = qEnvironmentVariable("MENGSHEE_ORDERED_CALLOUT_ARTIFACTS");
+    if (!artifacts.isEmpty()) {
+        const QString prefix = artifacts + QStringLiteral("/badge-%1-alpha%2").arg(number).arg(opacity)
+            + (palette == QLatin1String("opaque") ? QString() : QLatin1Char('-') + palette);
+        QFile::remove(prefix + QStringLiteral(".pdf"));
+        QVERIFY(QFile::copy(saved, prefix + QStringLiteral(".pdf")));
+        QVERIFY(ordered.save(prefix + QStringLiteral("-memory.png")));
+        QVERIFY(reopenedImage.save(prefix + QStringLiteral("-reopened.png")));
+    }
+    QCOMPARE(reopenedImage, ordered);
+    auto annotations = reopenedPage->annotations();
+    QCOMPARE(annotations.size(), 1);
+    auto *stamp = dynamic_cast<Poppler::StampAnnotation *>(annotations.front().get());
+    QVERIFY(stamp);
+    for (int repeat = 0; repeat < 3; ++repeat) {
+        QVERIFY2(MengsheeLatexAppearance::rebuild(reopened.get(), 0, stamp, QString(), options, {}, &error, number, formattedLabel), qPrintable(error));
+        QCOMPARE(reopenedPage->renderToImage(288, 288), ordered);
+    }
+}
 
 void LatexFrameClippingTest::innerClip_data()
 {

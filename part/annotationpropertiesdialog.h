@@ -11,6 +11,7 @@
 
 class QLabel;
 class QLineEdit;
+class QSpinBox;
 class AnnotationWidget;
 
 namespace Okular
@@ -35,6 +36,7 @@ private:
     QLineEdit *AuthorEdit;
     AnnotationWidget *m_annotWidget;
     QLabel *m_modifyDateLabel;
+    QSpinBox *m_numberedCalloutId = nullptr;
 
     void setCaptionTextbyAnnotType();
 

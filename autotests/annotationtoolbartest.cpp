@@ -157,7 +157,7 @@ void AnnotationToolBarTest::testModeSelectorToolBar()
     QVERIFY(mode);
     auto *combo = qobject_cast<QComboBox *>(toolbar->widgetForAction(mode));
     QVERIFY(combo);
-    QCOMPARE(combo->count(), 5);
+    QCOMPARE(combo->count(), 6);
     auto *pin = part->actionCollection()->action(QStringLiteral("open_auxiliary_view"));
     auto *highlight = part->actionCollection()->action(QStringLiteral("annotation_highlighter"));
     QVERIFY(pin && highlight);
@@ -175,11 +175,44 @@ void AnnotationToolBarTest::testModeSelectorToolBar()
     // Drive the actual combo, not merely the underlying QAction list.
     combo->setFocus();
     QTest::keyClick(combo, Qt::Key_End);
-    for (int index = 4; index >= 0; --index) {
+    auto *numbered = part->actionCollection()->action(QStringLiteral("annotation_add_ordered_callout"));
+    auto *renumber = part->actionCollection()->action(QStringLiteral("annotation_renumber_callouts"));
+    auto *exportCsv = part->actionCollection()->action(QStringLiteral("annotation_export_numbered_callouts"));
+    auto *format = part->actionCollection()->action(QStringLiteral("annotation_numbered_callout_format"));
+    QVERIFY(numbered && format && renumber && exportCsv);
+    QVERIFY(tools->actions().contains(format));
+    QVERIFY(!annotationToolbar->actions().contains(format));
+    QVERIFY(tools->actions().contains(numbered));
+    QVERIFY(tools->actions().contains(renumber));
+    QVERIFY(tools->actions().contains(exportCsv));
+    const auto proofreadActions = tools->actions();
+    QCOMPARE(proofreadActions.indexOf(format), proofreadActions.indexOf(numbered) + 1);
+    QCOMPARE(proofreadActions.indexOf(renumber), proofreadActions.indexOf(numbered) + 2);
+    QCOMPARE(proofreadActions.indexOf(exportCsv), proofreadActions.indexOf(numbered) + 3);
+    QVERIFY(!annotationToolbar->actions().contains(numbered));
+    QVERIFY(!annotationToolbar->actions().contains(renumber));
+    QVERIFY(!annotationToolbar->actions().contains(exportCsv));
+    for (int index = 5; index >= 0; --index) {
         QTRY_COMPARE(mode->currentItem(), index);
         QTRY_COMPARE(combo->currentIndex(), index);
         QTRY_VERIFY(toolbar->isVisible());
         QTRY_COMPARE(tools->isVisible(), index != 0);
+        QCOMPARE(numbered->isVisible(), index == 5);
+        QCOMPARE(format->isVisible(), index == 5);
+        QCOMPARE(renumber->isVisible(), index == 5);
+        QCOMPARE(exportCsv->isVisible(), index == 5);
+        if (index == 5) {
+            QVERIFY(tools->widgetForAction(numbered));
+            QVERIFY(tools->widgetForAction(renumber));
+            QVERIFY(tools->widgetForAction(exportCsv));
+            QVERIFY(tools->widgetForAction(numbered)->isVisible());
+            QVERIFY(tools->widgetForAction(renumber)->isVisible());
+            QVERIFY(tools->widgetForAction(exportCsv)->isVisible());
+            QVERIFY(exportCsv->isEnabled());
+            QVERIFY(tools->widgetForAction(format));
+            QVERIFY(tools->widgetForAction(format)->isVisible());
+            QVERIFY(format->isEnabled());
+        }
         QVERIFY(highlight->isEnabled());
         QVERIFY(highlight->isChecked());
         QCOMPARE(pageView(part)->readingViewEditingEnabled(), index == 4);
@@ -283,10 +316,10 @@ void AnnotationToolBarTest::testAnnotationToolBar()
 
     auto *mode = qobject_cast<KSelectAction *>(part->actionCollection()->action(QStringLiteral("editing_mode_selector")));
     QVERIFY(mode);
-    QCOMPARE(mode->actions().size(), 5);
+    QCOMPARE(mode->actions().size(), 6);
     QVERIFY(!annToolBar->actions().contains(mode));
     QVERIFY(mainToolBar->actions().contains(mode));
-    for (int index : {1, 2, 3, 4}) {
+    for (int index : {1, 2, 3, 4, 5}) {
         mode->actions().at(index)->trigger();
         QTRY_VERIFY(annToolBar->isVisible());
         QTRY_VERIFY(advancedToolBar->isVisible());

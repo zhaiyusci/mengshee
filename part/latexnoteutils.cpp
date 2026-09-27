@@ -237,7 +237,7 @@ QString defaultLatexAppearancePdfFileName()
 {
     QDir dataDir = latexAppearanceSessionDir();
     if (!dataDir.exists()) {
-        qCWarning(OkularUiDebug) << "Could not create a temporary directory for the default LaTeX note appearance.";
+        qCWarning(OkularUiDebug) << "Could not create a temporary directory for the default LaTeX note appearance:" << dataDir.absolutePath();
         return QString();
     }
 
@@ -467,7 +467,8 @@ bool applyRenderedLatexStampAnnotationAppearance(QWidget *parent,
     }
     stampAnnotation->setOkularLatex(true);
     stampAnnotation->setFlags(stampAnnotation->flags() | Okular::Annotation::FixedRotation);
-    stampAnnotation->setLatexNoteType(stampAnnotation->isLatexCallout() ? Okular::Annotation::LatexNoteCallout : (boxed ? Okular::Annotation::LatexNoteBoxed : Okular::Annotation::LatexNotePlain));
+    stampAnnotation->setLatexNoteType(stampAnnotation->isOrderedCallout() ? Okular::Annotation::LatexNoteOrderedCallout
+        : (stampAnnotation->isLatexCallout() ? Okular::Annotation::LatexNoteCallout : (boxed ? Okular::Annotation::LatexNoteBoxed : Okular::Annotation::LatexNotePlain)));
     stampAnnotation->setStampIconName(QStringLiteral("latex-notes"));
     stampAnnotation->setStampImagePath(QString());
     stampAnnotation->setLatexAppearancePdfFileName(rendered.pdfFileName);

@@ -32,6 +32,9 @@
 #include <QScrollArea>
 #include <QScrollBar>
 #include <QSizeGrip>
+#include <QSpinBox>
+#include <QSignalBlocker>
+#include <limits>
 #include <QStyle>
 #include <QTextDocument>
 #include <QTimer>
@@ -491,6 +494,30 @@ AnnotWindow::AnnotWindow(QWidget *parent, QRect initialViewportBounds, Okular::A
     mainlay->setSpacing(0);
     m_title = new MovableTitle(this, countNumberPreviousAnnotation);
     mainlay->addWidget(m_title);
+    m_numberedCalloutControls = new QWidget(this);
+    m_numberedCalloutControls->setObjectName(QStringLiteral("numberedCalloutPopupControls"));
+    // This is a form, not part of the page's hand/pan interaction.
+    m_numberedCalloutControls->setCursor(Qt::ArrowCursor);
+    auto *numberingLayout = new QHBoxLayout(m_numberedCalloutControls);
+    numberingLayout->setContentsMargins(4, 2, 4, 2);
+    auto *idLabel = new QLabel(i18n("Internal ID:"), m_numberedCalloutControls);
+    m_numberedCalloutId = new QSpinBox(m_numberedCalloutControls);
+    m_numberedCalloutId->setObjectName(QStringLiteral("numberedCalloutPopupId"));
+    m_numberedCalloutId->setRange(1, std::numeric_limits<int>::max());
+    m_numberedCalloutId->setKeyboardTracking(false);
+    idLabel->setBuddy(m_numberedCalloutId);
+    m_numberedCalloutId->setToolTip(i18nc("@info:tooltip", "Changing the Internal ID does not automatically renumber callouts."));
+    m_numberedCalloutLabel = new QLabel(m_numberedCalloutControls);
+    m_numberedCalloutLabel->setObjectName(QStringLiteral("numberedCalloutPopupLabel"));
+    m_numberedCalloutLabel->setTextFormat(Qt::PlainText);
+    m_numberedCalloutLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    m_numberedCalloutLabel->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+    m_numberedCalloutLabel->setMinimumWidth(40);
+    numberingLayout->addWidget(idLabel);
+    numberingLayout->addWidget(m_numberedCalloutId);
+    numberingLayout->addWidget(m_numberedCalloutLabel, 1);
+    connect(m_numberedCalloutId, &QSpinBox::editingFinished, this, &AnnotWindow::commitNumberedCalloutId);
+    mainlay->addWidget(m_numberedCalloutControls);
     mainlay->addWidget(m_editorWidget);
     QHBoxLayout *lowerlay = new QHBoxLayout();
     mainlay->addLayout(lowerlay);
@@ -532,6 +559,14 @@ AnnotWindow::AnnotWindow(QWidget *parent, QRect initialViewportBounds, Okular::A
 
 AnnotWindow::~AnnotWindow()
 {
+    // QWidget destruction can emit FocusOut after QScintilla's internals have
+    // already been destroyed. Never read or compile editor text from that event.
+    if (m_editorWidget) {
+        m_editorWidget->removeEventFilter(this);
+    }
+    if (m_numberedCalloutId) {
+        disconnect(m_numberedCalloutId, nullptr, this, nullptr);
+    }
     delete m_latexRenderer;
     delete m_editorWidget;
 }
@@ -544,13 +579,59 @@ Okular::Annotation *AnnotWindow::annotation() const
 void AnnotWindow::updateAnnotation(Okular::Annotation *a)
 {
     m_annot = a;
+    refreshNumberedCalloutControls();
     if (latexAnnotation(m_annot)) {
         m_lastLatexNoteCompileSource = m_annot->contents();
     }
 }
 
+void AnnotWindow::refreshNumberedCalloutControls()
+{
+    if (!m_numberedCalloutControls) {
+        return;
+    }
+    const QSignalBlocker blocker(m_numberedCalloutId);
+    const bool numbered = m_annot && m_annot->isNumberedCallout();
+    m_numberedCalloutControls->setVisible(numbered);
+    if (!numbered) {
+        m_displayedNumberedCalloutId = -1;
+        return;
+    }
+    const bool editable = m_document->canModifyPageAnnotation(m_annot);
+    m_numberedCalloutId->setEnabled(editable);
+    const int id = m_annot->numberedCalloutId();
+    // A repaint or unrelated annotation update must not discard an ID being
+    // typed. Actual external ID changes (including undo) refresh the control.
+    if (!editable || id != m_displayedNumberedCalloutId) {
+        m_numberedCalloutId->setValue(id);
+        m_displayedNumberedCalloutId = id;
+    }
+    const QString label = m_annot->numberedCalloutLabel();
+    m_numberedCalloutLabel->setText(label);
+    m_numberedCalloutLabel->setToolTip(i18n("Displayed number:") + QLatin1Char(' ') + label);
+}
+
+void AnnotWindow::commitNumberedCalloutId()
+{
+    if (!m_annot || !m_annot->isNumberedCallout() || !m_document->canModifyPageAnnotation(m_annot)) {
+        refreshNumberedCalloutControls();
+        return;
+    }
+    m_numberedCalloutId->interpretText();
+    const int id = m_numberedCalloutId->value();
+    if (id == m_annot->numberedCalloutId()) {
+        return;
+    }
+    m_document->prepareToModifyAnnotationProperties(m_annot);
+    m_annot->setNumberedCalloutId(id);
+    m_annot->setModificationDate(QDateTime::currentDateTime());
+    m_document->modifyPageAnnotationProperties(m_page, m_annot);
+    refreshNumberedCalloutControls();
+}
+
 void AnnotWindow::reloadInfo()
 {
+    refreshNumberedCalloutControls();
     QColor newcolor;
     const bool isLatexNote = latexAnnotation(m_annot);
     if (isLatexNote) {
@@ -806,6 +887,7 @@ void AnnotWindow::resizeEvent(QResizeEvent *event)
 
 void AnnotWindow::closeEvent(QCloseEvent *event)
 {
+    commitNumberedCalloutId();
     commitWindowText();
     updateLatexNoteAppearance();
     QFrame::closeEvent(event);

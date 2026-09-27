@@ -1091,6 +1091,17 @@ int PageView::itemIndexForViewport(const Okular::DocumentViewport &vp) const
 
 void PageView::rebuildDisplayedItems()
 {
+    // This is a projection change in the same live document. Commit open
+    // editors before notifySetup destroys their old display-item context.
+    QList<QPointer<AnnotWindow>> annotationWindows;
+    for (AnnotWindow *window : std::as_const(d->m_annowindows)) {
+        annotationWindows.append(window);
+    }
+    for (const auto &window : std::as_const(annotationWindows)) {
+        if (window) {
+            window->close();
+        }
+    }
     const QString identity = d->items.value(d->currentDisplayIndex) ? d->items[d->currentDisplayIndex]->readingIdentity : QString();
     QList<Okular::Page *> pages;
     for (uint i = 0; i < d->document->pages(); ++i) pages.append(const_cast<Okular::Page *>(d->document->page(i)));
@@ -2635,6 +2646,14 @@ void PageView::notifySetup(const QList<Okular::Page *> &pageSet, int setupFlags)
                 }
             }
 
+            // Annotation permissions can change without replacing any pages.
+            // Refresh the proofread actions and open ID editors on this fast path.
+            if (d->annotator && d->workspaceActiveView) {
+                d->annotator->setToolsEnabled(!pageSet.isEmpty() && d->document->isAllowed(Okular::AllowNotes));
+            }
+            for (AnnotWindow *window : std::as_const(d->m_annowindows)) {
+                if (window->annotation()) window->reloadInfo();
+            }
             return;
         }
     }

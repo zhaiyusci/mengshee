@@ -32,6 +32,8 @@ private Q_SLOTS:
     void testTypewriter();
     void testLatexRuntimePathIsNotSerialized();
     void testLatexStampPropertiesRoundTrip();
+    void testOrderedCalloutPropertiesRoundTrip();
+    void testNumberedCalloutIdRoundTrip();
     void testLatexNoteGeometry();
     void testCalloutBoxChangesKeepLeaderPerpendicular();
     void cleanupTestCase();
@@ -216,6 +218,83 @@ void AnnotationTest::testLatexStampPropertiesRoundTrip()
     QCOMPARE(restoredStamp.latexFillColor(), QColor(40, 50, 60, 70));
     QCOMPARE(restoredStamp.latexBorderColor(), QColor(80, 90, 100));
     QCOMPARE(restoredStamp.style().width(), 1.0);
+}
+
+void AnnotationTest::testOrderedCalloutPropertiesRoundTrip()
+{
+    Okular::StampAnnotation annotation;
+    annotation.setOkularLatex(true);
+    annotation.setLatexNoteType(Okular::Annotation::LatexNoteOrderedCallout);
+    annotation.setOrderedCalloutNumber(123);
+    annotation.setLatexCallout(true); // legacy geometry helpers must not downgrade the variant
+    QVERIFY(annotation.isOrderedCallout());
+    QVERIFY(annotation.isLatexCallout());
+    QCOMPARE(annotation.orderedCalloutNumber(), 123);
+    annotation.setOrderedCalloutNumber(-1);
+    QCOMPARE(annotation.orderedCalloutNumber(), 123);
+    annotation.setLatexCalloutPoint(Okular::NormalizedPoint(.1, .2), 0);
+    const QDomNode node = annotation.getAnnotationPropertiesDomNode(true);
+    Okular::StampAnnotation restored(node);
+    QVERIFY(restored.isOrderedCallout());
+    QVERIFY(restored.isLatexCallout());
+    QCOMPARE(restored.orderedCalloutNumber(), 123);
+    QCOMPARE(restored.latexCalloutPoint(0).x, .1);
+    QCOMPARE(restored.latexCalloutPoint(0).y, .2);
+    restored.setLatexNoteType(Okular::Annotation::LatexNoteCallout);
+    QVERIFY(restored.isLatexCallout());
+    QVERIFY(!restored.isOrderedCallout());
+    QCOMPARE(restored.orderedCalloutNumber(), 0);
+    annotation.setLatexCallout(false);
+    QVERIFY(!annotation.isOrderedCallout());
+    QCOMPARE(annotation.orderedCalloutNumber(), 0);
+    for (const QString &invalid : {QStringLiteral("-1"), QStringLiteral("1.5"), QStringLiteral("2147483648"), QStringLiteral("invalid")}) {
+        QDomNode malformed = node.cloneNode(true);
+        malformed.toElement().elementsByTagName(QStringLiteral("base")).at(0).toElement().setAttribute(QStringLiteral("orderedCalloutNumber"), invalid);
+        Okular::StampAnnotation rejected(malformed);
+        QCOMPARE(rejected.orderedCalloutNumber(), 0);
+    }
+}
+
+void AnnotationTest::testNumberedCalloutIdRoundTrip()
+{
+    Okular::StampAnnotation annotation;
+    annotation.setOkularLatex(true);
+    annotation.setLatexNoteType(Okular::Annotation::LatexNoteNumberedCallout);
+    annotation.setOrderedCalloutNumber(12);
+    annotation.setNumberedCalloutId(77);
+    annotation.setNumberedCalloutLabel(QStringLiteral("第2页(12)"));
+    const QDomNode node = annotation.getAnnotationPropertiesDomNode(true);
+    Okular::StampAnnotation restored(node);
+    QVERIFY(restored.isNumberedCallout());
+    QCOMPARE(restored.numberedCalloutId(), 77);
+    QCOMPARE(restored.orderedCalloutNumber(), 12);
+    QCOMPARE(restored.numberedCalloutLabel(), QStringLiteral("第2页(12)"));
+    restored.setOrderedCalloutNumber(3);
+    QCOMPARE(restored.numberedCalloutLabel(), QStringLiteral("3"));
+    QCOMPARE(restored.numberedCalloutId(), 77);
+    restored.setNumberedCalloutId(9);
+    QCOMPARE(restored.orderedCalloutNumber(), 3);
+    restored.setNumberedCalloutId(-1);
+    QCOMPARE(restored.numberedCalloutId(), 9);
+    restored.setLatexCallout(false);
+    QCOMPARE(restored.numberedCalloutId(), 0);
+
+    QDomNode legacy = node.cloneNode(true);
+    auto base = legacy.toElement().elementsByTagName(QStringLiteral("base")).at(0).toElement();
+    base.setAttribute(QStringLiteral("latexNoteType"), QStringLiteral("ordered-callout"));
+    base.removeAttribute(QStringLiteral("numberedCalloutId"));
+    base.removeAttribute(QStringLiteral("numberedCalloutLabel"));
+    Okular::StampAnnotation migrated(legacy);
+    QVERIFY(migrated.isNumberedCallout());
+    QCOMPARE(migrated.numberedCalloutId(), 12);
+    QCOMPARE(migrated.orderedCalloutNumber(), 12);
+    QCOMPARE(migrated.numberedCalloutLabel(), QStringLiteral("12"));
+    for (const QString &invalid : {QStringLiteral("-1"), QStringLiteral("1.5"), QStringLiteral("2147483648"), QStringLiteral("invalid")}) {
+        QDomNode malformed = node.cloneNode(true);
+        malformed.toElement().elementsByTagName(QStringLiteral("base")).at(0).toElement().setAttribute(QStringLiteral("numberedCalloutId"), invalid);
+        Okular::StampAnnotation rejected(malformed);
+        QCOMPARE(rejected.numberedCalloutId(), 0);
+    }
 }
 
 void AnnotationTest::testLatexNoteGeometry()

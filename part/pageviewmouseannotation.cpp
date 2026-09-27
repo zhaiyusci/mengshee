@@ -698,7 +698,8 @@ static bool applyLatexResizeUpdate(Okular::Document *document, const LatexResize
         const QColor fillColor = fillColorForLatexStampAnnotation(stampAnnotation, boxed);
         stampAnnotation->setStampIconName(QStringLiteral("latex-notes"));
         stampAnnotation->setStampImagePath(QString());
-        stampAnnotation->setLatexNoteType(stampAnnotation->isLatexCallout() ? Okular::Annotation::LatexNoteCallout : (boxed ? Okular::Annotation::LatexNoteBoxed : Okular::Annotation::LatexNotePlain));
+        stampAnnotation->setLatexNoteType(stampAnnotation->isOrderedCallout() ? Okular::Annotation::LatexNoteOrderedCallout
+            : (stampAnnotation->isLatexCallout() ? Okular::Annotation::LatexNoteCallout : (boxed ? Okular::Annotation::LatexNoteBoxed : Okular::Annotation::LatexNotePlain)));
         stampAnnotation->setLatexTextColor(update.textColor);
         stampAnnotation->setLatexFillColor(fillColor);
         stampAnnotation->setLatexBorderColor(borderColorForLatexStampAnnotation(stampAnnotation, boxed));
@@ -708,7 +709,11 @@ static bool applyLatexResizeUpdate(Okular::Document *document, const LatexResize
     annotation->setFlags(annotation->flags() | Okular::Annotation::FixedRotation);
     annotation->setLatexAppearancePdfFileName(pdfFileName);
     annotation->setLatexLayoutWidth(update.layoutWidthPoints);
-    annotation->setBoundingRectangle(updatedRect);
+    // Use the same geometry operation as a FreeText callout resize: preserve
+    // the tip and keep the knee/attachment aligned with the new frame.
+    const Okular::NormalizedRect previousRect = annotation->boundingRectangle();
+    annotation->adjust(Okular::NormalizedPoint(updatedRect.left - previousRect.left, updatedRect.top - previousRect.top),
+                       Okular::NormalizedPoint(updatedRect.right - previousRect.right, updatedRect.bottom - previousRect.bottom));
     annotation->setModificationDate(QDateTime::currentDateTime());
     qCDebug(OkularUiDebug) << "Writing LaTeX note resize result to annotation; appearance PDF:" << pdfFileName << "layout width:" << update.layoutWidthPoints << "pdf size:" << pdfSize
                             << "fixed rect:" << updatedRect.left << updatedRect.top << updatedRect.right << updatedRect.bottom;
@@ -1521,14 +1526,21 @@ void MouseAnnotation::performCommand(const QPoint newPos)
             const int pointIndex = calloutIndexForHandle(m_handle);
             if (calloutAnn && pointIndex >= 0) {
                 const Okular::NormalizedRect box = latexCalloutBoxRectangle(calloutAnn);
-                Okular::NormalizedPoint point = calloutPoint(calloutAnn, pointIndex, false);
-                point.x += normalizedRotatedMouseDelta.x();
-                point.y += normalizedRotatedMouseDelta.y();
+                // Accumulate from the unsnapped starting point. Otherwise slow
+                // anchor drags repeatedly start at the same edge midpoint and
+                // can never cross to another edge.
+                m_calloutDragDelta += normalizedRotatedMouseDelta;
+                Okular::NormalizedPoint point = m_originalCalloutPoints[pointIndex];
+                point.x += m_calloutDragDelta.x();
+                point.y += m_calloutDragDelta.y();
 
                 CalloutBoxEdge edge = calloutBoxEdgeFacingPoint(calloutPoint(calloutAnn, 2, false), box);
                 if (m_handle == RH_CalloutTip || m_handle == RH_CalloutAnchor) {
                     edge = calloutBoxEdgeFacingPoint(point, box);
-                } else {
+                }
+                // The tip moves freely; only the frame attachment is snapped
+                // to a box edge. Choosing an edge must not discard the tip delta.
+                if (m_handle != RH_CalloutAnchor) {
                     setCalloutPoint(calloutAnn, point, pointIndex);
                 }
                 constrainCalloutLeaderToBox(calloutAnn, box, edge);
@@ -1712,7 +1724,15 @@ void MouseAnnotation::finishCommand()
                                                m_focusedAnnotation.annotation,
                                                {QStringLiteral("delta: %1,%2").arg(delta.x).arg(delta.y),
                                                 QStringLiteral("final rect: %1,%2,%3,%4").arg(finalBoundingRect.left).arg(finalBoundingRect.top).arg(finalBoundingRect.right).arg(finalBoundingRect.bottom)});
-                    m_document->translatePageAnnotation(m_focusedAnnotation.pageNumber, m_focusedAnnotation.annotation, delta);
+                    if (calloutAnnotation(m_focusedAnnotation.annotation)) {
+                        // Reattaching the leader is not invertible by negating
+                        // delta: preserve the complete pre-drag geometry for undo.
+                        m_document->prepareToModifyAnnotationProperties(m_focusedAnnotation.annotation);
+                        m_focusedAnnotation.annotation->translate(delta);
+                        m_document->modifyPageAnnotationProperties(m_focusedAnnotation.pageNumber, m_focusedAnnotation.annotation);
+                    } else {
+                        m_document->translatePageAnnotation(m_focusedAnnotation.pageNumber, m_focusedAnnotation.annotation, delta);
+                    }
                     logLatexCalloutInteraction("finish-move-after-translate", m_focusedAnnotation.annotation);
                 }
             } else if (wasResized) {
@@ -1729,7 +1749,13 @@ void MouseAnnotation::finishCommand()
                 const Okular::NormalizedPoint delta1(finalBoundingRect.left - m_originalBoundingRect.left, finalBoundingRect.top - m_originalBoundingRect.top);
                 const Okular::NormalizedPoint delta2(finalBoundingRect.right - m_originalBoundingRect.right, finalBoundingRect.bottom - m_originalBoundingRect.bottom);
                 if (!isZeroDelta(delta1) || !isZeroDelta(delta2)) {
-                    m_document->adjustPageAnnotation(m_focusedAnnotation.pageNumber, m_focusedAnnotation.annotation, delta1, delta2);
+                    if (calloutAnnotation(m_focusedAnnotation.annotation)) {
+                        m_document->prepareToModifyAnnotationProperties(m_focusedAnnotation.annotation);
+                        m_focusedAnnotation.annotation->adjust(delta1, delta2);
+                        m_document->modifyPageAnnotationProperties(m_focusedAnnotation.pageNumber, m_focusedAnnotation.annotation);
+                    } else {
+                        m_document->adjustPageAnnotation(m_focusedAnnotation.pageNumber, m_focusedAnnotation.annotation, delta1, delta2);
+                    }
                 }
             }
         }
@@ -2045,6 +2071,7 @@ void MouseAnnotation::rememberOriginalCalloutGeometry(const AnnotationDescriptio
         m_originalCalloutPoints[i] = calloutPoint(calloutAnn, i, false);
     }
     m_originalCalloutBoundingRect = calloutAnn->boundingRectangle();
+    m_calloutDragDelta = QPointF();
     m_hasOriginalCalloutGeometry = true;
 }
 

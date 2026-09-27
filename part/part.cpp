@@ -1026,11 +1026,11 @@ void Part::setupViewerActions()
     connect(m_addCurrentPageToContents, &QAction::triggered, m_toc.data(), &TOC::addCurrentPageEntry);
 
     m_editingModeSelector = new KSelectAction(i18n("Mode"), this);
-    m_editingModeSelector->setItems({i18n("Reading and Annotations"), i18n("Cross-references"), i18n("OCR"), i18n("Page Editing"), i18n("View Editing")});
+    m_editingModeSelector->setItems({i18n("Reading and Annotations"), i18n("Cross-references"), i18n("OCR"), i18n("Page Editing"), i18n("View Editing"), i18n("Proofread")});
     m_editingModeSelector->setCurrentItem(static_cast<int>(m_editingMode));
     ac->addAction(QStringLiteral("editing_mode_selector"), m_editingModeSelector);
     connect(m_editingModeSelector, &KSelectAction::indexTriggered, this, [this](int index) {
-        if (index >= 0 && index <= static_cast<int>(EditingMode::Views)) {
+        if (index >= 0 && index <= static_cast<int>(EditingMode::Proofread)) {
             setEditingMode(static_cast<EditingMode>(index));
         }
     });
@@ -4436,6 +4436,13 @@ void Part::updatePageEditActions()
     const bool showCrossReferenceActions = m_editingMode == EditingMode::CrossReferences;
     const bool showOcrActions = m_editingMode == EditingMode::Ocr;
     const bool editingViews = m_editingMode == EditingMode::Views;
+    // Modes organize entry points, not annotation editing permissions. Existing
+    // Numbered Callouts remain editable in every mode, including Read by Views.
+    for (const char *name : {"annotation_add_ordered_callout", "annotation_numbered_callout_format", "annotation_renumber_callouts", "annotation_export_numbered_callouts"}) {
+        if (QAction *action = actionCollection()->action(QString::fromLatin1(name))) {
+            action->setVisible(m_editingMode == EditingMode::Proofread);
+        }
+    }
     const bool canEditLinks = showCrossReferenceActions && canEditPages && m_document->canEditPdfLinks();
     const bool canEditViews = editingViews && canEditPages && m_document->canEditReadingViews();
     const QScopedValueRollback<bool> updatingMode(m_updatingEditingMode, true);

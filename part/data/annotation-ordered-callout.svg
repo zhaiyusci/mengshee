@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+  <!-- LaTeX callout motif with an independent numbered badge. -->
+  <path d="M2.44 24.56l8-8h5" fill="none" stroke="#ff0000" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="16.13" y="7.13" width="11.74" height="19.94" rx="1.96" fill="#fff" stroke="#ff0000" stroke-width="1.8"/>
+  <path transform="translate(17.47 19.21) scale(1.58)" fill="#303030" d="M.406-2.531C.797-3.672 1.891-3.688 2-3.688c1.5 0 1.609 1.75 1.609 2.532 0 .609-.047.781-.125.984-.218.719-.515 1.875-.515 2.141 0 .109.047.172.125.172.14 0 .218-.219.328-.594C3.656.703 3.75.141 3.781-.172c.031-.125.047-.25.094-.391.312-.984.953-2.468 1.344-3.25.078-.125.187-.343.187-.39 0-.094-.094-.094-.109-.094-.031 0-.094 0-.125.063C4.656-3.281 4.25-2.281 3.859-1.281c-.015-.297-.015-1.063-.406-2.031C3.203-3.922 2.812-4.406 2.125-4.406c-1.25 0-1.953 1.515-1.953 1.828 0 .094.094.094.203.094z"/>
+  <rect x="1.5" y="1.5" width="11" height="11" rx="1.5" fill="#fff" stroke="#245a91" stroke-width="1.5"/>
+  <path d="M5 5l2-1v6M5 10h4" fill="none" stroke="#245a91" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
