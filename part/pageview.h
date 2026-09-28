@@ -101,6 +101,10 @@ public:
     OKULARPART_EXPORT void setReadingViewEditingEnabled(bool enabled);
     OKULARPART_EXPORT void startReadingViewCreation();
     OKULARPART_EXPORT void cancelReadingViewCreation();
+    OKULARPART_EXPORT bool isReadingViewCreationActive() const;
+    enum class ClickNumberingTarget { None, Views, NumberedCallouts };
+    OKULARPART_EXPORT ClickNumberingTarget clickNumberingTarget() const;
+    OKULARPART_EXPORT void setClickNumberingTarget(ClickNumberingTarget target);
     OKULARPART_EXPORT void refreshReadingViews();
     OKULARPART_EXPORT QStringList readingViewsAtGlobalPos(QPoint globalPos, int *pageNumber = nullptr) const;
     OKULARPART_EXPORT bool startOcrTextEditing(int pageNumber);
@@ -265,6 +269,10 @@ Q_SIGNALS:
     void createReadingViewRequested(int pageNumber, const QRectF &displayRectangle);
     void changeReadingViewRectangleRequested(int pageNumber, const QString &id, const QRectF &displayRectangle);
     void readingViewCreationCancelled();
+    void clickNumberingTargetChanged(PageView::ClickNumberingTarget target);
+    void readingViewNumberingRequested(int pageNumber, const QString &viewId);
+    void numberedCalloutNumberingRequested(int pageNumber, Okular::Annotation *annotation);
+    void readingViewCreationChanged(bool active);
     void readingViewEditingChanged(bool enabled);
     /** Requests creating an internal or external link over a rectangle drawn in this view. */
     void createPdfLinkRequested(int sourcePageNumber, const QRectF &normalizedLinkRectangle);
@@ -344,6 +352,7 @@ private:
     void textSelectionClear();
     // updates cursor
     void updateCursor(const QPoint p);
+    void syncOverlayToolActions();
     void startOcrWordEditor(int word, const QRectF &newWordRectangle = QRectF());
     void requestInternalLinkInAuxiliaryFrame(const Okular::ObjectRect *rect, const QPoint &contentPos);
     void setDocumentViewport(const Okular::DocumentViewport &viewport, Okular::DocumentObserver *excludeObserver = nullptr, bool smoothMove = false, bool updateHistory = true);

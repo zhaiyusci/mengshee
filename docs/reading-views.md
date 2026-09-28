@@ -1,4 +1,4 @@
-# User-defined Views (2026.0.20.0)
+# Reading and editing Views
 
 A View defines only a **rectangle on a page** and a **positive integer label**.
 Its saved definition does not prescribe zoom, scrolling or column detection.
@@ -8,28 +8,78 @@ UUID so changing a number never changes its identity.
 
 ## Editing
 
-Choose **View Editing** from the unified **Mode** selector at the far right of
-the main toolbar (also available in the View menu). The **Read by Views**
-display switch remains independent. Entering this mode shows existing ranges
+Choose **Reading Views** from the **Mode** selector at the far right of the
+main toolbar. These Views are editable reading regions, not the general **View**
+display-settings menu. The second-row mode toolbar is aligned to the **right**,
+with **icon-only** Draw, Order, Generate, and Apply buttons. Apply's icon shows
+one region becoming several regions. Annotation tools stay on the left; button
+names and explanations appear on hover, not as toolbar text. The **Read by Views** display switch remains independent. Entering this mode shows existing ranges
 without activating drawing or changing the normal mouse tool.
-Choose **Draw View** from the toolbar, View menu or page context menu to start
-drawing. The reader does not need to know whether the document has columns.
+Choose **Draw** from the mode toolbar or page context menu to start
+drawing. Its button stays checked while drawing is armed. Click the button again
+or press Escape to finish; choosing another mouse tool also exits drawing.
+**Draw** and **Order** are mutually exclusive tools on the same
+Mode Tools toolbar. The reader does not need to know whether the document has columns.
 
 - Drawing is continuous: after finishing one rectangle, draw the next without
   reactivating the tool. Its number defaults to the current page's maximum plus
   one (starting at 1); no number dialog interrupts drawing.
 - Existing labels/borders remain draggable while drawing is armed. Selected
   Views have resize handles. Right-click a label/border to renumber or delete.
-- Escape cancels an unfinished gesture and ends continuous drawing. **Draw View**
+- Escape cancels an unfinished gesture and ends continuous drawing. **Draw**
   resumes drawing; the editor's existing rectangles remain available to adjust.
 - Choose **Reading and Annotations** or another task mode to hide the View
   editor, without deleting definitions. See [editing modes](editing-modes.md).
 - Edits participate in undo/redo. Save the PDF to keep them.
 
+### Number Views by clicking
+
+Choose **Order** on the Reading Views mode toolbar. The button stays checked and
+the pointer changes to a hand. Click View interiors, labels or borders in the
+order you want to read them. In Read-by-Views display, click the displayed View.
+
+- The clicked sequence takes numbers 1, 2, 3… **on each physical page**.
+- Unclicked Views follow that sequence in their previous relative order; numbers
+  remain unique and consecutive. Repeating an already-counted View does nothing.
+- Rectangles and identities are unchanged. Each effective click is one undo step.
+- Click the tool again, press Escape, right-click, or choose another tool/mode to
+  finish. Finishing keeps the numbering already applied. Undo/redo and changing
+  active frames finish the tool too; entering it again starts a fresh sequence.
+- The same **Click to Number** tool is available for Numbered Callouts in
+  **Proofread** mode; it follows their document/per-page numbering setting.
+
+### Generate editable Views automatically
+
+In **Reading Views** mode, click the visible **Generate** toolbar
+button (not the general View menu). Select the current physical PDF page, all pages, or a
+page range. **Skip pages that already have Views** is enabled by default to
+protect manual work. If you disable it, the confirmation reports how many
+pages will have their Views replaced.
+
+Detection runs locally on a temporary snapshot of the current document,
+including unsaved page edits. It does not upload the document, recognize or
+replace text, change page content, or change annotation permissions. Cancel
+before applying to leave all Views unchanged. Pages with no detected regions
+are also left unchanged. Confirm **Apply**, inspect the rectangles, and adjust
+ranges or numbers as usual. The whole batch is one undo/redo operation; save the
+PDF to persist it. **Read by Views** remains an independent display switch.
+
+The detector uses Tesseract layout analysis without a language model, followed
+by merging based on original block widths/spans and iterator order. Wide
+regions followed by narrower columns are separated rather than swallowed by a
+previously merged full-width rectangle. Tesseract support must be available in
+the build; English OCR language data is not required for this action.
+
+These are editable suggestions, not guaranteed document structure. Complex
+formula pages, uncaptioned figures and unusual reading orders may need manual
+correction. This implementation does not include PDFfigures, AI, or deskewing.
+Normal pages are analysed at 300 DPI; oversized pages are downscaled within a
+bounded image allocation or rejected if useful analysis would be unsafe.
+
 ### Apply one page's layout to the document
 
-Draw and adjust the ranges on one page, then choose **Apply Views to Entire
-Document…** in the View menu. Confirm before replacing other pages' View
+Draw and adjust the ranges on one page, then click **Apply**
+on the Reading Views mode toolbar. Confirm before replacing other pages' View
 definitions. The source page stays unchanged; each other page receives its own
 editable copies, using the same numbers and relative page rectangles. Pages of
 different sizes use the same proportional positions.
@@ -109,6 +159,12 @@ Reading metadata never creates or edits it. Unsupported versions and malformed
 records are rejected rather than silently discarded on the next edit.
 
 ## Tests
+
+`readingviewlayouttest` freezes the original-block-width merger against the
+validated full-width-table/two-column case, earlier normal and tilted layouts,
+relative scaling, padding and invalid inputs. `parttest` additionally covers
+automatic detection on native rotations and offset CropBoxes, blank pages,
+cancellation, batch undo/redo, save/reopen and generation-dialog defaults.
 
 `parttest` covers native rotations with an offset CropBox/UserUnit, unchanged
 PDF rendering, save/reopen, duplicate labels, invalid data, unknown schema,

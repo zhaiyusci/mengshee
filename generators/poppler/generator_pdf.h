@@ -138,6 +138,10 @@ public:
     QString numberedCalloutNumberingJson() const override;
     bool setNumberedCalloutNumberingJson(const QString &json, QString *errorText) override;
     bool canEditReadingViews() const override;
+    bool canGenerateReadingViews() const override;
+    Okular::ReadingViewGenerationResult generateReadingViews(const QString &sourceFileName,
+                                                             const QList<int> &pageNumbers,
+                                                             const Okular::ReadingViewEditingInterface::ProgressCallback &progress) override;
     QList<Okular::ReadingView> readingViews(int pageNumber, QString *errorText) const override;
     bool setReadingViews(int pageNumber, const QList<Okular::ReadingView> &views, QString *errorText) override;
     QString readingViewPageToken(int pageNumber) const override;

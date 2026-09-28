@@ -666,6 +666,7 @@ Part::Part(QObject *parent, const QVariantList &args)
         updateViewActions();
     });
     connect(m_documentWorkspace, &DocumentWorkspace::activeViewChanged, this, [this](PageView *view) {
+        stopClickNumbering();
         m_documentWorkspace->mainView()->setWorkspaceActiveView(m_documentWorkspace->mainView() == view);
         for (PageView *workspaceView : m_documentWorkspace->auxiliaryViews()) {
             workspaceView->setWorkspaceActiveView(workspaceView == view);
@@ -1026,7 +1027,7 @@ void Part::setupViewerActions()
     connect(m_addCurrentPageToContents, &QAction::triggered, m_toc.data(), &TOC::addCurrentPageEntry);
 
     m_editingModeSelector = new KSelectAction(i18n("Mode"), this);
-    m_editingModeSelector->setItems({i18n("Reading and Annotations"), i18n("Cross-references"), i18n("OCR"), i18n("Page Editing"), i18n("View Editing"), i18n("Proofread")});
+    m_editingModeSelector->setItems({i18n("Reading and Annotations"), i18n("Cross-references"), i18n("OCR"), i18n("Page Editing"), i18n("Reading Views"), i18n("Proofread")});
     m_editingModeSelector->setCurrentItem(static_cast<int>(m_editingMode));
     ac->addAction(QStringLiteral("editing_mode_selector"), m_editingModeSelector);
     connect(m_editingModeSelector, &KSelectAction::indexTriggered, this, [this](int index) {
@@ -1035,7 +1036,10 @@ void Part::setupViewerActions()
         }
     });
     m_applyReadingViewsToDocument = ac->addAction(QStringLiteral("view_apply_views_to_document"));
-    m_applyReadingViewsToDocument->setText(i18n("Apply Views to Entire Document..."));
+    m_applyReadingViewsToDocument->setText(i18n("Apply Reading Views to Other Pages..."));
+    m_applyReadingViewsToDocument->setIconText(i18nc("Compact reading-region toolbar button", "Apply"));
+    m_applyReadingViewsToDocument->setIcon(QIcon(QStringLiteral(":/mengshee/data/icons/reading-view-apply.svg")));
+    m_applyReadingViewsToDocument->setToolTip(i18n("Apply the current page's Reading Views to other pages"));
     m_applyReadingViewsToDocument->setEnabled(false);
     connect(m_applyReadingViewsToDocument, &QAction::triggered, this, [this] {
         const int sourcePage = workspaceActivePageNumber();
@@ -1048,16 +1052,52 @@ void Part::setupViewerActions()
         }
     });
 
+    m_generateReadingViews = ac->addAction(QStringLiteral("view_generate_reading_views"));
+    m_generateReadingViews->setText(i18n("Auto-generate Reading Views..."));
+    m_generateReadingViews->setIconText(i18nc("Compact reading-region toolbar button", "Generate"));
+    m_generateReadingViews->setIcon(QIcon(QStringLiteral(":/mengshee/data/icons/reading-view-generate.svg")));
+    m_generateReadingViews->setToolTip(i18n("Detect page regions locally and create editable Views"));
+    m_generateReadingViews->setEnabled(false);
+    m_generateReadingViews->setVisible(false);
+    connect(m_generateReadingViews, &QAction::triggered, this, &Part::slotGenerateReadingViews);
+
+    m_numberByClicking = ac->addAction(QStringLiteral("tools_number_by_clicking"));
+    m_numberByClicking->setText(i18n("Click to Number"));
+    m_numberByClicking->setIcon(QIcon(QStringLiteral(":/mengshee/data/icons/reading-view-order.svg")));
+    m_numberByClicking->setToolTip(i18n("Click Views or Numbered Callouts in the desired order, starting at 1. Click again or press Esc to finish."));
+    m_numberByClicking->setCheckable(true);
+    m_numberByClicking->setEnabled(false);
+    m_numberByClicking->setVisible(false);
+    connect(m_numberByClicking, &QAction::triggered, this, [this](bool checked) {
+        stopClickNumbering();
+        PageView *view = workspaceActivePageView();
+        if (checked && view) {
+            if (m_editingMode == EditingMode::Views) view->setClickNumberingTarget(PageView::ClickNumberingTarget::Views);
+            else if (m_editingMode == EditingMode::Proofread) view->setClickNumberingTarget(PageView::ClickNumberingTarget::NumberedCallouts);
+        }
+        updatePageEditActions();
+    });
+
     m_addReadingView = ac->addAction(QStringLiteral("advanced_add_reading_view"));
-    m_addReadingView->setText(i18n("Draw View"));
-    m_addReadingView->setIcon(QIcon::fromTheme(QStringLiteral("select-rectangular"), QIcon::fromTheme(QStringLiteral("list-add"))));
-    m_addReadingView->setToolTip(i18n("Draw rectangles to define automatically numbered Views"));
+    m_addReadingView->setText(i18n("Draw Reading View"));
+    m_addReadingView->setIconText(i18nc("Compact reading-region toolbar button", "Draw"));
+    m_addReadingView->setIcon(QIcon(QStringLiteral(":/mengshee/data/icons/reading-view-draw.svg")));
+    m_addReadingView->setToolTip(i18n("Draw rectangles to define automatically numbered Views. Click again or press Esc to finish."));
+    m_addReadingView->setCheckable(true);
     m_addReadingView->setEnabled(false);
     m_addReadingView->setVisible(false);
-    connect(m_addReadingView, &QAction::triggered, this, [this] {
-        if (PageView *view = workspaceActivePageView()) {
-            view->startReadingViewCreation();
+    connect(m_addReadingView, &QAction::triggered, this, [this](bool checked) {
+        PageView *view = workspaceActivePageView();
+        if (view) {
+            if (checked) {
+                view->startReadingViewCreation();
+            } else {
+                view->cancelReadingViewCreation();
+            }
         }
+        // Starting may be refused; reflect the tool rather than the request.
+        const QSignalBlocker blocker(m_addReadingView);
+        m_addReadingView->setChecked(view && view->isReadingViewCreationActive());
     });
 
     m_addNamedDestination = ac->addAction(QStringLiteral("advanced_add_named_destination"));
@@ -1406,6 +1446,26 @@ void Part::connectWorkspacePageView(PageView *view)
             updatePageEditActions();
         }
     });
+    connect(view, &PageView::readingViewNumberingRequested, this, &Part::numberReadingViewByClick);
+    connect(view, &PageView::numberedCalloutNumberingRequested, this, &Part::numberCalloutByClick);
+    connect(view, &PageView::clickNumberingTargetChanged, this, [this, view](PageView::ClickNumberingTarget target) {
+        if (workspaceActivePageView() == view) {
+            if (target == PageView::ClickNumberingTarget::None) {
+                m_viewNumberingPrefix.clear();
+                m_calloutNumberingPrefix.clear();
+            }
+            if (m_numberByClicking) {
+                const QSignalBlocker blocker(m_numberByClicking);
+                m_numberByClicking->setChecked(target != PageView::ClickNumberingTarget::None);
+            }
+        }
+    });
+    connect(view, &PageView::readingViewCreationChanged, this, [this, view](bool) {
+        if (m_addReadingView && workspaceActivePageView() == view) {
+            const QSignalBlocker blocker(m_addReadingView);
+            m_addReadingView->setChecked(view->isReadingViewCreationActive());
+        }
+    });
     connect(view, &PageView::createReadingViewRequested, this, &Part::addReadingView);
     connect(view, &PageView::changeReadingViewRectangleRequested, this, &Part::changeReadingViewRectangle);
     connect(view, &PageView::createNamedDestinationRequested, this, &Part::addNamedDestination);
@@ -1466,6 +1526,9 @@ void Part::openAuxiliaryView(PageView *sourceView, const DocumentViewport &targe
     view->setupViewerActions(viewActions);
     if (m_embedMode != ViewerWidgetMode && m_embedMode != PrintPreviewMode) {
         view->setupActions(viewActions, m_pageView->annotator());
+        for (const auto &name : {QStringLiteral("edit_undo"), QStringLiteral("edit_redo"), QStringLiteral("annotation_renumber_callouts"), QStringLiteral("annotation_numbered_callout_format")}) {
+            if (auto *action = viewActions->action(name)) connect(action, &QAction::triggered, this, &Part::stopClickNumbering);
+        }
     }
     const QScopedValueRollback<bool> updatingMode(m_updatingEditingMode, true);
     view->setCrossReferenceModeEnabled(m_editingMode == EditingMode::CrossReferences);
@@ -1922,6 +1985,8 @@ KConfigDialog *Part::slotGeneratorPreferences()
 
 void Part::notifySetup(const QList<Okular::Page *> & /*pages*/, int setupFlags)
 {
+    if (m_generatingReadingViews) m_readingViewDetectionInvalidated = true;
+    if (setupFlags & Okular::DocumentObserver::DocumentChanged) stopClickNumbering();
     // Hide the migration message if the user has just migrated. Otherwise,
     // if m_migrationMessage is already hidden, this does nothing.
     if (!m_document->isDocdataMigrationNeeded()) {
@@ -2444,6 +2509,7 @@ bool Part::openUrl(const QUrl &url)
 
 bool Part::openUrl(const QUrl &_url, bool swapInsteadOfOpening)
 {
+    if (m_generatingReadingViews) return false;
     /* Store swapInsteadOfOpening, so that closeUrl and openFile will be able
      * to read it */
     m_swapInsteadOfOpening = swapInsteadOfOpening;
@@ -2527,6 +2593,7 @@ bool Part::tryOpeningUrlWithFragmentAsName()
 
 bool Part::queryClose()
 {
+    if (m_generatingReadingViews) return false;
     if (!isReadWrite() || !isModified()) {
         return true;
     }
@@ -2580,6 +2647,7 @@ bool Part::queryClose()
 
 bool Part::closeUrl(bool promptToSave)
 {
+    if (m_generatingReadingViews) return false;
     if (m_swapInsteadOfOpening) {
         // If we're swapping the backing file, we don't want to close the
         // current one when openUrl() calls us internally
@@ -2774,6 +2842,9 @@ void Part::slotShowBottomBar()
 
 void Part::slotFileDirty(const QString &path)
 {
+    // Nested progress/confirmation dialogs still dispatch file-watcher events.
+    // Do not publish results from a snapshot if the source changes meanwhile.
+    if (m_generatingReadingViews) m_readingViewDetectionInvalidated = true;
     // The beauty of this is that each start cancels the previous one.
     // This means that timeout() is only fired when there have
     // no changes to the file for the last 750 millisecs.
@@ -2811,6 +2882,11 @@ void Part::slotFileDirty(const QString &path)
 // Attempt to reload the document, one or more times, optionally from a different URL
 bool Part::slotAttemptReload(bool oneShot, const QUrl &newUrl)
 {
+    if (m_generatingReadingViews) {
+        m_readingViewDetectionInvalidated = true;
+        if (!oneShot) m_dirtyHandler->start(750);
+        return false;
+    }
     // Skip reload when another reload is already in progress
     if (m_isReloading) {
         return false;
@@ -4466,8 +4542,24 @@ void Part::updatePageEditActions()
         m_editingModeSelector->setCurrentItem(static_cast<int>(m_editingMode));
     }
     if (m_addReadingView) {
+        const QSignalBlocker blocker(m_addReadingView);
+        PageView *view = workspaceActivePageView();
+        m_addReadingView->setChecked(view && view->isReadingViewCreationActive());
         m_addReadingView->setVisible(editingViews);
         m_addReadingView->setEnabled(canEditViews && editingViews);
+    }
+    if (m_numberByClicking) {
+        const bool available = canEditViews || (m_editingMode == EditingMode::Proofread && m_document->pages() && m_document->isAllowed(Okular::AllowNotes));
+        m_numberByClicking->setIconText(editingViews ? i18nc("Compact reading-region toolbar button", "Order") : i18n("Click to Number"));
+        m_numberByClicking->setVisible(editingViews || m_editingMode == EditingMode::Proofread);
+        m_numberByClicking->setEnabled(available);
+        if (!available) stopClickNumbering();
+        const QSignalBlocker blocker(m_numberByClicking);
+        m_numberByClicking->setChecked(workspaceActivePageView() && workspaceActivePageView()->clickNumberingTarget() != PageView::ClickNumberingTarget::None);
+    }
+    if (m_generateReadingViews) {
+        m_generateReadingViews->setVisible(editingViews);
+        m_generateReadingViews->setEnabled(canEditViews && m_document->canGenerateReadingViews());
     }
     if (m_applyReadingViewsToDocument) {
         QString error;
@@ -4569,6 +4661,7 @@ void Part::setEditingMode(EditingMode mode)
     }
     const QScopedValueRollback<bool> updatingMode(m_updatingEditingMode, true);
     if (m_editingMode != mode) {
+        stopClickNumbering();
         m_batchNamedDestinationCreationActive = false;
         m_batchNamedDestinationExistingViewports.clear();
     }
@@ -4601,16 +4694,43 @@ void Part::setEditingMode(EditingMode mode)
 
             mainWindow->removeToolBarBreak(annotationToolBar);
             mainWindow->removeToolBarBreak(advancedToolBar);
+            // Annotation tools occupy the flexible left side; reserve the
+            // compact mode group's natural width at the right edge.
             if (annotationToolBar) {
                 mainWindow->addToolBar(Qt::TopToolBarArea, annotationToolBar);
                 mainWindow->insertToolBarBreak(annotationToolBar);
+                annotationToolBar->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
             }
             if (advancedToolBar) {
                 mainWindow->addToolBar(Qt::TopToolBarArea, advancedToolBar);
+                if (!annotationToolBar) mainWindow->insertToolBarBreak(advancedToolBar);
             }
 
             configureModeToolBar(annotationToolBar, true);
             configureModeToolBar(advancedToolBar, enabled);
+            if (advancedToolBar) {
+                advancedToolBar->setToolButtonStyle(Qt::ToolButtonIconOnly);
+                advancedToolBar->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+                // QMainWindow stretches the last toolbar in a row. Put that
+                // spare width BEFORE the commands, rather than after them.
+                auto *spacerAction = advancedToolBar->findChild<QAction *>(QStringLiteral("modeToolsRightSpacerAction"), Qt::FindDirectChildrenOnly);
+                if (!spacerAction) {
+                    auto *spacer = new QWidget(advancedToolBar);
+                    spacer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+                    const auto actions = advancedToolBar->actions();
+                    spacerAction = advancedToolBar->insertWidget(actions.isEmpty() ? nullptr : actions.constFirst(), spacer);
+                    spacerAction->setObjectName(QStringLiteral("modeToolsRightSpacerAction"));
+                } else if (advancedToolBar->actions().isEmpty() || advancedToolBar->actions().constFirst() != spacerAction) {
+                    advancedToolBar->removeAction(spacerAction);
+                    const auto actions = advancedToolBar->actions();
+                    advancedToolBar->insertAction(actions.isEmpty() ? nullptr : actions.constFirst(), spacerAction);
+                }
+                // Reserve the commands' natural width so the annotation bar
+                // overflows first, instead of hiding the mode's primary tools.
+                advancedToolBar->setMinimumWidth(0);
+                advancedToolBar->setMaximumWidth(QWIDGETSIZE_MAX);
+                advancedToolBar->setMinimumWidth(advancedToolBar->sizeHint().width());
+            }
             configureModeToolBar(mainWindow->toolBar(QStringLiteral("quickAnnotationToolBar")), false);
         }
     };
@@ -5556,6 +5676,333 @@ bool Part::applyReadingViewsToDocument(int sourcePage)
         [apply, before](QString *e) { return apply(before, e); }, [apply, after](QString *e) { return apply(after, e); }));
     refreshReadingViews();
     return true;
+}
+
+void Part::stopClickNumbering()
+{
+    m_viewNumberingPrefix.clear();
+    m_calloutNumberingPrefix.clear();
+    if (m_documentWorkspace) {
+        if (auto *view = m_documentWorkspace->mainView()) view->setClickNumberingTarget(PageView::ClickNumberingTarget::None);
+        for (auto *view : m_documentWorkspace->auxiliaryViews()) view->setClickNumberingTarget(PageView::ClickNumberingTarget::None);
+    } else if (m_pageView) {
+        m_pageView->setClickNumberingTarget(PageView::ClickNumberingTarget::None);
+    }
+    if (m_numberByClicking) {
+        const QSignalBlocker blocker(m_numberByClicking);
+        m_numberByClicking->setChecked(false);
+    }
+}
+
+void Part::numberReadingViewByClick(int pageNumber, const QString &viewId)
+{
+    auto *view = workspaceActivePageView();
+    if (!view || view->clickNumberingTarget() != PageView::ClickNumberingTarget::Views || m_editingMode != EditingMode::Views || !canUsePageLevelEditing()) return;
+    QString error;
+    const auto before = m_document->readingViews(pageNumber, &error);
+    if (!error.isEmpty()) {
+        view->displayMessage(error);
+        return;
+    }
+    auto ordered = before;
+    std::stable_sort(ordered.begin(), ordered.end(), [](const auto &a, const auto &b) { return a.number < b.number; });
+    const auto find = [&ordered](const QString &id) {
+        return std::find_if(ordered.cbegin(), ordered.cend(), [&id](const auto &candidate) { return candidate.id == id; });
+    };
+    if (find(viewId) == ordered.cend()) return;
+    auto prefix = m_viewNumberingPrefix.value(pageNumber);
+    for (qsizetype i = 0; i < prefix.size(); ++i) {
+        const auto previous = find(prefix[i]);
+        if (previous == ordered.cend() || previous->number != i + 1) {
+            prefix.clear(); // An external edit/undo invalidated the old sequence.
+            break;
+        }
+    }
+    if (prefix.contains(viewId)) {
+        view->displayMessage(i18n("This View is already in the clicked sequence. Next number on this page: %1.", prefix.size() + 1));
+        return;
+    }
+    prefix.append(viewId);
+    QStringList sequence = prefix;
+    for (const auto &definition : std::as_const(ordered)) {
+        if (!sequence.contains(definition.id)) sequence.append(definition.id);
+    }
+    auto after = before;
+    for (auto &definition : after) definition.number = int(sequence.indexOf(definition.id)) + 1;
+    if (after != before && !commitReadingViews(pageNumber, after, i18nc("Undo action", "Number View by Clicking"))) {
+        view->displayMessage(i18n("Could not reorder the Views. No click was added to the sequence."));
+        return;
+    }
+    m_viewNumberingPrefix.insert(pageNumber, prefix);
+    view->displayMessage(i18n("View numbered %1. Next number on this page: %2. Esc finishes numbering.", prefix.size(), prefix.size() + 1));
+}
+
+void Part::numberCalloutByClick(int pageNumber, Okular::Annotation *clickedAnnotation)
+{
+    auto *view = workspaceActivePageView();
+    if (!view || view->clickNumberingTarget() != PageView::ClickNumberingTarget::NumberedCallouts || m_editingMode != EditingMode::Proofread || pageNumber < 0 || pageNumber >= int(m_document->pages())) return;
+    const bool perPage = m_document->numberedCalloutNumberingRestartsPerPage();
+    const int scope = perPage ? pageNumber : -1;
+    auto prefix = m_calloutNumberingPrefix.value(scope);
+    for (qsizetype i = 0; i < prefix.size(); ++i) {
+        int matches = 0;
+        bool stillOrdered = false;
+        const int first = perPage ? pageNumber : 0;
+        const int last = perPage ? pageNumber + 1 : int(m_document->pages());
+        for (int page = first; page < last; ++page) {
+            for (const auto *annotation : m_document->page(page)->annotations()) {
+                if (page == prefix[i].first && annotation == prefix[i].second && annotation->isNumberedCallout()) {
+                    ++matches;
+                    stillOrdered = annotation->orderedCalloutNumber() == i + 1;
+                }
+            }
+        }
+        if (matches != 1 || !stillOrdered) {
+            prefix.clear();
+            break;
+        }
+    }
+    const QPair<int, Okular::Annotation *> clicked(pageNumber, clickedAnnotation);
+    if (prefix.contains(clicked)) {
+        view->displayMessage(i18n("This Numbered Callout is already in the clicked sequence. Next number: %1.", prefix.size() + 1));
+        return;
+    }
+    prefix.append(clicked);
+    QString error;
+    if (!m_document->reorderNumberedCallouts(prefix, pageNumber, &error)) {
+        view->displayMessage(error.isEmpty() ? i18n("Could not reorder the Numbered Callouts.") : error);
+        return;
+    }
+    m_calloutNumberingPrefix.insert(scope, prefix);
+    view->displayMessage(perPage
+        ? i18n("Callout numbered %1. Next number on this page: %2. Esc finishes numbering.", prefix.size(), prefix.size() + 1)
+        : i18n("Callout numbered %1. Next number in this document: %2. Esc finishes numbering.", prefix.size(), prefix.size() + 1));
+}
+
+bool Part::commitReadingViewBatch(const QList<QPair<int, QList<Okular::ReadingView>>> &batch, const QString &undoText, QString *error)
+{
+    if (m_editingMode != EditingMode::Views || !canUsePageLevelEditing() || !m_document->canEditReadingViews() || batch.isEmpty()) {
+        return false;
+    }
+    ReadingViewBatch before;
+    QSet<int> pages;
+    for (const auto &entry : batch) {
+        if (entry.first < 0 || entry.first >= int(m_document->pages()) || pages.contains(entry.first)) {
+            if (error) *error = i18n("Invalid page selection for Views.");
+            return false;
+        }
+        pages.insert(entry.first);
+        QString readError;
+        before.append({entry.first, m_document->readingViews(entry.first, &readError)});
+        if (!readError.isEmpty()) {
+            if (error) *error = readError;
+            return false;
+        }
+    }
+    if (!applyReadingViewBatch(m_document, batch, error)) {
+        refreshReadingViews();
+        return false;
+    }
+    QStringList tokens;
+    for (const auto &entry : batch) {
+        const QString token = m_document->readingViewPageToken(entry.first);
+        if (token.isEmpty()) {
+            QString rollbackError;
+            applyReadingViewBatch(m_document, before, &rollbackError);
+            if (error) *error = i18n("Could not identify the pages containing the generated Views.") + QLatin1Char('\n') + rollbackError;
+            refreshReadingViews();
+            return false;
+        }
+        tokens.append(token);
+    }
+    QPointer<Part> self(this);
+    const auto apply = [self, tokens](const ReadingViewBatch &saved, QString *operationError) {
+        if (!self) return false;
+        ReadingViewBatch resolved;
+        for (qsizetype i = 0; i < tokens.size(); ++i) {
+            const int page = self->m_document->readingViewPageForToken(tokens[i]);
+            if (page < 0) {
+                if (operationError) *operationError = i18n("The page containing these Views is no longer available.");
+                return false;
+            }
+            resolved.append({page, saved[i].second});
+        }
+        const bool success = applyReadingViewBatch(self->m_document, resolved, operationError);
+        self->refreshReadingViews();
+        return success;
+    };
+    m_document->pushUndoCommand(new LivePdfLinkCommand(undoText,
+        [apply, before](QString *e) { return apply(before, e); },
+        [apply, batch](QString *e) { return apply(batch, e); }));
+    refreshReadingViews();
+    return true;
+}
+
+void Part::slotGenerateReadingViews()
+{
+    if (m_generatingReadingViews || m_editingMode != EditingMode::Views || !canUsePageLevelEditing() || !m_document->canGenerateReadingViews()) return;
+    stopClickNumbering();
+    // Keep the live backend alive until the worker has joined and the user has
+    // accepted/rejected the batch. File reloads are deferred during this scope.
+    QScopedValueRollback<bool> generationGuard(m_generatingReadingViews, true);
+    QScopedValueRollback<bool> invalidationGuard(m_readingViewDetectionInvalidated, false);
+    const int pageCount = int(m_document->pages());
+    if (!pageCount) return;
+    const int currentPage = qBound(0, workspaceActivePageNumber(), pageCount - 1);
+    QDialog dialog(widget());
+    dialog.setWindowTitle(i18n("Auto-generate Reading Views"));
+    dialog.setObjectName(QStringLiteral("generateReadingViewsDialog"));
+    auto *layout = new QVBoxLayout(&dialog);
+    auto *description = new QLabel(i18n("Detect page regions locally and create editable Views. Detection can be imperfect; you can adjust the ranges and numbers afterwards. PDF content and annotations are not changed."), &dialog);
+    description->setWordWrap(true);
+    layout->addWidget(description);
+    auto *pagesGroup = new QGroupBox(i18n("Pages"), &dialog);
+    auto *pagesLayout = new QVBoxLayout(pagesGroup);
+    auto *current = new QRadioButton(i18n("Current page (%1)", currentPage + 1), pagesGroup);
+    auto *all = new QRadioButton(i18n("All pages"), pagesGroup);
+    auto *range = new QRadioButton(i18n("Pages:"), pagesGroup);
+    auto *rangeEdit = new QLineEdit(pagesGroup);
+    current->setObjectName(QStringLiteral("generateViewsCurrentPage"));
+    all->setObjectName(QStringLiteral("generateViewsAllPages"));
+    range->setObjectName(QStringLiteral("generateViewsPageRange"));
+    rangeEdit->setObjectName(QStringLiteral("generateViewsRangeEdit"));
+    rangeEdit->setPlaceholderText(i18n("For example: 1-3, 5, 8-10"));
+    rangeEdit->setEnabled(false);
+    current->setChecked(true);
+    pagesLayout->addWidget(current);
+    pagesLayout->addWidget(all);
+    auto *rangeRow = new QHBoxLayout;
+    rangeRow->addWidget(range);
+    rangeRow->addWidget(rangeEdit);
+    pagesLayout->addLayout(rangeRow);
+    layout->addWidget(pagesGroup);
+    auto *skipExisting = new QCheckBox(i18n("Skip pages that already have Views"), &dialog);
+    skipExisting->setObjectName(QStringLiteral("generateViewsSkipExisting"));
+    skipExisting->setChecked(true);
+    layout->addWidget(skipExisting);
+    auto *note = new QLabel(i18n("Pages without detected regions are left unchanged. Applying the generated Views can be undone in one step."), &dialog);
+    note->setWordWrap(true);
+    layout->addWidget(note);
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Cancel, &dialog);
+    buttons->addButton(i18nc("@action:button", "Generate"), QDialogButtonBox::AcceptRole);
+    layout->addWidget(buttons);
+    connect(range, &QRadioButton::toggled, rangeEdit, &QWidget::setEnabled);
+    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    QList<int> selected;
+    while (selected.isEmpty()) {
+        if (dialog.exec() != QDialog::Accepted) return;
+        if (current->isChecked()) selected.append(currentPage);
+        else if (all->isChecked()) {
+            for (int page = 0; page < pageCount; ++page) selected.append(page);
+        } else {
+            const QPageRanges ranges = QPageRanges::fromString(rangeEdit->text());
+            if (!ranges.isEmpty() && ranges.firstPage() >= 1 && ranges.lastPage() <= pageCount) {
+                for (const auto &r : ranges.toRangeList())
+                    for (int page = r.from; page <= r.to; ++page) selected.append(page - 1);
+            }
+            if (selected.isEmpty()) KMessageBox::information(&dialog, i18n("Enter a valid page range between 1 and %1.", pageCount));
+        }
+    }
+    QMap<int, QList<Okular::ReadingView>> original;
+    QList<int> requested;
+    for (int page : selected) {
+        QString error;
+        const auto views = m_document->readingViews(page, &error);
+        if (!error.isEmpty()) {
+            KMessageBox::information(widget(), error);
+            return;
+        }
+        if (skipExisting->isChecked() && !views.isEmpty()) continue;
+        original.insert(page, views);
+        requested.append(page);
+    }
+    if (requested.isEmpty()) {
+        KMessageBox::information(widget(), i18n("All selected pages already have Views. No changes were made."));
+        return;
+    }
+    const QUrl documentUrl = url();
+    std::unique_ptr<QTemporaryFile> snapshot(createClosedOcrTemporaryPdfFile(QStringLiteral("views")));
+    QString error;
+    if (!snapshot || !m_document->saveChanges(snapshot->fileName(), &error)) {
+        KMessageBox::information(widget(), i18n("Could not prepare the current document for View detection. %1", error));
+        return;
+    }
+    QProgressDialog progress(i18n("Preparing View detection..."), i18n("Cancel"), 0, requested.size(), widget());
+    progress.setWindowTitle(i18n("Auto-generate Reading Views"));
+    progress.setWindowModality(Qt::ApplicationModal);
+    progress.setMinimumDuration(0);
+    progress.setAutoClose(false);
+    progress.setAutoReset(false);
+    std::atomic_bool cancelled = false;
+    connect(&progress, &QProgressDialog::canceled, &dialog, [&cancelled] { cancelled.store(true); });
+    QPointer<QProgressDialog> progressPointer(&progress);
+    QFutureWatcher<Okular::ReadingViewGenerationResult> watcher;
+    connect(&watcher, &QFutureWatcher<Okular::ReadingViewGenerationResult>::finished, &progress, &QDialog::accept);
+    watcher.setFuture(QtConcurrent::run([document = m_document, source = snapshot->fileName(), requested, &cancelled, progressPointer] {
+        return document->generateReadingViews(source, requested, [&cancelled, progressPointer](int completed, int total, int page) {
+            if (progressPointer) QMetaObject::invokeMethod(progressPointer, [progressPointer, completed, total, page] {
+                if (progressPointer) {
+                    progressPointer->setMaximum(total);
+                    progressPointer->setValue(completed);
+                    progressPointer->setLabelText(i18n("Detecting Views on page %1...", page));
+                }
+            }, Qt::QueuedConnection);
+            return !cancelled.load();
+        });
+    }));
+    if (!watcher.isFinished()) progress.exec();
+    if (watcher.isRunning()) {
+        cancelled.store(true);
+        watcher.waitForFinished();
+    }
+    const auto result = watcher.result();
+    if (cancelled.load() || result.cancelled) return;
+    if (!result.success) {
+        KMessageBox::information(widget(), result.errorText.isEmpty() ? i18n("Could not detect Views.") : result.errorText);
+        return;
+    }
+    if (m_readingViewDetectionInvalidated || url() != documentUrl || int(m_document->pages()) != pageCount) {
+        KMessageBox::information(widget(), i18n("The document changed during detection. No Views were applied."));
+        return;
+    }
+    ReadingViewBatch batch;
+    int count = 0, replaced = 0;
+    for (int page : requested) {
+        const auto previous = m_document->readingViews(page, &error);
+        if (!error.isEmpty() || previous != original.value(page)) {
+            KMessageBox::information(widget(), i18n("The Views changed during detection. No generated Views were applied."));
+            return;
+        }
+        const auto rectangles = result.rectangles.value(page);
+        if (rectangles.isEmpty()) continue;
+        QList<Okular::ReadingView> views;
+        for (const auto &rect : rectangles) views.append({QUuid::createUuid().toString(QUuid::WithoutBraces), int(views.size()) + 1, rect});
+        count += views.size();
+        if (!previous.isEmpty()) ++replaced;
+        batch.append({page, views});
+    }
+    if (batch.isEmpty()) {
+        KMessageBox::information(widget(), i18n("No page regions were detected. No changes were made."));
+        return;
+    }
+    if (KMessageBox::warningContinueCancel(widget(),
+            i18n("Apply %1 generated Views to %2 pages? Existing Views will be replaced on %3 pages. You can adjust the results manually or undo this operation.", count, batch.size(), replaced),
+            i18n("Auto-generate Reading Views"), KGuiItem(i18nc("@action:button", "Apply"))) != KMessageBox::Continue) return;
+    // The confirmation itself runs an event loop; revalidate after it closes.
+    if (m_readingViewDetectionInvalidated || url() != documentUrl || int(m_document->pages()) != pageCount) {
+        KMessageBox::information(widget(), i18n("The document changed during detection. No Views were applied."));
+        return;
+    }
+    for (int page : requested) {
+        const auto previous = m_document->readingViews(page, &error);
+        if (!error.isEmpty() || previous != original.value(page)) {
+            KMessageBox::information(widget(), i18n("The Views changed during detection. No generated Views were applied."));
+            return;
+        }
+    }
+    if (!commitReadingViewBatch(batch, i18nc("Undo action", "Auto-generate Reading Views"), &error))
+        KMessageBox::information(widget(), error.isEmpty() ? i18n("Could not apply the generated Views.") : error);
 }
 
 void Part::refreshReadingViews()
@@ -7374,8 +7821,6 @@ void Part::slotUpdateHamburgerMenu()
     curatedViewMenu->addAction(ac->action(QStringLiteral("view_toggle_forms")));
     curatedViewMenu->addAction(m_editingModeSelector);
     curatedViewMenu->addAction(m_readByViews);
-    curatedViewMenu->addAction(m_addReadingView);
-    curatedViewMenu->addAction(m_applyReadingViewsToDocument);
     m_hamburgerMenuAction->hideActionsOf(curatedViewMenu);
 
 #if HAVE_SPEECH
@@ -7745,6 +8190,9 @@ void Part::unsetDummyMode()
     m_historyNext->setWhatsThis(i18n("Go to the place you were after"));
 
     m_pageView->setupActions(actionCollection());
+    for (const auto &name : {QStringLiteral("edit_undo"), QStringLiteral("edit_redo"), QStringLiteral("annotation_renumber_callouts"), QStringLiteral("annotation_numbered_callout_format")}) {
+        if (auto *action = actionCollection()->action(name)) connect(action, &QAction::triggered, this, &Part::stopClickNumbering);
+    }
 
     // attach the actions of the children widgets too
     m_workspaceFormsAction = m_pageView->toggleFormsAction();

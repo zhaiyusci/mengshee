@@ -16,12 +16,14 @@
 #include "okularcore_export.h"
 #include "pagesize.h"
 #include "readingview.h"
+#include "readingvieweditinginterface.h"
 #include "signatureutils.h"
 
 #include <QDomDocument>
 #include <QImage>
 #include <QList>
 #include <QObject>
+#include <QPair>
 #include <QPrinter>
 #include <QStringList>
 
@@ -478,6 +480,13 @@ public:
      */
     QString pageSizeString(int page) const;
 
+    /** Physical page dimensions in 1/72-inch points, in canonical page axes
+     * (including native orientation, excluding temporary viewer rotation).
+     * Unlike Page::width()/height(), these do not include generator screen DPI.
+     * Returns an empty size for an unavailable page/generator.
+     */
+    QSizeF pageSizeInPoints(int page) const;
+
     /**
      * Returns the gui client of the generator, if it provides one.
      */
@@ -585,6 +594,23 @@ public:
      * Returns false without changes if any affected annotation is not editable.
      */
     bool renumberNumberedCallouts(QString *error = nullptr);
+    /** Reorder Numbered Callouts using a clicked prefix of annotation identities.
+     * Each pair is a current zero-based physical page and its annotation pointer.
+     * Pointers are short-lived, same-document identities, not persistent handles;
+     * membership is checked before dereferencing them. Entries must be unique
+     * stamped LaTeX Numbered Callouts in the scope. Editable internal IDs need not
+     * be unique and are never used to resolve the clicked annotations.
+     * With per-page numbering, the scope is the zero-based @p pageNumber;
+     * otherwise it is the document and @p pageNumber only validates the clicked
+     * page. Remaining callouts retain display-number order, breaking ties by page,
+     * internal ID, then annotation-list order. Numbers become contiguous from one
+     * using the existing label pattern and each callout's actual page, without
+     * changing IDs or geometry. Validates all changes before writing and records
+     * one undo operation. An empty prefix succeeds without edits after document,
+     * thread and page checks. Returns false with @p error on invalid annotation
+     * identities, labels or editing permissions.
+     */
+    bool reorderNumberedCallouts(const QList<QPair<int, Annotation *>> &orderedAnnotations, int pageNumber, QString *error = nullptr);
     /** Export all Numbered Callouts as Excel-compatible UTF-8 CSV without edits.
      * Rows use physical page then current sequence counter; fields are page (1-based),
      * internal ID, visible label and LaTeX source. Formula-like source and formatted
@@ -1113,6 +1139,15 @@ public:
 
     /** Non-painting, manually defined page rectangles and numbers; no navigation policy. */
     bool canEditReadingViews() const;
+    bool canGenerateReadingViews() const;
+    /** Analyse a saved snapshot on the calling thread, without modifying the
+     * live document. Pages are zero-based; progress reports one-based pages.
+     * The caller must keep this Document and its backend alive until completion
+     * and marshal progress to the UI. Empty page results leave Views unchanged.
+     */
+    ReadingViewGenerationResult generateReadingViews(const QString &sourceFileName,
+                                                     const QList<int> &pageNumbers,
+                                                     const ReadingViewEditingInterface::ProgressCallback &progress);
     QList<ReadingView> readingViews(int pageNumber, QString *errorText = nullptr) const;
     bool setReadingViews(int pageNumber, const QList<ReadingView> &views, QString *errorText = nullptr);
     /** Stable page identity, available after first successful setReadingViews. */

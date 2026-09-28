@@ -2,6 +2,11 @@ add_definitions( -DKDESRCDIR="${CMAKE_CURRENT_SOURCE_DIR}/" )
 
 include_directories(${CMAKE_CURRENT_BINARY_DIR}/..)
 
+ecm_add_test(readingviewlayouttest.cpp
+    TEST_NAME "readingviewlayouttest"
+    LINK_LIBRARIES Qt6::Test Qt6::Core
+)
+
 ecm_add_test(latexrenderguardstest.cpp ../part/latexrenderguards.cpp
     TEST_NAME "latexrenderguardstest"
     LINK_LIBRARIES Qt6::Test Qt6::Core

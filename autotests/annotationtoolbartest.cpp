@@ -12,6 +12,8 @@
 #include <QComboBox>
 #include <QToolButton>
 #include <QDir>
+#include <QDialog>
+#include <QTimer>
 #include <QTabBar>
 #include <QTabWidget>
 #include <QToolBar>
@@ -63,6 +65,7 @@ private Q_SLOTS:
     void cleanup();
 
     void testModeSelectorToolBar();
+    void testViewToolButtons();
     void testAnnotationToolBar();
     void testAnnotationToolBar_data();
     void testAnnotationToolBarActionsEnabledState();
@@ -258,6 +261,183 @@ void AnnotationToolBarTest::testModeSelectorToolBar()
     pinButton = qobject_cast<QToolButton *>(toolbar->widgetForAction(pin));
     QVERIFY(pinButton);
     QTRY_COMPARE(auxiliaryCombo->height(), pinButton->height());
+}
+
+void AnnotationToolBarTest::testViewToolButtons()
+{
+    Okular::Settings::self()->setShellOpenFileInTabs(true);
+    const QString options = ShellUtils::serializeOptions(false, false, false, false, false, QString(), QString(), QString());
+    QCOMPARE(Okular::main({QStringLiteral(KDESRCDIR "data/file1.pdf")}, options), Okular::Success);
+    Shell *shell = findShell();
+    QVERIFY(shell);
+    // Keep the labeled tools discoverable at an ordinary desktop width.
+    shell->resize(1200, 900);
+    QVERIFY(QTest::qWaitForWindowExposed(shell));
+    QCOMPARE(shell->m_tabs.size(), 1);
+    auto *part = dynamic_cast<Okular::Part *>(shell->m_tabs.constFirst().part);
+    QVERIFY(part);
+    auto *view = pageView(part);
+    auto *mainToolbar = shell->findChild<QToolBar *>(QStringLiteral("mainToolBar"));
+    auto *tools = shell->findChild<QToolBar *>(QStringLiteral("advancedToolBar"));
+    auto *annotations = shell->findChild<QToolBar *>(QStringLiteral("annotationToolBar"));
+    QVERIFY(mainToolbar && tools && annotations);
+    auto *mode = qobject_cast<KSelectAction *>(part->actionCollection()->action(QStringLiteral("editing_mode_selector")));
+    QVERIFY(mode);
+    auto *combo = qobject_cast<QComboBox *>(mainToolbar->widgetForAction(mode));
+    QVERIFY(combo);
+    QAction *draw = part->actionCollection()->action(QStringLiteral("advanced_add_reading_view"));
+    QAction *number = part->actionCollection()->action(QStringLiteral("tools_number_by_clicking"));
+    QAction *generate = part->actionCollection()->action(QStringLiteral("view_generate_reading_views"));
+    QAction *apply = part->actionCollection()->action(QStringLiteral("view_apply_views_to_document"));
+    QAction *select = part->actionCollection()->action(QStringLiteral("mouse_textselect"));
+    QAction *browse = part->actionCollection()->action(QStringLiteral("mouse_drag"));
+    QVERIFY(draw && number && generate && apply && select && browse);
+    QVERIFY(draw->isCheckable() && number->isCheckable());
+    QVERIFY(tools->actions().contains(draw) && tools->actions().contains(number));
+    QVERIFY(tools->actions().contains(generate) && tools->actions().contains(apply));
+    QVERIFY(!annotations->actions().contains(draw));
+    auto *drawButton = qobject_cast<QToolButton *>(tools->widgetForAction(draw));
+    auto *numberButton = qobject_cast<QToolButton *>(tools->widgetForAction(number));
+    auto *generateButton = qobject_cast<QToolButton *>(tools->widgetForAction(generate));
+    auto *applyButton = qobject_cast<QToolButton *>(tools->widgetForAction(apply));
+    QVERIFY(drawButton && numberButton && generateButton && applyButton);
+    combo->setFocus();
+    QTest::keyClick(combo, Qt::Key_Home);
+    for (int i = 0; i < 4; ++i) QTest::keyClick(combo, Qt::Key_Down);
+    QTRY_COMPARE(mode->currentItem(), 4);
+    QTRY_COMPARE(combo->currentIndex(), 4);
+    QCOMPARE(combo->currentText(), QStringLiteral("Reading Views"));
+    QTRY_VERIFY(tools->isVisible());
+    QTRY_COMPARE(tools->toolButtonStyle(), Qt::ToolButtonIconOnly);
+    QCOMPARE(draw->iconText(), QStringLiteral("Draw"));
+    QCOMPARE(number->iconText(), QStringLiteral("Order"));
+    QCOMPARE(generate->text(), QStringLiteral("Auto-generate Reading Views..."));
+    QCOMPARE(generate->iconText(), QStringLiteral("Generate"));
+    QCOMPARE(apply->iconText(), QStringLiteral("Apply"));
+    for (auto *button : {drawButton, numberButton, generateButton, applyButton}) {
+        QTRY_VERIFY(button->isVisible());
+        QTRY_COMPARE(button->toolButtonStyle(), Qt::ToolButtonIconOnly);
+        // Null/missing icons can make Qt fall back to visible text.
+        QVERIFY(!button->icon().isNull());
+        QVERIFY(!button->icon().pixmap(button->iconSize()).isNull());
+        QVERIFY(!button->toolTip().isEmpty());
+        QVERIFY(button->sizeHint().width() <= button->iconSize().width() + 24);
+        QCOMPARE(button->text(), button->defaultAction()->iconText());
+        // A visible action alone does not prove its button is outside overflow.
+        QTRY_VERIFY(button->visibleRegion().contains(button->rect()));
+        QVERIFY(button->width() >= button->sizeHint().width());
+    }
+    QCOMPARE(generateButton->text(), QStringLiteral("Generate"));
+    QTRY_VERIFY(drawButton->isEnabled() && numberButton->isEnabled() && generateButton->isEnabled());
+    // This PDF may already contain saved regions: Apply's enabled state follows
+    // that metadata, but its labeled toolbar entry must always remain visible.
+    QVERIFY(applyButton->isVisible());
+    const QString artifacts = qEnvironmentVariable("MENGSHEE_MODE_ARTIFACTS");
+    if (!artifacts.isEmpty()) {
+        QVERIFY(QDir().mkpath(artifacts));
+    }
+    const auto toolbarRect = [shell](QToolBar *toolbar) {
+        return QRect(toolbar->mapTo(shell, QPoint(0, 0)), toolbar->size());
+    };
+    // Check actual layout at both widths, not just action visibility or policies.
+    // Finish at ordinary desktop width for the interaction tests below.
+    for (const int width : {2500, 1200}) {
+        shell->resize(width, 900);
+        QTRY_COMPARE(shell->width(), width);
+        QTRY_VERIFY(annotations->isVisible() && tools->isVisible());
+        QTRY_COMPARE(toolbarRect(tools).top(), toolbarRect(annotations).top());
+        QTRY_COMPARE(toolbarRect(tools).bottom(), toolbarRect(annotations).bottom());
+        QTRY_VERIFY(toolbarRect(tools).left() > toolbarRect(annotations).right());
+        QTRY_VERIFY(shell->contentsRect().right() - toolbarRect(tools).right() >= 0);
+        QTRY_VERIFY(shell->contentsRect().right() - toolbarRect(tools).right() <= 4);
+        for (auto *button : {drawButton, numberButton, generateButton, applyButton}) {
+            QTRY_VERIFY(button->isVisible());
+            QTRY_VERIFY(button->visibleRegion().contains(button->rect()));
+            QTRY_VERIFY(button->width() >= button->sizeHint().width());
+            QTRY_VERIFY(tools->contentsRect().contains(QRect(button->mapTo(tools, QPoint(0, 0)), button->size())));
+        }
+        QTRY_VERIFY(tools->contentsRect().right() - applyButton->mapTo(tools, QPoint(applyButton->width() - 1, 0)).x() <= 12);
+        if (!artifacts.isEmpty()) {
+            const QString filename = width == 2500 ? QStringLiteral("reading-views-toolbar-wide.png") : QStringLiteral("reading-views-toolbar.png");
+            QVERIFY(shell->grab().save(QDir(artifacts).filePath(filename)));
+        }
+    }
+
+    bool sawGenerationDialog = false;
+    bool savedGenerationDialog = artifacts.isEmpty();
+    // Inspect the real modal configuration dialog, then reject it before any
+    // generation can start. Assert afterwards so a failed check cannot strand it.
+    QTimer::singleShot(100, shell, [&] {
+        auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+        if (!dialog) return;
+        sawGenerationDialog = dialog->isVisible() && dialog->objectName() == QStringLiteral("generateReadingViewsDialog");
+        if (sawGenerationDialog && !artifacts.isEmpty()) {
+            savedGenerationDialog = dialog->grab().save(QDir(artifacts).filePath(QStringLiteral("reading-views-generation-dialog.png")));
+        }
+        dialog->reject();
+    });
+    QTest::mouseClick(generateButton, Qt::LeftButton);
+    QTRY_VERIFY(sawGenerationDialog);
+    QVERIFY(savedGenerationDialog);
+    QVERIFY(!QApplication::activeModalWidget());
+    QTRY_VERIFY(generateButton->isEnabled());
+    QVERIFY(!drawButton->isChecked() && !numberButton->isChecked());
+    QVERIFY(!view->isReadingViewCreationActive());
+    QCOMPARE(int(view->clickNumberingTarget()), int(PageView::ClickNumberingTarget::None));
+    select->trigger();
+    QVERIFY(select->isChecked());
+    QTest::mouseClick(drawButton, Qt::LeftButton);
+    QTRY_VERIFY(drawButton->isChecked());
+    QVERIFY(draw->isChecked() && view->isReadingViewCreationActive());
+    QVERIFY(!select->isChecked() && !browse->isChecked());
+    QVERIFY(!numberButton->isChecked());
+    if (!artifacts.isEmpty()) {
+        QVERIFY(shell->grab().save(QDir(artifacts).filePath(QStringLiteral("view-tools-draw-on.png"))));
+    }
+    QTest::mouseClick(drawButton, Qt::LeftButton);
+    QTRY_VERIFY(!drawButton->isChecked());
+    QVERIFY(!draw->isChecked() && !view->isReadingViewCreationActive());
+    QVERIFY(select->isChecked());
+    QTest::mouseClick(drawButton, Qt::LeftButton);
+    QTRY_VERIFY(drawButton->isChecked());
+    view->setFocus();
+    QTest::keyClick(view, Qt::Key_Escape);
+    QTRY_VERIFY(!drawButton->isChecked());
+    QVERIFY(!draw->isChecked() && !view->isReadingViewCreationActive());
+    QVERIFY(select->isChecked());
+    QTest::mouseClick(drawButton, Qt::LeftButton);
+    QTRY_VERIFY(drawButton->isChecked());
+    QTest::mouseClick(numberButton, Qt::LeftButton);
+    QTRY_VERIFY(numberButton->isChecked() && !drawButton->isChecked());
+    QVERIFY(number->isChecked() && !draw->isChecked());
+    QVERIFY(!select->isChecked() && !browse->isChecked());
+    QVERIFY(!view->isReadingViewCreationActive());
+    QCOMPARE(int(view->clickNumberingTarget()), int(PageView::ClickNumberingTarget::Views));
+    if (!artifacts.isEmpty()) {
+        QVERIFY(shell->grab().save(QDir(artifacts).filePath(QStringLiteral("view-tools-number-on.png"))));
+    }
+    QTest::mouseClick(drawButton, Qt::LeftButton);
+    QTRY_VERIFY(drawButton->isChecked() && !numberButton->isChecked());
+    QVERIFY(view->isReadingViewCreationActive());
+    QCOMPARE(int(view->clickNumberingTarget()), int(PageView::ClickNumberingTarget::None));
+    QTest::mouseClick(numberButton, Qt::LeftButton);
+    QTRY_VERIFY(numberButton->isChecked() && !drawButton->isChecked());
+    combo->setFocus();
+    QTest::keyClick(combo, Qt::Key_Home);
+    QTRY_COMPARE(mode->currentItem(), 0);
+    QTRY_VERIFY(!drawButton->isChecked() && !numberButton->isChecked());
+    QVERIFY(!draw->isChecked() && !number->isChecked());
+    QVERIFY(!view->isReadingViewCreationActive());
+    QCOMPARE(int(view->clickNumberingTarget()), int(PageView::ClickNumberingTarget::None));
+    // Reentering Reading Views restores availability, never either active tool.
+    for (int i = 0; i < 4; ++i) QTest::keyClick(combo, Qt::Key_Down);
+    QTRY_COMPARE(mode->currentItem(), 4);
+    QTRY_VERIFY(drawButton->isVisible() && numberButton->isVisible() && generateButton->isVisible() && applyButton->isVisible());
+    QTRY_VERIFY(drawButton->isEnabled() && numberButton->isEnabled() && generateButton->isEnabled());
+    QCOMPARE(applyButton->isEnabled(), apply->isEnabled());
+    QVERIFY(!drawButton->isChecked() && !numberButton->isChecked());
+    QVERIFY(!view->isReadingViewCreationActive());
+    QCOMPARE(int(view->clickNumberingTarget()), int(PageView::ClickNumberingTarget::None));
 }
 
 void AnnotationToolBarTest::testAnnotationToolBar()

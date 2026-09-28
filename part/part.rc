@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <!DOCTYPE gui SYSTEM "kpartgui.dtd">
-<gui name="okular_part" version="86">
+<gui name="okular_part" version="89">
 <MenuBar>
   <Menu name="file"><text>&amp;File</text>
     <Action name="get_new_stuff" group="file_open"/>
@@ -47,8 +47,6 @@
     <Action name="view_render_mode"/>
     <Action name="view_read_by_views"/>
     <Action name="editing_mode_selector"/>
-    <Action name="advanced_add_reading_view"/>
-    <Action name="view_apply_views_to_document"/>
     <Separator/>
     <Menu name="view_orientation"><text>&amp;Orientation</text>
       <Action name="view_orientation_rotate_ccw"/>
@@ -93,6 +91,7 @@
       <Action name="annotation_numbered_callout_format"/>
       <Action name="annotation_renumber_callouts"/>
       <Action name="annotation_export_numbered_callouts"/>
+      <Action name="tools_number_by_clicking"/>
       <Action name="advanced_recognize_english_text"/>
       <Action name="advanced_edit_ocr_text"/>
       <Separator/>
@@ -108,6 +107,7 @@
       <Action name="tools_rotate_current_page"/>
       <Action name="tools_delete_current_page"/>
       <Action name="advanced_add_reading_view"/>
+      <Action name="view_generate_reading_views"/>
       <Action name="view_apply_views_to_document"/>
     </Menu>
     <Separator/>
@@ -174,6 +174,9 @@
   <Action name="tools_duplicate_current_page"/>
   <Action name="tools_rotate_current_page"/>
   <Action name="tools_delete_current_page"/>
+  <Action name="advanced_add_reading_view"/>
+  <Action name="tools_number_by_clicking"/>
+  <Action name="view_generate_reading_views"/>
   <Action name="view_apply_views_to_document"/>
 </ToolBar>
 <ToolBar name="annotationToolBar" iconText="icononly" newline="true"><text>Annotation Toolbar</text>
@@ -204,8 +207,6 @@
   <Separator/>
   <Action name="annotation_bookmark"/>
   <Action name="annotation_settings_pin"/>
-  <Separator/>
-  <Action name="advanced_add_reading_view"/>
 </ToolBar>
 <ToolBar name="quickAnnotationToolBar" iconText="icononly" newline="true" hidden="true" position="right" iconSize="32"><text>Quick Annotation Toolbar</text>
     <Action name="quick_annotation_action_bar"/>

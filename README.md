@@ -70,7 +70,9 @@ their internal IDs directly in the annotation pop-up, and choose how their
 visible numbers should appear: continuous throughout the document, restarted
 on each page, combined with page numbers, or formatted with custom patterns.
 
-Explicit renumbering orders notes by physical page and internal ID. Export the
+Use **Click to Number** to order notes by clicking their bodies or number labels;
+internal IDs stay unchanged. Alternatively, automatic renumbering orders notes
+by physical page and internal ID. Export the
 whole document's notes as an Excel-compatible CSV containing the page, internal
 ID, displayed number, and LaTeX source. The annotated PDF and exported checklist
 provide complementary documents for communicating and tracking corrections.
@@ -80,9 +82,14 @@ Numbering settings and visible labels are saved in the PDF.
 
 Define **Views**—numbered rectangular regions on a page—and read those regions
 as a sequence of displayed pages. This is useful for following a paper's columns
-or focusing on portions of a large page on a smaller screen. Draw and adjust a
-layout yourself, then optionally apply it across the document; View definitions
-are saved with the PDF.
+or focusing on portions of a large page on a smaller screen. Generate editable
+regions locally with **Generate** on the compact, right-aligned
+**Reading Views** mode toolbar, or draw a layout yourself
+and optionally apply it across the document. Automatic results can be adjusted
+by hand; existing Views are skipped by default. **Order** sets their
+page-local reading order with successive clicks. Drawing and numbering are
+checkable tools: click again or press Esc to exit. View definitions are saved
+with the PDF.
 
 Views change only the displayed range, not the underlying PDF pages. Reading by
 Views does not split or crop the file, and text selection, navigation, and
@@ -149,6 +156,7 @@ without changing the underlying page content.
 - [Local components and submodules](README.local-components.md)
 - [Local Poppler fork](docs/local-poppler-fork.md)
 - [Local Linux build notes](README.local-linux-build.md)
+- [Fixed Windows development runtime and deployment checks](docs/development-runtime.md)
 
 The application shell lives in `shell/`; viewer and annotation UI in `part/`;
 the shared document model in `core/`; and PDF backend integration in

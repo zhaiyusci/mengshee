@@ -6,5 +6,9 @@
     </qresource>
     <qresource prefix="/mengshee">
         <file>data/latex-default-note.pdf</file>
+        <file>data/icons/reading-view-draw.svg</file>
+        <file>data/icons/reading-view-order.svg</file>
+        <file>data/icons/reading-view-generate.svg</file>
+        <file>data/icons/reading-view-apply.svg</file>
     </qresource>
 </RCC>

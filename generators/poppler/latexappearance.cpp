@@ -2,6 +2,7 @@
     SPDX-License-Identifier: GPL-2.0-or-later
 */
 #include "latexappearance.h"
+#include "core/numberedcalloutgeometry_p.h"
 #include "popplercorebridge.h"
 #include "external/poppler/qt6/src/poppler-annotation-private.h"
 
@@ -17,11 +18,7 @@
 #include <vector>
 #include <map>
 #include <set>
-#include <iterator>
-#include <QFontDatabase>
-#include <QGlyphRun>
 #include <QPainterPath>
-#include <QTextLayout>
 
 namespace MengsheeLatexAppearance
 {
@@ -32,78 +29,15 @@ struct RawSourceData {
     QRectF box; // PDF coordinates, not Qt screen coordinates
 };
 
-namespace {
-struct BadgeLabel {
-    QString text;
-    double width = 0;
-    bool ascii = true;
-    bool valid = true;
-    QPainterPath outline;
-};
-
-BadgeLabel badgeLabel(int order, const QString &formatted)
-{
-    BadgeLabel result;
-    result.text = formatted.isEmpty() ? QString::number(order) : formatted;
-    if (result.text.size() > 4096 || QString::fromUtf8(result.text.toUtf8()) != result.text) { result.valid = false; return result; }
-    for (QChar c : result.text) {
-        if (c.unicode() < 32 || c.unicode() > 126) result.ascii = false;
-    }
-    if (result.ascii) {
-        // Standard Helvetica-Bold WinAnsi advances, ASCII 32..126 (1/1000 em).
-        static constexpr int widths[] = {
-            278,333,474,556,556,889,722,238,333,333,389,584,278,333,278,278,
-            556,556,556,556,556,556,556,556,556,556,333,333,584,584,584,611,
-            975,722,722,722,722,667,611,778,722,278,556,722,611,833,722,778,
-            667,778,722,667,611,722,667,944,667,667,611,333,278,333,584,556,
-            333,556,611,556,611,556,333,611,611,278,278,556,278,889,611,611,
-            611,611,389,556,333,611,556,778,556,556,500,389,280,389,584
-        };
-        static_assert(std::size(widths) == 95);
-        int advance = 0;
-        for (QChar c : result.text) advance += widths[c.unicode() - 32];
-        result.width = advance * 9.0 / 1000.0;
-        return result;
-    }
-    // Shape Unicode with Qt's font fallback, then store actual glyph outlines
-    // in the PDF. Reopening never depends on a viewer's font substitution.
-    QFont font = QFontDatabase::systemFont(QFontDatabase::GeneralFont);
-    font.setPixelSize(90);
-    font.setWeight(QFont::Bold);
-    QTextLayout layout(result.text, font);
-    layout.beginLayout();
-    QTextLine line = layout.createLine();
-    if (line.isValid()) line.setLineWidth(1000000);
-    layout.endLayout();
-    if (!line.isValid() || line.textLength() != result.text.size()) { result.valid = false; return result; }
-    QPainterPath path;
-    path.setFillRule(Qt::WindingFill);
-    for (const QGlyphRun &run : layout.glyphRuns()) {
-        const auto indexes = run.glyphIndexes();
-        const auto positions = run.positions();
-        for (qsizetype i = 0; i < indexes.size(); ++i) {
-            if (indexes[i] == 0) { result.valid = false; return result; }
-            const QPainterPath glyph = run.rawFont().pathForGlyph(indexes[i]);
-            const auto space = run.rawFont().glyphIndexesForString(QStringLiteral(" "));
-            if (glyph.isEmpty() && (space.isEmpty() || indexes[i] != space.front())) { result.valid = false; return result; }
-            path.addPath(QTransform::fromTranslate(positions[i].x(), positions[i].y()).map(glyph));
-        }
-    }
-    const QRectF bounds = path.boundingRect();
-    if (bounds.isEmpty()) { result.valid = false; return result; }
-    const double scale = std::min(0.1, 9.0 / bounds.height());
-    result.outline = QTransform::fromScale(scale, -scale).map(path);
-    result.width = result.outline.boundingRect().width();
-    return result;
-}
-}
+using Okular::NumberedCalloutGeometry::BadgeLabel;
+using Okular::NumberedCalloutGeometry::badgeLabel;
 
 QRectF orderedCalloutBadgeRect(const QRectF &frame, int orderedNumber, const QString &formattedLabel)
 {
     if (orderedNumber <= 0 || !frame.isValid()) return {};
-    const BadgeLabel label = badgeLabel(orderedNumber, formattedLabel);
-    if (!label.valid) return {};
-    return QRectF(frame.left(), frame.bottom(), std::max(14.0, label.width + 6.0), 14.0);
+    const QSizeF size = Okular::NumberedCalloutGeometry::badgeSize(orderedNumber, formattedLabel);
+    if (size.isEmpty()) return {};
+    return QRectF(QPointF(frame.left(), frame.bottom()), size);
 }
 
 namespace

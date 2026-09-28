@@ -38,6 +38,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QHash>
 #include <QSaveFile>
 #include <filesystem>
 #include <QLabel>
@@ -3828,6 +3829,17 @@ QString Document::pageSizeString(int page) const
     return QString();
 }
 
+QSizeF Document::pageSizeInPoints(int page) const
+{
+    if (!d->m_generator || page < 0 || page >= d->m_pagesVector.size()) return {};
+    const QSizeF dpi = d->m_generator->dpi();
+    if (dpi.width() <= 0 || dpi.height() <= 0) return {};
+    const Page *p = d->m_pagesVector.at(page);
+    double width = p->width(), height = p->height();
+    if (int(p->rotation()) % 2) std::swap(width, height);
+    return QSizeF(width * 72.0 / dpi.width(), height * 72.0 / dpi.height());
+}
+
 static bool shouldCancelRenderingBecauseOf(const PixmapRequest &executingRequest, const PixmapRequest &otherRequest)
 {
     // New request has higher priority -> cancel
@@ -4261,6 +4273,138 @@ bool Document::exportNumberedCalloutsCsv(const QString &fileName, QString *error
 bool Document::renumberNumberedCallouts(QString *errorText)
 {
     return setNumberedCalloutNumbering(numberedCalloutNumberingPattern(), numberedCalloutNumberingRestartsPerPage(), errorText);
+}
+
+bool Document::reorderNumberedCallouts(const QList<QPair<int, Annotation *>> &orderedAnnotations, int pageNumber, QString *errorText)
+{
+    if (errorText) {
+        errorText->clear();
+    }
+    const auto fail = [errorText](const QString &message) {
+        if (errorText) {
+            *errorText = message;
+        }
+        return false;
+    };
+    if (QThread::currentThread() != thread() || !isOpened()) {
+        return fail(i18n("Open a document before reordering Numbered Callouts."));
+    }
+    if (!isValidPageIndex(d->m_pagesVector, pageNumber)) {
+        return fail(i18n("The Numbered Callout page is not valid."));
+    }
+    if (orderedAnnotations.isEmpty()) {
+        return true;
+    }
+    if (!d->m_annotationEditingEnabled || !isAllowed(AllowNotes)) {
+        return fail(i18n("Numbered Callouts cannot be edited in this document."));
+    }
+    if (!d->m_prevPropsOfAnnotBeingModified.isNull()) {
+        return fail(i18n("Finish editing the annotation before reordering Numbered Callouts."));
+    }
+
+    const bool restartPerPage = numberedCalloutNumberingRestartsPerPage();
+    QHash<Annotation *, qsizetype> prefixRanks;
+    for (qsizetype rank = 0; rank < orderedAnnotations.size(); ++rank) {
+        const auto &entry = orderedAnnotations[rank];
+        const int page = entry.first;
+        Annotation *annotation = entry.second;
+        // A stale pointer must never be dereferenced: prove membership in the
+        // current page first. Internal IDs are editable and may be duplicated.
+        if (!annotation || !isValidPageIndex(d->m_pagesVector, page) || (restartPerPage && page != pageNumber)
+            || !d->m_pagesVector[page]->annotations().contains(annotation)) {
+            return fail(i18n("A selected Numbered Callout no longer exists on the specified page in the numbering scope."));
+        }
+        if (prefixRanks.contains(annotation)) {
+            return fail(i18n("Each Numbered Callout may appear only once in the clicked sequence."));
+        }
+        if (annotation->subType() != Annotation::AStamp || !annotation->isOkularLatex() || !annotation->isNumberedCallout()) {
+            return fail(i18n("A selected annotation is not a Numbered Callout."));
+        }
+        prefixRanks.insert(annotation, rank);
+    }
+    struct Callout {
+        int page;
+        Annotation *annotation;
+    };
+    QList<Callout> callouts;
+    for (int page = 0; page < d->m_pagesVector.size(); ++page) {
+        if (restartPerPage && page != pageNumber) {
+            continue;
+        }
+        for (Annotation *annotation : d->m_pagesVector[page]->annotations()) {
+            if (annotation->subType() != Annotation::AStamp || !annotation->isOkularLatex() || !annotation->isNumberedCallout()) {
+                continue;
+            }
+            if (callouts.size() == INT_MAX) {
+                return fail(i18n("The Numbered Callout number limit has been reached."));
+            }
+            callouts.append({page, annotation});
+        }
+    }
+    // Stable sorting also preserves annotation-list order for exact ties.
+    std::stable_sort(callouts.begin(), callouts.end(), [&prefixRanks](const Callout &a, const Callout &b) {
+        const auto aRank = prefixRanks.constFind(a.annotation);
+        const auto bRank = prefixRanks.constFind(b.annotation);
+        if (aRank != prefixRanks.cend() || bRank != prefixRanks.cend()) {
+            if (aRank == prefixRanks.cend()) {
+                return false;
+            }
+            if (bRank == prefixRanks.cend()) {
+                return true;
+            }
+            return aRank.value() < bRank.value();
+        }
+        if (a.annotation->orderedCalloutNumber() != b.annotation->orderedCalloutNumber()) {
+            return a.annotation->orderedCalloutNumber() < b.annotation->orderedCalloutNumber();
+        }
+        if (a.page != b.page) {
+            return a.page < b.page;
+        }
+        return a.annotation->numberedCalloutId() < b.annotation->numberedCalloutId();
+    });
+
+    struct Change {
+        int page;
+        Annotation *annotation;
+        int number;
+        QString label;
+    };
+    QList<Change> changes;
+    const QString pattern = numberedCalloutNumberingPattern();
+    const auto *editor = dynamic_cast<const NumberedCalloutNumberingInterface *>(d->m_generator);
+    qint64 next = 0;
+    for (const Callout &callout : std::as_const(callouts)) {
+        if (++next > INT_MAX) {
+            return fail(i18n("The Numbered Callout number limit has been reached."));
+        }
+        const int number = static_cast<int>(next);
+        const QString label = numberedCalloutLabelFor(pattern, callout.page, number);
+        Annotation *annotation = callout.annotation;
+        if (annotation->orderedCalloutNumber() == number && annotation->numberedCalloutLabel() == label) {
+            continue;
+        }
+        if (editor && !editor->validateNumberedCalloutLabel(label, errorText)) {
+            return false;
+        }
+        if (!canModifyPageAnnotation(annotation)) {
+            return fail(i18n("Cannot reorder a locked or read-only Numbered Callout."));
+        }
+        changes.append({callout.page, annotation, number, label});
+    }
+    // Complete the preflight before any mutation, and avoid empty undo entries.
+    if (changes.isEmpty()) {
+        return true;
+    }
+    d->m_undoStack->beginMacro(i18n("Reorder Numbered Callouts"));
+    for (const Change &change : std::as_const(changes)) {
+        prepareToModifyAnnotationProperties(change.annotation);
+        change.annotation->setOrderedCalloutNumber(change.number);
+        change.annotation->setNumberedCalloutLabel(change.label);
+        change.annotation->setModificationDate(QDateTime::currentDateTime());
+        modifyPageAnnotationProperties(change.page, change.annotation);
+    }
+    d->m_undoStack->endMacro();
+    return true;
 }
 
 bool Document::setNumberedCalloutNumbering(const QString &pattern, bool restartPerPage, QString *errorText)
@@ -6618,6 +6762,27 @@ bool Document::canEditReadingViews() const
 {
     const auto *editor = dynamic_cast<ReadingViewEditingInterface *>(d->m_generator);
     return editor && isAllowed(AllowModify) && editor->canEditReadingViews();
+}
+
+bool Document::canGenerateReadingViews() const
+{
+    const auto *editor = dynamic_cast<ReadingViewEditingInterface *>(d->m_generator);
+    return editor && canEditReadingViews() && editor->canGenerateReadingViews();
+}
+
+ReadingViewGenerationResult Document::generateReadingViews(const QString &sourceFileName,
+                                                           const QList<int> &pageNumbers,
+                                                           const ReadingViewEditingInterface::ProgressCallback &progress)
+{
+    auto *editor = dynamic_cast<ReadingViewEditingInterface *>(d->m_generator);
+    if (!editor || sourceFileName.isEmpty() || pageNumbers.isEmpty()) {
+        ReadingViewGenerationResult result;
+        result.errorText = QStringLiteral("Automatic View generation requires a supported backend, a saved snapshot and selected pages.");
+        return result;
+    }
+    // Like saveWithEnglishOcr, this can run on a worker. Do not inspect or
+    // modify live pages, emit UI signals, or call GUI-thread edit capabilities.
+    return editor->generateReadingViews(sourceFileName, pageNumbers, progress);
 }
 
 QList<ReadingView> Document::readingViews(int pageNumber, QString *errorText) const

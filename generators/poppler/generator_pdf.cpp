@@ -96,7 +96,9 @@
 #include <functional>
 
 #if HAVE_TESSERACT
+#include <core/readingviewlayout_p.h>
 #include <tesseract/baseapi.h>
+#include <tesseract/pageiterator.h>
 #include <tesseract/resultiterator.h>
 #endif
 
@@ -3546,6 +3548,147 @@ bool PDFGenerator::setNumberedCalloutNumberingJson(const QString &json, QString 
 bool PDFGenerator::canEditReadingViews() const
 {
     return QThread::currentThread() == thread() && pdfdoc && isAllowed(Okular::AllowModify) && supportsOption(SaveChanges);
+}
+
+bool PDFGenerator::canGenerateReadingViews() const
+{
+#if HAVE_TESSERACT
+    return true;
+#else
+    return false;
+#endif
+}
+
+Okular::ReadingViewGenerationResult PDFGenerator::generateReadingViews(const QString &sourceFileName,
+                                                                      const QList<int> &pageNumbers,
+                                                                      const Okular::ReadingViewEditingInterface::ProgressCallback &progress)
+{
+    Okular::ReadingViewGenerationResult result;
+#if !HAVE_TESSERACT
+    Q_UNUSED(sourceFileName);
+    Q_UNUSED(pageNumbers);
+    Q_UNUSED(progress);
+    result.errorText = i18n("Automatic View generation requires Tesseract layout analysis support, which is not installed.");
+    return result;
+#else
+    // Everything below is local to this worker invocation. In particular, do
+    // not use pdfdoc, m_pageOrder, or the live document's render hints.
+    try {
+        std::unique_ptr<Poppler::Document> document = Poppler::Document::load(sourceFileName, nullptr, nullptr);
+        if (!document || document->isLocked()) {
+            result.errorText = i18n("Could not open the PDF snapshot for automatic View generation.");
+            return result;
+        }
+        document->setRenderHint(Poppler::Document::Antialiasing, true);
+        document->setRenderHint(Poppler::Document::TextAntialiasing, true);
+        document->setRenderHint(Poppler::Document::HideAnnotations, true);
+
+        QList<int> pages = pageNumbers;
+        std::sort(pages.begin(), pages.end());
+        pages.erase(std::unique(pages.begin(), pages.end()), pages.end());
+        if (pages.isEmpty() || pages.constFirst() < 0 || pages.constLast() >= document->numPages()) {
+            result.errorText = i18n("The selected page range for automatic View generation is invalid.");
+            return result;
+        }
+        const int total = static_cast<int>(pages.size());
+        tesseract::TessBaseAPI engine;
+        // Layout analysis deliberately loads no language model and never runs
+        // Recognize/GetUTF8Text. This works without eng.traineddata.
+        engine.InitForAnalysePage();
+        engine.SetPageSegMode(tesseract::PSM_AUTO);
+        QMap<int, QList<Okular::NormalizedRect>> rectangles;
+        for (int completed = 0; completed < total; ++completed) {
+            const int pageNumber = pages.at(completed);
+            if (progress && !progress(completed, total, pageNumber + 1)) {
+                result.cancelled = true;
+                return result;
+            }
+            std::unique_ptr<Poppler::Page> page = document->page(pageNumber);
+            if (!page) {
+                result.errorText = i18n("Page %1 could not be read for automatic View generation.", pageNumber + 1);
+                return result;
+            }
+
+            // Bound the allocation BEFORE asking Poppler to render: ARGB plus
+            // grayscale and Tesseract working images otherwise multiply a huge
+            // page's memory use. Permit a modest downscale, not an unusable scan.
+            constexpr double targetDpi = 300.0;
+            constexpr double minimumDpi = 36.0;
+            constexpr double maxPixels = 16.0 * 1024.0 * 1024.0;
+            constexpr double maxDimension = 10000.0;
+            const QSizeF size = page->pageSizeF();
+            const double width = size.width() * targetDpi / 72.0;
+            const double height = size.height() * targetDpi / 72.0;
+            if (!std::isfinite(width) || !std::isfinite(height) || width <= 0 || height <= 0) {
+                result.errorText = i18n("Page %1 has invalid dimensions for automatic View generation.", pageNumber + 1);
+                return result;
+            }
+            // Reserve one pixel per axis for Poppler's rounding. Division in
+            // stages avoids overflowing the area of malformed giant pages.
+            const double scale = std::min({1.0, (maxDimension - 1.0) / width, (maxDimension - 1.0) / height,
+                                           std::sqrt((maxPixels - 2.0 * maxDimension) / width / height)});
+            const double dpi = targetDpi * scale;
+            if (!std::isfinite(dpi) || dpi < minimumDpi || width * scale < 1.0 || height * scale < 1.0) {
+                result.errorText = i18n("Page %1 is too large or too narrow to analyse safely for automatic View generation.", pageNumber + 1);
+                return result;
+            }
+            // Poppler renders the CropBox with its saved intrinsic /Rotate.
+            // Rotate0 means NO additional display rotation. Normalizing these
+            // image coordinates therefore already matches ReadingView's native
+            // rotated, CropBox-relative top-left coordinate space, including
+            // nonzero CropBox origins. Do not undo /Rotate a second time.
+            QImage image = page->renderToImage(dpi, dpi, -1, -1, -1, -1, Poppler::Page::Rotate0).convertToFormat(QImage::Format_Grayscale8);
+            if (image.isNull()) {
+                result.errorText = i18n("Page %1 could not be rendered for automatic View generation.", pageNumber + 1);
+                return result;
+            }
+            engine.SetImage(image.constBits(), image.width(), image.height(), 1, static_cast<int>(image.bytesPerLine()));
+            engine.SetSourceResolution(static_cast<int>(std::lround(dpi)));
+            QList<Okular::ReadingViewLayout::Block> blocks;
+            {
+                std::unique_ptr<tesseract::PageIterator> iterator(engine.AnalyseLayout());
+                if (iterator) {
+                    do {
+                        int left = 0;
+                        int top = 0;
+                        int right = 0;
+                        int bottom = 0;
+                        if (iterator->BoundingBox(tesseract::RIL_BLOCK, &left, &top, &right, &bottom) && right > left && bottom > top) {
+                            const double x1 = std::clamp(static_cast<double>(left) / image.width(), 0.0, 1.0);
+                            const double y1 = std::clamp(static_cast<double>(top) / image.height(), 0.0, 1.0);
+                            const double x2 = std::clamp(static_cast<double>(right) / image.width(), 0.0, 1.0);
+                            const double y2 = std::clamp(static_cast<double>(bottom) / image.height(), 0.0, 1.0);
+                            if (x2 > x1 && y2 > y1) {
+                                blocks.append({QRectF(QPointF(x1, y1), QPointF(x2, y2)), static_cast<int>(iterator->BlockType())});
+                            }
+                        }
+                    } while (iterator->Next(tesseract::RIL_BLOCK));
+                }
+            }
+            engine.Clear();
+            QList<Okular::NormalizedRect> pageRectangles;
+            // Preserve Tesseract's iterator order when feeding the merger.
+            const auto merged = Okular::ReadingViewLayout::merge(std::move(blocks));
+            for (const QRectF &rectangle : merged) {
+                pageRectangles.append(Okular::NormalizedRect(rectangle.left(), rectangle.top(), rectangle.right(), rectangle.bottom()));
+            }
+            // A null layout/blank page is a successful empty detection result,
+            // not a request to delete existing Views.
+            rectangles.insert(pageNumber, pageRectangles);
+            if (progress && !progress(completed + 1, total, pageNumber + 1)) {
+                result.cancelled = true;
+                return result;
+            }
+        }
+        result.rectangles = std::move(rectangles);
+        result.success = true;
+    } catch (const std::exception &exception) {
+        result.errorText = i18n("Automatic View generation failed: %1", QString::fromLocal8Bit(exception.what()));
+    } catch (...) {
+        result.errorText = i18n("Automatic View generation failed.");
+    }
+    return result;
+#endif
 }
 
 QList<Okular::ReadingView> PDFGenerator::readingViews(int pageNumber, QString *errorText) const

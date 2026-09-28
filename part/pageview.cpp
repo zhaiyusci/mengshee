@@ -90,6 +90,7 @@
 #include "colormodemenu.h"
 #include "core/annotations.h"
 #include "core/readingview.h"
+#include "core/numberedcalloutgeometry_p.h"
 #include "cursorwraphelper.h"
 #include "formwidgets.h"
 #include "gui/debug_ui.h"
@@ -416,6 +417,8 @@ public:
     bool readingViewCreatingGesture = false; // this particular drag creates a new View
     bool readingViewDragging = false;
     bool readingViewConsumedPress = false;
+    PageView::ClickNumberingTarget clickNumberingTarget = PageView::ClickNumberingTarget::None;
+    bool clickNumberingConsumedPress = false;
     int selectedReadingViewPage = -1;
     QString selectedReadingViewId;
     int readingViewDragPage = -1;
@@ -1304,6 +1307,7 @@ void PageView::refreshReadingViews()
 
 void PageView::cancelReadingViewCreation()
 {
+    setClickNumberingTarget(ClickNumberingTarget::None);
     const bool wasCreating = d->creatingReadingView;
     d->creatingReadingView = false;
     d->readingViewDragging = false;
@@ -1321,7 +1325,76 @@ void PageView::cancelReadingViewCreation()
     viewport()->update();
     updateCursor();
     if (wasCreating) {
+        syncOverlayToolActions();
+        Q_EMIT readingViewCreationChanged(false);
         Q_EMIT readingViewCreationCancelled();
+    }
+}
+
+bool PageView::isReadingViewCreationActive() const
+{
+    return d->creatingReadingView;
+}
+
+void PageView::syncOverlayToolActions()
+{
+    if (!d->mouseModeActionGroup) return;
+    if (d->creatingReadingView || d->clickNumberingTarget != ClickNumberingTarget::None) {
+        if (auto *action = d->mouseModeActionGroup->checkedAction()) action->setChecked(false);
+        return;
+    }
+    // Do not override a mouse tool the user just selected, or an annotation
+    // tool being activated. Restore the underlying tool only when none is lit.
+    if (d->mouseModeActionGroup->checkedAction() || (d->annotator && d->annotator->active())) return;
+    QAction *action = nullptr;
+    switch (d->mouseMode) {
+    case Okular::Settings::EnumMouseMode::Browse: action = d->aMouseNormal; break;
+    case Okular::Settings::EnumMouseMode::Zoom: action = d->aMouseZoom; break;
+    case Okular::Settings::EnumMouseMode::RectSelect: action = d->aMouseSelect; break;
+    case Okular::Settings::EnumMouseMode::TableSelect: action = d->aMouseTableSelect; break;
+    case Okular::Settings::EnumMouseMode::Magnifier: action = d->aMouseMagnifier; break;
+    case Okular::Settings::EnumMouseMode::TextSelect: action = d->aMouseTextSelect; break;
+    }
+    if (action) action->setChecked(true);
+}
+
+PageView::ClickNumberingTarget PageView::clickNumberingTarget() const
+{
+    return d->clickNumberingTarget;
+}
+
+void PageView::setClickNumberingTarget(ClickNumberingTarget target)
+{
+    if (d->clickNumberingTarget == target) return;
+    if (target != ClickNumberingTarget::None) {
+        if (!d->document->pages() || (target == ClickNumberingTarget::Views && (!d->readingViewEditingEnabled || !d->document->canEditReadingViews()))) return;
+        cancelReadingViewCreation();
+        cancelNamedDestinationCreation();
+        stopOcrTextEditing();
+        d->creatingInternalLink = false;
+        d->internalLinkCreationDragging = false;
+        d->internalLinkCreationRect = {};
+        d->pdfLinkDragging = false;
+        d->selectedPdfLinkPage = -1;
+        if (d->annotator) d->annotator->detachAnnotation();
+        d->mouseAnnotation->reset();
+        selectionClear();
+        d->mouseTextSelecting = false;
+        d->mousePressPos = {};
+        d->mouseSelectPos = {};
+        d->mousePressLinkObject = nullptr;
+        d->scroller->stop();
+        d->dragScrollTimer.stop();
+    }
+    d->clickNumberingTarget = target;
+    syncOverlayToolActions();
+    // Cancellation can occur during document replacement, when old page items
+    // must not be hit-tested. The next mouse move restores contextual cursors.
+    setCursor(target == ClickNumberingTarget::None ? Qt::ArrowCursor : Qt::PointingHandCursor);
+    viewport()->update();
+    Q_EMIT clickNumberingTargetChanged(target);
+    if (target != ClickNumberingTarget::None) {
+        displayMessage(i18n("Click objects in the desired order, starting at 1. Unclicked objects keep their relative order. Press Esc or click the tool again to finish."));
     }
 }
 
@@ -1370,9 +1443,11 @@ void PageView::startReadingViewCreation()
     d->scroller->stop();
     d->dragScrollTimer.stop();
     d->creatingReadingView = true;
+    syncOverlayToolActions();
     setCursor(Qt::CrossCursor);
     displayMessage(i18n("Drag a rectangle to define a Reading View. Press Esc to cancel."));
     viewport()->update();
+    Q_EMIT readingViewCreationChanged(true);
 }
 
 QStringList PageView::readingViewsAtGlobalPos(QPoint globalPos, int *pageNumber) const
@@ -2526,6 +2601,11 @@ void PageView::notifySetup(const QList<Okular::Page *> &pageSet, int setupFlags)
     const QString oldReadingIdentity = d->items.value(d->currentDisplayIndex) ? d->items[d->currentDisplayIndex]->readingIdentity : QString();
     // Drop editor previews before any PageViewItem is rebound or destroyed.
     // Do not run cursor hit testing against the previous document's items here.
+    if (pageSet.isEmpty() && d->clickNumberingTarget != ClickNumberingTarget::None) {
+        d->clickNumberingTarget = ClickNumberingTarget::None;
+        syncOverlayToolActions();
+        Q_EMIT clickNumberingTargetChanged(ClickNumberingTarget::None);
+    }
     const bool cancelledReadingView = d->creatingReadingView && (!d->readingViewEditingEnabled || pageSet.isEmpty());
     d->readingViewsByPage.clear();
     d->creatingReadingView = d->creatingReadingView && d->readingViewEditingEnabled && !pageSet.isEmpty();
@@ -2538,6 +2618,8 @@ void PageView::notifySetup(const QList<Okular::Page *> &pageSet, int setupFlags)
     d->selectedReadingViewPage = -1;
     d->selectedReadingViewId.clear();
     if (cancelledReadingView) {
+        syncOverlayToolActions();
+        Q_EMIT readingViewCreationChanged(false);
         Q_EMIT readingViewCreationCancelled();
     }
     if (setupFlags & DocumentObserver::DocumentChanged) {
@@ -3910,6 +3992,11 @@ void PageView::resizeEvent(QResizeEvent *e)
 
 void PageView::keyPressEvent(QKeyEvent *e)
 {
+    if (e->key() == Qt::Key_Escape && d->clickNumberingTarget != ClickNumberingTarget::None) {
+        setClickNumberingTarget(ClickNumberingTarget::None);
+        e->accept();
+        return;
+    }
     if (e->key() == Qt::Key_Escape && (d->creatingReadingView || d->readingViewDragging || !d->selectedReadingViewId.isEmpty())) {
         cancelReadingViewCreation();
         e->accept();
@@ -4137,6 +4224,11 @@ void PageView::continuousZoomEnd()
 
 void PageView::mouseMoveEvent(QMouseEvent *e)
 {
+    if (d->clickNumberingTarget != ClickNumberingTarget::None || d->clickNumberingConsumedPress) {
+        updateCursor();
+        e->accept();
+        return;
+    }
     if (isOcrTextEditing()) {
         const QPoint pos = contentAreaPoint(e->pos());
         PageViewItem *item = pickItemOnPoint(pos.x(), pos.y());
@@ -4454,6 +4546,71 @@ void PageView::mousePressEvent(QMouseEvent *e)
     const auto *interactionItem = pickItemOnPoint(interactionPoint.x(), interactionPoint.y());
     d->interactionDisplayIndex = interactionItem ? interactionItem->displayIndex : -1;
     if (d->readingMode && interactionItem) d->currentDisplayIndex = interactionItem->displayIndex;
+    if (d->clickNumberingTarget != ClickNumberingTarget::None) {
+        d->clickNumberingConsumedPress = true;
+        d->mousePressLinkObject = nullptr;
+        if (e->button() == Qt::RightButton) {
+            setClickNumberingTarget(ClickNumberingTarget::None);
+        } else if (e->button() == Qt::LeftButton && interactionItem) {
+            const int page = interactionItem->pageNumber();
+            if (d->clickNumberingTarget == ClickNumberingTarget::Views) {
+                QString id = interactionItem->readingViewId;
+                if (id.isEmpty()) {
+                    int hitPage = -1;
+                    const auto borderHits = readingViewsAtGlobalPos(e->globalPosition().toPoint(), &hitPage);
+                    if (hitPage == page && !borderHits.isEmpty()) id = borderHits.first();
+                }
+                if (id.isEmpty()) {
+                    ensureReadingViewsLoaded(page);
+                    const auto &views = d->readingViewsByPage[page];
+                    for (auto it = views.crbegin(); it != views.crend(); ++it) {
+                        if (pdfLinkContentRect(interactionItem, readingViewDisplayRect(interactionItem, it->rectangle)).contains(interactionPoint)) {
+                            id = it->id;
+                            break;
+                        }
+                    }
+                }
+                if (!id.isEmpty()) Q_EMIT readingViewNumberingRequested(page, id);
+            } else {
+                Okular::Annotation *clicked = nullptr;
+                const auto *sourcePage = interactionItem->page();
+                const QSizeF physicalSize = d->document->pageSizeInPoints(page);
+                const double width = physicalSize.width(), height = physicalSize.height();
+                // The visible number badge is outside the annotation's body hit
+                // box. Reuse the AP's exact metrics, including Unicode labels.
+                const auto &annotations = sourcePage->annotations();
+                if (width > 0 && height > 0) {
+                    for (auto it = annotations.crbegin(); it != annotations.crend(); ++it) {
+                        auto *annotation = *it;
+                        if (!annotation->isNumberedCallout() || (annotation->flags() & Okular::Annotation::Hidden)) continue;
+                        const QSizeF size = Okular::NumberedCalloutGeometry::badgeSize(annotation->orderedCalloutNumber(), annotation->numberedCalloutLabel());
+                        if (size.isEmpty()) continue;
+                        const auto body = annotation->boundingRectangle();
+                        const Okular::NormalizedRect badge(body.left, body.top - size.height() / height, body.left + size.width() / width, body.top);
+                        if (pdfLinkContentRect(interactionItem, readingViewDisplayRect(interactionItem, badge)).contains(interactionPoint)) {
+                            clicked = annotation;
+                            break;
+                        }
+                    }
+                }
+                if (!clicked) {
+                    const auto hits = sourcePage->objectRects(Okular::ObjectRect::OAnnotation,
+                        interactionItem->absToPageX(interactionPoint.x()), interactionItem->absToPageY(interactionPoint.y()),
+                        interactionItem->uncroppedWidth(), interactionItem->uncroppedHeight());
+                    for (const auto *hit : hits) {
+                        auto *annotation = static_cast<const Okular::AnnotationObjectRect *>(hit)->annotation();
+                        if (annotation && annotation->isNumberedCallout() && !(annotation->flags() & Okular::Annotation::Hidden)) {
+                            clicked = annotation;
+                            break;
+                        }
+                    }
+                }
+                if (clicked) Q_EMIT numberedCalloutNumberingRequested(page, clicked);
+            }
+        }
+        e->accept();
+        return;
+    }
     if (isOcrTextEditing()) {
         finishOcrWordEditing();
         const QPoint pos = contentAreaPoint(e->pos());
@@ -4927,6 +5084,12 @@ void PageView::mousePressEvent(QMouseEvent *e)
 void PageView::mouseReleaseEvent(QMouseEvent *e)
 {
     const auto interactionReset = qScopeGuard([this] { d->interactionDisplayIndex = -1; });
+    if (d->clickNumberingConsumedPress || d->clickNumberingTarget != ClickNumberingTarget::None) {
+        d->clickNumberingConsumedPress = false;
+        d->mousePressLinkObject = nullptr;
+        e->accept();
+        return;
+    }
     if (readingViewMouseRelease(e)) {
         return;
     }
@@ -5766,6 +5929,11 @@ void PageView::guessTableDividers()
 
 void PageView::mouseDoubleClickEvent(QMouseEvent *e)
 {
+    if (d->clickNumberingTarget != ClickNumberingTarget::None || d->clickNumberingConsumedPress) {
+        d->clickNumberingConsumedPress = true;
+        e->accept();
+        return;
+    }
     if (isOcrTextEditing()) {
         mousePressEvent(e);
         return;
@@ -6930,6 +7098,10 @@ void PageView::updateCursor()
 
 void PageView::updateCursor(const QPoint p)
 {
+    if (d->clickNumberingTarget != ClickNumberingTarget::None) {
+        setCursor(Qt::PointingHandCursor);
+        return;
+    }
     if (d->creatingReadingView || d->creatingNamedDestination || d->creatingInternalLink) {
         setCursor(Qt::CrossCursor);
         return;

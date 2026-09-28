@@ -367,6 +367,10 @@ private:
     bool commitReadingViews(int pageNumber, const QList<Okular::ReadingView> &views, const QString &undoText);
     void refreshReadingViews();
     bool applyReadingViewsToDocument(int sourcePage);
+    void stopClickNumbering();
+    void numberReadingViewByClick(int pageNumber, const QString &viewId);
+    void numberCalloutByClick(int pageNumber, Okular::Annotation *annotation);
+    bool commitReadingViewBatch(const QList<QPair<int, QList<Okular::ReadingView>>> &batch, const QString &undoText, QString *error);
     void addNamedDestination(int pageNumber, const Okular::NormalizedPoint &position);
     void startBatchNamedDestinationCreation();
     bool addNamedDestinationWithName(int pageNumber, const Okular::NormalizedPoint &position, const QString &name, bool replaceExistingWithoutPrompt);
@@ -547,6 +551,12 @@ private:
     QAction *m_addReadingView = nullptr;
     KSelectAction *m_editingModeSelector = nullptr;
     QAction *m_applyReadingViewsToDocument = nullptr;
+    QAction *m_generateReadingViews = nullptr;
+    QAction *m_numberByClicking = nullptr;
+    QHash<int, QStringList> m_viewNumberingPrefix;
+    QHash<int, QList<QPair<int, Okular::Annotation *>>> m_calloutNumberingPrefix;
+    bool m_generatingReadingViews = false;
+    bool m_readingViewDetectionInvalidated = false;
     QAction *m_addNamedDestination = nullptr;
     QAction *m_addNamedDestinationsFromTemplate = nullptr;
     QAction *m_createLink = nullptr;
@@ -612,6 +622,7 @@ private:
 private Q_SLOTS:
     void slotCombinePdfFiles();
     void slotRecognizeEnglishText();
+    void slotGenerateReadingViews();
     void slotInsertPage();
     void slotSetPageTemplate();
     void slotInsertPageFromTemplate();
