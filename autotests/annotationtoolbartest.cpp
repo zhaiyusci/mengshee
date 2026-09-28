@@ -17,10 +17,12 @@
 #include <QTabBar>
 #include <QTabWidget>
 #include <QToolBar>
+#include <QScopeGuard>
 #include <QWidget>
 
 #include <KActionCollection>
 #include <KSelectAction>
+#include <KXMLGUIFactory>
 
 #include "../core/page.h"
 #include "../part/pageview.h"
@@ -66,6 +68,8 @@ private Q_SLOTS:
 
     void testModeSelectorToolBar();
     void testViewToolButtons();
+    void testModeToolsRightAlignment();
+    void testModeToolsRightAlignment_data();
     void testAnnotationToolBar();
     void testAnnotationToolBar_data();
     void testAnnotationToolBarActionsEnabledState();
@@ -438,6 +442,146 @@ void AnnotationToolBarTest::testViewToolButtons()
     QVERIFY(!drawButton->isChecked() && !numberButton->isChecked());
     QVERIFY(!view->isReadingViewCreationActive());
     QCOMPARE(int(view->clickNumberingTarget()), int(PageView::ClickNumberingTarget::None));
+}
+
+void AnnotationToolBarTest::testModeToolsRightAlignment_data()
+{
+    QTest::addColumn<int>("width");
+    QTest::addColumn<int>("operation");
+    QTest::addColumn<int>("checkpoint");
+    // Separate checkpoints ensure a failure in CrossReferences does not prevent
+    // the other modes (or returning through Reading) from being exercised.
+    for (const int width : {2500, 1200}) {
+        for (const int operation : {0, 1, 2}) {
+            for (int checkpoint = 0; checkpoint < 8; ++checkpoint) {
+                const QByteArray name = QStringLiteral("width-%1-%2-step-%3")
+                                            .arg(width)
+                                            .arg(operation == 0 ? QStringLiteral("switch") : operation == 1 ? QStringLiteral("restore") : QStringLiteral("remerge"))
+                                            .arg(checkpoint)
+                                            .toLatin1();
+                QTest::newRow(name.constData()) << width << operation << checkpoint;
+            }
+        }
+    }
+}
+
+void AnnotationToolBarTest::testModeToolsRightAlignment()
+{
+    QFETCH(int, width);
+    QFETCH(int, operation);
+    QFETCH(int, checkpoint);
+    Okular::Settings::self()->setShellOpenFileInTabs(true);
+    const QString options = ShellUtils::serializeOptions(false, false, false, false, false, QString(), QString(), QString());
+    QCOMPARE(Okular::main({QStringLiteral(KDESRCDIR "data/file1.pdf")}, options), Okular::Success);
+    Shell *shell = findShell();
+    QVERIFY(shell);
+    QVERIFY(QTest::qWaitForWindowExposed(shell));
+    QCOMPARE(shell->m_tabs.size(), 1);
+    auto *part = dynamic_cast<Okular::Part *>(shell->m_tabs.constFirst().part);
+    QVERIFY(part);
+    auto *mode = qobject_cast<KSelectAction *>(part->actionCollection()->action(QStringLiteral("editing_mode_selector")));
+    QVERIFY(mode);
+    auto *factory = shell->guiFactory();
+    QVERIFY(factory);
+    const QByteArray originalState = shell->saveState();
+    const QSize originalSize = shell->size();
+    const int originalMode = mode->currentItem();
+    const auto restoreSetup = qScopeGuard([&] {
+        mode->actions().at(originalMode)->trigger();
+        shell->resize(originalSize);
+        shell->restoreState(originalState);
+    });
+    shell->resize(width, 900);
+    QTRY_COMPARE(shell->width(), width);
+
+    const QList<int> sequence = {1, 2, 3, 4, 5, 0, 4, 1};
+    for (int step = 0; step <= checkpoint; ++step) {
+        const int index = sequence.at(step);
+        mode->actions().at(index)->trigger();
+        QTRY_COMPARE(mode->currentItem(), index);
+        QCoreApplication::processEvents();
+        if (operation == 1) {
+            const QByteArray state = shell->saveState();
+            QVERIFY(shell->restoreState(state));
+        } else if (operation == 2) {
+            // XMLGUI can replace toolbars and their widgets during tab changes.
+            // Re-add immediately, before any assertion can exit the test.
+            factory->removeClient(part);
+            factory->addClient(part);
+        }
+        QCoreApplication::processEvents();
+    }
+
+    // Never retain toolbar/button pointers across XMLGUI client re-merging.
+    auto *tools = shell->findChild<QToolBar *>(QStringLiteral("advancedToolBar"));
+    auto *annotations = shell->findChild<QToolBar *>(QStringLiteral("annotationToolBar"));
+    QVERIFY(tools && annotations);
+    const auto widgetRect = [shell](QWidget *widget) {
+        return QRect(widget->mapTo(shell, QPoint(0, 0)), widget->size());
+    };
+    const auto rectText = [](const QRect &rect) {
+        return QStringLiteral("[%1,%2 %3x%4 right=%5]").arg(rect.x()).arg(rect.y()).arg(rect.width()).arg(rect.height()).arg(rect.right());
+    };
+    const auto lastRealButton = [tools]() -> QToolButton * {
+        QToolButton *last = nullptr;
+        for (QAction *action : tools->actions()) {
+            // The expanding QWidgetAction is not a tool; neither is Qt's
+            // overflow extension button (which has no toolbar action).
+            if (action->isSeparator() || action->objectName() == QStringLiteral("modeToolsRightSpacerAction")) {
+                continue;
+            }
+            auto *button = qobject_cast<QToolButton *>(tools->widgetForAction(action));
+            if (button && button->isVisible() && action->isVisible()) {
+                last = button;
+            }
+        }
+        return last;
+    };
+    const auto diagnostics = [&] {
+        QString result = QStringLiteral("width=%1 operation=%2 checkpoint=%3 expectedMode=%4 actualMode=%5 shell=%6 annotations=%7 tools=%8 toolsVisible=%9")
+                             .arg(width).arg(operation).arg(checkpoint).arg(sequence.at(checkpoint)).arg(mode->currentItem())
+                             .arg(rectText(shell->contentsRect()), rectText(widgetRect(annotations)), rectText(widgetRect(tools)))
+                             .arg(tools->isVisible());
+        if (auto *last = lastRealButton()) {
+            result += QStringLiteral(" lastReal=%1 button=%2 shellRightGap=%3 toolbarRightGap=%4")
+                          .arg(last->defaultAction() ? last->defaultAction()->objectName() : last->objectName(), rectText(widgetRect(last)))
+                          .arg(shell->contentsRect().right() - widgetRect(last).right())
+                          .arg(widgetRect(tools).right() - widgetRect(last).right());
+        } else {
+            result += QStringLiteral(" lastReal=<none>");
+        }
+        for (QAction *action : tools->actions()) {
+            QWidget *widget = tools->widgetForAction(action);
+            result += QStringLiteral("\n  action=%1 text=%2 actionVisible=%3 widget=%4 widgetVisible=%5 rect=%6")
+                          .arg(action->objectName(), action->text()).arg(action->isVisible())
+                          .arg(widget ? QString::fromLatin1(widget->metaObject()->className()) + QLatin1Char(':') + widget->objectName() : QStringLiteral("<none>"))
+                          .arg(widget && widget->isVisible()).arg(widget ? rectText(widgetRect(widget)) : QStringLiteral("<none>"));
+        }
+        return result;
+    };
+    QTRY_COMPARE(mode->currentItem(), sequence.at(checkpoint));
+    QTRY_VERIFY2(annotations->isVisible(), qPrintable(diagnostics()));
+    if (sequence.at(checkpoint) == 0) {
+        QTRY_VERIFY2(!tools->isVisible(), qPrintable(diagnostics()));
+        return;
+    }
+    QTRY_VERIFY2(tools->isVisible(), qPrintable(diagnostics()));
+    QTRY_VERIFY2(widgetRect(tools).top() == widgetRect(annotations).top()
+                     && widgetRect(tools).bottom() == widgetRect(annotations).bottom()
+                     && widgetRect(tools).left() > widgetRect(annotations).right(),
+                 qPrintable(diagnostics()));
+    const auto rightAligned = [&] {
+        auto *last = lastRealButton();
+        if (!last || !last->visibleRegion().contains(last->rect())) {
+            return false;
+        }
+        const int toolbarGap = shell->contentsRect().right() - widgetRect(tools).right();
+        const int buttonGap = shell->contentsRect().right() - widgetRect(last).right();
+        // A full-width toolbar alone is insufficient: its REAL last button
+        // must reach the right edge, not sit next to annotations around x850.
+        return toolbarGap >= 0 && toolbarGap <= 4 && buttonGap >= 0 && buttonGap <= 16;
+    };
+    QTRY_VERIFY2(rightAligned(), qPrintable(diagnostics()));
 }
 
 void AnnotationToolBarTest::testAnnotationToolBar()

@@ -171,6 +171,22 @@
 #include <memory>
 #include <type_traits>
 
+namespace
+{
+class ModeToolsSpacerAction final : public QWidgetAction
+{
+public:
+    using QWidgetAction::QWidgetAction;
+protected:
+    QWidget *createWidget(QWidget *parent) override
+    {
+        auto *spacer = new QWidget(parent);
+        spacer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+        return spacer;
+    }
+};
+}
+
 #ifdef OKULAR_KEEP_FILE_OPEN
 class FileKeeper
 {
@@ -1035,6 +1051,9 @@ void Part::setupViewerActions()
             setEditingMode(static_cast<EditingMode>(index));
         }
     });
+    // XMLGUI owns the spacer action, so rebuilding a tab's toolbars recreates
+    // its expanding widget rather than silently dropping a runtime-only item.
+    ac->addAction(QStringLiteral("modeToolsRightSpacerAction"), new ModeToolsSpacerAction(ac));
     m_applyReadingViewsToDocument = ac->addAction(QStringLiteral("view_apply_views_to_document"));
     m_applyReadingViewsToDocument->setText(i18n("Apply Reading Views to Other Pages..."));
     m_applyReadingViewsToDocument->setIconText(i18nc("Compact reading-region toolbar button", "Apply"));
@@ -2798,6 +2817,16 @@ void Part::guiActivateEvent(KParts::GUIActivateEvent *event)
     setWindowTitleFromDocument();
 
     if (event->activated()) {
+        QObject::disconnect(m_modeToolBarFactoryConnection);
+        if (factory()) {
+            m_modeToolBarFactoryConnection = connect(factory(), &KXMLGUIFactory::makingChanges, this, [this](bool changing) {
+                // XMLGUI restores saved toolbar positions during merging. Apply
+                // our row/order only after that work, and only for active clients.
+                if (!changing && factory()) {
+                    setEditingMode(m_editingMode);
+                }
+            }, Qt::QueuedConnection);
+        }
         setEditingMode(m_editingMode);
         rebuildBookmarkMenu();
         if (auto *mainWindow = findMainWindow()) {
@@ -4713,14 +4742,8 @@ void Part::setEditingMode(EditingMode mode)
                 advancedToolBar->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
                 // QMainWindow stretches the last toolbar in a row. Put that
                 // spare width BEFORE the commands, rather than after them.
-                auto *spacerAction = advancedToolBar->findChild<QAction *>(QStringLiteral("modeToolsRightSpacerAction"), Qt::FindDirectChildrenOnly);
-                if (!spacerAction) {
-                    auto *spacer = new QWidget(advancedToolBar);
-                    spacer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
-                    const auto actions = advancedToolBar->actions();
-                    spacerAction = advancedToolBar->insertWidget(actions.isEmpty() ? nullptr : actions.constFirst(), spacer);
-                    spacerAction->setObjectName(QStringLiteral("modeToolsRightSpacerAction"));
-                } else if (advancedToolBar->actions().isEmpty() || advancedToolBar->actions().constFirst() != spacerAction) {
+                auto *spacerAction = actionCollection()->action(QStringLiteral("modeToolsRightSpacerAction"));
+                if (spacerAction && (advancedToolBar->actions().isEmpty() || advancedToolBar->actions().constFirst() != spacerAction)) {
                     advancedToolBar->removeAction(spacerAction);
                     const auto actions = advancedToolBar->actions();
                     advancedToolBar->insertAction(actions.isEmpty() ? nullptr : actions.constFirst(), spacerAction);

@@ -134,6 +134,8 @@ private Q_SLOTS:
     void testLiveNamedDestinationEditing();
     void testNamedDestinationDragDoesNotStartTextSelection();
     void testLivePdfLinkEditing();
+    void testLivePdfLinksHaveNoVisibleBorder_data();
+    void testLivePdfLinksHaveNoVisibleBorder();
     void testLiveLinkSurvivesNamedDestinationUpdate();
     void testEditPdfNamedDestinationAndLink();
     void testEditExternalPdfLink();
@@ -6490,6 +6492,98 @@ void PartTest::testLivePdfLinkEditing()
     QVERIFY(foundSavedLink);
 }
 
+void PartTest::testLivePdfLinksHaveNoVisibleBorder_data()
+{
+    QTest::addColumn<QString>("linkType");
+    QTest::newRow("internal-direct") << QStringLiteral("direct");
+    QTest::newRow("internal-named") << QStringLiteral("named");
+    QTest::newRow("external") << QStringLiteral("external");
+}
+
+void PartTest::testLivePdfLinksHaveNoVisibleBorder()
+{
+    QFETCH(QString, linkType);
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const QString sourceFile = directory.filePath(QStringLiteral("blank-link-source.pdf"));
+    const QString savedFile = directory.filePath(QStringLiteral("blank-link-saved.pdf"));
+    // Generate a blank two-page fixture: no existing link borders or content can
+    // mask a newly painted rectangle, and no checked-in PDF is modified.
+    QVERIFY(writeOrderedCalloutTestPdf(sourceFile, 2));
+
+    Part part(nullptr, {});
+    QVERIFY(openDocument(&part, sourceFile));
+    QVERIFY(part.m_document->canEditPdfLinks());
+    QString errorText;
+    const QString destinationName = linkType == QLatin1String("named") ? QStringLiteral("invisible-link-target") : QString();
+    const QString externalUrl = QStringLiteral("https://example.com/invisible-link#target");
+    if (!destinationName.isEmpty()) {
+        QVERIFY2(part.m_document->setNamedDestination(destinationName, 2, 0.2, 0.3, &errorText), qPrintable(errorText));
+    }
+    const QImage before = part.m_document->renderToImage(0, 144, true, &errorText);
+    QVERIFY2(!before.isNull(), qPrintable(errorText));
+    const QRectF linkRectangle(QPointF(0.15, 0.25), QPointF(0.65, 0.45));
+    part.setEditingMode(EditingMode::CrossReferences);
+    if (linkType == QLatin1String("external")) {
+        QVERIFY2(part.m_document->createExternalLink(1, linkRectangle.left(), linkRectangle.top(), linkRectangle.right(), linkRectangle.bottom(), externalUrl, &errorText), qPrintable(errorText));
+    } else {
+        QVERIFY2(part.m_document->createInternalLink(1, linkRectangle.left(), linkRectangle.top(), linkRectangle.right(), linkRectangle.bottom(), destinationName, 2, 0.2, 0.3, &errorText), qPrintable(errorText));
+    }
+
+    const auto verifyLink = [&](Document *document) {
+        QList<const ObjectRect *> links;
+        for (const ObjectRect *rect : document->page(0)->objectRects()) {
+            if (rect && rect->objectType() == ObjectRect::Action && rect->object()) {
+                links.append(rect);
+            }
+        }
+        QCOMPARE(links.size(), 1);
+        const QRectF actual = links.constFirst()->region().boundingRect();
+        QVERIFY(qAbs(actual.left() - linkRectangle.left()) < 0.005);
+        QVERIFY(qAbs(actual.top() - linkRectangle.top()) < 0.005);
+        QVERIFY(qAbs(actual.right() - linkRectangle.right()) < 0.005);
+        QVERIFY(qAbs(actual.bottom() - linkRectangle.bottom()) < 0.005);
+        const auto *action = static_cast<const Action *>(links.constFirst()->object());
+        if (linkType == QLatin1String("external")) {
+            const auto *browse = dynamic_cast<const BrowseAction *>(action);
+            QVERIFY(browse);
+            QCOMPARE(browse->url(), QUrl(externalUrl));
+        } else {
+            const auto *goTo = dynamic_cast<const GotoAction *>(action);
+            QVERIFY(goTo);
+            QVERIFY(!goTo->isExternal());
+            QCOMPARE(goTo->destinationName(), destinationName);
+            const DocumentViewport target = destinationName.isEmpty() ? goTo->destViewport() : DocumentViewport(document->metaData(QStringLiteral("NamedViewport"), destinationName).toString());
+            QVERIFY(target.isValid());
+            QCOMPARE(target.pageNumber, 1);
+            QVERIFY(target.rePos.enabled);
+            QVERIFY(qAbs(target.rePos.normalizedX - 0.2) < 0.005);
+            QVERIFY(qAbs(target.rePos.normalizedY - 0.3) < 0.005);
+        }
+    };
+    verifyLink(part.m_document);
+    part.setEditingMode(EditingMode::Reading);
+
+    // Render the LIVE backend with annotations enabled, before any save/reopen.
+    // Editing only the PDF Border dictionary leaves AnnotLink's cached default
+    // width at 1, so this assertion catches the rectangle that reopening hides.
+    const QImage live = part.m_document->renderToImage(0, 144, true, &errorText);
+    QVERIFY2(!live.isNull(), qPrintable(errorText));
+    QCOMPARE(live, before);
+    QVERIFY2(part.m_document->saveChanges(savedFile, &errorText), qPrintable(errorText));
+    part.closeUrl(false);
+
+    Part reopened(nullptr, {});
+    QVERIFY(openDocument(&reopened, savedFile));
+    const QImage restored = reopened.m_document->renderToImage(0, 144, true, &errorText);
+    QVERIFY2(!restored.isNull(), qPrintable(errorText));
+    QCOMPARE(restored, before);
+    // Populate the reopened page's link objects without requiring an exposed GUI.
+    reopened.m_document->requestPixmaps({new PixmapRequest(reopened.m_pageView, 0, 300, 400, 1.0, 1, PixmapRequest::NoFeature)});
+    verifyLink(reopened.m_document);
+    reopened.closeUrl(false);
+}
+
 void PartTest::testLiveLinkSurvivesNamedDestinationUpdate()
 {
     QTemporaryDir tempDir;
@@ -6842,7 +6936,11 @@ void PartTest::testEditExternalPdfLink()
     const QRectF linkRectangle(0.70, 0.08, 0.18, 0.07);
     const QString firstUrl = QStringLiteral("https://example.com/first?from=mengshee");
     const QString secondUrl = QStringLiteral("https://example.org/second#target");
-    const auto externalUrlAtRectangle = [&linkRectangle](Document *document) {
+    const auto externalUrlAtRectangle = [&linkRectangle](Part &part) {
+        Document *document = part.m_document;
+        // Reopened pages load link objects when rendered. A non-exposed Part
+        // has no guaranteed asynchronous paint before this immediate check.
+        document->requestPixmaps({new PixmapRequest(part.m_pageView, 0, 300, 400, 1.0, 1, PixmapRequest::NoFeature)});
         for (const Okular::ObjectRect *rect : document->page(0)->objectRects()) {
             if (!rect || rect->objectType() != Okular::ObjectRect::Action || !rect->object() || !rect->region().boundingRect().intersects(linkRectangle)) {
                 continue;
@@ -6871,7 +6969,7 @@ void PartTest::testEditExternalPdfLink()
 
     Okular::Part createdPart(nullptr, {});
     QVERIFY(openDocument(&createdPart, createdFile));
-    QCOMPARE(externalUrlAtRectangle(createdPart.m_document), QUrl(firstUrl));
+    QCOMPARE(externalUrlAtRectangle(createdPart), QUrl(firstUrl));
     QVERIFY2(createdPart.m_document->editExternalLinkDestination(1,
                                                                             linkRectangle.left(),
                                                                             linkRectangle.top(),
@@ -6885,7 +6983,7 @@ void PartTest::testEditExternalPdfLink()
 
     Okular::Part editedPart(nullptr, {});
     QVERIFY(openDocument(&editedPart, editedFile));
-    QCOMPARE(externalUrlAtRectangle(editedPart.m_document), QUrl(secondUrl));
+    QCOMPARE(externalUrlAtRectangle(editedPart), QUrl(secondUrl));
     QVERIFY2(editedPart.m_document->editInternalLinkDestination(1,
                                                                            linkRectangle.left(),
                                                                            linkRectangle.top(),
@@ -6902,7 +7000,7 @@ void PartTest::testEditExternalPdfLink()
 
     Okular::Part internalPart(nullptr, {});
     QVERIFY(openDocument(&internalPart, internalFile));
-    QVERIFY(externalUrlAtRectangle(internalPart.m_document).isEmpty());
+    QVERIFY(externalUrlAtRectangle(internalPart).isEmpty());
     bool foundInternalLink = false;
     for (const Okular::ObjectRect *rect : internalPart.m_document->page(0)->objectRects()) {
         if (!rect || rect->objectType() != Okular::ObjectRect::Action || !rect->object() || !rect->region().boundingRect().intersects(linkRectangle)) {
@@ -6928,7 +7026,7 @@ void PartTest::testEditExternalPdfLink()
 
     Okular::Part externalAgainPart(nullptr, {});
     QVERIFY(openDocument(&externalAgainPart, externalAgainFile));
-    QCOMPARE(externalUrlAtRectangle(externalAgainPart.m_document), QUrl(firstUrl));
+    QCOMPARE(externalUrlAtRectangle(externalAgainPart), QUrl(firstUrl));
     QVERIFY2(externalAgainPart.m_document->deletePdfLink(1,
                                                                   linkRectangle.left(),
                                                                   linkRectangle.top(),
@@ -6941,7 +7039,7 @@ void PartTest::testEditExternalPdfLink()
 
     Okular::Part deletedPart(nullptr, {});
     QVERIFY(openDocument(&deletedPart, deletedFile));
-    QVERIFY(externalUrlAtRectangle(deletedPart.m_document).isEmpty());
+    QVERIFY(externalUrlAtRectangle(deletedPart).isEmpty());
 }
 
 void PartTest::testDuplicatePagePreservesInternalLinks()

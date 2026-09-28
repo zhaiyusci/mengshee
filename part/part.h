@@ -573,6 +573,7 @@ private:
     bool m_advancedModeEnabled = false; // Legacy alias for CrossReferences only.
     EditingMode m_editingMode = EditingMode::Reading;
     bool m_updatingEditingMode = false;
+    QMetaObject::Connection m_modeToolBarFactoryConnection;
     bool m_batchNamedDestinationCreationActive = false;
     bool m_batchNamedDestinationReplaceConflicts = false;
     QString m_batchNamedDestinationTemplate = QStringLiteral("eq-{x}");
