@@ -114,3 +114,20 @@ plugins\kf6\kio\kio_file.dll	KIO file protocol worker required for file:// save/
 plugins\kf6\parts\okularpart.dll	Mengshee KParts UI plugin
 plugins\okular_generators\okularGenerator_poppler.dll	PDF generator
 share\poppler	Poppler CMap/CID data required by CJK and other encoded PDFs
+share\fonts\FoxitFixed.cff	Mandatory PDF Courier substitute
+share\fonts\FoxitFixedBold.cff	Mandatory PDF Courier-Bold substitute
+share\fonts\FoxitFixedItalic.cff	Mandatory PDF Courier-Oblique substitute
+share\fonts\FoxitFixedBoldItalic.cff	Mandatory PDF Courier-BoldOblique substitute
+share\fonts\FoxitSans.cff	Mandatory PDF Helvetica substitute
+share\fonts\FoxitSansBold.cff	Mandatory PDF Helvetica-Bold substitute
+share\fonts\FoxitSansItalic.cff	Mandatory PDF Helvetica-Oblique substitute
+share\fonts\FoxitSansBoldItalic.cff	Mandatory PDF Helvetica-BoldOblique substitute
+share\fonts\FoxitSerif.cff	Mandatory PDF Times-Roman substitute
+share\fonts\FoxitSerifBold.cff	Mandatory PDF Times-Bold substitute
+share\fonts\FoxitSerifItalic.cff	Mandatory PDF Times-Italic substitute
+share\fonts\FoxitSerifBoldItalic.cff	Mandatory PDF Times-BoldItalic substitute
+share\fonts\FoxitSymbol.cff	Mandatory PDF Symbol substitute
+share\fonts\FoxitDingbats.cff	Mandatory PDF ZapfDingbats substitute
+share\fonts\LICENSE.pdfium	PDFium font redistribution license and disclaimer
+share\fonts\NOTICE.pdfium	PDFium and Foxit font attribution and provenance
+share\fonts\base14-manifest.json	Pinned Base14 font version and checksums

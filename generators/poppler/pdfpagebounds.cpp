@@ -345,7 +345,7 @@ public:
             commit(pathBox(s, false));
     }
     void eoFill(GfxState *s) override { fill(s); }
-    void drawChar(GfxState *s, double x, double y, double, double, double ox, double oy, CharCode code, int, const Unicode *unicode, int unicodeLength) override
+    void drawChar(GfxState *s, double x, double y, double, double, double ox, double oy, CharCode code, int, const Unicode *, int) override
     {
         budget.point();
         const int render = s->getRender();
@@ -355,10 +355,6 @@ public:
         const bool stroke = ((render & 3) == 1 || (render & 3) == 2) && !s->getStrokeColorSpace()->isNonMarking();
         if (!fill && !stroke)
             return;
-        const auto &gfxFont = s->getFont();
-        Ref embedded;
-        if (gfxFont && !gfxFont->isCIDFont() && !gfxFont->isSymbolic() && !gfxFont->getEmbeddedFontID(&embedded) && unicodeLength == 1 && unicode[0] >= 0x80 && unicode[0] <= 0xffff)
-            fail(Error::UnsupportedInput, "Unembedded Unicode fallback text has no stable source-font outline.");
         const auto precision = glyphPrecision(s);
         SplashFont *font = fonts.prepare(s);
         if (!font)

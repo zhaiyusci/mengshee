@@ -10,14 +10,14 @@
 
 namespace
 {
-QByteArray pdf(const QByteArray &commands, const QByteArray &pageExtras = {})
+QByteArray pdf(const QByteArray &commands, const QByteArray &pageExtras = {}, const QByteArray &font = QByteArrayLiteral("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"))
 {
     const QList<QByteArray> objects = {
         QByteArrayLiteral("<< /Type /Catalog /Pages 2 0 R >>"),
         QByteArrayLiteral("<< /Type /Pages /Count 1 /Kids [3 0 R] >>"),
         QByteArray(QByteArrayLiteral("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 100 100] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R ") + pageExtras + QByteArrayLiteral(" >>")),
         QByteArray(QByteArrayLiteral("<< /Length ") + QByteArray::number(commands.size()) + QByteArrayLiteral(" >>\nstream\n") + commands + QByteArrayLiteral("\nendstream")),
-        QByteArrayLiteral("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"),
+        font,
     };
     QByteArray data = QByteArrayLiteral("%PDF-1.4\n");
     QList<qsizetype> offsets;
@@ -53,9 +53,40 @@ private Q_SLOTS:
     void vectorBounds_data();
     void vectorBounds();
     void textOutsidePage();
+    void encodedGlyphBounds_data();
+    void encodedGlyphBounds();
     void noOverwrite();
     void rejectedInputUnchanged();
 };
+
+void LatexPdfBoundsTest::encodedGlyphBounds_data()
+{
+    QTest::addColumn<QByteArray>("font");
+    QTest::addColumn<QByteArray>("codes");
+    QTest::newRow("winansi-umlauts") << QByteArray("<< /Type /Font /Subtype /Type1 /BaseFont /Times-Roman /Encoding /WinAnsiEncoding >>") << QByteArray("E4F6FC");
+    QTest::newRow("symbol-glyph-names") << QByteArray("<< /Type /Font /Subtype /Type1 /BaseFont /Symbol >>") << QByteArray("666A46");
+}
+
+void LatexPdfBoundsTest::encodedGlyphBounds()
+{
+    QFETCH(QByteArray, font);
+    QFETCH(QByteArray, codes);
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString input = dir.filePath(QStringLiteral("encoded-input.pdf"));
+    const QString output = dir.filePath(QStringLiteral("encoded-output.pdf"));
+    const QByteArray original = pdf("BT /F1 24 Tf -4 98 Td <" + codes + "> Tj ET\n", {}, font);
+    QVERIFY(save(input, original));
+    const auto result = PdfPageBounds::expandAppearance(input.toUtf8().toStdString(), output.toUtf8().toStdString(), 1.0);
+    QVERIFY2(result.ok, result.message.c_str());
+    QCOMPARE(load(input), original);
+    auto doc = Poppler::Document::load(output);
+    QVERIFY(doc);
+    auto page = doc->page(0);
+    QVERIFY(page);
+    QVERIFY(page->pageSizeF().height() > 100);
+    QVERIFY(!page->renderToImage().isNull());
+}
 
 void LatexPdfBoundsTest::vectorBounds_data()
 {

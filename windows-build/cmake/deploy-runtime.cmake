@@ -407,6 +407,11 @@ foreach(_unneeded_data_file IN ITEMS bison-default.css local.mk README.md)
     file(REMOVE "${_bin_dir}/data/${_unneeded_data_file}")
 endforeach()
 
+# Core PDF resources must not depend on system fonts or optional StemTeX.
+include("${CMAKE_CURRENT_LIST_DIR}/pdf-base14-fonts.cmake")
+mengshee_deploy_pdf_base14_fonts("${SOURCE_ROOT}" "${SDK_PREFIX}")
+mengshee_deploy_pdf_base14_fonts("${SOURCE_ROOT}" "${INSTALL_PREFIX}")
+
 if(IS_DIRECTORY "${SDK_PREFIX}/share/poppler")
     mengshee_sync_tree("${SDK_PREFIX}/share/poppler" "${INSTALL_PREFIX}/share/poppler" "${INSTALL_PREFIX}")
 else()

@@ -158,4 +158,6 @@ $build = """$CMake"" --build ""$popplerBuild"" --target install --parallel $Jobs
 Invoke-VsCmd $build
 
 Write-Host ""
-Write-Host "custom Poppler installed into SDK." -ForegroundColor Green
+& $CMake "-DSOURCE_ROOT=$repoRoot" "-DPREFIX=$SdkPrefix" -P (Join-Path $repoRoot 'windows-build/cmake/deploy-pdf-base14-fonts.cmake')
+if ($LASTEXITCODE -ne 0) { throw 'Mandatory PDF Base14 font deployment failed.' }
+Write-Host "custom Poppler and mandatory Base14 fonts installed into SDK." -ForegroundColor Green

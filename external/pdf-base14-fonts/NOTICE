@@ -1,0 +1,33 @@
+PDFium / Foxit Standard 14 PDF substitute fonts
+==============================================
+
+Copyright 2014 The PDFium Authors
+Original code copyright 2014 Foxit Software Inc. http://www.foxitsoftware.com
+The upstream chromefontdata.h also carries Copyright 2015 The PDFium Authors.
+
+These 14 CFF font programs are byte-for-byte extractions of the corresponding
+kFoxit*FontData arrays in PDFium's core/fxge/fontdata/chromefontdata/Foxit*.cpp.
+Every selected source file explicitly identifies its license as BSD-style and
+refers to the upstream LICENSE. The complete upstream LICENSE is preserved here
+(source bundle: LICENSE; installed font directory: LICENSE.pdfium). It includes
+the BSD redistribution conditions and disclaimer, and the upstream appended
+Apache License 2.0 text. No separate font-license override was present in the
+selected upstream source files or chromefontdata directory at this revision.
+
+Upstream repository: https://github.com/chromium/pdfium
+Pinned revision: a84323421e94f484faca52dd9d027934eba42ab8
+Source directory: core/fxge/fontdata/chromefontdata
+Source URL prefix:
+https://github.com/chromium/pdfium/tree/a84323421e94f484faca52dd9d027934eba42ab8/core/fxge/fontdata/chromefontdata
+
+The original source arrays and notices are retained in the source distribution.
+Only the hexadecimal array initializers are decoded; outlines, names, widths,
+encodings, and internal font metadata are not edited. FoxitSansMM and
+FoxitSerifMM are not included. prepare_fonts.py documents and reproduces the
+mechanical extraction. manifest.json records source and output SHA-256 hashes
+and the explicit PDF Base14-to-file mapping. The runtime copy of this manifest
+is named base14-manifest.json.
+
+These files are application-private PDF substitutes, not Microsoft or Adobe
+font files, and are not installed into the operating system. Their inclusion
+does not imply endorsement by Google, PDFium contributors, or Foxit Software.

@@ -117,6 +117,10 @@ mengshee_validate_file("${INSTALL_PREFIX}" "bin/mengshee.exe")
 mengshee_sync_tree("${INSTALL_PREFIX}/bin" "${STAGE_ROOT}/bin" "${STAGE_ROOT}")
 file(REMOVE "${STAGE_ROOT}/bin/vc_redist.x64.exe")
 
+# These fonts belong to the mandatory core component, never StemTeX support.
+include("${CMAKE_CURRENT_LIST_DIR}/pdf-base14-fonts.cmake")
+mengshee_stage_pdf_base14_fonts("${SOURCE_ROOT}" "${INSTALL_PREFIX}" "${STAGE_ROOT}")
+
 if(IS_DIRECTORY "${INSTALL_PREFIX}/share/poppler")
     mengshee_sync_tree("${INSTALL_PREFIX}/share/poppler" "${STAGE_ROOT}/share/poppler" "${STAGE_ROOT}")
 else()

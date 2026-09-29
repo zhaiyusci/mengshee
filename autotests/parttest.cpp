@@ -110,6 +110,21 @@ private Q_SLOTS:
     void testOcrTextLayerEditing();
     void testOcrTextLayout();
     void testOcrPdfGeometry();
+    void testUnicodeFallbackPreservesSourceGlyph_data();
+    void testUnicodeFallbackPreservesSourceGlyph();
+    void testMissingGlyphToUnicodeInvariance();
+    void testBase14ToUnicodeInvariance_data();
+    void testBase14ToUnicodeInvariance();
+    void testType3ToUnicodeInvariance();
+    void testBase14EmbeddedFontOracle_data();
+    void testBase14EmbeddedFontOracle();
+    void testCidToGidMapping_data();
+    void testCidToGidMapping();
+    void testMissingFontStyleSubstitution_data();
+    void testMissingFontStyleSubstitution();
+    void testFreeTextExistingAppearanceRoundTrip();
+    void testSymbolicEncodingGlyphOracle_data();
+    void testSymbolicEncodingGlyphOracle();
     void init();
 
     void testZoomWithCrop();
@@ -279,6 +294,527 @@ public:
 private:
     Behavior behavior;
 };
+
+namespace
+{
+QByteArray fontTestStream(const QByteArray &bytes, const QByteArray &entries = {})
+{
+    return "<< /Length " + QByteArray::number(bytes.size()) + " " + entries + " >>\nstream\n" + bytes + "\nendstream";
+}
+
+QByteArray fontTestPdf(const QList<QByteArray> &objects)
+{
+    QByteArray bytes("%PDF-1.4\n");
+    QList<qsizetype> offsets;
+    for (qsizetype i = 0; i < objects.size(); ++i) {
+        offsets.append(bytes.size());
+        bytes += QByteArray::number(i + 1) + " 0 obj\n" + objects[i] + "\nendobj\n";
+    }
+    const qsizetype xref = bytes.size();
+    bytes += "xref\n0 " + QByteArray::number(objects.size() + 1) + "\n0000000000 65535 f \n";
+    for (const qsizetype offset : offsets) {
+        bytes += QByteArray::number(offset).rightJustified(10, '0') + " 00000 n \n";
+    }
+    bytes += "trailer\n<< /Size " + QByteArray::number(objects.size() + 1) + " /Root 1 0 R >>\nstartxref\n" + QByteArray::number(xref) + "\n%%EOF\n";
+    return bytes;
+}
+
+QByteArray fontTestToUnicode(const QByteArray &unicodeHex, const QByteArray &codeHex = "41")
+{
+    const QByteArray low(codeHex.size(), '0');
+    const QByteArray high(codeHex.size(), 'F');
+    return fontTestStream("/CIDInit /ProcSet findresource begin\n12 dict begin\nbegincmap\n"
+                          "/CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> def\n"
+                          "/CMapName /FontSemanticsTest def\n/CMapType 2 def\n"
+                          "1 begincodespacerange\n<" + low + "> <" + high + ">\nendcodespacerange\n"
+                          "1 beginbfchar\n<" + codeHex + "> <" + unicodeHex + ">\nendbfchar\n"
+                          "endcmap\nCMapName currentdict /CMap defineresource pop\nend\nend\n");
+}
+
+// Keep PDF glyph selection fixed while changing extraction metadata. The font
+// dictionary always occupies object 5; /ToUnicode, when used, is object 6.
+QByteArray fontTestPage(const QByteArray &font, const QByteArray &unicodeHex, const QByteArray &content = "BT /F1 36 Tf 30 40 Td <41> Tj ET\n", const QList<QByteArray> &extraObjects = {}, const QByteArray &codeHex = "41")
+{
+    QList<QByteArray> objects = {
+        "<< /Type /Catalog /Pages 2 0 R >>",
+        "<< /Type /Pages /Count 1 /Kids [3 0 R] >>",
+        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 120 100] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>",
+        fontTestStream(content),
+        font,
+        fontTestToUnicode(unicodeHex, codeHex),
+    };
+    objects.append(extraObjects);
+    return fontTestPdf(objects);
+}
+
+QByteArray unicodeFallbackPdf(const QByteArray &glyphName, const QByteArray &unicodeHex)
+{
+    return fontTestPage("<< /Type /Font /Subtype /Type1 /BaseFont /Times-Roman /FirstChar 65 /LastChar 65 /Widths [600] "
+                        "/Encoding << /Type /Encoding /BaseEncoding /WinAnsiEncoding /Differences [65 /" + glyphName + "] >> /ToUnicode 6 0 R >>", unicodeHex);
+}
+
+QImage unicodeFallbackPixels(const QByteArray &bytes)
+{
+    auto document = Poppler::Document::loadFromData(bytes);
+    if (!document) {
+        return {};
+    }
+    document->setRenderBackend(Poppler::Document::SplashBackend);
+    document->setRenderHint(Poppler::Document::Antialiasing, true);
+    document->setRenderHint(Poppler::Document::TextAntialiasing, true);
+    auto page = document->page(0);
+    return page ? page->renderToImage(144, 144) : QImage();
+}
+
+bool unicodeFallbackHasInk(const QImage &image)
+{
+    for (int y = 0; y < image.height(); ++y) {
+        for (int x = 0; x < image.width(); ++x) {
+            const QColor pixel = image.pixelColor(x, y);
+            if (pixel.alpha() > 0 && (pixel.red() < 240 || pixel.green() < 240 || pixel.blue() < 240)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+}
+
+void PartTest::testUnicodeFallbackPreservesSourceGlyph_data()
+{
+    QTest::addColumn<QByteArray>("glyphName");
+    QTest::addColumn<QByteArray>("unicodeHex");
+    QTest::addColumn<bool>("hasInk");
+    QTest::newRow("adieresis") << QByteArray("adieresis") << QByteArray("00E4") << true;
+    QTest::newRow("odieresis") << QByteArray("odieresis") << QByteArray("00F6") << true;
+    QTest::newRow("udieresis") << QByteArray("udieresis") << QByteArray("00FC") << true;
+    QTest::newRow("Adieresis") << QByteArray("Adieresis") << QByteArray("00C4") << true;
+    QTest::newRow("Odieresis") << QByteArray("Odieresis") << QByteArray("00D6") << true;
+    QTest::newRow("Udieresis") << QByteArray("Udieresis") << QByteArray("00DC") << true;
+    QTest::newRow("germandbls") << QByteArray("germandbls") << QByteArray("00DF") << true;
+    QTest::newRow("nonbreaking-space") << QByteArray("space") << QByteArray("00A0") << false;
+    // A valid blank glyph is not missing, even if ToUnicode describes visible text.
+    // This catches coverage checks based on bitmap dimensions or an empty outline.
+    QTest::newRow("space-with-visible-unicode") << QByteArray("space") << QByteArray("00E4") << false;
+}
+
+void PartTest::testUnicodeFallbackPreservesSourceGlyph()
+{
+    QFETCH(QByteArray, glyphName);
+    QFETCH(QByteArray, unicodeHex);
+    QFETCH(bool, hasInk);
+    // The glyph name controls the source mapping. ASCII ToUnicode suppresses the
+    // old non-ASCII fallback without altering that mapping, giving a local oracle
+    // independent of installed font versions, antialiasing, or golden screenshots.
+    const QImage reference = unicodeFallbackPixels(unicodeFallbackPdf(glyphName, "0061"));
+    const QImage actual = unicodeFallbackPixels(unicodeFallbackPdf(glyphName, unicodeHex));
+    QVERIFY(!reference.isNull());
+    QVERIFY(!actual.isNull());
+    QCOMPARE(unicodeFallbackHasInk(reference), hasInk);
+    QCOMPARE(unicodeFallbackHasInk(actual), hasInk);
+    QCOMPARE(actual, reference);
+}
+
+void PartTest::testMissingGlyphToUnicodeInvariance()
+{
+    // Missing glyph recovery belongs to the selected PDF font's mapping, not to
+    // a late Unicode repaint. Keep the first Unicode value identical because
+    // upstream TrueType substitution may legitimately consult it when the
+    // glyph name is unavailable. Changing sequence length must not repaint it.
+    // Do not assume .notdef has no outline or that a CJK system font is present.
+    const QImage reference = unicodeFallbackPixels(unicodeFallbackPdf(".notdef", "4E2D0061"));
+    const QImage actual = unicodeFallbackPixels(unicodeFallbackPdf(".notdef", "4E2D"));
+    QVERIFY(!reference.isNull());
+    QVERIFY(!actual.isNull());
+    QCOMPARE(actual, reference);
+}
+
+void PartTest::testBase14ToUnicodeInvariance_data()
+{
+    QTest::addColumn<QByteArray>("baseFont");
+    for (const QByteArray &font : { QByteArray("Courier"), QByteArray("Courier-Bold"), QByteArray("Courier-Oblique"), QByteArray("Courier-BoldOblique"),
+                                   QByteArray("Helvetica"), QByteArray("Helvetica-Bold"), QByteArray("Helvetica-Oblique"), QByteArray("Helvetica-BoldOblique"),
+                                   QByteArray("Times-Roman"), QByteArray("Times-Bold"), QByteArray("Times-Italic"), QByteArray("Times-BoldItalic"),
+                                   QByteArray("Symbol"), QByteArray("ZapfDingbats") }) {
+        QTest::newRow(font.constData()) << font;
+    }
+}
+
+void PartTest::testBase14ToUnicodeInvariance()
+{
+    QFETCH(QByteArray, baseFont);
+    const bool symbolic = baseFont == "Symbol" || baseFont == "ZapfDingbats";
+    const QByteArray code = baseFont == "ZapfDingbats" ? "21" : "41";
+    // Symbol and ZapfDingbats use their built-in encoding. For the other twelve
+    // faces explicitly map 65 to A via Differences; ToUnicode is independent.
+    const QByteArray encoding = symbolic ? QByteArray() : QByteArray(" /Encoding << /Type /Encoding /BaseEncoding /WinAnsiEncoding /Differences [65 /A] >>");
+    const QByteArray font = "<< /Type /Font /Subtype /Type1 /BaseFont /" + baseFont + encoding;
+    const QByteArray content = "BT /F1 36 Tf 30 40 Td <" + code + "> Tj ET\n";
+    const QImage reference = unicodeFallbackPixels(fontTestPage(font + " >>", "0061", content, {}, code));
+    QVERIFY(!reference.isNull());
+    QVERIFY2(unicodeFallbackHasInk(reference), "The PDF-selected Base14 glyph must be available, not silently skipped.");
+    for (const QByteArray &unicode : { QByteArray("00E4"), QByteArray("4E2D"), QByteArray("00660069"), QByteArray("D83DDE00") }) {
+        const QByteArray pdf = fontTestPage(font + " /ToUnicode 6 0 R >>", unicode, content, {}, code);
+        const QImage actual = unicodeFallbackPixels(pdf);
+        QVERIFY(!actual.isNull());
+        QCOMPARE(actual, reference);
+
+        // The metadata still has its specified effect on extraction; removing
+        // Unicode-driven painting must not discard or rewrite ToUnicode.
+        auto document = Poppler::Document::loadFromData(pdf);
+        QVERIFY(document);
+        auto page = document->page(0);
+        QVERIFY(page);
+        const QByteArray utf16 = QByteArray::fromHex(unicode);
+        QString expected;
+        for (qsizetype i = 0; i < utf16.size(); i += 2) {
+            expected.append(QChar((quint8(utf16[i]) << 8) | quint8(utf16[i + 1])));
+        }
+        QCOMPARE(page->text(QRectF()).trimmed(), expected);
+    }
+}
+
+void PartTest::testType3ToUnicodeInvariance()
+{
+    // Type3 glyphs are PDF drawing programs, not Unicode font requests. This
+    // asymmetric glyph makes an accidental system-font replacement observable.
+    const QByteArray font = "<< /Type /Font /Subtype /Type3 /Name /F1 /FontBBox [0 0 600 700] "
+                            "/FontMatrix [.001 0 0 .001 0 0] /FirstChar 65 /LastChar 65 /Widths [600] "
+                            "/Encoding << /Type /Encoding /Differences [65 /mark] >> /CharProcs << /mark 7 0 R >> /Resources << >>";
+    const QList<QByteArray> glyphs = { fontTestStream("600 0 0 0 600 700 d1\n0 0 120 700 re f\n120 0 480 120 re f\n") };
+    const QByteArray content = "BT /F1 36 Tf 30 40 Td <41> Tj ET\n";
+    const QImage reference = unicodeFallbackPixels(fontTestPage(font + " >>", "0061", content, glyphs));
+    QVERIFY(!reference.isNull());
+    QVERIFY(unicodeFallbackHasInk(reference));
+    for (const QByteArray &unicode : { QByteArray("00E4"), QByteArray("4E2D"), QByteArray("00660069"), QByteArray("D83DDE00") }) {
+        const QImage actual = unicodeFallbackPixels(fontTestPage(font + " /ToUnicode 6 0 R >>", unicode, content, glyphs));
+        QVERIFY(!actual.isNull());
+        QCOMPARE(actual, reference);
+    }
+}
+
+void PartTest::testBase14EmbeddedFontOracle_data()
+{
+    testBase14ToUnicodeInvariance_data();
+}
+
+void PartTest::testBase14EmbeddedFontOracle()
+{
+#ifndef Q_OS_WIN
+    QSKIP("Exact bundled Base14 selection is the Windows distribution policy; Fontconfig may choose another conforming substitute.");
+#endif
+    QFETCH(QByteArray, baseFont);
+    const QHash<QByteArray, QByteArray> files = {
+        { "Courier", "FoxitFixed.cff" }, { "Courier-Bold", "FoxitFixedBold.cff" }, { "Courier-Oblique", "FoxitFixedItalic.cff" }, { "Courier-BoldOblique", "FoxitFixedBoldItalic.cff" },
+        { "Helvetica", "FoxitSans.cff" }, { "Helvetica-Bold", "FoxitSansBold.cff" }, { "Helvetica-Oblique", "FoxitSansItalic.cff" }, { "Helvetica-BoldOblique", "FoxitSansBoldItalic.cff" },
+        { "Times-Roman", "FoxitSerif.cff" }, { "Times-Bold", "FoxitSerifBold.cff" }, { "Times-Italic", "FoxitSerifItalic.cff" }, { "Times-BoldItalic", "FoxitSerifBoldItalic.cff" },
+        { "Symbol", "FoxitSymbol.cff" }, { "ZapfDingbats", "FoxitDingbats.cff" },
+    };
+    const QByteArray fileName = files.value(baseFont);
+    QVERIFY(!fileName.isEmpty());
+    const QString relative = QStringLiteral("../external/pdf-base14-fonts/fonts/") + QString::fromLatin1(fileName);
+    const QString sourcePath = QFINDTESTDATA(relative.toUtf8().constData());
+    QVERIFY2(!sourcePath.isEmpty(), qPrintable(relative));
+    QFile source(sourcePath);
+    QVERIFY(source.open(QIODevice::ReadOnly));
+    const QByteArray cff = source.readAll();
+    QVERIFY(!cff.isEmpty());
+
+    const bool symbolic = baseFont == "Symbol" || baseFont == "ZapfDingbats";
+    const QByteArray code = baseFont == "ZapfDingbats" ? "21" : "41";
+    // These raw CFF programs declare StandardEncoding internally, not the PDF
+    // Symbol/ZapfDingbats encodings. Make the glyph selection explicit for both
+    // documents; the separate Base14 invariance test covers implicit encoding.
+    const QByteArray encoding = baseFont == "Symbol" ? QByteArray(" /Encoding << /Type /Encoding /Differences [65 /Alpha] >>")
+        : baseFont == "ZapfDingbats" ? QByteArray(" /Encoding << /Type /Encoding /Differences [33 /a1] >>")
+        : QByteArray(" /Encoding /WinAnsiEncoding");
+    const QByteArray font = "<< /Type /Font /Subtype /Type1 /BaseFont /" + baseFont + encoding + " /ToUnicode 6 0 R";
+    const QByteArray content = "BT /F1 36 Tf 30 40 Td <" + code + "> Tj ET\n";
+    const QByteArray unembedded = fontTestPage(font + " >>", "00E4", content, {}, code);
+    auto substituteDocument = Poppler::Document::loadFromData(unembedded);
+    QVERIFY(substituteDocument);
+    const auto substituteFonts = substituteDocument->fonts();
+    QCOMPARE(substituteFonts.size(), 1);
+    QVERIFY(!substituteFonts[0].isEmbedded());
+    const QFileInfo substituteFile(substituteFonts[0].file());
+    QVERIFY2(substituteFile.isFile(), qPrintable(substituteFonts[0].file()));
+    QCOMPARE(substituteFile.fileName(), QString::fromLatin1(fileName));
+    const QString canonical = QDir::fromNativeSeparators(substituteFile.canonicalFilePath());
+    QVERIFY2(canonical.endsWith(QStringLiteral("/share/fonts/") + QString::fromLatin1(fileName), Qt::CaseInsensitive), qPrintable(canonical));
+    QFile installed(substituteFile.canonicalFilePath());
+    QVERIFY(installed.open(QIODevice::ReadOnly));
+    QCOMPARE(installed.readAll(), cff);
+
+    const QByteArray descriptor = "<< /Type /FontDescriptor /FontName /" + baseFont + " /Flags " + (symbolic ? "4" : "32")
+        + " /FontBBox [-200 -300 1200 1000] /ItalicAngle 0 /Ascent 1000 /Descent -300 /CapHeight 700 /StemV 80 /FontFile3 8 0 R >>";
+    const QByteArray embedded = fontTestPage(font + " /FontDescriptor 7 0 R >>", "00E4", content, { descriptor, fontTestStream(cff, "/Subtype /Type1C") }, code);
+    auto embeddedDocument = Poppler::Document::loadFromData(embedded);
+    QVERIFY(embeddedDocument);
+    const auto embeddedFonts = embeddedDocument->fonts();
+    QCOMPARE(embeddedFonts.size(), 1);
+    QVERIFY(embeddedFonts[0].isEmbedded());
+    QCOMPARE(embeddedFonts[0].type(), Poppler::FontInfo::Type1C);
+    QVERIFY(embeddedFonts[0].file().isEmpty());
+    const QImage reference = unicodeFallbackPixels(embedded);
+    const QImage actual = unicodeFallbackPixels(unembedded);
+    QVERIFY(!reference.isNull());
+    QVERIFY(!actual.isNull());
+    QVERIFY(unicodeFallbackHasInk(reference));
+    QCOMPARE(actual, reference);
+}
+
+void PartTest::testCidToGidMapping_data()
+{
+    QTest::addColumn<QByteArray>("encoding");
+    QTest::newRow("horizontal") << QByteArray("Identity-H");
+    QTest::newRow("vertical") << QByteArray("Identity-V");
+}
+
+void PartTest::testCidToGidMapping()
+{
+    QFETCH(QByteArray, encoding);
+    // Original test-only TrueType font, generated with FontBuilder (1000 UPEM):
+    // GID 0 is empty; GID 1 is a right triangle (50,0)-(550,0)-(50,700);
+    // GID 2 is the rectangle (50,0)-(550,700). All advances are 600. Its cmap
+    // maps A/B to GID 1/2, deliberately unrelated to the PDF's CID 1/2 codes.
+    // No installed font, third-party fixture, or fontTools runtime is required.
+    const QByteArray ttf = QByteArray::fromHex(
+        "00010000000a0080000300204f532f32452144360000012800000060636d6170000c00950000019000000034676c7966c6d7adaa000001cc0000003268656164"
+        "59b9a49c000000ac0000003668686561057a01c4000000e400000024686d7478028a003200000188000000086c6f6361000c0019000001c4000000086d617870"
+        "0005000600000108000000206e616d654ef8681900000200000000cf706f73744551c0ae000002d0000000380001000000010000a15d17c25f0f3cf5000303e8"
+        "000000007c25b080000000007c25b08000320000022602bc000000030002000000000000000100000320ff380000025800320032022600010000000000000000"
+        "00000000000000010001000000030004000100000000000200000000000000000000000000000000000302580190000500040000000000000000000000000000"
+        "000000000000000000000000000000000000000000010000000000000000000000003f3f3f3f0000004100420320ff380000032000c800000000000000000000"
+        "00000000002000000258000000320032000000020000000300000014000300010000001400040020000000040004000100000042ffff00000041ffffffc00001"
+        "0000000000000000000c0019000100320000022602bc000200003321013201f4fe0c02bc000100320000022602bc00030000332111213201f4fe0c02bc000000"
+        "0000000a007e00010000000000010014000000010000000000020007001400010000000000030014000000010000000000040014000000010000000000060014"
+        "000000030001040900010028001b0003000104090002000e004300030001040900030028001b00030001040900040028001b00030001040900060028001b466f"
+        "6e7453656d616e7469637346697874757265526567756c61720046006f006e007400530065006d0061006e007400690063007300460069007800740075007200"
+        "650052006500670075006c00610072000002000000000000000000000000000000000000000000000000000000000000000300000102010308747269616e676c"
+        "6506737175617265");
+    const auto pdf = [&ttf, &encoding](const QByteArray &code, const QByteArray &cidToGid, const QByteArray &unicode) {
+        const QByteArray font = "<< /Type /Font /Subtype /Type0 /BaseFont /FontSemanticsFixture /Encoding /" + encoding + " /DescendantFonts [7 0 R] /ToUnicode 6 0 R >>";
+        const QByteArray descendant = "<< /Type /Font /Subtype /CIDFontType2 /BaseFont /FontSemanticsFixture "
+                                      "/CIDSystemInfo << /Registry (Adobe) /Ordering (Identity) /Supplement 0 >> "
+                                      "/FontDescriptor 8 0 R /DW 600 /DW2 [880 -1000] /CIDToGIDMap 10 0 R >>";
+        const QByteArray descriptor = "<< /Type /FontDescriptor /FontName /FontSemanticsFixture /Flags 4 "
+                                      "/FontBBox [50 0 550 700] /ItalicAngle 0 /Ascent 800 /Descent -200 /CapHeight 700 /StemV 80 /FontFile2 9 0 R >>";
+        const QByteArray content = "BT /F1 36 Tf 50 50 Td <" + code + "> Tj ET\n";
+        return fontTestPage(font, unicode, content, { descendant, descriptor, fontTestStream(ttf, "/Length1 " + QByteArray::number(ttf.size())), fontTestStream(QByteArray::fromHex(cidToGid)) }, code);
+    };
+    // Changing the CIDToGIDMap really changes geometry, whereas compensating
+    // the content's CID selects exactly the same glyph (including vertical
+    // origin handling). Neither the CID nor its ToUnicode value is a GID.
+    const QImage triangle = unicodeFallbackPixels(pdf("0001", "000000010002", "0041"));
+    const QImage square = unicodeFallbackPixels(pdf("0001", "000000020001", "0041"));
+    const QImage sameSquare = unicodeFallbackPixels(pdf("0002", "000000010002", "0042"));
+    QVERIFY(!triangle.isNull());
+    QVERIFY(!square.isNull());
+    QVERIFY(!sameSquare.isNull());
+    QVERIFY(unicodeFallbackHasInk(triangle));
+    QVERIFY(unicodeFallbackHasInk(square));
+    QVERIFY(triangle != square);
+    QCOMPARE(square, sameSquare);
+    for (const QByteArray &unicode : { QByteArray("00E4"), QByteArray("4E2D"), QByteArray("00660069"), QByteArray("D83DDE00") }) {
+        const QImage actual = unicodeFallbackPixels(pdf("0001", "000000020001", unicode));
+        QVERIFY(!actual.isNull());
+        QCOMPARE(actual, square);
+    }
+    const QByteArray missingPdf = pdf("0001", "000000000000", "4E2D");
+    const QImage missing = unicodeFallbackPixels(missingPdf);
+    QVERIFY(!missing.isNull());
+    QVERIFY(!unicodeFallbackHasInk(missing)); // This fixture's .notdef is known to be empty.
+    auto document = Poppler::Document::loadFromData(missingPdf);
+    QVERIFY(document);
+    const auto fonts = document->fonts();
+    QCOMPARE(fonts.size(), 1);
+    QVERIFY(fonts[0].isEmbedded());
+    QCOMPARE(fonts[0].type(), Poppler::FontInfo::CIDTrueType);
+    QVERIFY(fonts[0].file().isEmpty());
+}
+
+void PartTest::testMissingFontStyleSubstitution_data()
+{
+    QTest::addColumn<int>("flags");
+    QTest::addColumn<QByteArray>("fileName");
+    // PDF FontDescriptor bits, not font-name heuristics: FixedPitch=1,
+    // Serif=2, Nonsymbolic=32, Italic=64, ForceBold=262144.
+    for (const auto &family : { qMakePair(QByteArray("Sans"), 0), qMakePair(QByteArray("Serif"), 2), qMakePair(QByteArray("Fixed"), 1) }) {
+        for (int style = 0; style < 4; ++style) {
+            const QByteArray suffix = (style & 2 ? QByteArray("Bold") : QByteArray()) + (style & 1 ? QByteArray("Italic") : QByteArray());
+            const QByteArray fileName = "Foxit" + family.first + suffix + ".cff";
+            const QByteArray row = family.first + (suffix.isEmpty() ? QByteArray("Regular") : suffix);
+            QTest::newRow(row.constData()) << (32 | family.second | (style & 1 ? 64 : 0) | (style & 2 ? 262144 : 0)) << fileName;
+        }
+    }
+}
+
+void PartTest::testMissingFontStyleSubstitution()
+{
+#ifndef Q_OS_WIN
+    QSKIP("This regression covers Windows' unmatched-family fallback; Fontconfig may legitimately select an installed substitute.");
+#endif
+    QFETCH(int, flags);
+    QFETCH(QByteArray, fileName);
+    // The same deliberately unavailable family for every row, with no style
+    // suffix or Base14 alias that could accidentally select the expected face.
+    // Gfx8BitFont also infers FixedPitch from Widths. A single declared width
+    // would accidentally make every row fixed-width, masking the family flags.
+    const QByteArray widths = flags & 1 ? "600 600" : "600 700";
+    const QByteArray font = "<< /Type /Font /Subtype /Type1 /BaseFont /ScholiaMissingFont_95C6A5 "
+                            "/FontDescriptor 7 0 R /FirstChar 65 /LastChar 66 /Widths [" + widths + "] "
+                            "/Encoding << /Type /Encoding /BaseEncoding /WinAnsiEncoding /Differences [65 /A] >> /ToUnicode 6 0 R >>";
+    const QByteArray descriptor = "<< /Type /FontDescriptor /FontName /ScholiaMissingFont_95C6A5 /Flags " + QByteArray::number(flags)
+        + " /FontBBox [-200 -300 1200 1000] /ItalicAngle " + (flags & 64 ? "-12" : "0") + " /Ascent 800 /Descent -200 /CapHeight 700 /StemV 80 >>";
+    const QByteArray bytes = fontTestPage(font, "4E2D", "BT /F1 36 Tf 30 40 Td <41> Tj ET\n", { descriptor });
+    auto document = Poppler::Document::loadFromData(bytes);
+    QVERIFY(document);
+    const auto fonts = document->fonts();
+    QCOMPARE(fonts.size(), 1);
+    QVERIFY(!fonts[0].isEmbedded());
+    const QFileInfo substituteFile(fonts[0].file());
+    QVERIFY2(substituteFile.isFile(), qPrintable(fonts[0].file()));
+    QCOMPARE(substituteFile.fileName(), QString::fromLatin1(fileName));
+    const QString canonical = QDir::fromNativeSeparators(substituteFile.canonicalFilePath());
+    QVERIFY2(canonical.endsWith(QStringLiteral("/share/fonts/") + QString::fromLatin1(fileName), Qt::CaseInsensitive), qPrintable(canonical));
+    const QString relative = QStringLiteral("../external/pdf-base14-fonts/fonts/") + QString::fromLatin1(fileName);
+    const QString sourcePath = QFINDTESTDATA(relative.toUtf8().constData());
+    QVERIFY2(!sourcePath.isEmpty(), qPrintable(relative));
+    QFile source(sourcePath);
+    QFile installed(substituteFile.canonicalFilePath());
+    QVERIFY(source.open(QIODevice::ReadOnly));
+    QVERIFY(installed.open(QIODevice::ReadOnly));
+    QCOMPARE(installed.readAll(), source.readAll());
+    const QImage image = unicodeFallbackPixels(bytes);
+    QVERIFY(!image.isNull());
+    QVERIFY2(unicodeFallbackHasInk(image), "The style-selected CFF substitute must paint the PDF's encoded A glyph.");
+}
+
+void PartTest::testFreeTextExistingAppearanceRoundTrip()
+{
+    const auto pdf = [](const QByteArray &contents) {
+        // The imported annotation's /Contents and unresolved /DA font are not
+        // the drawing instructions. Its existing /AP has its own resources and
+        // an asymmetric Type3 glyph, with no dependency on installed fonts.
+        return fontTestPdf({
+            "<< /Type /Catalog /Pages 2 0 R >>",
+            "<< /Type /Pages /Count 1 /Kids [3 0 R] >>",
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 120 100] /Resources << >> /Contents 4 0 R /Annots [5 0 R] >>",
+            fontTestStream(QByteArray()),
+            "<< /Type /Annot /Subtype /FreeText /Rect [20 20 100 80] /Contents <FEFF" + contents + "> /DA (/UnusedFont 12 Tf 0 g) /AP << /N 6 0 R >> >>",
+            fontTestStream("BT /F1 36 Tf 15 10 Td <41> Tj ET\n", "/Type /XObject /Subtype /Form /BBox [0 0 80 60] /Resources << /Font << /F1 7 0 R >> >>"),
+            "<< /Type /Font /Subtype /Type3 /Name /F1 /FontBBox [0 0 600 700] /FontMatrix [.001 0 0 .001 0 0] "
+            "/FirstChar 65 /LastChar 65 /Widths [600] /Encoding << /Type /Encoding /Differences [65 /mark] >> /CharProcs << /mark 8 0 R >> /Resources << >> >>",
+            fontTestStream("600 0 0 0 600 700 d1\n0 0 120 700 re f\n120 0 480 120 re f\n"),
+        });
+    };
+    const QByteArray imported = pdf("4E2D6587002000E4"); // Chinese text followed by an accented Latin letter.
+    const QImage before = unicodeFallbackPixels(imported);
+    const QImage differentContents = unicodeFallbackPixels(pdf("00410042"));
+    QVERIFY(!before.isNull());
+    QVERIFY(!differentContents.isNull());
+    QVERIFY(unicodeFallbackHasInk(before));
+    QCOMPARE(before, differentContents);
+
+    auto document = Poppler::Document::loadFromData(imported);
+    QVERIFY(document);
+    document->setRenderBackend(Poppler::Document::SplashBackend);
+    document->setRenderHint(Poppler::Document::Antialiasing, true);
+    document->setRenderHint(Poppler::Document::TextAntialiasing, true);
+    auto page = document->page(0);
+    QVERIFY(page);
+    QCOMPARE(page->renderToImage(144, 144), before);
+    const auto annotations = page->annotations();
+    QCOMPARE(annotations.size(), 1);
+    auto *annotation = dynamic_cast<Poppler::TextAnnotation *>(annotations.front().get());
+    QVERIFY(annotation);
+    QCOMPARE(annotation->textType(), Poppler::TextAnnotation::InPlace);
+    QCOMPARE(annotation->contents(), QStringLiteral("中文 ä"));
+    QCOMPARE(annotation->textFontName(), QStringLiteral("UnusedFont"));
+
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    const QString saved = temp.filePath(QStringLiteral("existing-freetext-appearance.pdf"));
+    auto converter = document->pdfConverter();
+    converter->setOutputFileName(saved);
+    converter->setPDFOptions(Poppler::PDFConverter::WithChanges);
+    QVERIFY(converter->convert());
+    QFile savedFile(saved);
+    QVERIFY(savedFile.open(QIODevice::ReadOnly));
+    const QByteArray reopenedBytes = savedFile.readAll();
+    QCOMPARE(unicodeFallbackPixels(reopenedBytes), before);
+    auto reopened = Poppler::Document::loadFromData(reopenedBytes);
+    QVERIFY(reopened);
+    auto reopenedPage = reopened->page(0);
+    QVERIFY(reopenedPage);
+    const auto reopenedAnnotations = reopenedPage->annotations();
+    QCOMPARE(reopenedAnnotations.size(), 1);
+    auto *reopenedText = dynamic_cast<Poppler::TextAnnotation *>(reopenedAnnotations.front().get());
+    QVERIFY(reopenedText);
+    QCOMPARE(reopenedText->textType(), Poppler::TextAnnotation::InPlace);
+    QCOMPARE(reopenedText->contents(), annotation->contents());
+    QCOMPARE(reopenedText->textFontName(), annotation->textFontName());
+}
+
+void PartTest::testSymbolicEncodingGlyphOracle_data()
+{
+    QTest::addColumn<QByteArray>("baseFont");
+    QTest::addColumn<int>("code");
+    QTest::addColumn<QByteArray>("glyphName");
+    QTest::addColumn<int>("width");
+    // Code/name pairs are from upstream poppler/FontEncodingTables.cc's
+    // symbolEncoding and zapfDingbatsEncoding (PDF Annex D). Widths are from
+    // SymbolWidths.gperf and ZapfDingbatsWidths.gperf, in 1/1000 text-space units.
+    QTest::newRow("Symbol-phi") << QByteArray("Symbol") << 0x66 << QByteArray("phi") << 521;
+    QTest::newRow("Symbol-phi1") << QByteArray("Symbol") << 0x6a << QByteArray("phi1") << 603;
+    QTest::newRow("Symbol-Phi") << QByteArray("Symbol") << 0x46 << QByteArray("Phi") << 763;
+    QTest::newRow("Symbol-Delta") << QByteArray("Symbol") << 0x44 << QByteArray("Delta") << 612;
+    QTest::newRow("Symbol-alpha") << QByteArray("Symbol") << 0x61 << QByteArray("alpha") << 631;
+    QTest::newRow("Symbol-summation") << QByteArray("Symbol") << 0xe5 << QByteArray("summation") << 713;
+    QTest::newRow("Symbol-integral") << QByteArray("Symbol") << 0xf2 << QByteArray("integral") << 274;
+    QTest::newRow("Symbol-infinity") << QByteArray("Symbol") << 0xa5 << QByteArray("infinity") << 713;
+    QTest::newRow("ZapfDingbats-a1") << QByteArray("ZapfDingbats") << 0x21 << QByteArray("a1") << 974;
+    QTest::newRow("ZapfDingbats-a2") << QByteArray("ZapfDingbats") << 0x22 << QByteArray("a2") << 961;
+}
+
+void PartTest::testSymbolicEncodingGlyphOracle()
+{
+#ifndef Q_OS_WIN
+    QSKIP("Exact bundled Symbol/Zapf outlines are the Windows distribution policy.");
+#endif
+    QFETCH(QByteArray, baseFont);
+    QFETCH(int, code);
+    QFETCH(QByteArray, glyphName);
+    QFETCH(int, width);
+    const QString relative = baseFont == "Symbol" ? QStringLiteral("../external/pdf-base14-fonts/fonts/FoxitSymbol.cff")
+                                                  : QStringLiteral("../external/pdf-base14-fonts/fonts/FoxitDingbats.cff");
+    const QString sourcePath = QFINDTESTDATA(relative.toUtf8().constData());
+    QVERIFY2(!sourcePath.isEmpty(), qPrintable(relative));
+    QFile source(sourcePath);
+    QVERIFY(source.open(QIODevice::ReadOnly));
+    const QByteArray cff = source.readAll();
+    QVERIFY(!cff.isEmpty());
+    const QByteArray codeHex = QByteArray::number(code, 16).rightJustified(2, '0').toUpper();
+    const QByteArray decimalCode = QByteArray::number(code);
+    const QByteArray font = "<< /Type /Font /Subtype /Type1 /BaseFont /" + baseFont
+        + " /FirstChar " + decimalCode + " /LastChar " + decimalCode + " /Widths [" + QByteArray::number(width) + "] /ToUnicode 6 0 R";
+    // Two glyphs also exercise the PDF-supplied advance. The unembedded PDF
+    // intentionally omits Encoding; the embedded oracle selects the verified
+    // glyph NAME explicitly, independently of the CFF's StandardEncoding.
+    const QByteArray content = "BT /F1 24 Tf 20 40 Td <" + codeHex + codeHex + "> Tj ET\n";
+    const QByteArray unembedded = fontTestPage(font + " >>", "4E2D", content, {}, codeHex);
+    const QByteArray explicitEncoding = " /Encoding << /Type /Encoding /Differences [" + decimalCode + " /" + glyphName + "] >>";
+    const QByteArray descriptor = "<< /Type /FontDescriptor /FontName /" + baseFont
+        + " /Flags 4 /FontBBox [-200 -300 1200 1100] /ItalicAngle 0 /Ascent 1000 /Descent -300 /CapHeight 700 /StemV 80 /FontFile3 8 0 R >>";
+    const QByteArray embedded = fontTestPage(font + explicitEncoding + " /FontDescriptor 7 0 R >>", "4E2D", content,
+                                             { descriptor, fontTestStream(cff, "/Subtype /Type1C") }, codeHex);
+    const QImage reference = unicodeFallbackPixels(embedded);
+    const QImage actual = unicodeFallbackPixels(unembedded);
+    QVERIFY(!reference.isNull());
+    QVERIFY(!actual.isNull());
+    QVERIFY2(unicodeFallbackHasInk(reference), glyphName.constData());
+    QCOMPARE(actual, reference);
+}
 
 bool PartTest::openDocument(Okular::Part *part, const QString &filePath)
 {

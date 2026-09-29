@@ -85,4 +85,7 @@ list(JOIN _configure " " _configure_command)
 mengshee_run_vs("${_configure_command}")
 mengshee_run_vs("\"${CMAKE_PROGRAM}\" --build \"${POPPLER_BUILD}\" --target install --parallel ${JOBS}")
 
-message(STATUS "custom Poppler installed into SDK.")
+include("${CMAKE_CURRENT_LIST_DIR}/pdf-base14-fonts.cmake")
+mengshee_deploy_pdf_base14_fonts("${SOURCE_ROOT}" "${SDK_PREFIX}")
+
+message(STATUS "custom Poppler and mandatory Base14 fonts installed into SDK.")
