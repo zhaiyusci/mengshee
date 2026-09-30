@@ -153,6 +153,7 @@ void LatexSourcePreparationTest::snippet()
     QString specialRgb = rgb;
     specialRgb.replace(QLatin1Char(','), QLatin1Char(' '));
     const QString expectedPrefix = QStringLiteral("\\begingroup%\n"
+                                                 "\\tracinglostchars=3\\relax%\n"
                                                  "\\expandafter\\let\\csname mengshee@note@endcolor\\endcsname\\relax%\n"
                                                  "\\ifdefined\\color%\n"
                                                  "\\color[rgb]{%1}%\n"

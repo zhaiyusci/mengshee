@@ -1721,8 +1721,8 @@ void PartTest::testAuxiliaryDocumentWorkspace()
     auxiliaryAdvancedMode->setChecked(true);
     QVERIFY(firstAuxiliaryView->advancedModeEnabled());
     QVERIFY(originalMainView->advancedModeEnabled());
+    QTRY_VERIFY(firstAuxiliaryView->documentViewport() == modifiedClickTarget);
     DocumentViewport firstAuxiliaryTarget = firstAuxiliaryView->documentViewport();
-    QVERIFY(firstAuxiliaryTarget == modifiedClickTarget);
     QCOMPARE(workspace->viewTitle(firstAuxiliaryView), modifiedClickTitle);
     QVERIFY(!firstAuxiliaryView->viewportHistoryAtBegin());
     QCOMPARE(workspace->activeView(), firstAuxiliaryView);
@@ -2935,6 +2935,7 @@ void PartTest::testSaveAsUndoStackAnnotations()
 
     Okular::Part part(nullptr, {});
     part.openDocument(file);
+    QVERIFY(part.m_document->page(0)->annotations().isEmpty());
     new QAbstractItemModelTester(part.annotationsModel(), &part);
 
     QCOMPARE(part.m_document->canSwapBackingFile(), canSwapBackingFile);
@@ -3094,10 +3095,10 @@ void PartTest::testSaveAsUndoStackAnnotations_data()
     QTest::addColumn<bool>("canSwapBackingFile");
     QTest::addColumn<bool>("saveToArchive");
 
-    QTest::newRow("pdf") << KDESRCDIR "data/file1.pdf" << "pdf" << true << true << false;
+    QTest::newRow("pdf") << KDESRCDIR "data/annotation-free.pdf" << "pdf" << true << true << false;
     QTest::newRow("epub") << KDESRCDIR "data/contents.epub" << "epub" << false << false << false;
     QTest::newRow("jpg") << KDESRCDIR "data/potato.jpg" << "jpg" << false << true << false;
-    QTest::newRow("pdfarchive") << KDESRCDIR "data/file1.pdf" << "okular" << true << true << true;
+    QTest::newRow("pdfarchive") << KDESRCDIR "data/annotation-free.pdf" << "okular" << true << true << true;
     QTest::newRow("jpgarchive") << KDESRCDIR "data/potato.jpg" << "okular" << false << true << true;
 }
 
@@ -8141,6 +8142,10 @@ void PartTest::testLatexPopupCaret()
     QVERIFY(QMetaObject::invokeMethod(part.m_pageView, "openAnnotationWindow", Qt::DirectConnection, Q_ARG(Okular::Annotation *, annotation), Q_ARG(int, 0)));
     auto *window = part.m_pageView->findChild<QFrame *>(QStringLiteral("AnnotWindow"));
     QVERIFY(window);
+    // Keep Mengshee's viewport constraints without snapping user resizing back.
+    const QSize resizedPopup = window->size() + QSize(40, 30);
+    window->resize(resizedPopup);
+    QCOMPARE(window->size(), resizedPopup);
     QWidget *editor = nullptr;
     for (QWidget *widget : window->findChildren<QWidget *>()) {
         if (widget->inherits("QsciScintilla")) {

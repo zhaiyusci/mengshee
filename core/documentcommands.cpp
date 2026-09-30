@@ -211,6 +211,9 @@ void AddAnnotationCommand::redo()
 
     moveViewportIfBoundingRectNotFullyVisible(m_annotation->boundingRectangle(), m_docPriv, m_pageNumber);
     m_docPriv->performAddPageAnnotation(m_pageNumber, m_annotation);
+    // A newly inserted annotation receives its stable name during insertion.
+    // Retain it before a save replaces the backend objects used by undo.
+    m_annotationUniqueName = m_annotation->uniqueName();
     m_done = true;
 }
 

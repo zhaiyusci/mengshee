@@ -880,7 +880,8 @@ void AnnotationToolBarTest::testAnnotationToolBarConfigActionsEnabledState_data(
     QTest::addRow("annotation_squiggle") << QStringLiteral("annotation_squiggle") << false << true << false << true << false;
     QTest::addRow("annotation_strike_out") << QStringLiteral("annotation_strike_out") << false << true << false << true << false;
     QTest::addRow("annotation_typewriter") << QStringLiteral("annotation_typewriter") << false << true << false << true << true;
-    QTest::addRow("annotation_inline_note") << QStringLiteral("annotation_inline_note") << false << true << false << true << true;
+    // Mengshee's boxed text notes expose both border width and fill color.
+    QTest::addRow("annotation_inline_note") << QStringLiteral("annotation_inline_note") << true << true << true << true << true;
     QTest::addRow("annotation_popup_note") << QStringLiteral("annotation_popup_note") << false << true << false << true << false;
     QTest::addRow("annotation_freehand_line") << QStringLiteral("annotation_freehand_line") << true << true << false << true << false;
     QTest::addRow("annotation_line") << QStringLiteral("annotation_straight_line") << true << true << false << true << false;
