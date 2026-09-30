@@ -13,7 +13,6 @@
 #include <KLineEdit>
 #include <QPointer>
 
-#include <kwidgetsaddons_version.h>
 class KBusyIndicatorWidget;
 class QTimer;
 

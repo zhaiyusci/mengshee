@@ -917,6 +917,12 @@ public:
     void processDocumentAction(const Action *action, DocumentAdditionalActionType type);
 
     /**
+     * Returns the list of documentAdditionalActionType available for this document
+     * @since 26.08
+     */
+    QList<DocumentAdditionalActionType> documentAdditionalActionTypes() const;
+
+    /**
      * Recalculates all the form fields in the document
      *
      * @since 24.12
@@ -1015,7 +1021,7 @@ public:
     /**
      * Returns the number of generators that have a configuration widget.
      */
-    int configurableGenerators() const;
+    OKULARCORE_DEPRECATED int configurableGenerators() const;
 
     /**
      * Returns the list with the supported MIME types.
@@ -1282,7 +1288,7 @@ public:
      *
      * @since 0.7 (KDE 4.1)
      */
-    bool saveChanges(const QString &fileName);
+    OKULARCORE_DEPRECATED bool saveChanges(const QString &fileName);
 
     /**
      * Save the document and the optional changes to it to the specified
@@ -1506,7 +1512,7 @@ public Q_SLOTS:
      * The lists @p formButtons and @p newButtonStates should be the same length and true values
      * in @p newButtonStates indicate that the corresponding entry in @p formButtons should be enabled.
      */
-    void editFormButtons(int pageNumber, const QList<Okular::FormFieldButton *> &formButtons, const QList<bool> &newButtonStates); // clazy:exclude=fully-qualified-moc-types https://invent.kde.org/sdk/clazy/-/issues/35
+    void editFormButtons(int pageNumber, const QList<Okular::FormFieldButton *> &formButtons, const QList<bool> &newButtonStates);
 
     /**
      * Reloads the pixmaps for whole document
@@ -1726,7 +1732,7 @@ Q_SIGNALS:
      * given @p page is changed by an undo or redo action.
      * @since 0.17 (KDE 4.11)
      */
-    void formButtonsChangedByUndoRedo(int page, const QList<Okular::FormFieldButton *> &formButtons); // clazy:exclude=fully-qualified-moc-types https://invent.kde.org/sdk/clazy/-/issues/35
+    void formButtonsChangedByUndoRedo(int page, const QList<Okular::FormFieldButton *> &formButtons);
 
     /**
      * This signal is emitted whenever a FormField was changed programmatically and the
@@ -2110,6 +2116,11 @@ public:
     /// @since 25.04
     void setLeftFontSize(double fontSize);
 
+    /// @since 26.12
+    void setRequestedSignatureType(CertificateInfo::SMimeSignatureType type);
+    /// @since 26.12
+    CertificateInfo::SMimeSignatureType requestedSignatureType() const;
+
 private:
     NewSignatureDataPrivate *const d;
 };
@@ -2120,5 +2131,3 @@ Q_DECLARE_METATYPE(Okular::DocumentInfo::Key)
 Q_DECLARE_OPERATORS_FOR_FLAGS(Okular::Document::PixmapRequestFlags)
 
 #endif
-
-/* kate: replace-tabs on; indent-width 4; */

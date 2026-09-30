@@ -32,7 +32,7 @@
   <name xml:lang="is">Markdown</name>
   <name xml:lang="it">Markdown</name>
   <name xml:lang="ka">Markdown</name>
-  <name xml:lang="ko">Markdown</name>
+  <name xml:lang="ko">마크다운</name>
   <name xml:lang="lt">Markdown</name>
   <name xml:lang="lv">Markdown</name>
   <name xml:lang="ml">മാർക്ഡൗൺ</name>
@@ -53,7 +53,6 @@
   <name xml:lang="sv">Markdown</name>
   <name xml:lang="ta">Markdown</name>
   <name xml:lang="tr">Markdown</name>
-  <name xml:lang="ug">Markdown</name>
   <name xml:lang="uk">Markdown</name>
   <name xml:lang="vi">Markdown</name>
   <name xml:lang="zh-CN">Markdown</name>
@@ -85,7 +84,7 @@
   <summary xml:lang="is">Bætir við stuðningi til að lesa Markdown-skjöl</summary>
   <summary xml:lang="it">Aggiunge il supporto per la lettura di documenti Markdown</summary>
   <summary xml:lang="ka">Markdown -ის დოკუმენტების კითხვის მხარდაჭერის დამატება</summary>
-  <summary xml:lang="ko">Markdown 문서 읽기 지원 추가</summary>
+  <summary xml:lang="ko">마크다운 문서 읽기 지원 추가</summary>
   <summary xml:lang="lt">Prideda palaikymą Markdown dokumentų skaitymui</summary>
   <summary xml:lang="lv">Pievieno atbalstu „Markdown“ dokumentu lasīšanai</summary>
   <summary xml:lang="ml">മാർക്ഡൗൺ പ്രമാണങ്ങൾ വായിക്കുന്നതിനുള്ള പിന്തുണ ചേർക്കുന്നു</summary>
@@ -116,6 +115,9 @@
   </provides>
   <url type="homepage">https://okular.kde.org</url>
   <releases>
+    <release version="26.08.1" date="2026-09-10"/>
+    <release version="26.08.0" date="2026-08-20"/>
+    <release version="26.04.3" date="2026-07-02"/>
     <release version="26.04.2" date="2026-06-04"/>
     <release version="26.04.1" date="2026-05-07"/>
     <release version="26.04.0" date="2026-04-16"/>

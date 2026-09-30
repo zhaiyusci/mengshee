@@ -43,6 +43,7 @@
 #include <KMessageBox>
 #include <KSelectAction>
 #include <kwidgetsaddons_version.h>
+#include <KToolBar>
 
 // local includes
 #include "actionbar.h"

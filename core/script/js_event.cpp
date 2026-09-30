@@ -136,10 +136,12 @@ int JSEvent::selEnd() const
     return m_event->selEnd();
 }
 
-JSEvent::JSEvent(Event *event, QObject *parent)
+JSEvent::JSEvent(const std::shared_ptr<Event> &event, QObject *parent)
     : QObject(parent)
     , m_event(event)
 {
 }
 
 JSEvent::~JSEvent() = default;
+
+#include "moc_js_event_p.cpp"

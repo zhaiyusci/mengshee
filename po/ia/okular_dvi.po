@@ -1,13 +1,13 @@
 # Copyright (C) YEAR This_file_is_part_of_KDE
 # This file is distributed under the same license as the PACKAGE package.
 #
-# SPDX-FileCopyrightText: 2013, 2014, 2021, 2024, 2025 Giovanni Sora <g.sora@tiscali.it>
+# SPDX-FileCopyrightText: 2013, 2014, 2021, 2024, 2025, 2026 Giovanni Sora <g.sora@tiscali.it>
 msgid ""
 msgstr ""
 "Project-Id-Version: \n"
 "Report-Msgid-Bugs-To: https://bugs.kde.org\n"
-"POT-Creation-Date: 2025-12-22 00:41+0000\n"
-"PO-Revision-Date: 2025-09-02 17:19+0200\n"
+"POT-Creation-Date: 2026-09-22 15:58+0000\n"
+"PO-Revision-Date: 2026-09-14 17:09+0200\n"
 "Last-Translator: giovanni <g.sora@tiscali.it>\n"
 "Language-Team: Interlingua <kde-i18n-doc@kde.org>\n"
 "Language: ia\n"
@@ -15,7 +15,7 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=n != 1;\n"
-"X-Generator: Lokalize 23.08.5\n"
+"X-Generator: Lokalize 25.04.0\n"
 
 #, kde-format
 msgctxt "NAME OF TRANSLATORS"
@@ -190,49 +190,54 @@ msgstr ""
 "Okular esseva incapace de locar le placia del file DVI que corresponde al "
 "rango %1 in le file de TeX %2."
 
-#: dviRenderer_draw.cpp:239
+#: dviRenderer_draw.cpp:241
 #, kde-format
 msgid "The DVI code set a character of an unknown font."
 msgstr "Le codice DVI fixava un character de un font incognite."
 
-#: dviRenderer_draw.cpp:266 dviRenderer_prescan.cpp:667
+#: dviRenderer_draw.cpp:268 dviRenderer_prescan.cpp:669
 #, kde-format
 msgid "The DVI code referred to font #%1, which was not previously defined."
 msgstr ""
 "Le codice de DVI refereva al font #%1, que non esseva definite previemente."
 
-#: dviRenderer_draw.cpp:349
+#: dviRenderer_draw.cpp:351
 #, kde-format
 msgid "The stack was not empty when the EOP command was encountered."
 msgstr "Le pila non esseva vacue quando on incontrava le commando EOP."
 
-#: dviRenderer_draw.cpp:361
+#: dviRenderer_draw.cpp:363
 #, kde-format
 msgid "The stack was empty when a POP command was encountered."
 msgstr "Le pila non esseva vacue quando on incontrava le commando POP."
 
-#: dviRenderer_draw.cpp:485 dviRenderer_draw.cpp:494
+#: dviRenderer_draw.cpp:487 dviRenderer_draw.cpp:496
 #, kde-format
 msgid "The DVI code referred to a font which was not previously defined."
 msgstr ""
 "Le codice de DVI refereva aun font que non esseva definite previemente."
 
-#: dviRenderer_draw.cpp:535
+#: dviRenderer_draw.cpp:514 dviRenderer_prescan.cpp:802
+#, kde-format
+msgid "The DVI file contains an invalid special command."
+msgstr "Le file DVI contine un commando special invalide."
+
+#: dviRenderer_draw.cpp:542
 #, kde-format
 msgid "An illegal command was encountered."
 msgstr "Il incontrava un commando illegal."
 
-#: dviRenderer_draw.cpp:540
+#: dviRenderer_draw.cpp:547
 #, kde-format
 msgid "The unknown op-code %1 was encountered."
 msgstr "Il incontrava le op-code incognite %1."
 
-#: dviRenderer_prescan.cpp:87
+#: dviRenderer_prescan.cpp:89
 #, kde-format
 msgid "Embedding %1"
 msgstr "&Embedding (Il lo pone interne) %1"
 
-#: dviRenderer_prescan.cpp:105
+#: dviRenderer_prescan.cpp:107
 #, kde-format
 msgid ""
 "Page %1: The PDF file <strong>%2</strong> could not be converted to "
@@ -241,7 +246,7 @@ msgstr ""
 "Pagina %1: Le file PDF <strong>%2</strong>non pote esser convertite a "
 "PostScript.<br>"
 
-#: dviRenderer_prescan.cpp:107
+#: dviRenderer_prescan.cpp:109
 #, kde-format
 msgid ""
 "Page %1: The PostScript file <strong>%2</strong> could not be found.<br>"
@@ -249,7 +254,7 @@ msgstr ""
 "Pagina %1: Le file Postscript <strong>%2</strong> non poteva esser trovate."
 "<br>"
 
-#: dviRenderer_prescan.cpp:261
+#: dviRenderer_prescan.cpp:263
 #, kde-format
 msgid "The papersize data '%1' could not be parsed."
 msgstr ""
@@ -266,7 +271,7 @@ msgstr ""
 "pro monstrar le file DVI currente. Tu documento poterea esser illegibile.</"
 "p><p><small><b>PATH:</b> %1</small></p><p><small>%2</small></p></qt>"
 
-#: fontpool.cpp:269
+#: fontpool.cpp:273
 #, kde-format
 msgid ""
 "<qt><p>There were problems running <em>kpsewhich</em>. As a result, some "
@@ -282,7 +287,7 @@ msgstr ""
 "esser trovate in le percurso de cerca.</p><p><small><b>PATH;</b> %1</small></"
 "p><p><small> %2</small></p></qt>"
 
-#: fontpool.cpp:290
+#: fontpool.cpp:294
 #, kde-format
 msgid ""
 "<qt>The font generation by <em>kpsewhich</em> was aborted (exit code %1, "
@@ -293,7 +298,7 @@ msgstr ""
 "exito %1, error %2). Como exito, alcun files de font non poterea esser "
 "locate, e tu documento poterea esser illegibile.</qt>"
 
-#: fontpool.cpp:467
+#: fontpool.cpp:471
 #, kde-format
 msgid "Currently generating %1 at %2 dpi…"
 msgstr "Currentemente generante %1 a %2 dpi…"
@@ -308,7 +313,7 @@ msgstr "Generator/Data"
 msgid "Font file not found"
 msgstr "File de font non trovate"
 
-#: psgs.cpp:286
+#: psgs.cpp:285
 #, kde-format
 msgid ""
 "The version of Ghostview that is installed on this computer does not contain "
@@ -662,7 +667,7 @@ msgstr "Il trovava byte de commando errate in lista de macro VF %1"
 #~ "generate its own bitmap fonts Please be patient."
 #~ msgstr ""
 #~ "Okular currentemente es usante le programma externe 'dvipdfm' pro "
-#~ "converter tu file DVI in PDF. Tal vice illo pote prender un pauc de "
+#~ "converter tu file DVI in PDF. Tal vice illo pote prender un pauco de "
 #~ "tempore proque dvipdfm necessita generar su proprie font de bitmap. Tu "
 #~ "sia patiente, pro favor."
 
@@ -681,7 +686,7 @@ msgstr "Il trovava byte de commando errate in lista de macro VF %1"
 #~ "needs to generate its own bitmap fonts Please be patient."
 #~ msgstr ""
 #~ "Okular currentemente es usante le programma externe 'dvips' pro converter "
-#~ "tu file DVI in PostScript. Tal vice illo pote prender un pauc de tempore "
+#~ "tu file DVI in PostScript. Tal vice illo pote prender un pauco de tempore "
 #~ "proque dvipdfm necessita generar su proprie font de bitmap. Tu sia "
 #~ "patiente, pro favor."
 

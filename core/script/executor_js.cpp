@@ -13,7 +13,6 @@
 
 #include "event_p.h"
 #include "js_app_p.h"
-#include "js_console_p.h"
 #include "js_data_p.h"
 #include "js_display_p.h"
 #include "js_document_p.h"
@@ -58,7 +57,7 @@ public:
     QThread m_watchdogThread;
     QTimer *m_watchdogTimer = nullptr;
 
-    QStack<Event *> m_events;
+    QStack<std::shared_ptr<Event>> m_events;
 };
 
 void ExecutorJSPrivate::initTypes()
@@ -69,9 +68,9 @@ void ExecutorJSPrivate::initTypes()
     m_watchdogTimer->setSingleShot(true);
     m_watchdogTimer->moveToThread(&m_watchdogThread);
     QObject::connect(m_watchdogTimer, &QTimer::timeout, &m_interpreter, [this]() { m_interpreter.setInterrupted(true); }, Qt::DirectConnection);
+    m_interpreter.installExtensions(QJSEngine::ConsoleExtension);
 
     m_interpreter.globalObject().setProperty(QStringLiteral("app"), m_interpreter.newQObject(new JSApp(m_doc, m_watchdogTimer)));
-    m_interpreter.globalObject().setProperty(QStringLiteral("console"), m_interpreter.newQObject(new JSConsole));
     m_interpreter.globalObject().setProperty(QStringLiteral("Doc"), m_interpreter.newQObject(new JSDocument(m_doc)));
     m_interpreter.globalObject().setProperty(QStringLiteral("display"), m_interpreter.newQObject(new JSDisplay));
     m_interpreter.globalObject().setProperty(QStringLiteral("spell"), m_interpreter.newQObject(new JSSpell));
@@ -82,7 +81,7 @@ void ExecutorJSPrivate::initTypes()
 void ExecutorJSPrivate::updateEvent()
 {
     if (!m_events.isEmpty()) {
-        Event *event = m_events.top();
+        std::shared_ptr<Event> event = m_events.top();
         const auto eventVal = event ? m_interpreter.newQObject(new JSEvent(event)) : QJSValue(QJSValue::UndefinedValue);
         m_interpreter.globalObject().setProperty(QStringLiteral("event"), eventVal);
     } else {
@@ -102,7 +101,7 @@ ExecutorJS::~ExecutorJS()
     delete d;
 }
 
-void ExecutorJS::execute(const QString &script, Event *event)
+void ExecutorJS::execute(const QString &script, const std::shared_ptr<Event> &event)
 {
     d->m_events.push(event);
     d->updateEvent();

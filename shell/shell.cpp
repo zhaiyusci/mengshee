@@ -57,9 +57,6 @@
 #include <QTabWidget>
 #include <QTimer>
 
-#include <kio_version.h>
-#include <kxmlgui_version.h>
-
 // local includes
 #include "../interfaces/viewerinterface.h"
 #include "kdocumentviewer.h"
@@ -615,6 +612,8 @@ void Shell::setupActions()
     m_showMenuBarAction = KStandardAction::showMenubar(this, SLOT(slotShowMenubar()), actionCollection());
     m_fullScreenAction = KStandardAction::fullScreen(this, SLOT(slotUpdateFullScreen()), this, actionCollection());
 
+    actionCollection()->setDefaultShortcuts(m_fullScreenAction, KStandardShortcut::fullScreen() + QList {QKeySequence(Qt::Key_F11)});
+
     m_nextTabAction = actionCollection()->addAction(QStringLiteral("tab-next"));
     m_nextTabAction->setText(i18n("Next Tab"));
     actionCollection()->setDefaultShortcuts(m_nextTabAction, KStandardShortcut::tabNext());
@@ -1092,20 +1091,22 @@ void Shell::applyOptionsToPart(QObject *part, const QString &serializedOptions)
 
 void Shell::connectPart(const KParts::ReadWritePart *part)
 {
+    // NOLINTBEGIN(clazy-old-style-connect);
     // We're abusing the fact we know the part is our part here
-    connect(this, SIGNAL(moveSplitter(int)), part, SLOT(moveSplitter(int)));                      // clazy:exclude=old-style-connect
-    connect(part, SIGNAL(enablePrintAction(bool)), this, SLOT(setPrintEnabled(bool)));            // clazy:exclude=old-style-connect
-    connect(part, SIGNAL(enableCloseAction(bool)), this, SLOT(setCloseEnabled(bool)));            // clazy:exclude=old-style-connect
-    connect(part, SIGNAL(mimeTypeChanged(QMimeType)), this, SLOT(setTabIcon(QMimeType)));         // clazy:exclude=old-style-connect
-    connect(part, SIGNAL(urlsDropped(QList<QUrl>)), this, SLOT(handleDroppedUrls(QList<QUrl>)));  // clazy:exclude=old-style-connect
-    connect(part, SIGNAL(maxRecentItemsChanged(int)), this, SLOT(triggerUpdateRecentItems(int))); // clazy:exclude=old-style-connect
-    connect(part, SIGNAL(requestOpenNewFile(QString)), this, SLOT(openGeneratedFile(QString)));   // clazy:exclude=old-style-connect
+    connect(this, SIGNAL(moveSplitter(int)), part, SLOT(moveSplitter(int)));
+    connect(part, SIGNAL(enablePrintAction(bool)), this, SLOT(setPrintEnabled(bool)));
+    connect(part, SIGNAL(enableCloseAction(bool)), this, SLOT(setCloseEnabled(bool)));
+    connect(part, SIGNAL(mimeTypeChanged(QMimeType)), this, SLOT(setTabIcon(QMimeType)));
+    connect(part, SIGNAL(urlsDropped(QList<QUrl>)), this, SLOT(handleDroppedUrls(QList<QUrl>)));
+    connect(part, SIGNAL(maxRecentItemsChanged(int)), this, SLOT(triggerUpdateRecentItems(int)));
+    connect(part, SIGNAL(requestOpenNewFile(QString)), this, SLOT(openGeneratedFile(QString)));
 
     // clang-format off
-    connect(part, SIGNAL(requestOpenNewlySignedFile(QString,int)), this, SLOT(openNewlySignedFile(QString,int))); // clazy:exclude=old-style-connect
-    // Otherwise the QSize,QSize gets turned into QSize, QSize that is not normalized signals and is slightly slower
-    connect(part, SIGNAL(fitWindowToPage(QSize,QSize)), this, SLOT(slotFitWindowToPage(QSize,QSize)));   // clazy:exclude=old-style-connect
+    // Formatting disabled to keep signature normalized
+    connect(part, SIGNAL(requestOpenNewlySignedFile(QString,int)), this, SLOT(openNewlySignedFile(QString,int)));
+    connect(part, SIGNAL(fitWindowToPage(QSize,QSize)), this, SLOT(slotFitWindowToPage(QSize,QSize)));
     // clang-format on
+    // NOLINTEND(clazy-old-style-connect);
 }
 
 void Shell::openGeneratedFile(const QString &path)
@@ -1343,6 +1344,5 @@ void Shell::readRecentFilesSettings()
     m_recent->loadEntries(KSharedConfig::openConfig()->group(RecentFilesGroupKey()));
 }
 
+#include "moc_shell.cpp"
 #include "shell.moc"
-
-/* kate: replace-tabs on; indent-width 4; */

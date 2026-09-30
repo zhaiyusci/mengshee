@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: okular_poppler\n"
 "Report-Msgid-Bugs-To: https://bugs.kde.org\n"
-"POT-Creation-Date: 2026-02-17 00:41+0000\n"
+"POT-Creation-Date: 2026-09-26 00:43+0000\n"
 "PO-Revision-Date: 2025-10-23 14:57+0000\n"
 "Last-Translator: Sveinn í Felli <sv1@fellsnet.is>\n"
 "Language-Team: Icelandic\n"
@@ -30,6 +30,23 @@ msgstr "Sveinn í Felli,Guðmundur Erlingsson"
 msgctxt "EMAIL OF TRANSLATORS"
 msgid "Your emails"
 msgstr "sv1@fellsnet.is,gudmundure@gmail.com"
+
+#: annots.cpp:592 formfields.cpp:539 generator_pdf.cpp:2213
+#: generator_pdf.cpp:2241
+#, kde-format
+msgid "Failed writing temporary file"
+msgstr "Villa við að skrifa bráðabirgðaskrá"
+
+#: annots.cpp:608 formfields.cpp:561 generator_pdf.cpp:2264
+#, fuzzy, kde-format
+#| msgid "Failed renaming temporary file"
+msgid "Failed removing file"
+msgstr "Villa við að endurnefna bráðabirgðaskrá"
+
+#: annots.cpp:612
+#, kde-format
+msgid "Failed renaming temporary file"
+msgstr "Villa við að endurnefna bráðabirgðaskrá"
 
 #. i18n: ectx: property (text), widget (QLabel, label_3)
 #: conf/pdfsettingswidget.ui:19
@@ -62,7 +79,7 @@ msgid "Enhance thin lines:"
 msgstr "Bæta gæði mjórra lína:"
 
 #. i18n: ectx: property (text), item, widget (KComboBox, kcfg_EnhanceThinLines)
-#: conf/pdfsettingswidget.ui:73 generator_pdf.cpp:1025
+#: conf/pdfsettingswidget.ui:73 generator_pdf.cpp:1026
 #, kde-format
 msgid "No"
 msgstr "Nei"
@@ -86,19 +103,19 @@ msgid "Default scaling mode when printing:"
 msgstr "Sjálfgefið stærðarsnið við prentun:"
 
 #. i18n: ectx: property (text), item, widget (QComboBox, kcfg_PrintScaleMode)
-#: conf/pdfsettingswidget.ui:116 generator_pdf.cpp:100
+#: conf/pdfsettingswidget.ui:116 generator_pdf.cpp:101
 #, kde-format
 msgid "Fit to printable area"
 msgstr "Laga að prentanlegu svæði"
 
 #. i18n: ectx: property (text), item, widget (QComboBox, kcfg_PrintScaleMode)
-#: conf/pdfsettingswidget.ui:121 generator_pdf.cpp:101
+#: conf/pdfsettingswidget.ui:121 generator_pdf.cpp:102
 #, kde-format
 msgid "Fit to full page"
 msgstr "Laga að síðu"
 
 #. i18n: ectx: property (text), item, widget (QComboBox, kcfg_PrintScaleMode)
-#: conf/pdfsettingswidget.ui:126 generator_pdf.cpp:102
+#: conf/pdfsettingswidget.ui:126 generator_pdf.cpp:103
 #, kde-format
 msgid "None; print original size"
 msgstr "Ekkert; prenta upprunalega stærð"
@@ -178,22 +195,29 @@ msgstr "Vottorð í boði"
 msgid "&Load Signatures"
 msgstr "&Hlaða undirskriftum"
 
-#: generator_pdf.cpp:85
+#: formfields.cpp:565 generator_pdf.cpp:2268
+#, fuzzy, kde-format
+#| msgid "Failed renaming temporary file"
+msgctxt "%1 is an error message"
+msgid "Failed renaming temporary file: %1"
+msgstr "Villa við að endurnefna bráðabirgðaskrá"
+
+#: generator_pdf.cpp:86
 #, kde-format
 msgid "PDF Options"
 msgstr "PDF-valkostir"
 
-#: generator_pdf.cpp:87
+#: generator_pdf.cpp:88
 #, kde-format
 msgid "Print annotations"
 msgstr "Prenta glósur"
 
-#: generator_pdf.cpp:88
+#: generator_pdf.cpp:89
 #, kde-format
 msgid "Include annotations in the printed document"
 msgstr "Hafa glósur með í útprentun"
 
-#: generator_pdf.cpp:89
+#: generator_pdf.cpp:90
 #, kde-format
 msgid ""
 "Includes annotations in the printed document. You can disable this if you "
@@ -202,17 +226,17 @@ msgstr ""
 "Lætur glósur fylgja með í útprentuðu skjali. Þú getur slökkt á þessu ef þú "
 "vilt prenta upprunalegt skjal án glósa."
 
-#: generator_pdf.cpp:91
+#: generator_pdf.cpp:92
 #, kde-format
 msgid "Force rasterization"
 msgstr "Þvinga rastasnörun"
 
-#: generator_pdf.cpp:92
+#: generator_pdf.cpp:93
 #, kde-format
 msgid "Rasterize into an image before printing"
 msgstr "Rastasnara yfir í mynd fyrir prentun"
 
-#: generator_pdf.cpp:93
+#: generator_pdf.cpp:94
 #, kde-format
 msgid ""
 "Forces the rasterization of each page into an image before printing it. This "
@@ -223,53 +247,53 @@ msgstr ""
 "fyrirprentun. Þetta skilar yfirleitt lélegri útkomu en er gagnlegt við "
 "útprentuná skrám sem virðast ekki ekki prentast rétt."
 
-#: generator_pdf.cpp:103
+#: generator_pdf.cpp:104
 #, kde-format
 msgid "Scaling mode for the printed pages"
 msgstr "Stærðarsnið fyrir prentaðar síður"
 
-#: generator_pdf.cpp:104
+#: generator_pdf.cpp:105
 #, kde-format
 msgid "Scale mode:"
 msgstr "Stærðarsnið:"
 
-#: generator_pdf.cpp:1023
+#: generator_pdf.cpp:1024
 #, kde-format
 msgctxt "PDF v. <version>"
 msgid "PDF v. %1.%2"
 msgstr "PDF útg. %1. %2"
 
-#: generator_pdf.cpp:1023
+#: generator_pdf.cpp:1024
 #, kde-format
 msgid "Format"
 msgstr "Snið"
 
-#: generator_pdf.cpp:1024
+#: generator_pdf.cpp:1025
 #, kde-format
 msgid "Encrypted"
 msgstr "Dulritað"
 
-#: generator_pdf.cpp:1024
+#: generator_pdf.cpp:1025
 #, kde-format
 msgid "Unencrypted"
 msgstr "Ódulritað"
 
-#: generator_pdf.cpp:1024
+#: generator_pdf.cpp:1025
 #, kde-format
 msgid "Security"
 msgstr "Öryggi"
 
-#: generator_pdf.cpp:1025
+#: generator_pdf.cpp:1026
 #, kde-format
 msgid "Yes"
 msgstr "Já"
 
-#: generator_pdf.cpp:1025
+#: generator_pdf.cpp:1026
 #, kde-format
 msgid "Optimized"
 msgstr "Fínstillt"
 
-#: generator_pdf.cpp:1489
+#: generator_pdf.cpp:1511
 #, kde-format
 msgid ""
 "Signed by: %1\n"
@@ -280,12 +304,12 @@ msgstr ""
 "\n"
 "Dags.: %2"
 
-#: generator_pdf.cpp:1708
+#: generator_pdf.cpp:1733
 #, kde-format
 msgid "Using Poppler %1"
 msgstr "Nota Poppler %1"
 
-#: generator_pdf.cpp:1710
+#: generator_pdf.cpp:1735
 #, kde-format
 msgid ""
 "Using Poppler %1\n"
@@ -296,27 +320,17 @@ msgstr ""
 "\n"
 "Gert með Poppler %2"
 
-#: generator_pdf.cpp:1745
+#: generator_pdf.cpp:1770
 #, kde-format
 msgid "PDF"
 msgstr "PDF"
 
-#: generator_pdf.cpp:1745
+#: generator_pdf.cpp:1770
 #, kde-format
 msgid "PDF Backend Configuration"
 msgstr "Stillingar PDF-bakenda"
 
-#: generator_pdf.cpp:2184 generator_pdf.cpp:2212
-#, kde-format
-msgid "Failed writing temporary file"
-msgstr "Villa við að skrifa bráðabirgðaskrá"
-
-#: generator_pdf.cpp:2234
-#, kde-format
-msgid "Failed renaming temporary file"
-msgstr "Villa við að endurnefna bráðabirgðaskrá"
-
-#: generator_pdf.cpp:2254
+#: generator_pdf.cpp:2288
 #, kde-format
 msgid ""
 "Some errors were found in the document, Okular might not be able to show the "
@@ -324,7 +338,7 @@ msgid ""
 msgstr ""
 "Villur fundust í skjalinu. Okular getur hugsanlega ekki birt efni þess rétt"
 
-#: pdfsettingswidget.cpp:115
+#: pdfsettingswidget.cpp:116
 #, kde-format
 msgctxt "@info Kind of a notice/warning"
 msgid ""
@@ -334,30 +348,37 @@ msgstr ""
 "Þessar undirskriftir virka einungis á milli nýlegra útgáfna af Okular með "
 "GnuPG-bakenda virkan"
 
-#: pdfsettingswidget.cpp:116
+#: pdfsettingswidget.cpp:117
 #, kde-format
 msgctxt "@title:dialog"
 msgid "Enable PGP Signatures"
 msgstr "Leyfa PGP-undirskriftir"
 
-#: pdfsettingswidget.cpp:146
+#: pdfsettingswidget.cpp:147
 #, kde-format
 msgctxt "Name of the person to whom the cerficate was issued"
 msgid "Issued to"
 msgstr "Handhafi"
 
-#: pdfsettingswidget.cpp:146
+#: pdfsettingswidget.cpp:147
 #, kde-format
 msgid "E-mail"
 msgstr "Netfang"
 
-#: pdfsettingswidget.cpp:146
+#: pdfsettingswidget.cpp:147
 #, kde-format
 msgctxt "Certificate expiration date"
 msgid "Expiration date"
 msgstr "Rennur út"
 
-#: pdfsettingswidget.cpp:163
+#: pdfsettingswidget.cpp:152
+#, fuzzy, kde-format
+#| msgid "Available Certificates"
+msgctxt "@button"
+msgid "List certificates"
+msgstr "Vottorð í boði"
+
+#: pdfsettingswidget.cpp:174
 #, kde-format
 msgid ""
 "You are using a Poppler library built without NSS support.\n"
@@ -366,31 +387,37 @@ msgstr ""
 "Þú ert að nota Poppler-safn sem styður ekki NSS.\n"
 "Þess vegna er ekki hægt að bæta við stafrænum undirskriftum"
 
-#: pdfsettingswidget.cpp:187
+#: pdfsettingswidget.cpp:198
 #, kde-format
 msgctxt "certificate end validity"
 msgid "forever"
 msgstr "að eilífu"
 
-#: pdfsettingswidget.cpp:211
+#: pdfsettingswidget.cpp:222
 #, kde-format
 msgid "Restart needed"
 msgstr "Það þarf að endurræsa"
 
-#: pdfsettingswidget.cpp:211
+#: pdfsettingswidget.cpp:222
 #, kde-format
 msgid "You need to restart Okular after changing the NSS directory settings"
 msgstr "Það þarf að endurræsa Okular þegar NSS-möppustillingum er breytt"
 
-#: pdfsignatureutils.cpp:230
-#, kde-format
-msgid "Enter Password"
-msgstr "Sláðu inn lykilorð"
-
-#: pdfsignatureutils.cpp:230
-#, kde-format
-msgid "Enter password to open %1:"
+#: pdfsignatureutils.cpp:275 pdfsignatureutils.cpp:315
+#, fuzzy, kde-format
+#| msgid "Enter password to open %1:"
+msgctxt ""
+"%1 is the thing to open (hardware or software token, certificate DB,...)"
+msgid "Enter password to open: %1"
 msgstr "Sláðu inn lykilorð til að opna %1:"
+
+#~ msgid "Enter Password"
+#~ msgstr "Sláðu inn lykilorð"
+
+#, fuzzy
+#~| msgid "Failed renaming temporary file"
+#~ msgid "Failed renaming temporary file %1:"
+#~ msgstr "Villa við að endurnefna bráðabirgðaskrá"
 
 #~ msgid "PDF Backend"
 #~ msgstr "PDF bakendi"

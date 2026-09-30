@@ -64,7 +64,7 @@ EditAnnotToolDialog::EditAnnotToolDialog(QWidget *parent, const QDomElement &ini
     m_type = new KComboBox(false, widget);
     m_type->setVisible(!m_builtinTool);
     mainLayout->addWidget(m_type);
-    connect(m_type, static_cast<void (KComboBox::*)(int)>(&KComboBox::currentIndexChanged), this, &EditAnnotToolDialog::slotTypeChanged);
+    connect(m_type, &KComboBox::currentIndexChanged, this, &EditAnnotToolDialog::slotTypeChanged);
     tmplabel = new QLabel(i18n("&Type:"), widget);
     mainLayout->addWidget(tmplabel);
     tmplabel->setBuddy(m_type);
@@ -573,3 +573,5 @@ void EditAnnotToolDialog::slotDataChanged()
 
     updateDefaultNameAndIcon();
 }
+
+#include "moc_editannottooldialog.cpp"

@@ -32,12 +32,14 @@
 #include <core/area.h>
 #include <core/latexnotegeometry.h>
 
+#include "core/signatureutils.h"
 #include "debug_pdf.h"
 #include "generator_pdf.h"
 #include "imagescaling.h"
 #include "latexappearance.h"
 #include "popplerembeddedfile.h"
 #include "popplerversion.h"
+#include <KLocalizedString>
 
 Q_DECLARE_METATYPE(Poppler::Annotation *)
 
@@ -1068,6 +1070,10 @@ static Okular::SigningResult popplerToOkular(Poppler::SignatureAnnotation::Signi
     case Poppler::SignatureAnnotation::BadPassphrase:
         return Okular::BadPassphrase;
 #endif
+#if POPPLER_VERSION_MACRO >= QT_VERSION_CHECK(26, 9, 50)
+    case Poppler::SignatureAnnotation::UnsupportedSignatureType:
+        return Okular::UnsupportedSignatureType;
+#endif
     }
     return Okular::GenericSigningError;
 }
@@ -1135,11 +1141,33 @@ static std::unique_ptr<Poppler::Annotation> createPopplerAnnotationFromOkularAnn
     oSignatureAnnotation->setSignFunction([signatureAnnotation = pSignatureAnnotation.get()](const Okular::NewSignatureData &oData, const QString &fileName) -> std::pair<Okular::SigningResult, QString> {
         Poppler::PDFConverter::NewSignatureData pData;
         PDFGenerator::okularToPoppler(oData, &pData);
+        // save to tmp file - poppler doesn't like overwriting in-place
+        QTemporaryFile tf(QFileInfo(fileName).absolutePath() + QLatin1String("/okular_XXXXXX.pdf"));
+        tf.setAutoRemove(false);
+        if (!tf.open()) {
+            return {Okular::SignatureWriteFailed, i18n("Failed writing temporary file")};
+        }
 #if POPPLER_VERSION_MACRO > QT_VERSION_CHECK(25, 06, 0)
-        return std::pair<Okular::SigningResult, QString>(popplerToOkular(signatureAnnotation->sign(fileName, pData)), signatureAnnotation->lastSigningErrorDetails().data.toString());
+        auto result = std::pair<Okular::SigningResult, QString> {popplerToOkular(signatureAnnotation->sign(tf.fileName(), pData)), signatureAnnotation->lastSigningErrorDetails().data.toString()};
 #else
-        return std::pair<Okular::SigningResult, QString> {popplerToOkular(signatureAnnotation->sign(fileName, pData)), QString {}};
+        auto result = std::pair<Okular::SigningResult, QString> {popplerToOkular(signatureAnnotation->sign(tf.fileName(), pData)), QString {}};
 #endif
+        if (result.first != Okular::SigningSuccess) {
+            tf.remove();
+            return result;
+        }
+
+        // now copy over old file
+        if (QFile::exists(fileName)) {
+            if (!QFile::remove(fileName)) {
+                tf.setAutoRemove(true);
+                return {Okular::SignatureWriteFailed, i18n("Failed removing file")};
+            }
+        }
+        if (!tf.rename(fileName)) {
+            return {Okular::SignatureWriteFailed, i18n("Failed renaming temporary file")};
+        }
+        return {Okular::SigningSuccess, {}};
     });
 
     return pSignatureAnnotation;

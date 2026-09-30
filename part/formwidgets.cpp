@@ -48,8 +48,7 @@ FormWidgetsController::FormWidgetsController(Okular::Document *doc)
 
     // connect form modification signals to and from document
     // connect to the newer editFormText method and not the deprecated one
-    using EditFormTextType = void (Okular::Document::*)(int, Okular::FormFieldText *, const QString &, int, int, int, const QString &);
-    connect(this, &FormWidgetsController::formTextChangedByWidget, doc, static_cast<EditFormTextType>(&Okular::Document::editFormText));
+    connect(this, &FormWidgetsController::formTextChangedByWidget, doc, qOverload<int, Okular::FormFieldText *, const QString &, int, int, int, const QString &>(&Okular::Document::editFormText));
     connect(doc, &Okular::Document::formTextChangedByUndoRedo, this, &FormWidgetsController::formTextChangedByUndoRedo);
 
     connect(this, &FormWidgetsController::formListChangedByWidget, doc, &Okular::Document::editFormList);
@@ -83,6 +82,10 @@ void FormWidgetsController::signalAction(Okular::Action *a)
 
 void FormWidgetsController::signalMouseAction(Okular::Action *action, Okular::FormField *form, Okular::Document::MouseEventType fieldMouseEventType)
 {
+    if ((action->actionType() == Okular::Action::Script || action->actionType() == Okular::Action::BackendOpaque) && form->type() == Okular::FormField::FormSignature) {
+        qWarning() << "blocking certain actions for signature field";
+        return;
+    }
     Q_EMIT mouseAction(action, form, fieldMouseEventType);
 }
 
@@ -149,7 +152,7 @@ void FormWidgetsController::registerRadioButton(FormWidgetIface *fwButton, Okula
     // Several buttons may represent the same checked field at once.
     newdata.group->setExclusive(false);
 
-    connect(newdata.group, QOverload<QAbstractButton *>::of(&QButtonGroup::buttonClicked), this, &FormWidgetsController::slotButtonClicked);
+    connect(newdata.group, &QButtonGroup::buttonClicked, this, &FormWidgetsController::slotButtonClicked);
     m_radios.append(newdata);
 }
 
@@ -1137,7 +1140,7 @@ ComboEdit::ComboEdit(Okular::FormFieldChoice *choice, PageView *pageView)
         lineEdit()->setText(choice->editChoice());
     }
 
-    connect(this, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &ComboEdit::slotValueChanged);
+    connect(this, &QComboBox::currentIndexChanged, this, &ComboEdit::slotValueChanged);
     connect(this, &QComboBox::editTextChanged, this, &ComboEdit::slotValueChanged);
     connect(lineEdit(), &QLineEdit::cursorPositionChanged, this, &ComboEdit::slotValueChanged);
 
@@ -1324,7 +1327,7 @@ void ComboEdit::slotRefresh(Okular::FormField *form)
     if (ffc->isEditable() && !ffc->editChoice().isEmpty()) {
         lineEdit()->setText(ffc->editChoice());
     }
-    connect(this, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &ComboEdit::slotValueChanged);
+    connect(this, &QComboBox::currentIndexChanged, this, &ComboEdit::slotValueChanged);
     connect(this, &QComboBox::editTextChanged, this, &ComboEdit::slotValueChanged);
 }
 
@@ -1536,3 +1539,5 @@ DEFINE_ADDITIONAL_ACTIONS(ComboEdit, QComboBox)
 DEFINE_ADDITIONAL_ACTIONS(SignatureEdit, QAbstractButton)
 
 #undef DEFINE_ADDITIONAL_ACTIONS
+
+#include "moc_formwidgets.cpp"

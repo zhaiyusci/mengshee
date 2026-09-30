@@ -6,6 +6,7 @@
 
     Work sponsored by the LiMux project of the city of Munich:
     SPDX-FileCopyrightText: 2017 Klarälvdalens Datakonsult AB a KDAB Group company <info@kdab.com>
+    SPDX-FileCopyrightText: 2026  Sune Stolborg Vuorela <sune@vuorela.dk>, work sponsored by the Direction Interministérielle du Numérique
 
     SPDX-License-Identifier: GPL-2.0-or-later
 */
@@ -159,7 +160,7 @@ public:
         // If the user selects a scaling mode that requires the use of the
         // "Force rasterization" feature, enable it automatically so they don't
         // have to 1) know this and 2) do it manually
-        connect(m_scaleMode, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [=, this](int index) { m_forceRaster->setChecked(index != 0); });
+        connect(m_scaleMode, &QComboBox::currentIndexChanged, this, [=, this](int index) { m_forceRaster->setChecked(index != 0); });
 
         layout->addWidget(formWidget);
 
@@ -713,7 +714,6 @@ PDFGenerator::PDFGenerator(QObject *parent, const QVariantList &args)
     , docEmbeddedFilesDirty(true)
     , nextFontPage(0)
     , annotProxy(nullptr)
-    , certStore(nullptr)
 {
     setFeature(Threaded);
     setFeature(TextExtraction);
@@ -737,22 +737,23 @@ PDFGenerator::PDFGenerator(QObject *parent, const QVariantList &args)
     if (!PDFSettings::useDefaultCertDB()) {
         Poppler::setNSSDir(QUrl(PDFSettings::dBCertificatePath()).toLocalFile());
     }
-    auto activeBackend = PDFSettingsWidget::settingStringToPopplerEnum(PDFSettings::signatureBackend());
-    if (activeBackend) {
-        Poppler::setActiveCryptoSignBackend(activeBackend.value());
-        if (activeBackend == Poppler::CryptoSignBackend::GPG) {
-            setActiveCertificateBackend(Okular::CertificateInfo::Backend::Gpg);
-        }
+    auto configuredBackend = PDFSettingsWidget::settingStringToPopplerEnum(PDFSettings::signatureBackend());
+    if (configuredBackend) {
+        Poppler::setActiveCryptoSignBackend(configuredBackend.value());
+    }
+    auto activeBackend = Poppler::activeCryptoSignBackend();
+    if (activeBackend == Poppler::CryptoSignBackend::GPG) {
+        setActiveCertificateBackend(Okular::CertificateInfo::Backend::Gpg);
     }
 #if POPPLER_VERSION_MACRO >= QT_VERSION_CHECK(25, 02, 90)
     Poppler::setPgpSignaturesAllowed(PDFSettings::enablePgp());
 #endif
+    m_signatureSettingsHandle = SignatureSettings::ref();
 }
 
 PDFGenerator::~PDFGenerator()
 {
     delete pdfOptionsPage;
-    delete certStore;
     for (auto it = m_additionalDocumentActions.begin(); it != m_additionalDocumentActions.end(); it++) {
         delete it.value();
     }
@@ -2038,6 +2039,27 @@ QByteArray PDFGenerator::requestFontData(const Okular::FontInfo &font)
     return pdfdoc->fontData(fi);
 }
 
+#if POPPLER_VERSION_MACRO >= QT_VERSION_CHECK(26, 9, 50)
+Poppler::SMimeSignatureType toPoppler(Okular::CertificateInfo::SMimeSignatureType type)
+{
+    switch (type) {
+    case Okular::CertificateInfo::SMimeSignatureType::none:
+        return Poppler::SMimeSignatureType::none;
+    case Okular::CertificateInfo::SMimeSignatureType::adbe_pkcs7_detached:
+        return Poppler::SMimeSignatureType::adbe_pkcs7_detached;
+    case Okular::CertificateInfo::SMimeSignatureType::ETSI_CAdES_B:
+        return Poppler::SMimeSignatureType::ETSI_CAdES_B;
+    case Okular::CertificateInfo::SMimeSignatureType::ETSI_CAdES_T:
+        return Poppler::SMimeSignatureType::ETSI_CAdES_T;
+    case Okular::CertificateInfo::SMimeSignatureType::ETSI_CAdES_LT:
+        return Poppler::SMimeSignatureType::ETSI_CAdES_LT;
+    case Okular::CertificateInfo::SMimeSignatureType::ETSI_CAdES_LTA:
+        return Poppler::SMimeSignatureType::ETSI_CAdES_LTA;
+    }
+    return Poppler::SMimeSignatureType::none;
+}
+#endif
+
 void PDFGenerator::okularToPoppler(const Okular::NewSignatureData &oData, Poppler::PDFConverter::NewSignatureData *pData)
 {
     pData->setCertNickname(oData.certNickname());
@@ -2056,6 +2078,9 @@ void PDFGenerator::okularToPoppler(const Okular::NewSignatureData &oData, Popple
     pData->setLocation(oData.location());
     pData->setDocumentOwnerPassword(oData.documentPassword().toLatin1());
     pData->setDocumentUserPassword(oData.documentPassword().toLatin1());
+#if POPPLER_VERSION_MACRO >= QT_VERSION_CHECK(26, 9, 50)
+    pData->setRequestedSignatureType(toPoppler(oData.requestedSignatureType()));
+#endif
 }
 
 #define DUMMY_QPRINTER_COPY
@@ -4144,6 +4169,10 @@ static Okular::SigningResult fromPoppler(Poppler::PDFConverter::SigningResult re
         return Okular::SignatureWriteFailed;
     case Poppler::PDFConverter::SigningSuccess:
         return Okular::SigningSuccess;
+#if POPPLER_VERSION_MACRO > QT_VERSION_CHECK(26, 9, 50)
+    case Poppler::PDFConverter::UnsupportedSignatureType:
+        return Okular::UnsupportedSignatureType;
+#endif
     }
     return Okular::GenericSigningError;
 }
@@ -4220,9 +4249,14 @@ std::pair<Okular::SigningResult, QString> PDFGenerator::sign(const Okular::NewSi
     }
 
     // now copy over old file
-    QFile::remove(rFilename);
+    if (QFile::exists(rFilename)) {
+        if (!QFile::remove(rFilename)) {
+            tf.setAutoRemove(true);
+            return {Okular::SignatureWriteFailed, i18n("Failed removing file")};
+        }
+    }
     if (!tf.rename(rFilename)) {
-        return {Okular::SignatureWriteFailed, i18n("Failed renaming temporary file")};
+        return {Okular::SignatureWriteFailed, i18nc("%1 is an error message", "Failed renaming temporary file: %1", tf.errorString())};
     }
 
     return {Okular::SigningSuccess, {}};
@@ -4231,10 +4265,10 @@ std::pair<Okular::SigningResult, QString> PDFGenerator::sign(const Okular::NewSi
 Okular::CertificateStore *PDFGenerator::certificateStore() const
 {
     if (!certStore) {
-        certStore = new PopplerCertificateStore();
+        certStore = std::make_unique<PopplerCertificateStore>();
     }
 
-    return certStore;
+    return certStore.get();
 }
 
 void PDFGenerator::xrefReconstructionHandler()
@@ -4250,4 +4284,4 @@ void PDFGenerator::xrefReconstructionHandler()
 
 Q_LOGGING_CATEGORY(OkularPdfDebug, "org.jairy.mengshee.generators.pdf", QtWarningMsg)
 
-/* kate: replace-tabs on; indent-width 4; */
+#include "moc_generator_pdf.cpp"

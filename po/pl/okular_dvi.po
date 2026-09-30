@@ -11,7 +11,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: okular_dvi\n"
 "Report-Msgid-Bugs-To: https://bugs.kde.org\n"
-"POT-Creation-Date: 2025-12-22 00:41+0000\n"
+"POT-Creation-Date: 2026-09-22 15:58+0000\n"
 "PO-Revision-Date: 2025-11-01 10:12+0100\n"
 "Last-Translator: Łukasz Wojniłowicz <lukasz.wojnilowicz@gmail.com>\n"
 "Language-Team: pl\n"
@@ -195,49 +195,54 @@ msgstr ""
 "Okular nie był w stanie ustalić miejsca w pliku DVI, które odpowiada "
 "wierszowi %1 w pliku TeX %2."
 
-#: dviRenderer_draw.cpp:239
+#: dviRenderer_draw.cpp:241
 #, kde-format
 msgid "The DVI code set a character of an unknown font."
 msgstr "Kod DVI ustawił znak nieznanej czcionki."
 
-#: dviRenderer_draw.cpp:266 dviRenderer_prescan.cpp:667
+#: dviRenderer_draw.cpp:268 dviRenderer_prescan.cpp:669
 #, kde-format
 msgid "The DVI code referred to font #%1, which was not previously defined."
 msgstr ""
 "Kod DVI odwołał się do czcionki #%1, która nie była wcześniej zdefiniowana."
 
-#: dviRenderer_draw.cpp:349
+#: dviRenderer_draw.cpp:351
 #, kde-format
 msgid "The stack was not empty when the EOP command was encountered."
 msgstr "Stos nie był pusty przy napotkaniu polecenia EOP."
 
-#: dviRenderer_draw.cpp:361
+#: dviRenderer_draw.cpp:363
 #, kde-format
 msgid "The stack was empty when a POP command was encountered."
 msgstr "Stos był pusty, kiedy napotkano polecenie POP."
 
-#: dviRenderer_draw.cpp:485 dviRenderer_draw.cpp:494
+#: dviRenderer_draw.cpp:487 dviRenderer_draw.cpp:496
 #, kde-format
 msgid "The DVI code referred to a font which was not previously defined."
 msgstr ""
 "Kod DVI odwołał się do czcionki, która nie była wcześniej zdefiniowana."
 
-#: dviRenderer_draw.cpp:535
+#: dviRenderer_draw.cpp:514 dviRenderer_prescan.cpp:802
+#, kde-format
+msgid "The DVI file contains an invalid special command."
+msgstr ""
+
+#: dviRenderer_draw.cpp:542
 #, kde-format
 msgid "An illegal command was encountered."
 msgstr "Napotkano nielegalne polecenie."
 
-#: dviRenderer_draw.cpp:540
+#: dviRenderer_draw.cpp:547
 #, kde-format
 msgid "The unknown op-code %1 was encountered."
 msgstr "Napotkano nieznany kod operacji (op-code) %1."
 
-#: dviRenderer_prescan.cpp:87
+#: dviRenderer_prescan.cpp:89
 #, kde-format
 msgid "Embedding %1"
 msgstr "Osadzanie %1"
 
-#: dviRenderer_prescan.cpp:105
+#: dviRenderer_prescan.cpp:107
 #, kde-format
 msgid ""
 "Page %1: The PDF file <strong>%2</strong> could not be converted to "
@@ -246,7 +251,7 @@ msgstr ""
 "Strona %1: Plik PDF <strong>%2</strong> nie mógł zostać przekształcony na "
 "PostScript.<br>"
 
-#: dviRenderer_prescan.cpp:107
+#: dviRenderer_prescan.cpp:109
 #, kde-format
 msgid ""
 "Page %1: The PostScript file <strong>%2</strong> could not be found.<br>"
@@ -254,7 +259,7 @@ msgstr ""
 "Strona %1: Plik PostScript <strong>%2</strong> nie mógł zostać znaleziony."
 "<br>"
 
-#: dviRenderer_prescan.cpp:261
+#: dviRenderer_prescan.cpp:263
 #, kde-format
 msgid "The papersize data '%1' could not be parsed."
 msgstr "Nie można przetworzyć danych rozmiaru papieru (papersize) „%1”."
@@ -271,7 +276,7 @@ msgstr ""
 "się odczytać.</p><p><small><b>ŚCIEŻKA (PATH):</b> %1</small></p><p><small>"
 "%2</small></p></qt>"
 
-#: fontpool.cpp:269
+#: fontpool.cpp:273
 #, kde-format
 msgid ""
 "<qt><p>There were problems running <em>kpsewhich</em>. As a result, some "
@@ -287,7 +292,7 @@ msgstr ""
 "ścieżce PATH.</p><p><small><b>ŚCIEŻKA (PATH):</b> %1</small></p><p><small>"
 "%2</small></p></qt>"
 
-#: fontpool.cpp:290
+#: fontpool.cpp:294
 #, kde-format
 msgid ""
 "<qt>The font generation by <em>kpsewhich</em> was aborted (exit code %1, "
@@ -299,7 +304,7 @@ msgstr ""
 "plików czcionek. Możliwe, że tego dokumentu nie będzie dało się odczytać.</"
 "qt>"
 
-#: fontpool.cpp:467
+#: fontpool.cpp:471
 #, kde-format
 msgid "Currently generating %1 at %2 dpi…"
 msgstr "Obecnie tworzenie %1 przy %2 dpi…"
@@ -314,7 +319,7 @@ msgstr "Twórca/data"
 msgid "Font file not found"
 msgstr "Nie odnaleziono pliku czcionek"
 
-#: psgs.cpp:286
+#: psgs.cpp:285
 #, kde-format
 msgid ""
 "The version of Ghostview that is installed on this computer does not contain "

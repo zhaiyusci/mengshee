@@ -2,20 +2,20 @@
 # Copyright (C) YEAR This_file_is_part_of_KDE
 # This file is distributed under the same license as the PACKAGE package.
 #
-# SPDX-FileCopyrightText: 2007, 2008, 2009, 2013, 2014, 2024, 2025 Stefan Asserhäll <stefan.asserhall@gmail.com>
+# SPDX-FileCopyrightText: 2007-2009, 2013-2014, 2024-2026 Stefan Asserhäll <stefan.asserhall@gmail.com>
 msgid ""
 msgstr ""
 "Project-Id-Version: okular_dvi\n"
 "Report-Msgid-Bugs-To: https://bugs.kde.org\n"
-"POT-Creation-Date: 2025-12-22 00:41+0000\n"
-"PO-Revision-Date: 2025-07-28 18:35+0200\n"
+"POT-Creation-Date: 2026-09-22 15:58+0000\n"
+"PO-Revision-Date: 2026-09-05 07:19+0200\n"
 "Last-Translator: Stefan Asserhäll <stefan.asserhall@gmail.com>\n"
 "Language-Team: Swedish <kde-i18n-doc@kde.org>\n"
 "Language: sv\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"X-Generator: Lokalize 25.04.2\n"
+"X-Generator: Lokalize 26.08.0\n"
 "Plural-Forms: nplurals=2; plural=n != 1;\n"
 
 #, kde-format
@@ -188,49 +188,54 @@ msgstr ""
 "Okular kunde inte lokalisera platsen i DVI-filen som motsvarar rad %1 i Tex-"
 "filen %2."
 
-#: dviRenderer_draw.cpp:239
+#: dviRenderer_draw.cpp:241
 #, kde-format
 msgid "The DVI code set a character of an unknown font."
 msgstr "DVI-koden väljer ett tecken från ett okänt teckensnitt."
 
-#: dviRenderer_draw.cpp:266 dviRenderer_prescan.cpp:667
+#: dviRenderer_draw.cpp:268 dviRenderer_prescan.cpp:669
 #, kde-format
 msgid "The DVI code referred to font #%1, which was not previously defined."
 msgstr ""
 "DVI-koden hänvisar till teckensnittet #%1, som inte har definierats tidigare."
 
-#: dviRenderer_draw.cpp:349
+#: dviRenderer_draw.cpp:351
 #, kde-format
 msgid "The stack was not empty when the EOP command was encountered."
 msgstr "Stacken var inte tom när EOP-kommandot hanterades."
 
-#: dviRenderer_draw.cpp:361
+#: dviRenderer_draw.cpp:363
 #, kde-format
 msgid "The stack was empty when a POP command was encountered."
 msgstr "Stacken var tom när ett POP-kommando hanterades."
 
-#: dviRenderer_draw.cpp:485 dviRenderer_draw.cpp:494
+#: dviRenderer_draw.cpp:487 dviRenderer_draw.cpp:496
 #, kde-format
 msgid "The DVI code referred to a font which was not previously defined."
 msgstr ""
 "DVI-koden hänvisar till ett teckensnitt som inte har definierats tidigare."
 
-#: dviRenderer_draw.cpp:535
+#: dviRenderer_draw.cpp:514 dviRenderer_prescan.cpp:802
+#, kde-format
+msgid "The DVI file contains an invalid special command."
+msgstr "DVI-filen innehåller ett ogiltigt specialkommando."
+
+#: dviRenderer_draw.cpp:542
 #, kde-format
 msgid "An illegal command was encountered."
 msgstr "Ett illegalt kommando hanterades."
 
-#: dviRenderer_draw.cpp:540
+#: dviRenderer_draw.cpp:547
 #, kde-format
 msgid "The unknown op-code %1 was encountered."
 msgstr "Den okända op-koden %1 hanterades."
 
-#: dviRenderer_prescan.cpp:87
+#: dviRenderer_prescan.cpp:89
 #, kde-format
 msgid "Embedding %1"
 msgstr "Inbäddar %1"
 
-#: dviRenderer_prescan.cpp:105
+#: dviRenderer_prescan.cpp:107
 #, kde-format
 msgid ""
 "Page %1: The PDF file <strong>%2</strong> could not be converted to "
@@ -239,13 +244,13 @@ msgstr ""
 "Sida %1: PDF-filen <strong>%2</strong> kunde inte konverteras till "
 "Postscript.<br>"
 
-#: dviRenderer_prescan.cpp:107
+#: dviRenderer_prescan.cpp:109
 #, kde-format
 msgid ""
 "Page %1: The PostScript file <strong>%2</strong> could not be found.<br>"
 msgstr "Sida %1: Postscript-filen <strong>%2</strong> kunde inte hittas.<br>"
 
-#: dviRenderer_prescan.cpp:261
+#: dviRenderer_prescan.cpp:263
 #, kde-format
 msgid "The papersize data '%1' could not be parsed."
 msgstr "Pappersstorleken \"%1\" kunde inte tolkas."
@@ -261,7 +266,7 @@ msgstr ""
 "visa den aktuella DVI-filen. Dokumentet kan vara oläsbart.</"
 "p><p><small><b>PATH:</b> %1</small></p><p><small>%2</small></p></qt>"
 
-#: fontpool.cpp:269
+#: fontpool.cpp:273
 #, kde-format
 msgid ""
 "<qt><p>There were problems running <em>kpsewhich</em>. As a result, some "
@@ -276,7 +281,7 @@ msgstr ""
 "på datorn, eller kan inte hittas med nuvarande sökväg.</p><p><small><b>PATH:"
 "</b> %1</small></p><p><small>%2</small></p></qt>"
 
-#: fontpool.cpp:290
+#: fontpool.cpp:294
 #, kde-format
 msgid ""
 "<qt>The font generation by <em>kpsewhich</em> was aborted (exit code %1, "
@@ -287,7 +292,7 @@ msgstr ""
 "%2). På grund av det kunde vissa teckensnittsfiler inte hittas, och "
 "dokumentet kan vara oläsbart.</qt>"
 
-#: fontpool.cpp:467
+#: fontpool.cpp:471
 #, kde-format
 msgid "Currently generating %1 at %2 dpi…"
 msgstr "Skapar för närvarande %1 med %2 punkter/tum…"
@@ -302,7 +307,7 @@ msgstr "Skapare/Datum"
 msgid "Font file not found"
 msgstr "Teckensnittsfilen hittades inte"
 
-#: psgs.cpp:286
+#: psgs.cpp:285
 #, kde-format
 msgid ""
 "The version of Ghostview that is installed on this computer does not contain "

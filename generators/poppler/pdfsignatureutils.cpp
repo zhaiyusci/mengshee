@@ -1,5 +1,6 @@
 /*
     SPDX-FileCopyrightText: 2018 Chinmoy Ranjan Pradhan <chinmoyrp65@gmail.com>
+    SPDX-FileCopyrightText: 2026  Sune Stolborg Vuorela <sune@vuorela.dk>, work sponsored by the Direction Interministérielle du Numérique
 
     SPDX-License-Identifier: GPL-2.0-or-later
 */
@@ -8,8 +9,10 @@
 
 #include "popplerversion.h"
 #include <KLocalizedString>
+#include <KPasswordDialog>
 #include <QDebug>
-#include <QInputDialog>
+#include <QPointer>
+#include <poppler-form.h>
 
 static Okular::CertificateInfo::KeyUsageExtensions fromPoppler(Poppler::CertificateInfo::KeyUsageExtensions popplerKu)
 {
@@ -86,6 +89,44 @@ static Okular::CertificateInfo::CertificateType fromPoppler(Poppler::Certificate
 }
 #endif
 
+#if POPPLER_VERSION_MACRO >= QT_VERSION_CHECK(26, 9, 50)
+
+std::optional<Okular::CertificateInfo::SMimeSignatureType> fromPoppler(Poppler::SMimeSignatureType type)
+{
+    switch (type) {
+    case Poppler::SMimeSignatureType::none:
+        return Okular::CertificateInfo::SMimeSignatureType::none;
+    case Poppler::SMimeSignatureType::adbe_pkcs7_detached:
+        return Okular::CertificateInfo::SMimeSignatureType::adbe_pkcs7_detached;
+    case Poppler::SMimeSignatureType::ETSI_CAdES_B:
+        return Okular::CertificateInfo::SMimeSignatureType::ETSI_CAdES_B;
+    case Poppler::SMimeSignatureType::ETSI_CAdES_T:
+        return Okular::CertificateInfo::SMimeSignatureType::ETSI_CAdES_T;
+    case Poppler::SMimeSignatureType::ETSI_CAdES_LT:
+        return Okular::CertificateInfo::SMimeSignatureType::ETSI_CAdES_LT;
+    case Poppler::SMimeSignatureType::ETSI_CAdES_LTA:
+        return Okular::CertificateInfo::SMimeSignatureType::ETSI_CAdES_LTA;
+    }
+    return std::nullopt;
+}
+
+QVector<Okular::CertificateInfo::SMimeSignatureType> fromPoppler(const QVector<Poppler::SMimeSignatureType> &types)
+{
+    QVector<Okular::CertificateInfo::SMimeSignatureType> converted;
+    for (auto element : types) {
+        auto convert = fromPoppler(element);
+        if (convert) {
+            converted.push_back(convert.value());
+        }
+    }
+    if (converted.empty()) {
+        converted.push_back(Okular::CertificateInfo::SMimeSignatureType::none);
+    }
+
+    return converted;
+}
+#endif
+
 Okular::CertificateInfo fromPoppler(const Poppler::CertificateInfo &pInfo)
 {
     Okular::CertificateInfo oInfo;
@@ -110,6 +151,9 @@ Okular::CertificateInfo fromPoppler(const Poppler::CertificateInfo &pInfo)
     oInfo.setSelfSigned(pInfo.isSelfSigned());
     oInfo.setCertificateData(pInfo.certificateData());
     oInfo.setKeyLocation(fromPoppler(pInfo.keyLocation()));
+#if POPPLER_VERSION_MACRO >= QT_VERSION_CHECK(26, 9, 50)
+    oInfo.setSupportedSMimeSignatures(fromPoppler(pInfo.supportedSMimeSignatureTypes()));
+#endif
     oInfo.setCheckPasswordFunction([pInfo](const QString &password) {
         auto backend = Poppler::activeCryptoSignBackend();
         if (!backend) {
@@ -225,13 +269,25 @@ PopplerCertificateStore::~PopplerCertificateStore() = default;
 QList<Okular::CertificateInfo> PopplerCertificateStore::signingCertificates(bool *userCancelled) const
 {
     *userCancelled = false;
-    auto PDFGeneratorNSSPasswordCallback = [&userCancelled](const char *element) -> char * {
-        bool ok;
-        const QString pwd = QInputDialog::getText(nullptr, i18n("Enter Password"), i18n("Enter password to open %1:", QString::fromUtf8(element)), QLineEdit::Password, QString(), &ok);
-        *userCancelled = !ok;
-        return ok ? strdup(pwd.toUtf8().constData()) : nullptr;
+    auto callback = [userCancelled](const char *element) -> char * {
+        QPointer<KPasswordDialog> dialog = new KPasswordDialog(nullptr);
+        dialog->setRevealPasswordMode(KPassword::RevealMode::OnlyNew);
+        dialog->setPrompt(i18nc("%1 is the thing to open (hardware or software token, certificate DB,...)", "Enter password to open: %1", QString::fromUtf8(element)));
+        if (!dialog->exec()) {
+            *userCancelled = true;
+            delete dialog;
+            return nullptr;
+        }
+        if (dialog) {
+            const QString password = dialog->password();
+            delete dialog;
+            return strdup(password.toUtf8().constData());
+        }
+        return nullptr;
     };
-    Poppler::setNSSPasswordCallback(PDFGeneratorNSSPasswordCallback);
+
+    auto ref = SignatureSettings::ref();
+    auto lifeTime = ref->setAlternative(callback);
 
     const QList<Poppler::CertificateInfo> certs = Poppler::getAvailableSigningCertificates();
     QList<Okular::CertificateInfo> vReturnCerts;
@@ -239,7 +295,80 @@ QList<Okular::CertificateInfo> PopplerCertificateStore::signingCertificates(bool
         vReturnCerts.append(fromPoppler(cert));
     }
 
-    Poppler::setNSSPasswordCallback(nullptr);
-
     return vReturnCerts;
+}
+
+std::shared_ptr<SignatureSettings> SignatureSettings::ref()
+{
+    static std::weak_ptr<SignatureSettings> singleton;
+    if (auto strong = singleton.lock()) {
+        return strong;
+    }
+    auto newlyCreated = std::make_shared<SignatureSettings>();
+    singleton = newlyCreated;
+    return newlyCreated;
+}
+
+static auto PDFGeneratorNSSPasswordCallback = [](const char *element) -> char * {
+    QPointer<KPasswordDialog> dialog = new KPasswordDialog(nullptr);
+    dialog->setRevealPasswordMode(KPassword::RevealMode::OnlyNew);
+    dialog->setPrompt(i18nc("%1 is the thing to open (hardware or software token, certificate DB,...)", "Enter password to open: %1", QString::fromUtf8(element)));
+    if (!dialog->exec()) {
+        delete dialog;
+        return nullptr;
+    }
+    if (dialog) {
+        const QString password = dialog->password();
+        delete dialog;
+        return strdup(password.toUtf8().constData());
+    }
+    return nullptr;
+};
+
+SignatureSettings::SignatureSettings()
+{
+    auto availableBackends = Poppler::availableCryptoSignBackends();
+    hasNSS = availableBackends.contains(Poppler::CryptoSignBackend::NSS);
+    if (hasNSS) {
+        Poppler::setNSSPasswordCallback(PDFGeneratorNSSPasswordCallback);
+    }
+}
+
+SignatureSettings::~SignatureSettings()
+{
+    if (hasNSS) {
+        Poppler::setNSSPasswordCallback(nullptr);
+    }
+}
+
+SignatureSettings::AlternativeLifetime SignatureSettings::setAlternative(const std::function<char *(const char *)> &callback)
+{
+    if (hasNSS) {
+        Poppler::setNSSPasswordCallback(callback);
+    }
+    alternativeStack.push(callback);
+    return AlternativeLifetime(this);
+}
+
+void SignatureSettings::pop()
+{
+    alternativeStack.pop();
+    if (alternativeStack.empty()) {
+        if (hasNSS) {
+            Poppler::setNSSPasswordCallback(PDFGeneratorNSSPasswordCallback);
+        }
+    } else {
+        if (hasNSS) {
+            Poppler::setNSSPasswordCallback(alternativeStack.top());
+        }
+    }
+}
+
+SignatureSettings::AlternativeLifetime::AlternativeLifetime(SignatureSettings *setting)
+    : settings(setting)
+{
+}
+SignatureSettings::AlternativeLifetime::~AlternativeLifetime()
+{
+    settings->pop();
 }

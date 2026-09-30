@@ -777,7 +777,7 @@ void Page::setFormFields(const QList<FormField *> &fields)
     d->formfields = fields;
     for (FormField *ff : std::as_const(d->formfields)) {
         ff->d_ptr->setDefault();
-        ff->d_ptr->m_page = this;
+        ff->d_ptr->m_page = d;
     }
 }
 

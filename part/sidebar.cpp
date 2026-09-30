@@ -197,3 +197,5 @@ void Sidebar::dropEvent(QDropEvent *event)
     const QList<QUrl> list = KUrlMimeData::urlsFromMimeData(event->mimeData());
     Q_EMIT urlsDropped(list);
 }
+
+#include "moc_sidebar.cpp"

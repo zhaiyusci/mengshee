@@ -74,8 +74,6 @@
 #include <QAction>
 #include <QDebug>
 #include <QIcon>
-#include <kio_version.h>
-#include <kwidgetsaddons_version.h>
 
 // system includes
 #include <array>
@@ -91,6 +89,7 @@
 #include "core/annotations.h"
 #include "core/readingview.h"
 #include "core/numberedcalloutgeometry_p.h"
+#include "core/signatureutils.h"
 #include "cursorwraphelper.h"
 #include "formwidgets.h"
 #include "gui/debug_ui.h"
@@ -6700,7 +6699,7 @@ void PageView::updateSelection(const QPoint pos)
         for (int p : std::as_const(pagesWithSelectionSet)) {
             d->document->setPageTextSelection(p, std::move(selections[p - first]), palette().color(QPalette::Active, QPalette::Highlight));
         }
-        d->pagesWithTextSelection = pagesWithSelectionSet;
+        d->pagesWithTextSelection = std::move(pagesWithSelectionSet);
     }
 }
 
@@ -6824,6 +6823,8 @@ static double parseZoomString(QString z)
     // kdelibs4 sometimes adds accelerators to actions' text directly :(
     z.remove(QLatin1Char('&'));
     z.remove(QLatin1Char('%'));
+    // \u066A - Arabic Percent Sign
+    z.remove(QChar(u'٪'));
     return QLocale().toDouble(z) / 100.0;
 }
 
@@ -8235,7 +8236,7 @@ void PageView::slotHandleWebShortcutAction()
 
 void PageView::slotConfigureWebShortcuts()
 {
-    auto *job = new KIO::CommandLauncherJob(QStringLiteral("kcmshell6"), QStringList() << QStringLiteral("webshortcuts"));
+    auto *job = new KIO::CommandLauncherJob(QStringLiteral("kcmshell6"), {QStringLiteral("webshortcuts")});
     job->start();
 }
 
@@ -8706,6 +8707,8 @@ void PageView::slotSignature()
 
     d->annotator->startSigning(&d->signingInfo);
 
+    actionCollection()->action(QStringLiteral("add_digital_signature"))->setEnabled(false);
+
     // force an update of the cursor
     updateCursor();
     Okular::Settings::self()->save();
@@ -9002,13 +9005,14 @@ PageView::FinishSigningResult PageView::finishSigning()
 
     Okular::NewSignatureData data;
     data.setCertNickname(d->signingInfo.certificate->nickName());
-    data.setCertSubjectCommonName(d->signingInfo.certificate->subjectInfo(Okular::CertificateInfo::CommonName, Okular::CertificateInfo::EmptyString::TranslatedNotAvailable));
+    data.setCertSubjectCommonName(d->signingInfo.certificate->subjectInfo(Okular::CertificateInfo::CommonNameOrEmail, Okular::CertificateInfo::EmptyString::TranslatedNotAvailable));
     data.setPassword(d->signingInfo.certificatePassword);
     data.setDocumentPassword(d->signingInfo.documentPassword);
     data.setReason(d->signingInfo.reason);
     data.setLocation(d->signingInfo.location);
     data.setLeftFontSize(d->signatureAnnotation->leftFontSize());
     data.setFontSize(d->signatureAnnotation->fontSize());
+    data.setRequestedSignatureType(d->signingInfo.type);
 
     std::pair<Okular::SigningResult, QString> result = d->signatureAnnotation->sign(data, newFilePath);
     switch (result.first) {
@@ -9019,8 +9023,9 @@ PageView::FinishSigningResult PageView::finishSigning()
         return Success;
     }
     case Okular::FieldAlreadySigned: // We should not end up here
-    case Okular::KeyMissing:         // unless the user modified the key store after opening the dialog, this should not happen
+    case Okular::KeyMissing:
     case Okular::InternalSigningError:
+    case Okular::UnsupportedSignatureType:
         KMessageBox::detailedError(this, errorString(result.first, static_cast<int>(result.first)), result.second);
         return Failed;
     case Okular::GenericSigningError:
@@ -9029,7 +9034,7 @@ PageView::FinishSigningResult PageView::finishSigning()
     case Okular::UserCancelled:
         return Cancelled;
     case Okular::BadPassphrase:
-        KMessageBox::detailedError(this, errorString(result.first, {}), result.second);
+        KMessageBox::error(this, errorString(result.first, {}));
         return Cancelled;
     case Okular::SignatureWriteFailed:
         KMessageBox::detailedError(this, errorString(result.first, newFilePath), result.second);
@@ -9200,4 +9205,4 @@ void PageView::highlightSignatureFormWidget(const Okular::FormFieldSignature *fo
 
 // END private SLOTS
 
-/* kate: replace-tabs on; indent-width 4; */
+#include "moc_pageview.cpp"

@@ -257,7 +257,7 @@ private:
     mutable QList<Okular::EmbeddedFile *> docEmbeddedFiles;
     int nextFontPage;
     PopplerAnnotationProxy *annotProxy;
-    mutable Okular::CertificateStore *certStore;
+    mutable std::unique_ptr<Okular::CertificateStore> certStore;
     // the hash below only contains annotations that were present on the file at open time
     // this is enough for what we use it for
     QHash<Okular::Annotation *, Poppler::Annotation *> annotationsOnOpenHash;
@@ -272,8 +272,7 @@ private:
     bool documentHasPassword = false;
     QHash<int, Okular::Action *> m_additionalDocumentActions;
     void setAdditionalDocumentAction(Okular::Document::DocumentAdditionalActionType type, Okular::Action *action);
+    std::shared_ptr<void> m_signatureSettingsHandle;
 };
 
 #endif
-
-/* kate: replace-tabs on; indent-width 4; */

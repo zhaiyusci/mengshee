@@ -155,7 +155,7 @@ PreferredScreenSelector::PreferredScreenSelector(QWidget *parent)
 
     // KConfigWidgets setup:
     setProperty("kcfg_property", QByteArray("preferredScreen"));
-    connect(this, QOverload<int>::of(&QComboBox::currentIndexChanged), [this](int index) { Q_EMIT preferredScreenChanged(index - k_specialScreenCount); });
+    connect(this, &QComboBox::currentIndexChanged, [this](int index) { Q_EMIT preferredScreenChanged(index - k_specialScreenCount); });
 }
 
 void PreferredScreenSelector::repopulateList()
@@ -219,3 +219,5 @@ int PreferredScreenSelector::preferredScreen() const
         return currentIndex() - k_specialScreenCount;
     }
 }
+
+#include "moc_dlgpresentation.cpp"

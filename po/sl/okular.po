@@ -9,8 +9,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: okular\n"
 "Report-Msgid-Bugs-To: https://bugs.kde.org\n"
-"POT-Creation-Date: 2026-05-12 00:42+0000\n"
-"PO-Revision-Date: 2026-05-12 07:06+0200\n"
+"POT-Creation-Date: 2026-09-26 00:43+0000\n"
+"PO-Revision-Date: 2026-09-26 08:38+0200\n"
 "Last-Translator: Matjaž Jeran <matjaz.jeran@amis.net>\n"
 "Language-Team: Slovenian <lugos-slo@lugos.si>\n"
 "Language: sl\n"
@@ -244,7 +244,7 @@ msgstr "Prekini film"
 msgid "Resume movie"
 msgstr "Nadaljuj film"
 
-#: core/audioplayer.cpp:315
+#: core/audioplayer.cpp:313
 #, kde-format
 msgid "This Okular is built without audio support"
 msgstr "Ta Okular je zgrajen brez podpore za zvok"
@@ -263,65 +263,65 @@ msgstr ""
 "<qt>Za to vrsto dokumenta je na voljo več zaledij:<br /><b>%1</b> (%2).<br /"
 "><br />Izberite tisto, ki bi jo radi uporabljali:</qt>"
 
-#: core/document.cpp:200
+#: core/document.cpp:199
 #, kde-format
 msgctxt "@info %1 is a page size"
 msgid "Most pages are %1."
 msgstr "Večina strani so %1."
 
-#: core/document.cpp:221
+#: core/document.cpp:220
 #, kde-format
 msgctxt "paper type and orientation (eg: Portrait A4)"
 msgid "Portrait %1"
 msgstr "Pokončno %1"
 
-#: core/document.cpp:223
+#: core/document.cpp:222
 #, kde-format
 msgctxt "paper type and orientation (eg: Portrait A4)"
 msgid "Landscape %1"
 msgstr "Ležeče %1"
 
-#: core/document.cpp:246
+#: core/document.cpp:245
 #, kde-format
 msgctxt "%1 is width, %2 is height, %3 is paper size name"
 msgid "%1 × %2 in (%3)"
 msgstr "%1 ⨯ %2 palcev (%3)"
 
-#: core/document.cpp:248
+#: core/document.cpp:247
 #, kde-format
 msgctxt "%1 is width, %2 is height, %3 is paper size name"
 msgid "%1 × %2 mm (%3)"
 msgstr "%1 ⨯ %2 mm (%3)"
 
-#: core/document.cpp:1702
+#: core/document.cpp:1672
 #, kde-format
 msgid "Continuing search from beginning"
 msgstr "Nadaljevanje iskanja z vrha"
 
-#: core/document.cpp:1705
+#: core/document.cpp:1675
 #, kde-format
 msgid "Continuing search from bottom"
 msgstr "Nadaljevanje iskanja z dna"
 
-#: core/document.cpp:2421
+#: core/document.cpp:2396
 #, kde-format
 msgid ""
 "Can not find a plugin which is able to handle the document being passed."
 msgstr "Ni bilo mogoče najti vstavka, ki bi znal prebrati dani dokument."
 
-#: core/document.cpp:2843
+#: core/document.cpp:2817
 #, kde-format
 msgctxt "Unsupported action"
 msgid "Signing not implemented for this document type"
 msgstr "Podpisovanje ni izvedeno za to vrsto dokumenta"
 
-#: core/document.cpp:3557
+#: core/document.cpp:3531
 #, kde-format
 msgctxt "remove a collection of annotations from the page"
 msgid "remove annotations"
 msgstr "odstrani zabeležke"
 
-#: core/document.cpp:4149 core/document.cpp:4155
+#: core/document.cpp:4123 core/document.cpp:4129
 #, kde-format
 msgid ""
 "The document is trying to execute an external application and, for your "
@@ -330,52 +330,52 @@ msgstr ""
 "Dokument poskuša izvesti zunanji program, zaradi vaše varnosti pa Okular "
 "tega ne dovoljuje."
 
-#: core/document.cpp:4165
+#: core/document.cpp:4139
 #, kde-format
 msgid "No application found for opening file of mimetype %1."
 msgstr "Ni bilo mogoče najti program za odpiranje datoteke zvrsti MIME %1."
 
-#: core/document.cpp:4801
+#: core/document.cpp:4799
 #, kde-format
 msgid "Could not open a temporary file"
 msgstr "Ni bilo mogoče odpreti začasne datoteke"
 
-#: core/document.cpp:4803
+#: core/document.cpp:4801
 #, kde-format
 msgid "Print conversion failed"
 msgstr "Pretvorba za tiskanje je spodletela"
 
-#: core/document.cpp:4805
+#: core/document.cpp:4803
 #, kde-format
 msgid "Printing process crashed"
 msgstr "Proces za tiskanje se je sesul"
 
-#: core/document.cpp:4807
+#: core/document.cpp:4805
 #, kde-format
 msgid "Printing process could not start"
 msgstr "Procesa za tiskanje ni bilo mogoče zagnati"
 
-#: core/document.cpp:4809
+#: core/document.cpp:4807
 #, kde-format
 msgid "Printing to file failed"
 msgstr "Tiskanje v datoteko je spodletelo"
 
-#: core/document.cpp:4811
+#: core/document.cpp:4809
 #, kde-format
 msgid "Printer was in invalid state"
 msgstr "Tiskalnik ni bil v veljavnem stanju"
 
-#: core/document.cpp:4813
+#: core/document.cpp:4811
 #, kde-format
 msgid "Unable to find file to print"
 msgstr "Ni bilo mogoče najti datoteke za tiskanje"
 
-#: core/document.cpp:4815
+#: core/document.cpp:4813
 #, kde-format
 msgid "There was no file to print"
 msgstr "Datoteka za tiskanje ne obstaja"
 
-#: core/document.cpp:4817
+#: core/document.cpp:4815
 #, kde-format
 msgid ""
 "Could not find a suitable binary for printing. Make sure CUPS lpr binary is "
@@ -384,92 +384,92 @@ msgstr ""
 "Ni bilo mogoče najti ustreznega programa za tiskanje. Prepričajte se, da je "
 "na voljo CUPS-ov program lpr"
 
-#: core/document.cpp:4819
+#: core/document.cpp:4817
 #, kde-format
 msgid "The page print size is invalid"
 msgstr "Velikost strani za tisk ni veljavna"
 
-#: core/document.cpp:5493 part/part.cpp:1167
+#: core/document.cpp:5473 part/part.cpp:1141
 #, kde-format
 msgid "Could not open '%1'. File does not exist"
 msgstr "Ni bilo mogoče odpreti »%1«. Datoteka ne obstaja"
 
-#: core/document.cpp:6002
+#: core/document.cpp:5982
 #, kde-format
 msgid "Title"
 msgstr "Naslov"
 
-#: core/document.cpp:6005
+#: core/document.cpp:5985
 #, kde-format
 msgid "Subject"
 msgstr "Zadeva"
 
-#: core/document.cpp:6008
+#: core/document.cpp:5988
 #, kde-format
 msgid "Description"
 msgstr "Opis"
 
-#: core/document.cpp:6011
+#: core/document.cpp:5991
 #, kde-format
 msgid "Author"
 msgstr "Avtor"
 
-#: core/document.cpp:6014
+#: core/document.cpp:5994
 #, kde-format
 msgid "Creator"
 msgstr "Ustvarjalec"
 
-#: core/document.cpp:6017
+#: core/document.cpp:5997
 #, kde-format
 msgid "Producer"
 msgstr "Izdelovalec"
 
-#: core/document.cpp:6020
+#: core/document.cpp:6000
 #, kde-format
 msgid "Copyright"
 msgstr "Avtorske pravice"
 
-#: core/document.cpp:6023
+#: core/document.cpp:6003
 #, kde-format
 msgid "Pages"
 msgstr "Strani"
 
-#: core/document.cpp:6026
+#: core/document.cpp:6006
 #, kde-format
 msgid "Created"
 msgstr "Ustvarjeno"
 
-#: core/document.cpp:6029
+#: core/document.cpp:6009
 #, kde-format
 msgid "Modified"
 msgstr "Spremenjeno"
 
-#: core/document.cpp:6032
+#: core/document.cpp:6012
 #, kde-format
 msgid "MIME Type"
 msgstr "Vrsta MIME"
 
-#: core/document.cpp:6035
+#: core/document.cpp:6015
 #, kde-format
 msgid "Category"
 msgstr "Kategorija"
 
-#: core/document.cpp:6038
+#: core/document.cpp:6018
 #, kde-format
 msgid "Keywords"
 msgstr "Ključne besede"
 
-#: core/document.cpp:6041
+#: core/document.cpp:6021
 #, kde-format
 msgid "File Path"
 msgstr "Pot do datoteke"
 
-#: core/document.cpp:6044
+#: core/document.cpp:6024
 #, kde-format
 msgid "File Size"
 msgstr "Velikost datoteke"
 
-#: core/document.cpp:6047
+#: core/document.cpp:6027
 #, kde-format
 msgid "Page Size"
 msgstr "Velikost strani"
@@ -587,12 +587,22 @@ msgstr "Način lestvice:"
 msgid "Do not show this message again"
 msgstr "Ne kaži tega sporočila več"
 
-#: core/signatureutils.cpp:19 part/signaturepropertiesdialog.cpp:34
+#: core/signatureutils.cpp:21 part/signaturepropertiesdialog.cpp:34
 #, kde-format
 msgid "Not Available"
 msgstr "Ni na voljo"
 
-#: core/signatureutils.cpp:496
+#: core/signatureutils.cpp:521
+#, kde-format
+msgctxt "signing error"
+msgid ""
+"Signing certificate not found. If you are using a smartcard, it might have "
+"been removed or the signature store changed"
+msgstr ""
+"Potrdila za podpisovanje ni bilo najdenega. Če uporabljate pametno kartico, "
+"je bila morda odstranjena ali pa je bilo spremenjeno skladišče podpisov"
+
+#: core/signatureutils.cpp:524
 #, kde-format
 msgctxt "%1 is a error code"
 msgid ""
@@ -602,23 +612,23 @@ msgstr ""
 "Notranja napaka pri podpisovanju. Prijavite napako s koraki za njeno "
 "reprodukcijo. Koda napake %1"
 
-#: core/signatureutils.cpp:498
+#: core/signatureutils.cpp:526
 #, kde-kuit-format
 msgctxt "%1 is a filename with path"
 msgid "Could not sign the document: <filename>%1</filename>"
 msgstr "Ni bilo mogoče podpisati dokumenta: <filename>%1</filename>"
 
-#: core/signatureutils.cpp:500
+#: core/signatureutils.cpp:528
 #, kde-format
 msgid "Signing cancelled by user"
 msgstr "Podpisovanje je preklical uporabnik"
 
-#: core/signatureutils.cpp:502
+#: core/signatureutils.cpp:530
 #, kde-format
-msgid "Could not sign. Wrong passphrase"
-msgstr "Ni bilo mogoče podpisati. Napačna geselna fraza"
+msgid "Signing failed: Wrong passphrase"
+msgstr "Neuspešno podpisovanje: Napačna geselna fraza"
 
-#: core/signatureutils.cpp:504
+#: core/signatureutils.cpp:532
 #, kde-kuit-format
 msgctxt "%1 is a filename with path"
 msgid ""
@@ -628,7 +638,15 @@ msgstr ""
 "Ni bilo mogoče zapisati podpisanega dokumenta v <filename>%1</filename>, "
 "zagotovite, da ste izbrali mapo z dovoljenjem za pisanje"
 
-#: core/signatureutils.cpp:506
+#: core/signatureutils.cpp:534
+#, kde-format
+msgctxt ""
+"Unlikely error; user can choose a signature/key-combo and everything "
+"possible should be valid combinations"
+msgid "Unsupported signature type for current certificate"
+msgstr "Nepodprta vrsta podpisa za trenutno potrdilo"
+
+#: core/signatureutils.cpp:536
 #, kde-format
 msgid "Unknown signing error"
 msgstr "Neznana napaka pri podpisovanju"
@@ -644,81 +662,87 @@ msgstr "Vir: %1"
 msgid "&Default Font:"
 msgstr "Privzeta pisava:"
 
-#: gui/certificatemodel.cpp:39
+#: gui/certificatemodel.cpp:51
 #, kde-format
 msgid "Version"
 msgstr "Verzija"
 
-#: gui/certificatemodel.cpp:41
+#: gui/certificatemodel.cpp:53
 #, kde-format
 msgid "Serial Number"
 msgstr "Serijska številka"
 
-#: gui/certificatemodel.cpp:43
+#: gui/certificatemodel.cpp:55
 #, kde-format
 msgid "Issuer"
 msgstr "Izdajatelj"
 
-#: gui/certificatemodel.cpp:45 part/certificateviewer.cpp:75
+#: gui/certificatemodel.cpp:57 part/certificateviewer.cpp:89
 #, kde-format
 msgid "Issued On"
 msgstr "Izdano"
 
-#: gui/certificatemodel.cpp:47 part/certificateviewer.cpp:76
+#: gui/certificatemodel.cpp:59 part/certificateviewer.cpp:90
 #, kde-format
 msgid "Expires On"
 msgstr "Poteče"
 
-#: gui/certificatemodel.cpp:49
+#: gui/certificatemodel.cpp:61
 #, kde-format
 msgctxt "The person/company that made the signature"
 msgid "Subject"
 msgstr "Zadeva"
 
-#: gui/certificatemodel.cpp:51
+#: gui/certificatemodel.cpp:61
+#, kde-format
+msgctxt "Name/email on key"
+msgid "User Id"
+msgstr "ID uporabnika"
+
+#: gui/certificatemodel.cpp:63
 #, kde-format
 msgid "Public Key"
 msgstr "Javni ključ"
 
-#: gui/certificatemodel.cpp:53
+#: gui/certificatemodel.cpp:65
 #, kde-format
 msgid "Key Usage"
 msgstr "Uporaba ključa"
 
-#: gui/certificatemodel.cpp:72
+#: gui/certificatemodel.cpp:84
 #, kde-format
 msgid "V%1"
 msgstr "V%1"
 
-#: gui/certificatemodel.cpp:84
+#: gui/certificatemodel.cpp:96
 #, kde-format
 msgid "%1 (%2 bits)"
 msgstr "%1 (%2 bitov)"
 
-#: gui/certificatemodel.cpp:146
+#: gui/certificatemodel.cpp:158
 #, kde-format
 msgid "Property"
 msgstr "Lastnina"
 
-#: gui/certificatemodel.cpp:148
+#: gui/certificatemodel.cpp:160
 #, kde-format
 msgid "Value"
 msgstr "Vrednost"
 
 #: gui/guiutils.cpp:39 part/editannottooldialog.cpp:88
-#: part/pageviewannotator.cpp:277 part/pageviewannotator.cpp:1488
+#: part/pageviewannotator.cpp:277 part/pageviewannotator.cpp:1484
 #, kde-format
 msgid "Pop-up Note"
 msgstr "Pojavna opomba"
 
 #: gui/guiutils.cpp:43 part/editannottooldialog.cpp:96
-#: part/pageviewannotator.cpp:264 part/pageviewannotator.cpp:1504
+#: part/pageviewannotator.cpp:264 part/pageviewannotator.cpp:1500
 #, kde-format
 msgid "Typewriter"
 msgstr "Pisalni stroj"
 
 #: gui/guiutils.cpp:46 part/editannottooldialog.cpp:89
-#: part/pageviewannotator.cpp:259 part/pageviewannotator.cpp:1486
+#: part/pageviewannotator.cpp:259 part/pageviewannotator.cpp:1482
 #, kde-format
 msgid "Inline Note"
 msgstr "Znotrajvrstična opomba"
@@ -740,7 +764,7 @@ msgid "Straight Line with Comment"
 msgstr "Ravna črta s komentarjem"
 
 #: gui/guiutils.cpp:59 part/editannottooldialog.cpp:91
-#: part/pageviewannotator.cpp:1498
+#: part/pageviewannotator.cpp:1494
 #, kde-format
 msgid "Straight Line"
 msgstr "Ravna črta"
@@ -751,7 +775,7 @@ msgid "Polygon with Comment"
 msgstr "Poligon s komentarjem"
 
 #: gui/guiutils.cpp:63 part/editannottooldialog.cpp:92
-#: part/pageviewannotator.cpp:1490
+#: part/pageviewannotator.cpp:1486
 #, kde-format
 msgid "Polygon"
 msgstr "Mnogokotnik"
@@ -762,7 +786,7 @@ msgid "Rectangle with Comment"
 msgstr "Pravokotnik s komentarjem"
 
 #: gui/guiutils.cpp:71 part/annotationwidgets.cpp:700
-#: part/pageviewannotator.cpp:1492
+#: part/pageviewannotator.cpp:1488
 #, kde-format
 msgid "Rectangle"
 msgstr "Pravokotnik"
@@ -773,7 +797,7 @@ msgid "Ellipse with Comment"
 msgstr "Elipsa s komentarjem"
 
 #: gui/guiutils.cpp:74 part/annotationwidgets.cpp:701
-#: part/pageviewannotator.cpp:1480
+#: part/pageviewannotator.cpp:1476
 #, kde-format
 msgid "Ellipse"
 msgstr "Elipsa"
@@ -794,7 +818,7 @@ msgid "Squiggle with Comment"
 msgstr "Vijuga s komentarjem"
 
 #: gui/guiutils.cpp:87 part/annotationwidgets.cpp:654
-#: part/pageviewannotator.cpp:1494
+#: part/pageviewannotator.cpp:1490
 #, kde-format
 msgid "Squiggle"
 msgstr "Zavito"
@@ -805,7 +829,7 @@ msgid "Underline with Comment"
 msgstr "Podčrtava s komentarjem"
 
 #: gui/guiutils.cpp:91 part/annotationwidgets.cpp:655
-#: part/pageviewannotator.cpp:1502
+#: part/pageviewannotator.cpp:1498
 #, kde-format
 msgid "Underline"
 msgstr "Podčrtano"
@@ -826,7 +850,7 @@ msgid "Stamp with Comment"
 msgstr "Žig s komentarjem"
 
 #: gui/guiutils.cpp:102 part/editannottooldialog.cpp:95
-#: part/pageviewannotator.cpp:1496
+#: part/pageviewannotator.cpp:1492
 #, kde-format
 msgid "Stamp"
 msgstr "Žig"
@@ -837,7 +861,7 @@ msgid "Freehand Line with Comment"
 msgstr "Prosto-ročna črta s komentarjem"
 
 #: gui/guiutils.cpp:106 part/editannottooldialog.cpp:90
-#: part/pageviewannotator.cpp:1484
+#: part/pageviewannotator.cpp:1480
 #, kde-format
 msgid "Freehand Line"
 msgstr "Prosto-ročna črta"
@@ -1114,25 +1138,25 @@ msgstr ""
 msgid "The document integrity verification could not be completed."
 msgstr "Preverjanja celovitosti dokumenta ni bilo mogoče zaključiti."
 
-#: gui/signatureguiutils.cpp:208
+#: gui/signatureguiutils.cpp:212
 #, kde-format
 msgctxt "Digital signature"
 msgid "This document has signature placeholder fields."
 msgstr "Ta dokument ima podpisna polja."
 
-#: gui/signatureguiutils.cpp:211
+#: gui/signatureguiutils.cpp:215
 #, kde-format
 msgid "This document is digitally signed."
 msgstr "Ta dokument je digitalno podpisan."
 
-#: gui/signatureguiutils.cpp:213
+#: gui/signatureguiutils.cpp:217
 #, kde-format
 msgid ""
 "This document is digitally signed. There have been changes since last signed."
 msgstr ""
 "Ta dokument je digitalno podpisan. Bile so spremembe po zadnjem podpisu."
 
-#: gui/signatureguiutils.cpp:216
+#: gui/signatureguiutils.cpp:220
 #, kde-format
 msgid ""
 "This document is digitally signed. Some of the signatures could not be "
@@ -1213,109 +1237,109 @@ msgstr "Polje podpisa"
 msgid "Signature Type: %1"
 msgstr "Vrsta podpisa: %1"
 
-#: part/annotationactionhandler.cpp:148
+#: part/annotationactionhandler.cpp:147
 #, kde-format
 msgctxt "@item:inlistbox Color name"
 msgid "Red"
 msgstr "Rdeča"
 
-#: part/annotationactionhandler.cpp:149
+#: part/annotationactionhandler.cpp:148
 #, kde-format
 msgctxt "@item:inlistbox Color name"
 msgid "Orange"
 msgstr "Oranžna"
 
-#: part/annotationactionhandler.cpp:150
+#: part/annotationactionhandler.cpp:149
 #, kde-format
 msgctxt "@item:inlistbox Color name"
 msgid "Yellow"
 msgstr "Rumena"
 
-#: part/annotationactionhandler.cpp:151
+#: part/annotationactionhandler.cpp:150
 #, kde-format
 msgctxt "@item:inlistbox Color name"
 msgid "Green"
 msgstr "Zelena"
 
-#: part/annotationactionhandler.cpp:152
+#: part/annotationactionhandler.cpp:151
 #, kde-format
 msgctxt "@item:inlistbox Color name"
 msgid "Cyan"
 msgstr "Cijan"
 
-#: part/annotationactionhandler.cpp:153
+#: part/annotationactionhandler.cpp:152
 #, kde-format
 msgctxt "@item:inlistbox Color name"
 msgid "Blue"
 msgstr "Modra"
 
-#: part/annotationactionhandler.cpp:154
+#: part/annotationactionhandler.cpp:153
 #, kde-format
 msgctxt "@item:inlistbox Color name"
 msgid "Magenta"
 msgstr "Magenta"
 
-#: part/annotationactionhandler.cpp:155
+#: part/annotationactionhandler.cpp:154
 #, kde-format
 msgctxt "@item:inlistbox Color name"
 msgid "White"
 msgstr "Bela"
 
-#: part/annotationactionhandler.cpp:156
+#: part/annotationactionhandler.cpp:155
 #, kde-format
 msgctxt "@item:inlistbox Color name"
 msgid "Gray"
 msgstr "Siva"
 
-#: part/annotationactionhandler.cpp:157
+#: part/annotationactionhandler.cpp:156
 #, kde-format
 msgctxt "@item:inlistbox Color name"
 msgid "Black"
 msgstr "Črna"
 
-#: part/annotationactionhandler.cpp:246 part/annotationactionhandler.cpp:687
+#: part/annotationactionhandler.cpp:245 part/annotationactionhandler.cpp:686
 #, kde-format
 msgctxt "@item:inlistbox"
 msgid "Width %1"
 msgstr "Širina %1"
 
-#: part/annotationactionhandler.cpp:252
+#: part/annotationactionhandler.cpp:251
 #, kde-format
 msgctxt "@item:inlistbox"
 msgid "%1%"
 msgstr "%1 %"
 
-#: part/annotationactionhandler.cpp:296
+#: part/annotationactionhandler.cpp:295
 #, kde-format
 msgctxt "@info:tooltip"
 msgid "Annotation line width (No annotation selected)"
 msgstr "Širina vrstice zabeležk (ni izbranih zabeležk)"
 
-#: part/annotationactionhandler.cpp:297
+#: part/annotationactionhandler.cpp:296
 #, kde-format
 msgctxt "@info:tooltip"
 msgid "Annotation color (No annotation selected)"
 msgstr "Barva zabeležk (Nobena ni izbrana)"
 
-#: part/annotationactionhandler.cpp:298
+#: part/annotationactionhandler.cpp:297
 #, kde-format
 msgctxt "@info:tooltip"
 msgid "Annotation fill color (No annotation selected)"
 msgstr "Barva polnila zabeležk (Nobena ni izbrana)"
 
-#: part/annotationactionhandler.cpp:299
+#: part/annotationactionhandler.cpp:298
 #, kde-format
 msgctxt "@info:tooltip"
 msgid "Annotation opacity (No annotation selected)"
 msgstr "Neprosojnost zabeležk (Nobena ni izbrana)"
 
-#: part/annotationactionhandler.cpp:300
+#: part/annotationactionhandler.cpp:299
 #, kde-format
 msgctxt "@info:tooltip"
 msgid "Annotation font (No annotation selected)"
 msgstr "Pisava zabeležk (Nobena ni izbrana)"
 
-#: part/annotationactionhandler.cpp:301
+#: part/annotationactionhandler.cpp:300
 #, kde-format
 msgctxt "@info:tooltip"
 msgid ""
@@ -1325,7 +1349,7 @@ msgstr ""
 "Dodaj trenutno zabeležko v meni za hitre zabeležk (Nobena zabeležka ni "
 "izbrana)"
 
-#: part/annotationactionhandler.cpp:302
+#: part/annotationactionhandler.cpp:301
 #, kde-format
 msgctxt "@info:tooltip"
 msgid ""
@@ -1335,80 +1359,80 @@ msgstr ""
 "Omeji razmerje proporcev na 1:1 ali na kote v korakih po 15° (Nobena "
 "pripomba ni izbrana)"
 
-#: part/annotationactionhandler.cpp:303
+#: part/annotationactionhandler.cpp:302
 #, kde-format
 msgctxt "@info:tooltip"
 msgid ""
 "Advanced settings for the current annotation tool (No annotation selected)"
 msgstr "Napredne nastavitve za trenutno orodje zabeležk (Ni izbrane zabeležke)"
 
-#: part/annotationactionhandler.cpp:308
+#: part/annotationactionhandler.cpp:307
 #, kde-format
 msgctxt "@info:tooltip"
 msgid "Annotation line width"
 msgstr "Širina vrstice zabeležke"
 
-#: part/annotationactionhandler.cpp:310
+#: part/annotationactionhandler.cpp:309
 #, kde-format
 msgctxt "@info:tooltip"
 msgid "Annotation line width (Current annotation has no line width)"
 msgstr "Širina vrstice zabeležke (Trenutna zabeležka nima širine)"
 
-#: part/annotationactionhandler.cpp:314
+#: part/annotationactionhandler.cpp:313
 #, kde-format
 msgctxt "@info:tooltip"
 msgid "Annotation text color"
 msgstr "Barva besedila zabeležke"
 
-#: part/annotationactionhandler.cpp:316
+#: part/annotationactionhandler.cpp:315
 #, kde-format
 msgctxt "@info:tooltip"
 msgid "Annotation border color"
 msgstr "Barva obrobe zabeležke"
 
-#: part/annotationactionhandler.cpp:318
+#: part/annotationactionhandler.cpp:317
 #, kde-format
 msgctxt "@info:tooltip"
 msgid "Annotation color"
 msgstr "Barva zabeležke"
 
-#: part/annotationactionhandler.cpp:322
+#: part/annotationactionhandler.cpp:321
 #, kde-format
 msgctxt "@info:tooltip"
 msgid "Annotation fill color"
 msgstr "Barva polnila zabeležke"
 
-#: part/annotationactionhandler.cpp:324
+#: part/annotationactionhandler.cpp:323
 #, kde-format
 msgctxt "@info:tooltip"
 msgid "Annotation fill color (Current annotation has no fill color)"
 msgstr "Barva polnila zabeležk (Trenutna zabeležka nima barve polnila)"
 
-#: part/annotationactionhandler.cpp:328
+#: part/annotationactionhandler.cpp:327
 #, kde-format
 msgctxt "@info:tooltip"
 msgid "Annotation font"
 msgstr "Pisava zabeležke"
 
-#: part/annotationactionhandler.cpp:330
+#: part/annotationactionhandler.cpp:329
 #, kde-format
 msgctxt "@info:tooltip"
 msgid "Annotation font (Current annotation has no font)"
 msgstr "Pisava zabeležk (Trenutna zabeležka nima pisave)"
 
-#: part/annotationactionhandler.cpp:334
+#: part/annotationactionhandler.cpp:333
 #, kde-format
 msgctxt "@info:tooltip"
 msgid "Constrain line angle to 15° steps"
 msgstr "Omejite kote v korakih po 15°"
 
-#: part/annotationactionhandler.cpp:336
+#: part/annotationactionhandler.cpp:335
 #, kde-format
 msgctxt "@info:tooltip"
 msgid "Constrain shape ratio to 1:1"
 msgstr "Omejitev oblike v razmerju 1:1"
 
-#: part/annotationactionhandler.cpp:338
+#: part/annotationactionhandler.cpp:337
 #, kde-format
 msgctxt "@info:tooltip"
 msgid ""
@@ -1418,186 +1442,186 @@ msgstr ""
 "Omeji razmerje proporcev na 1:1 ali na kote v korakih po 15° (ni podprto v "
 "trenutnem obvestilu)"
 
-#: part/annotationactionhandler.cpp:341
+#: part/annotationactionhandler.cpp:340
 #, kde-format
 msgctxt "@info:tooltip"
 msgid "Annotation opacity"
 msgstr "Neprosojnost zabeležke"
 
-#: part/annotationactionhandler.cpp:342
+#: part/annotationactionhandler.cpp:341
 #, kde-format
 msgctxt "@info:tooltip"
 msgid "Add the current annotation to the quick annotations menu"
 msgstr "V meni za hitre zabeležke dodajte trenutno zabeležko"
 
-#: part/annotationactionhandler.cpp:343
+#: part/annotationactionhandler.cpp:342
 #, kde-format
 msgctxt "@info:tooltip"
 msgid "Advanced settings for the current annotation tool"
 msgstr "Napredne nastavitve za trenutno orodje zabeležk"
 
-#: part/annotationactionhandler.cpp:432
+#: part/annotationactionhandler.cpp:431
 #, kde-format
 msgctxt "@action:intoolbar Current annotation config option"
 msgid "Color"
 msgstr "Barva"
 
-#: part/annotationactionhandler.cpp:434
+#: part/annotationactionhandler.cpp:433
 #, kde-format
 msgctxt "@action:intoolbar Current annotation config option"
 msgid "Fill Color"
 msgstr "Barva polnila"
 
-#: part/annotationactionhandler.cpp:435
+#: part/annotationactionhandler.cpp:434
 #, kde-format
 msgctxt "@item:inlistbox Color name"
 msgid "Transparent"
 msgstr "Prosojno"
 
-#: part/annotationactionhandler.cpp:445
+#: part/annotationactionhandler.cpp:444
 #, kde-format
 msgctxt "@item:inlistbox"
 msgid "Custom Color…"
 msgstr "Barva po meri…"
 
-#: part/annotationactionhandler.cpp:499
+#: part/annotationactionhandler.cpp:498
 #, kde-format
 msgctxt "@title:window"
 msgid "Select color"
 msgstr "Izberi barvo"
 
-#: part/annotationactionhandler.cpp:552
+#: part/annotationactionhandler.cpp:551
 #, kde-format
 msgid "&Annotations"
 msgstr "Zabeležke"
 
-#: part/annotationactionhandler.cpp:553
+#: part/annotationactionhandler.cpp:552
 #, kde-format
 msgctxt "@action:intoolbar Hide the toolbar"
 msgid "Hide"
 msgstr "Skrij"
 
-#: part/annotationactionhandler.cpp:554
+#: part/annotationactionhandler.cpp:553
 #, kde-format
 msgctxt "@action:intoolbar Show the builtin annotation toolbar"
 msgid "Show more annotation tools"
 msgstr "Prikaži več orodij za ustvarjanje zabeležk"
 
-#: part/annotationactionhandler.cpp:557
+#: part/annotationactionhandler.cpp:556
 #, kde-format
 msgctxt "@action:intoolbar Annotation tool"
 msgid "Highlighter"
 msgstr "Poudarjalnik"
 
-#: part/annotationactionhandler.cpp:558
+#: part/annotationactionhandler.cpp:557
 #, kde-format
 msgctxt "@action:intoolbar Annotation tool"
 msgid "Underline"
 msgstr "Podčrtano"
 
-#: part/annotationactionhandler.cpp:559
+#: part/annotationactionhandler.cpp:558
 #, kde-format
 msgctxt "@action:intoolbar Annotation tool"
 msgid "Squiggle"
 msgstr "Zavito"
 
-#: part/annotationactionhandler.cpp:560
+#: part/annotationactionhandler.cpp:559
 #, kde-format
 msgctxt "@action:intoolbar Annotation tool"
 msgid "Strike Out"
 msgstr "Prečrtano"
 
-#: part/annotationactionhandler.cpp:562
+#: part/annotationactionhandler.cpp:561
 #, kde-format
 msgctxt "@action:intoolbar Annotation tool"
 msgid "Typewriter"
 msgstr "Pisalni stroj"
 
-#: part/annotationactionhandler.cpp:563
+#: part/annotationactionhandler.cpp:562
 #, kde-format
 msgctxt "@action:intoolbar Annotation tool"
 msgid "Inline Note"
 msgstr "Znotrajvrstična opomba"
 
-#: part/annotationactionhandler.cpp:564
+#: part/annotationactionhandler.cpp:563
 #, kde-format
 msgctxt "@action:intoolbar Annotation tool"
 msgid "Popup Note"
 msgstr "Pojavna opomba"
 
-#: part/annotationactionhandler.cpp:565
+#: part/annotationactionhandler.cpp:564
 #, kde-format
 msgctxt "@action:intoolbar Annotation tool"
 msgid "Freehand Line"
 msgstr "Prosto-ročna črta"
 
-#: part/annotationactionhandler.cpp:567
+#: part/annotationactionhandler.cpp:566
 #, kde-format
 msgctxt "@action:intoolbar Annotation tool"
 msgid "Straight line"
 msgstr "Ravna črta"
 
-#: part/annotationactionhandler.cpp:568
+#: part/annotationactionhandler.cpp:567
 #, kde-format
 msgctxt "@action:intoolbar Annotation tool"
 msgid "Arrow"
 msgstr "Puščica"
 
-#: part/annotationactionhandler.cpp:569
+#: part/annotationactionhandler.cpp:568
 #, kde-format
 msgctxt "@action:intoolbar Annotation tool"
 msgid "Rectangle"
 msgstr "Pravokotnik"
 
-#: part/annotationactionhandler.cpp:570
+#: part/annotationactionhandler.cpp:569
 #, kde-format
 msgctxt "@action:intoolbar Annotation tool"
 msgid "Ellipse"
 msgstr "Elipsa"
 
-#: part/annotationactionhandler.cpp:571
+#: part/annotationactionhandler.cpp:570
 #, kde-format
 msgctxt "@action:intoolbar Annotation tool"
 msgid "Polygon"
 msgstr "Mnogokotnik"
 
-#: part/annotationactionhandler.cpp:572
+#: part/annotationactionhandler.cpp:571
 #, kde-format
 msgctxt "@action"
 msgid "Geometrical shapes"
 msgstr "Geometrijske oblike"
 
-#: part/annotationactionhandler.cpp:618
+#: part/annotationactionhandler.cpp:617
 #, kde-format
 msgctxt "@action"
 msgid "Stamp"
 msgstr "Žig"
 
-#: part/annotationactionhandler.cpp:638
+#: part/annotationactionhandler.cpp:637
 #, kde-format
 msgctxt "@action:intoolbar Show list of quick annotation tools"
 msgid "Quick Annotations"
 msgstr "Hitre zabeležke"
 
-#: part/annotationactionhandler.cpp:641
+#: part/annotationactionhandler.cpp:640
 #, kde-format
 msgctxt "@info:tooltip"
 msgid "Choose an annotation tool from the quick annotations"
 msgstr "Izberite orodje za pripombe iz hitrih pripomb"
 
-#: part/annotationactionhandler.cpp:651
+#: part/annotationactionhandler.cpp:650
 #, kde-format
 msgid "Quick Annotation Bar"
 msgstr "Vrstica hitrih zabeležk"
 
-#: part/annotationactionhandler.cpp:665
+#: part/annotationactionhandler.cpp:664
 #, kde-format
 msgctxt ""
 "@action:intoolbar Add current annotation tool to the quick annotations list"
 msgid "Add to Quick Annotations"
 msgstr "Dodaj med hitre zabeležke"
 
-#: part/annotationactionhandler.cpp:668
+#: part/annotationactionhandler.cpp:667
 #, kde-format
 msgctxt ""
 "@action:intoolbar When checked keep the current annotation tool active after "
@@ -1605,13 +1629,13 @@ msgctxt ""
 msgid "Keep Active"
 msgstr "Vzdržuj aktivno"
 
-#: part/annotationactionhandler.cpp:669
+#: part/annotationactionhandler.cpp:668
 #, kde-format
 msgctxt "@info:tooltip"
 msgid "Keep the annotation tool active after use"
 msgstr "Ohranjaj aktivno orodje za zabeležke tudi po uporabi"
 
-#: part/annotationactionhandler.cpp:674
+#: part/annotationactionhandler.cpp:673
 #, kde-format
 msgctxt ""
 "@action When checked, line annotations are constrained to 15° steps, shape "
@@ -1619,31 +1643,31 @@ msgctxt ""
 msgid "Constrain Ratio and Angle of Annotation Tools"
 msgstr "Omeji razmerja proporcev in kote orodij za pripombe"
 
-#: part/annotationactionhandler.cpp:680
+#: part/annotationactionhandler.cpp:679
 #, kde-format
 msgctxt "@action:intoolbar Current annotation config option"
 msgid "Font"
 msgstr "Pisava"
 
-#: part/annotationactionhandler.cpp:681
+#: part/annotationactionhandler.cpp:680
 #, kde-format
 msgctxt "@action:intoolbar Current annotation advanced settings"
 msgid "Annotation Settings"
 msgstr "Nastavitve zabeležk"
 
-#: part/annotationactionhandler.cpp:684
+#: part/annotationactionhandler.cpp:683
 #, kde-format
 msgctxt "@action:intoolbar Current annotation config option"
 msgid "Line width"
 msgstr "Širina vrste"
 
-#: part/annotationactionhandler.cpp:693
+#: part/annotationactionhandler.cpp:692
 #, kde-format
 msgctxt "@action:intoolbar Current annotation config option"
 msgid "Opacity"
 msgstr "Neprosojnost"
 
-#: part/annotationactionhandler.cpp:696
+#: part/annotationactionhandler.cpp:695
 #, kde-format
 msgctxt ""
 "@item:inlistbox Annotation opacity percentage level, make sure to include %1 "
@@ -1678,7 +1702,7 @@ msgid "&Open Pop-up Note"
 msgstr "&Odpri pojavno opombo"
 
 #: part/annotationpopup.cpp:137 part/annotationpopup.cpp:206
-#: part/bookmarklist.cpp:265 part/part.cpp:2299 part/part.cpp:3212
+#: part/bookmarklist.cpp:263 part/part.cpp:2287 part/part.cpp:3212
 #, kde-format
 msgid "Remove Bookmark"
 msgstr "Odstrani zaznamek"
@@ -1690,6 +1714,7 @@ msgstr "Dodaj zaznamek"
 
 #: part/annotationpopup.cpp:146 part/annotationpopup.cpp:213
 #, kde-format
+msgctxt "@action"
 msgid "Copy"
 msgstr "Kopiraj"
 
@@ -1704,8 +1729,8 @@ msgid "Copy Text to Clipboard"
 msgstr "Kopiraj besedilo na odložišče"
 
 #: part/annotationpopup.cpp:159 part/annotationpopup.cpp:226
-#: part/pageview.cpp:2599 part/pageview.cpp:2951 part/pageview.cpp:2953
-#: part/pageview.cpp:3113 part/pageview.cpp:3174 part/pageview.cpp:3176
+#: part/pageview.cpp:2589 part/pageview.cpp:2941 part/pageview.cpp:2943
+#: part/pageview.cpp:3103 part/pageview.cpp:3164 part/pageview.cpp:3166
 #, kde-format
 msgid "Copy forbidden by DRM"
 msgstr "DRM prepoveduje kopiranje"
@@ -1715,7 +1740,7 @@ msgstr "DRM prepoveduje kopiranje"
 msgid "&Delete"
 msgstr "Izbriši"
 
-#: part/annotationpopup.cpp:178 part/annotationpopup.cpp:235 part/part.cpp:779
+#: part/annotationpopup.cpp:178 part/annotationpopup.cpp:235 part/part.cpp:750
 #: part/propertiesdialog.cpp:54
 #, kde-format
 msgid "&Properties"
@@ -2133,7 +2158,7 @@ msgstr "Polnilo lika:"
 msgid "Type:"
 msgstr "Vrsta:"
 
-#: part/annotationwidgets.cpp:656 part/pageviewannotator.cpp:1500
+#: part/annotationwidgets.cpp:656 part/pageviewannotator.cpp:1496
 #, kde-format
 msgid "Strike out"
 msgstr "Prečrtano"
@@ -2173,7 +2198,7 @@ msgctxt "'File' as normal file, that can be opened, saved, etc.."
 msgid "File"
 msgstr "Datoteka"
 
-#: part/annotationwidgets.cpp:764 part/embeddedfilesdialog.cpp:95
+#: part/annotationwidgets.cpp:764 part/embeddedfilesdialog.cpp:94
 #, kde-format
 msgctxt "Not available size"
 msgid "N/A"
@@ -2211,17 +2236,17 @@ msgctxt "Symbol for caret annotations"
 msgid "P"
 msgstr "P"
 
-#: part/annotwindow.cpp:59
+#: part/annotwindow.cpp:58
 #, kde-format
 msgid "Close this note"
 msgstr "Zapri to opombo"
 
-#: part/annotwindow.cpp:139 part/findbar.cpp:63
+#: part/annotwindow.cpp:138 part/findbar.cpp:63
 #, kde-format
 msgid "Options"
 msgstr "Možnosti"
 
-#: part/annotwindow.cpp:150
+#: part/annotwindow.cpp:149
 #, kde-format
 msgid ""
 "This annotation may contain LaTeX code.\n"
@@ -2230,43 +2255,43 @@ msgstr ""
 "Ta zabeležka morda vsebuje kodo LaTeX.\n"
 "Kliknite semkaj za izris."
 
-#: part/annotwindow.cpp:231 part/annotwindow.cpp:253
+#: part/annotwindow.cpp:250 part/annotwindow.cpp:272
 #, kde-format
 msgid "Unknown author"
 msgstr "Neznani avtor"
 
-#: part/annotwindow.cpp:234 part/annotwindow.cpp:256
+#: part/annotwindow.cpp:253 part/annotwindow.cpp:275
 #, kde-format
 msgid "No date recognized"
 msgstr "Ni razpoznanega datuma"
 
-#: part/annotwindow.cpp:583
+#: part/annotwindow.cpp:562
 #, kde-format
 msgid "Cannot find latex executable."
 msgstr "Izvedljive datoteke latex ni bilo mogoče najti."
 
-#: part/annotwindow.cpp:583 part/annotwindow.cpp:588 part/annotwindow.cpp:593
-#: part/annotwindow.cpp:598
+#: part/annotwindow.cpp:562 part/annotwindow.cpp:567 part/annotwindow.cpp:572
+#: part/annotwindow.cpp:577
 #, kde-format
 msgid "LaTeX rendering failed"
 msgstr "Izrisovanje LaTeX je spodletelo"
 
-#: part/annotwindow.cpp:588
+#: part/annotwindow.cpp:567
 #, kde-format
 msgid "Cannot find dvipng executable."
 msgstr "Ni bilo mogoče najti izvedljive datoteke dvipng."
 
-#: part/annotwindow.cpp:593
+#: part/annotwindow.cpp:572
 #, kde-format
 msgid "A problem occurred during the execution of the 'latex' command."
 msgstr "Med izvajanjem ukaza »latex« je prišlo do napake."
 
-#: part/annotwindow.cpp:598
+#: part/annotwindow.cpp:577
 #, kde-format
 msgid "A problem occurred during the execution of the 'dvipng' command."
 msgstr "Med izvajanjem ukaza »dviping« je prišlo do napake."
 
-#: part/bookmarklist.cpp:116
+#: part/bookmarklist.cpp:114
 #, kde-format
 msgctxt "%1 is the file name"
 msgid ""
@@ -2294,50 +2319,50 @@ msgstr[3] ""
 "\n"
 "%2 zaznamki"
 
-#: part/bookmarklist.cpp:132 part/part.cpp:417
+#: part/bookmarklist.cpp:130 part/part.cpp:416
 #, kde-format
 msgid "Bookmarks"
 msgstr "Zaznamki"
 
-#: part/bookmarklist.cpp:136
+#: part/bookmarklist.cpp:134
 #, kde-format
 msgid "Show for all documents"
 msgstr "Pokaži za vse dokumente"
 
-#: part/bookmarklist.cpp:143 part/searchwidget.cpp:38 part/side_reviews.cpp:129
-#: part/toc.cpp:43
+#: part/bookmarklist.cpp:141 part/searchwidget.cpp:38 part/side_reviews.cpp:127
+#: part/toc.cpp:41
 #, kde-format
 msgid "Search…"
 msgstr "Išči…"
 
-#: part/bookmarklist.cpp:261 part/bookmarklist.cpp:295 part/part.cpp:3194
+#: part/bookmarklist.cpp:259 part/bookmarklist.cpp:293 part/part.cpp:3194
 #, kde-format
 msgid "Expand All"
 msgstr "Razširi vse"
 
-#: part/bookmarklist.cpp:262 part/bookmarklist.cpp:296 part/part.cpp:3195
+#: part/bookmarklist.cpp:260 part/bookmarklist.cpp:294 part/part.cpp:3195
 #, kde-format
 msgid "Collapse All"
 msgstr "Skrči vse"
 
-#: part/bookmarklist.cpp:263
+#: part/bookmarklist.cpp:261
 #, kde-format
 msgid "Go to This Bookmark"
 msgstr "Pojdi do tega zaznamka"
 
-#: part/bookmarklist.cpp:264 part/bookmarklist.cpp:301 part/part.cpp:710
-#: part/part.cpp:2494
+#: part/bookmarklist.cpp:262 part/bookmarklist.cpp:299 part/part.cpp:692
+#: part/part.cpp:2482
 #, kde-format
 msgid "Rename Bookmark"
 msgstr "Preimenuj zaznamek"
 
-#: part/bookmarklist.cpp:299
+#: part/bookmarklist.cpp:297
 #, kde-format
 msgctxt "Opens the selected document"
 msgid "Open Document"
 msgstr "Odpri dokument"
 
-#: part/bookmarklist.cpp:302
+#: part/bookmarklist.cpp:300
 #, kde-format
 msgid "Remove all Bookmarks for this Document"
 msgstr "Odstrani vse zaznamke za ta dokument"
@@ -2357,143 +2382,165 @@ msgstr "Izvozi…"
 msgid "General"
 msgstr "Splošno"
 
-#: part/certificateviewer.cpp:58
+#: part/certificateviewer.cpp:63
 #, kde-format
 msgid "Issued By"
 msgstr "Izdajatelj"
 
-#: part/certificateviewer.cpp:61 part/certificateviewer.cpp:68
+#: part/certificateviewer.cpp:66 part/certificateviewer.cpp:76
 #, kde-format
 msgid "Common Name(CN)"
 msgstr "Splošno ime (CN)"
 
-#: part/certificateviewer.cpp:62 part/certificateviewer.cpp:69
+#: part/certificateviewer.cpp:67 part/certificateviewer.cpp:78
 #, kde-format
 msgid "EMail"
 msgstr "E-pošta"
 
-#: part/certificateviewer.cpp:63 part/certificateviewer.cpp:70
+#: part/certificateviewer.cpp:68 part/certificateviewer.cpp:81
 #, kde-format
 msgid "Organization(O)"
 msgstr "Organizacija"
 
-#: part/certificateviewer.cpp:65
+#: part/certificateviewer.cpp:73
 #, kde-format
 msgid "Issued To"
 msgstr "Izdano za"
 
-#: part/certificateviewer.cpp:72
+#: part/certificateviewer.cpp:76 part/propertiesdialog.cpp:424
+#, kde-format
+msgid "Name"
+msgstr "Ime"
+
+#: part/certificateviewer.cpp:86
 #, kde-format
 msgid "Validity"
 msgstr "Veljavnost"
 
-#: part/certificateviewer.cpp:78
+#: part/certificateviewer.cpp:90
+#, kde-format
+msgctxt "certificate that never expires"
+msgid "Never"
+msgstr "Nikoli"
+
+#: part/certificateviewer.cpp:94
 #, kde-format
 msgid "Fingerprints"
 msgstr "Prstni odtis"
 
-#: part/certificateviewer.cpp:87
+#: part/certificateviewer.cpp:104
 #, kde-format
 msgid "SHA-1 Fingerprint"
 msgstr "Prstni odtis SHA-1"
 
-#: part/certificateviewer.cpp:88
+#: part/certificateviewer.cpp:105
 #, kde-format
 msgid "SHA-256 Fingerprint"
 msgstr "Prstni odtis SHA-256"
 
-#: part/certificateviewer.cpp:106
+#: part/certificateviewer.cpp:107
+#, kde-format
+msgctxt "certificate key"
+msgid "Fingerprint"
+msgstr "Prstni odtis"
+
+#: part/certificateviewer.cpp:116
 #, kde-format
 msgid "Details"
 msgstr "Podrobnosti"
 
-#: part/certificateviewer.cpp:107
+#: part/certificateviewer.cpp:117
 #, kde-format
 msgid "Certificate Data:"
 msgstr "Datum potrdila:"
 
-#: part/certificateviewer.cpp:159
+#: part/certificateviewer.cpp:178
 #, kde-format
 msgid "Where do you want to save this certificate?"
 msgstr "Kam želite shraniti to potrdilo?"
 
-#: part/certificateviewer.cpp:160
+#: part/certificateviewer.cpp:182
+#, kde-format
+msgid "Certificate File (*.asc)"
+msgstr "Datoteka potrdila (*.asc)"
+
+#: part/certificateviewer.cpp:185
 #, kde-format
 msgid "Certificate File (*.cer)"
 msgstr "Datoteka potrdila (*.cer)"
 
-#: part/certificateviewer.cpp:163
+#: part/certificateviewer.cpp:191
 #, kde-format
 msgid "Could not export the certificate"
 msgstr "Ni bilo mogoče izvoziti potrdila"
 
-#: part/colormodemenu.cpp:19
+#: part/colormodemenu.cpp:18
 #, kde-format
 msgctxt "@title:menu"
 msgid "&Color Mode"
 msgstr "Barvni način"
 
-#: part/colormodemenu.cpp:21
+#: part/colormodemenu.cpp:20
 #, kde-format
 msgctxt "@action Change Colors feature toggle action"
 msgid "Change Colors"
 msgstr "Zamenjaj barve"
 
-#: part/colormodemenu.cpp:29
+#: part/colormodemenu.cpp:28
 #, kde-format
 msgctxt "@item:inmenu color mode"
 msgid "&Normal Colors"
 msgstr "Normalne barve"
 
-#: part/colormodemenu.cpp:42
+#: part/colormodemenu.cpp:41
 #, kde-format
 msgctxt "@item:inmenu color mode"
 msgid "&Invert Colors"
 msgstr "Obrni barve"
 
-#: part/colormodemenu.cpp:43
+#: part/colormodemenu.cpp:42
 #, kde-format
 msgctxt "@item:inmenu color mode"
 msgid "Change &Paper Color"
 msgstr "Zamenjaj barvo papirja"
 
-#: part/colormodemenu.cpp:45
+#: part/colormodemenu.cpp:44
 #, kde-format
 msgctxt "@item:inmenu color mode"
 msgid "Change &Dark && Light Colors"
 msgstr "Zamenjaj temne za svetle barve"
 
-#: part/colormodemenu.cpp:47
+#: part/colormodemenu.cpp:46
 #, kde-format
 msgctxt "@item:inmenu color mode"
 msgid "Convert to &Black && White"
 msgstr "Pretvori v črno-belo"
 
-#: part/colormodemenu.cpp:50
+#: part/colormodemenu.cpp:49
 #, kde-format
 msgctxt "@item:inmenu color mode"
 msgid "Invert &Lightness"
 msgstr "Obrni svetlost"
 
-#: part/colormodemenu.cpp:53
+#: part/colormodemenu.cpp:52
 #, kde-format
 msgctxt "@item:inmenu color mode"
 msgid "Invert L&uma (sRGB Linear)"
 msgstr "Obrni lumo (linearni sRGB)"
 
-#: part/colormodemenu.cpp:56
+#: part/colormodemenu.cpp:55
 #, kde-format
 msgctxt "@item:inmenu color mode"
 msgid "Invert Luma (&Symmetric)"
 msgstr "Obrni lumo (simetrično)"
 
-#: part/colormodemenu.cpp:59
+#: part/colormodemenu.cpp:58
 #, kde-format
 msgctxt "@item:inmenu color mode"
 msgid "Shift Hue P&ositive"
 msgstr "Pomakni pozitivni odtenek"
 
-#: part/colormodemenu.cpp:62
+#: part/colormodemenu.cpp:61
 #, kde-format
 msgctxt "@item:inmenu color mode"
 msgid "Shift Hue N&egative"
@@ -3468,73 +3515,73 @@ msgstr "Ustvari orodje za risanje"
 msgid "Edit drawing tool"
 msgstr "Uredi orodje za risanje"
 
-#: part/embeddedfilesdialog.cpp:42
+#: part/embeddedfilesdialog.cpp:41
 #, kde-format
 msgctxt "Unknown date"
 msgid "Unknown"
 msgstr "Neznano"
 
-#: part/embeddedfilesdialog.cpp:48
+#: part/embeddedfilesdialog.cpp:47
 #, kde-format
 msgctxt "@title:window"
 msgid "Embedded Files"
 msgstr "Vgrajene datoteke"
 
-#: part/embeddedfilesdialog.cpp:62
+#: part/embeddedfilesdialog.cpp:61
 #, kde-format
 msgctxt "@action:button"
 msgid "View"
 msgstr "Pogled"
 
-#: part/embeddedfilesdialog.cpp:67
+#: part/embeddedfilesdialog.cpp:66
 #, kde-format
 msgctxt "@action:button"
 msgid "Open"
 msgstr "Odpri"
 
-#: part/embeddedfilesdialog.cpp:75
+#: part/embeddedfilesdialog.cpp:74
 #, kde-format
 msgctxt "@title:column"
 msgid "Name"
 msgstr "Ime"
 
-#: part/embeddedfilesdialog.cpp:76
+#: part/embeddedfilesdialog.cpp:75
 #, kde-format
 msgctxt "@title:column"
 msgid "Description"
 msgstr "Opis"
 
-#: part/embeddedfilesdialog.cpp:77
+#: part/embeddedfilesdialog.cpp:76
 #, kde-format
 msgctxt "@title:column"
 msgid "Size"
 msgstr "Velikost"
 
-#: part/embeddedfilesdialog.cpp:78
+#: part/embeddedfilesdialog.cpp:77
 #, kde-format
 msgctxt "@title:column"
 msgid "Created"
 msgstr "Ustvarjena"
 
-#: part/embeddedfilesdialog.cpp:79
+#: part/embeddedfilesdialog.cpp:78
 #, kde-format
 msgctxt "@title:column"
 msgid "Modified"
 msgstr "Spremenjena"
 
-#: part/embeddedfilesdialog.cpp:170
+#: part/embeddedfilesdialog.cpp:169
 #, kde-format
 msgctxt "@action:inmenu"
 msgid "&Save As…"
 msgstr "%Shrani kot…"
 
-#: part/embeddedfilesdialog.cpp:171
+#: part/embeddedfilesdialog.cpp:170
 #, kde-format
 msgctxt "@action:inmenu"
 msgid "&View…"
 msgstr "Pogled…"
 
-#: part/embeddedfilesdialog.cpp:172
+#: part/embeddedfilesdialog.cpp:171
 #, kde-format
 msgctxt "@action:inmenu"
 msgid "&Open…"
@@ -3608,23 +3655,23 @@ msgstr "Od trenutne strani"
 msgid "Find as you type"
 msgstr "Iskanje med tipkanjem"
 
-#: part/formwidgets.cpp:870
+#: part/formwidgets.cpp:873
 #, kde-format
 msgid "All Files (*)"
 msgstr "Vse datoteke (*)"
 
-#: part/formwidgets.cpp:1280
+#: part/formwidgets.cpp:1283
 #, kde-format
 msgctxt "Digital signature"
 msgid "Signature placeholder (Click to Sign)"
 msgstr "Polje podpisa (Kliknite za podpis)"
 
-#: part/formwidgets.cpp:1346 part/signaturepanel.cpp:97
+#: part/formwidgets.cpp:1349 part/signaturepanel.cpp:97
 #, kde-format
 msgid "&Sign…"
 msgstr "Podpiši…"
 
-#: part/formwidgets.cpp:1350 part/signaturepropertiesdialog.cpp:43
+#: part/formwidgets.cpp:1353 part/signaturepropertiesdialog.cpp:43
 #, kde-format
 msgid "Signature Properties"
 msgstr "Lastnosti podpisa"
@@ -3646,221 +3693,221 @@ msgctxt "Enable regular expression search in the side navigation panels"
 msgid "Regular Expression"
 msgstr "Regularni izraz"
 
-#: part/layers.cpp:35 part/part.cpp:2342
+#: part/layers.cpp:33 part/part.cpp:2330
 #, kde-format
 msgid "Layers"
 msgstr "Plasti"
 
-#: part/minibar.cpp:190
+#: part/minibar.cpp:192
 #, kde-format
 msgctxt "Layouted like: '5 [pages] of 10'"
 msgid "of"
 msgstr "od"
 
-#: part/pageview.cpp:541
+#: part/pageview.cpp:534
 #, kde-format
 msgid "Zoom"
 msgstr "Približanje"
 
-#: part/pageview.cpp:553
+#: part/pageview.cpp:546
 #, kde-format
 msgid "Zoom to 100%"
 msgstr "Približanje na 100 %"
 
-#: part/pageview.cpp:564
+#: part/pageview.cpp:557
 #, kde-format
 msgid "Rotate &Right"
 msgstr "Zavrti v desno"
 
-#: part/pageview.cpp:565
+#: part/pageview.cpp:558
 #, kde-format
 msgctxt "Rotate right"
 msgid "Right"
 msgstr "Desno"
 
-#: part/pageview.cpp:569
+#: part/pageview.cpp:562
 #, kde-format
 msgid "Rotate &Left"
 msgstr "Zavrti v &levo"
 
-#: part/pageview.cpp:570
+#: part/pageview.cpp:563
 #, kde-format
 msgctxt "Rotate left"
 msgid "Left"
 msgstr "Levo"
 
-#: part/pageview.cpp:574
+#: part/pageview.cpp:567
 #, kde-format
 msgid "Original Orientation"
 msgstr "Prvotna usmerjenost"
 
-#: part/pageview.cpp:580
+#: part/pageview.cpp:573
 #, kde-format
 msgid "&Trim View"
 msgstr "Obreži pogled"
 
-#: part/pageview.cpp:584
+#: part/pageview.cpp:577
 #, kde-format
 msgid "&Trim Margins"
 msgstr "Obreži robove"
 
-#: part/pageview.cpp:591
+#: part/pageview.cpp:584
 #, kde-format
 msgid "Trim To &Selection"
 msgstr "Obreži na izbor"
 
-#: part/pageview.cpp:597
+#: part/pageview.cpp:590
 #, kde-format
 msgid "Fit &Width"
 msgstr "Prilagodi širini"
 
-#: part/pageview.cpp:601
+#: part/pageview.cpp:594
 #, kde-format
 msgid "Fit &Page"
 msgstr "Prilagodi strani"
 
-#: part/pageview.cpp:605
+#: part/pageview.cpp:598
 #, kde-format
 msgid "&Auto Fit"
 msgstr "S&amodejno prilagodi"
 
-#: part/pageview.cpp:609
+#: part/pageview.cpp:602
 #, kde-format
 msgid "Fit Wi&ndow to Page"
 msgstr "Prilagodi ok&no strani"
 
-#: part/pageview.cpp:616
+#: part/pageview.cpp:609
 #, kde-format
 msgid "&View Mode"
 msgstr "Prikaz strani"
 
-#: part/pageview.cpp:628
+#: part/pageview.cpp:621
 #, kde-format
 msgctxt "@item:inmenu"
 msgid "&Single Page"
 msgstr "Ena stran"
 
-#: part/pageview.cpp:629
+#: part/pageview.cpp:622
 #, kde-format
 msgctxt "@item:inmenu"
 msgid "&Facing Pages"
 msgstr "Dve strani nasproti"
 
-#: part/pageview.cpp:630
+#: part/pageview.cpp:623
 #, kde-format
 msgctxt "@item:inmenu"
 msgid "Facing Pages (&Center First Page)"
 msgstr "Dve strani nasproti (prva stran na sredini)"
 
-#: part/pageview.cpp:633
+#: part/pageview.cpp:626
 #, kde-format
 msgctxt "@item:inmenu"
 msgid "&Overview"
 msgstr "Pregled"
 
-#: part/pageview.cpp:645
+#: part/pageview.cpp:638
 #, kde-format
 msgid "&Continuous"
 msgstr "Zvezno"
 
-#: part/pageview.cpp:652
+#: part/pageview.cpp:645
 #, kde-format
 msgctxt "@action page layout"
 msgid "Use Right to Left Reading Direction"
 msgstr "Uporabi smer branja z desne proti levi"
 
-#: part/pageview.cpp:661
+#: part/pageview.cpp:654
 #, kde-format
 msgid "&Browse"
 msgstr "&Brskanje"
 
-#: part/pageview.cpp:669
+#: part/pageview.cpp:662
 #, kde-format
 msgid "&Zoom"
 msgstr "&Približanje"
 
-#: part/pageview.cpp:689
+#: part/pageview.cpp:682
 #, kde-format
 msgid "Area &Selection"
 msgstr "Izbira področja"
 
-#: part/pageview.cpp:696
+#: part/pageview.cpp:689
 #, kde-format
 msgid "&Text Selection"
 msgstr "Izbira besedila"
 
-#: part/pageview.cpp:703
+#: part/pageview.cpp:696
 #, kde-format
 msgid "T&able Selection"
 msgstr "Izbira tabele"
 
-#: part/pageview.cpp:710
+#: part/pageview.cpp:703
 #, kde-format
 msgid "&Magnifier"
 msgstr "Povečevalno steklo"
 
-#: part/pageview.cpp:719
+#: part/pageview.cpp:712
 #, kde-format
 msgctxt "@action"
 msgid "Selection Tools"
 msgstr "Orodja izbire"
 
-#: part/pageview.cpp:745
+#: part/pageview.cpp:738
 #, kde-format
 msgid "Digitally &Sign…"
 msgstr "Digitalno podpiši…"
 
-#: part/pageview.cpp:751
+#: part/pageview.cpp:744
 #, kde-format
 msgid "Speak Whole Document"
 msgstr "Govori celoten dokument"
 
-#: part/pageview.cpp:756
+#: part/pageview.cpp:749
 #, kde-format
 msgid "Speak From Current Page"
 msgstr "Govori iz trenutne strani"
 
-#: part/pageview.cpp:761
+#: part/pageview.cpp:754
 #, kde-format
 msgid "Speak Current Page"
 msgstr "Govori trenutno stran"
 
-#: part/pageview.cpp:766
+#: part/pageview.cpp:759
 #, kde-format
 msgid "Stop Speaking"
 msgstr "Zaustavi govor"
 
-#: part/pageview.cpp:771
+#: part/pageview.cpp:764
 #, kde-format
 msgid "Pause/Resume Speaking"
 msgstr "Premor/Nadaljevanje govora"
 
-#: part/pageview.cpp:783
+#: part/pageview.cpp:776
 #, kde-format
 msgid "Scroll Up"
 msgstr "Drsenje navzgor"
 
-#: part/pageview.cpp:789
+#: part/pageview.cpp:782
 #, kde-format
 msgid "Scroll Down"
 msgstr "Drsenje navzdol"
 
-#: part/pageview.cpp:795
+#: part/pageview.cpp:788
 #, kde-format
 msgid "Scroll Page Up"
 msgstr "Eno stran višje"
 
-#: part/pageview.cpp:801
+#: part/pageview.cpp:794
 #, kde-format
 msgid "Scroll Page Down"
 msgstr "Eno stran nižje"
 
-#: part/pageview.cpp:807
+#: part/pageview.cpp:800
 #, kde-format
 msgid "Show Forms"
 msgstr "Pokaži obrazce"
 
-#: part/pageview.cpp:1320
+#: part/pageview.cpp:1312
 #, kde-format
 msgid " Loaded a one-page document."
 msgid_plural " Loaded a %1-page document."
@@ -3869,12 +3916,12 @@ msgstr[1] " Naložen %1-stranski dokument."
 msgstr[2] " Naložen %1-stranski dokument."
 msgstr[3] " Naložen %1-stranski dokument."
 
-#: part/pageview.cpp:2593
+#: part/pageview.cpp:2583
 #, kde-format
 msgid "Copy Table Contents to Clipboard"
 msgstr "Kopiraj vsebino tabele v odložišče"
 
-#: part/pageview.cpp:2943
+#: part/pageview.cpp:2933
 #, kde-format
 msgid "Text (1 character)"
 msgid_plural "Text (%1 characters)"
@@ -3883,82 +3930,82 @@ msgstr[1] "Besedilo (%1 znak)"
 msgstr[2] "Besedilo (%1 znaka)"
 msgstr[3] "Besedilo (%1 znaki)"
 
-#: part/pageview.cpp:2944 part/pageview.cpp:2966
+#: part/pageview.cpp:2934 part/pageview.cpp:2956
 #, kde-format
 msgid "Copy to Clipboard"
 msgstr "Kopiraj v odložišče"
 
-#: part/pageview.cpp:2946 part/pageview.cpp:3165 part/part.cpp:870
+#: part/pageview.cpp:2936 part/pageview.cpp:3155 part/part.cpp:843
 #, kde-format
 msgid "Copy Text (Without line breaks)"
 msgstr "Kopiraj besedilo (brez prelomov vrstic)"
 
-#: part/pageview.cpp:2957 part/pageview.cpp:3169
+#: part/pageview.cpp:2947 part/pageview.cpp:3159
 #, kde-format
 msgid "Speak Text"
 msgstr "Izgovori besedilo"
 
-#: part/pageview.cpp:2965
+#: part/pageview.cpp:2955
 #, kde-format
 msgid "Image (%1 × %2 pixels)"
 msgstr "Slika (%1 × %2 slikovnih točk)"
 
-#: part/pageview.cpp:2967
+#: part/pageview.cpp:2957
 #, kde-format
 msgid "Save to File…"
 msgstr "Shrani v datoteko…"
 
-#: part/pageview.cpp:2987
+#: part/pageview.cpp:2977
 #, kde-format
 msgid "Image [%1 × %2] copied to clipboard."
 msgstr "Slika [%1 × %2] je bila prekopirana na odložišče."
 
-#: part/pageview.cpp:2990
+#: part/pageview.cpp:2980
 #, kde-format
 msgid "Save file"
 msgstr "Shrani datoteko"
 
-#: part/pageview.cpp:2990
+#: part/pageview.cpp:2980
 #, kde-format
 msgid "Images (*.png *.jpeg)"
 msgstr "Slike (*.png *.jpeg)"
 
-#: part/pageview.cpp:2992
+#: part/pageview.cpp:2982
 #, kde-format
 msgid "File not saved."
 msgstr "Datoteka ni bila shranjena."
 
-#: part/pageview.cpp:3003
+#: part/pageview.cpp:2993
 #, kde-format
 msgid "Image [%1 × %2] saved to %3 file."
 msgstr "Slika [%1 × %2] je bila shranjena v datoteko %3."
 
-#: part/pageview.cpp:3164
+#: part/pageview.cpp:3154
 #, kde-format
 msgid "Copy Text"
 msgstr "Kopiraj besedilo"
 
-#: part/pageview.cpp:3187
+#: part/pageview.cpp:3177
 #, kde-format
 msgid "Go to '%1'"
 msgstr "Pojdi na »%1«"
 
-#: part/pageview.cpp:4229 part/part.cpp:3217
+#: part/pageview.cpp:4208 part/part.cpp:3217
 #, kde-format
 msgid "Fit Width"
 msgstr "Prilagodi širini"
 
-#: part/pageview.cpp:4229
+#: part/pageview.cpp:4208
 #, kde-format
 msgid "Fit Page"
 msgstr "Prilagodi strani"
 
-#: part/pageview.cpp:4229
+#: part/pageview.cpp:4208
 #, kde-format
 msgid "Auto Fit"
 msgstr "Samodejno prilagodi"
 
-#: part/pageview.cpp:4252
+#: part/pageview.cpp:4231
 #, kde-format
 msgctxt ""
 "Zoom percentage value %1 will be replaced by the actual zoom factor value, "
@@ -3967,69 +4014,69 @@ msgctxt ""
 msgid "%1%"
 msgstr "%1 %"
 
-#: part/pageview.cpp:4535
+#: part/pageview.cpp:4514
 #, kde-format
 msgid "Search for '%1' with"
 msgstr "Poišči »%1« z"
 
-#: part/pageview.cpp:4549
+#: part/pageview.cpp:4528
 #, kde-format
 msgid "Configure Web Shortcuts…"
 msgstr "Nastavi spletne bližnjice…"
 
-#: part/pageview.cpp:4575
+#: part/pageview.cpp:4554
 #, kde-format
 msgid "Follow This Link"
 msgstr "Sledi tej povezavi"
 
-#: part/pageview.cpp:4578
+#: part/pageview.cpp:4557
 #, kde-format
 msgid "Play this Sound"
 msgstr "Zaigraj ta zvok"
 
-#: part/pageview.cpp:4580
+#: part/pageview.cpp:4559
 #, kde-format
 msgid "Stop Sound"
 msgstr "Zaustavi zvok"
 
-#: part/pageview.cpp:4586
+#: part/pageview.cpp:4565
 #, kde-format
 msgid "Copy Link Address"
 msgstr "Kopiraj naslov povezave"
 
-#: part/pageview.cpp:4643
+#: part/pageview.cpp:4622
 #, kde-format
 msgid "Search for '%1' in this document"
 msgstr "Poišči »%1« v tem dokumentu"
 
-#: part/pageview.cpp:5175
+#: part/pageview.cpp:5154
 #, kde-format
 msgid "Welcome"
 msgstr "Dobrodošli"
 
-#: part/pageview.cpp:5301
+#: part/pageview.cpp:5280
 #, kde-format
 msgid "Select zooming area. Right-click to zoom out."
 msgstr ""
 "Izberite območje približanja. Kliknite z desnim miškinim gumbom za "
 "oddaljevanje."
 
-#: part/pageview.cpp:5316
+#: part/pageview.cpp:5295
 #, kde-format
 msgid "Click to see the magnified view."
 msgstr "Kliknite za povečani prikaz."
 
-#: part/pageview.cpp:5333
+#: part/pageview.cpp:5312
 #, kde-format
 msgid "Draw a rectangle around the text/graphics to copy."
 msgstr "Narišite pravokotnik okoli besedila ali grafike, da ga kopirate."
 
-#: part/pageview.cpp:5349
+#: part/pageview.cpp:5328
 #, kde-format
 msgid "Select text"
 msgstr "Izberite besedilo"
 
-#: part/pageview.cpp:5365
+#: part/pageview.cpp:5344
 #, kde-format
 msgid ""
 "Draw a rectangle around the table, then click near edges to divide up; press "
@@ -4038,7 +4085,7 @@ msgstr ""
 "Narišite pravokotnik okrog razpredelnice in nato kliknite na bližnje robove, "
 "da jo razdelite: pritisnite Esc, da izbor počistite."
 
-#: part/pageview.cpp:5380 part/pageview.cpp:5388
+#: part/pageview.cpp:5359 part/pageview.cpp:5367
 #, kde-format
 msgid ""
 "All your signing certificates are invalid. In case signing worked before, "
@@ -4047,17 +4094,17 @@ msgstr ""
 "Vsa vaša potrdila za podpisovanje so neveljavna. Če je podpisovanje prej "
 "delovalo, preverite njihove datume veljavnosti."
 
-#: part/pageview.cpp:5381
+#: part/pageview.cpp:5360
 #, kde-format
 msgid "No valid certificates"
 msgstr "Ni veljavnih potrdil"
 
-#: part/pageview.cpp:5382 part/pageview.cpp:5397
+#: part/pageview.cpp:5361 part/pageview.cpp:5376
 #, kde-format
 msgid "Open Certificate Manager"
 msgstr "Odpri Certificate Manager"
 
-#: part/pageview.cpp:5393
+#: part/pageview.cpp:5372
 #, kde-format
 msgid ""
 "There are no available signing certificates.<br/>Launch Certificate Manager "
@@ -4068,12 +4115,12 @@ msgstr ""
 "potrdil zaženite Certificate Manager.<br/>Za več informacij glejte razdelek "
 "o <a href=\"%1\">Dodajanju digitalnih podpisov</a> v priročniku."
 
-#: part/pageview.cpp:5396 part/pageview.cpp:5408
+#: part/pageview.cpp:5375 part/pageview.cpp:5387
 #, kde-format
 msgid "No certificates found"
 msgstr "Ni najdenih potrdil"
 
-#: part/pageview.cpp:5406
+#: part/pageview.cpp:5385
 #, kde-format
 msgid ""
 "There are no available signing certificates.<br/>For more information, "
@@ -4084,17 +4131,17 @@ msgstr ""
 "<a href=\"%1\">Adding Digital Signatures – Dodajanje digitalnih podpisov</a> "
 "v priročniku."
 
-#: part/pageview.cpp:5431
+#: part/pageview.cpp:5410
 #, kde-format
 msgid "You have unsaved changes. Please save the document before signing it."
 msgstr "Imate neshranjene spremembe. Shranite dokument pred podpisom."
 
-#: part/pageview.cpp:5454
+#: part/pageview.cpp:5433
 #, kde-format
 msgid "Draw a rectangle to insert the signature field"
 msgstr "Narišite pravokotnik za vstavljanje polja podpisa"
 
-#: part/pageview.cpp:5602
+#: part/pageview.cpp:5583
 #, kde-format
 msgid "Draw a rectangle around the page area you wish to keep visible"
 msgstr "Narišite pravokotnik okoli območja strani, ki naj ostane vidno"
@@ -4120,7 +4167,7 @@ msgstr ""
 "\n"
 "Datum: %2"
 
-#: part/pageviewannotator.cpp:490
+#: part/pageviewannotator.cpp:486
 #, kde-kuit-format
 msgctxt "@info"
 msgid ""
@@ -4132,117 +4179,117 @@ msgstr ""
 "potencialno bolj berljiv podpis, pritisnite <interface>Začni znova</"
 "interface> in narišite večji pravokotnik."
 
-#: part/pageviewannotator.cpp:492
+#: part/pageviewannotator.cpp:488
 #, kde-format
 msgctxt "@action:button"
 msgid "Start Over"
 msgstr "Spet začni"
 
-#: part/pageviewannotator.cpp:493
+#: part/pageviewannotator.cpp:489
 #, kde-format
 msgctxt "@action:button"
 msgid "Sign"
 msgstr "Podpiši"
 
-#: part/pageviewannotator.cpp:1338
+#: part/pageviewannotator.cpp:1334
 #, kde-format
 msgid "Author name"
 msgstr "Ime avtorja"
 
-#: part/pageviewannotator.cpp:1338
+#: part/pageviewannotator.cpp:1334
 #, kde-format
 msgid "Author name for the annotation:"
 msgstr "Ime avtorja zabeležke:"
 
-#: part/pageviewannotator.cpp:1399
+#: part/pageviewannotator.cpp:1395
 #, kde-format
 msgctxt "Annotation tool"
 msgid "Draw an ellipse (drag to select a zone)"
 msgstr "Nariši elipso (povlecite, da izberete območje)"
 
-#: part/pageviewannotator.cpp:1401
+#: part/pageviewannotator.cpp:1397
 #, kde-format
 msgctxt "Annotation tool"
 msgid "Highlight text"
 msgstr "Poudari besedilo"
 
-#: part/pageviewannotator.cpp:1403
+#: part/pageviewannotator.cpp:1399
 #, kde-format
 msgctxt "Annotation tool"
 msgid "Draw a freehand line"
 msgstr "Nariši prosto-ročno črto"
 
-#: part/pageviewannotator.cpp:1405
+#: part/pageviewannotator.cpp:1401
 #, kde-format
 msgctxt "Annotation tool"
 msgid "Inline Text Annotation (drag to select a zone)"
 msgstr "Znotrajvrstična besedilna zabeležka (povlecite, da izberete območje)"
 
-#: part/pageviewannotator.cpp:1407
+#: part/pageviewannotator.cpp:1403
 #, kde-format
 msgctxt "Annotation tool"
 msgid "Put a pop-up note"
 msgstr "Postavi pojavno opombo"
 
-#: part/pageviewannotator.cpp:1409
+#: part/pageviewannotator.cpp:1405
 #, kde-format
 msgctxt "Annotation tool"
 msgid "Draw a polygon (click on the first point to close it)"
 msgstr "Nariši mnogokotnik (za zaključitev kliknite na začetno točko)"
 
-#: part/pageviewannotator.cpp:1411
+#: part/pageviewannotator.cpp:1407
 #, kde-format
 msgctxt "Annotation tool"
 msgid "Draw a rectangle"
 msgstr "Nariši pravokotnik"
 
-#: part/pageviewannotator.cpp:1413
+#: part/pageviewannotator.cpp:1409
 #, kde-format
 msgctxt "Annotation tool"
 msgid "Squiggle text"
 msgstr "Vijugasto besedilo"
 
-#: part/pageviewannotator.cpp:1415
+#: part/pageviewannotator.cpp:1411
 #, kde-format
 msgctxt "Annotation tool"
 msgid "Put a stamp symbol"
 msgstr "Postavi žig"
 
-#: part/pageviewannotator.cpp:1417
+#: part/pageviewannotator.cpp:1413
 #, kde-format
 msgctxt "Annotation tool"
 msgid "Draw a straight line"
 msgstr "Nariši ravno črto"
 
-#: part/pageviewannotator.cpp:1419
+#: part/pageviewannotator.cpp:1415
 #, kde-format
 msgctxt "Annotation tool"
 msgid "Strike out text"
 msgstr "Prečrtaj besedilo"
 
-#: part/pageviewannotator.cpp:1421
+#: part/pageviewannotator.cpp:1417
 #, kde-format
 msgctxt "Annotation tool"
 msgid "Underline text"
 msgstr "Podčrtaj besedilo"
 
-#: part/pageviewannotator.cpp:1423
+#: part/pageviewannotator.cpp:1419
 #, kde-format
 msgctxt "Annotation tool"
 msgid "Typewriter Annotation (drag to select a zone)"
 msgstr "Opomba s pisalnim strojem (povlecite, da izberete cono)"
 
-#: part/pageviewannotator.cpp:1482
+#: part/pageviewannotator.cpp:1478
 #, kde-format
 msgid "Highlighter"
 msgstr "Poudarjalnik"
 
-#: part/pageviewannotator.cpp:1779
+#: part/pageviewannotator.cpp:1775
 #, kde-format
 msgid "Add favorite annotation"
 msgstr "Dodaj priljubljeno zabeležko"
 
-#: part/pageviewannotator.cpp:1779
+#: part/pageviewannotator.cpp:1775
 #, kde-format
 msgid "Custom annotation name:"
 msgstr "Ime zabeležke po meri:"
@@ -4284,17 +4331,17 @@ msgstr "Zaznamki"
 msgid "Viewer Toolbar"
 msgstr "Orodna vrstica pregledovalnika"
 
-#: part/part.cpp:407 part/thumbnaillist.cpp:48
+#: part/part.cpp:406 part/thumbnaillist.cpp:46
 #, kde-format
 msgid "Thumbnails"
 msgstr "Sličice"
 
-#: part/part.cpp:413 part/preferencesdialog.cpp:50 part/side_reviews.cpp:99
+#: part/part.cpp:412 part/preferencesdialog.cpp:50 part/side_reviews.cpp:97
 #, kde-format
 msgid "Annotations"
 msgstr "Zabeležke"
 
-#: part/part.cpp:456
+#: part/part.cpp:436
 #, kde-format
 msgid ""
 "This document contains annotations or form data that were saved internally "
@@ -4307,7 +4354,7 @@ msgstr ""
 "b>.<br/>Če želite nadaljevati z urejanjem dokumenta, shranite v datoteko, da "
 "jih premaknete."
 
-#: part/part.cpp:464
+#: part/part.cpp:444
 #, kde-format
 msgid ""
 "This document has embedded files. <a href=\"okular:/embeddedfiles\">Click "
@@ -4317,222 +4364,222 @@ msgstr ""
 "\">Kliknite sem, da jih vidite</a> ali pa iz menija Datoteka izberite "
 "»Vgrajene datoteke«."
 
-#: part/part.cpp:493
+#: part/part.cpp:468
+#, kde-format
+msgctxt "This is a normal pdf feature, but can be abused by hostile parties"
+msgid ""
+"This document has elements that might be hidden or shown differently when "
+"printed. For important documents, please verify both."
+msgstr ""
+"Elementi tega dokumenta so lahko skriti ali prikazani drugače, ko so "
+"natisnjeni. Pri pomembnih dokumentih preverite oboje."
+
+#: part/part.cpp:480
 #, kde-format
 msgid ""
 "Signing in progress. You can adjust the position and size of the signature"
 msgstr "Podpisovanje v teku. Prilagodite lahko položaj in velikost podpisa"
 
-#: part/part.cpp:495
+#: part/part.cpp:482
 #, kde-format
 msgctxt "@action:button finish the signing process"
 msgid "Finish Signing"
 msgstr "Dokončaj podpisovanje"
 
-#: part/part.cpp:667
+#: part/part.cpp:655
 #, kde-format
 msgctxt "Previous page"
 msgid "Previous"
 msgstr "Predhodna"
 
-#: part/part.cpp:668
+#: part/part.cpp:656
 #, kde-format
 msgid "Go back to the Previous Page"
 msgstr "Vrni se na predhodno stran"
 
-#: part/part.cpp:669
+#: part/part.cpp:657
 #, kde-format
 msgid "Moves to the previous page of the document"
 msgstr "Premakne se na prejšnjo stran dokumenta"
 
-#: part/part.cpp:679
+#: part/part.cpp:664
 #, kde-format
 msgctxt "Next page"
 msgid "Next"
 msgstr "Naslednja"
 
-#: part/part.cpp:680
+#: part/part.cpp:665
 #, kde-format
 msgid "Advance to the Next Page"
 msgstr "Napreduj na naslednjo stran"
 
-#: part/part.cpp:681
+#: part/part.cpp:666
 #, kde-format
 msgid "Moves to the next page of the document"
 msgstr "Premakne se na naslednjo stran dokumenta"
 
-#: part/part.cpp:692
+#: part/part.cpp:674
 #, kde-format
 msgid "Beginning of the document"
 msgstr "Začetek dokumenta"
 
-#: part/part.cpp:693
+#: part/part.cpp:675
 #, kde-format
 msgid "Moves to the beginning of the document"
 msgstr "Premakne se na začetek dokumenta"
 
-#: part/part.cpp:697
+#: part/part.cpp:679
 #, kde-format
 msgid "End of the document"
 msgstr "Konec dokumenta"
 
-#: part/part.cpp:698
+#: part/part.cpp:680
 #, kde-format
 msgid "Moves to the end of the document"
 msgstr "Premakne se na konec dokumenta"
 
-#: part/part.cpp:712
+#: part/part.cpp:694
 #, kde-format
 msgid "Rename the current bookmark"
 msgstr "Preimenuj trenutni zaznamek"
 
-#: part/part.cpp:716
+#: part/part.cpp:698
 #, kde-format
 msgid "Previous Bookmark"
 msgstr "Predhodni zaznamek"
 
-#: part/part.cpp:718
+#: part/part.cpp:700
 #, kde-format
 msgid "Go to the previous bookmark"
 msgstr "Pojdi do predhodnega zaznamka"
 
-#: part/part.cpp:722
+#: part/part.cpp:704
 #, kde-format
 msgid "Next Bookmark"
 msgstr "Naslednji zaznamek"
 
-#: part/part.cpp:724
+#: part/part.cpp:706
 #, kde-format
 msgid "Go to the next bookmark"
 msgstr "Pojdi do naslednjega zaznamka"
 
-#: part/part.cpp:754
+#: part/part.cpp:736
 #, kde-format
 msgid "Configure Okular…"
 msgstr "Konfiguiriraj Okular…"
 
-#: part/part.cpp:757
+#: part/part.cpp:739
 #, kde-format
 msgid "Configure Viewer…"
 msgstr "Konfiguriraj pregledovalnik…"
 
-#: part/part.cpp:763
-#, kde-format
-msgid "Configure Viewer Backends…"
-msgstr "Nastavi zaledja pregledovalnika…"
-
-#: part/part.cpp:765
-#, kde-format
-msgid "Configure Backends…"
-msgstr "Nastavi zaledja…"
-
-#: part/part.cpp:801
+#: part/part.cpp:774
 #, kde-format
 msgid "About Backend"
 msgstr "O zaledju"
 
-#: part/part.cpp:806
+#: part/part.cpp:779
 #, kde-format
 msgid "Reloa&d"
 msgstr "Znova naloži"
 
-#: part/part.cpp:808
+#: part/part.cpp:781
 #, kde-format
 msgid "Reload the current document from disk."
 msgstr "Znova naloži trenutni dokument z diska."
 
-#: part/part.cpp:814
+#: part/part.cpp:787
 #, kde-format
 msgid "Close &Find Bar"
 msgstr "Zapri iskalno vrstico"
 
-#: part/part.cpp:819
+#: part/part.cpp:792
 #, kde-format
 msgid "Page Number"
 msgstr "Številka strani"
 
-#: part/part.cpp:823
+#: part/part.cpp:796
 #, kde-format
 msgctxt "@action"
 msgid "Configure Color Modes…"
 msgstr "Nastavi barvne načine…"
 
-#: part/part.cpp:862 part/part.cpp:3222
+#: part/part.cpp:835 part/part.cpp:3222
 #, kde-format
 msgid "Paste Annotation"
 msgstr "Prilepi zabeležko"
 
-#: part/part.cpp:880
+#: part/part.cpp:853
 #, kde-format
 msgid "Select All Text on Current Page"
 msgstr "Izberi vso besedilo na trenutni strani"
 
-#: part/part.cpp:893
+#: part/part.cpp:866
 #, kde-format
 msgid "Show S&idebar"
 msgstr "Prikaži stransko letvico"
 
-#: part/part.cpp:902
+#: part/part.cpp:875
 #, kde-format
 msgid "Show &Page Bar"
 msgstr "Prikaži vrstico s stranmi"
 
-#: part/part.cpp:908
+#: part/part.cpp:881
 #, kde-format
 msgid "Show &Signatures Panel"
 msgstr "Pokaži pult &podpisov"
 
-#: part/part.cpp:919
+#: part/part.cpp:892
 #, kde-format
 msgid "&Embedded Files"
 msgstr "Vgrajene datoteke"
 
-#: part/part.cpp:925
+#: part/part.cpp:898
 #, kde-format
 msgid "E&xport As"
 msgstr "Izvozi kot"
 
-#: part/part.cpp:937
+#: part/part.cpp:910
 #, kde-format
 msgid "S&hare"
 msgstr "Deli"
 
-#: part/part.cpp:946
+#: part/part.cpp:919
 #, kde-format
 msgid "P&resentation"
 msgstr "P&redstavitev"
 
-#: part/part.cpp:953
+#: part/part.cpp:926
 #, kde-format
 msgid "Open Con&taining Folder"
 msgstr "Odpri vsebovano mapo"
 
-#: part/part.cpp:967
+#: part/part.cpp:940
 #, kde-format
 msgid "&Import PostScript as PDF…"
 msgstr "Uvozi PostScript kot PDF…"
 
-#: part/part.cpp:971
+#: part/part.cpp:944
 #, kde-format
 msgid "Switch Blackscreen Mode"
 msgstr "Preklop načina črnega zaslona"
 
-#: part/part.cpp:979
+#: part/part.cpp:952
 #, kde-format
 msgid "Erase Drawing"
 msgstr "Izbriši risbo"
 
-#: part/part.cpp:984
+#: part/part.cpp:957
 #, kde-format
 msgid "Configure Annotations…"
 msgstr "Konfiguriraj zabeležke…"
 
-#: part/part.cpp:989
+#: part/part.cpp:962
 #, kde-format
 msgid "Play/Pause Presentation"
 msgstr "Preklopi predstavitev"
 
-#: part/part.cpp:1144
+#: part/part.cpp:1118
 #, kde-format
 msgid ""
 "You have just modified the open document, but this kind of document can not "
@@ -4542,37 +4589,27 @@ msgstr ""
 "Spremenili ste odprti dokument, a te vrste dokumenta ni mogoče shraniti.\n"
 "Vse spremembe bodo izgubljene, ko boste zaprli Okular."
 
-#: part/part.cpp:1145
+#: part/part.cpp:1119
 #, kde-format
 msgid "Document can't be saved"
 msgstr "Dokumenta  ni mogoče shraniti"
 
-#: part/part.cpp:1174
+#: part/part.cpp:1148
 #, kde-format
 msgid "Could not open '%1' (%2) "
 msgstr "Ni bilo mogoče odpreti »%1« (%2) "
 
-#: part/part.cpp:1227
+#: part/part.cpp:1201
 #, kde-format
 msgid "The loading of %1 has been canceled."
 msgstr "Nalaganje %1 je bilo preklicano."
 
-#: part/part.cpp:1243
+#: part/part.cpp:1217
 #, kde-format
 msgid "Could not open %1. Reason: %2"
 msgstr "Ni bilo mogoče odpreti %1. Razlog: %2"
 
-#: part/part.cpp:1271
-#, kde-format
-msgid "Configure Viewer Backends"
-msgstr "Nastavi zaledja pregledovalnika"
-
-#: part/part.cpp:1273
-#, kde-format
-msgid "Configure Backends"
-msgstr "Nastavi zaledja"
-
-#: part/part.cpp:1358
+#: part/part.cpp:1311
 #, kde-format
 msgid ""
 "The program \"ps2pdf\" was not found, so Okular can not import PS files "
@@ -4581,42 +4618,44 @@ msgstr ""
 "Ni bilo mogoče najti programa »ps2pdf«. Okular ne more uvoziti datotek "
 "PostScript."
 
-#: part/part.cpp:1358
+#: part/part.cpp:1311
 #, kde-format
 msgid "ps2pdf not found"
 msgstr "ps2pdf ni bilo mogoče najti"
 
-#: part/part.cpp:1363
+#: part/part.cpp:1316
 #, kde-format
 msgid "PostScript files (%1)"
 msgstr "Datoteke Postscript (%1)"
 
-#: part/part.cpp:1379
+#: part/part.cpp:1331
 #, kde-format
 msgid "Importing PS file as PDF (this may take a while)…"
 msgstr "Uvažanje datoteke PS kot PDF (to lahko traja nekaj časa) …"
 
-#: part/part.cpp:1511
+#: part/part.cpp:1463
 #, kde-format
-msgid "Please enter the password to read the document:"
-msgstr "Pred branjem dokumenta je potrebno vnesti geslo:"
+msgctxt "%1 is filename of the file to open"
+msgid "Please enter the password to read the document: %1"
+msgstr "Vnesite geslo za branje dokumenta: %1"
 
-#: part/part.cpp:1513
+#: part/part.cpp:1465
 #, kde-format
-msgid "Incorrect password. Try again:"
-msgstr "Napačno geslo. Poskusite znova:"
+msgctxt "%1 is filename of the file to open"
+msgid "Incorrect password. Try again: %1"
+msgstr "Napačno geslo. Poskusite znova: %1"
 
-#: part/part.cpp:1524
+#: part/part.cpp:1476
 #, kde-format
 msgid "Document Password"
 msgstr "Geslo za dokument"
 
-#: part/part.cpp:1647
+#: part/part.cpp:1599
 #, kde-format
 msgid "This document has XFA forms, which are currently <b>unsupported</b>."
 msgstr "Ta dokument vsebuje obrazce XFA, ki trenutno <b>niso</b> podprti."
 
-#: part/part.cpp:1654
+#: part/part.cpp:1606
 #, kde-format
 msgid ""
 "This document has forms. Click on the button to interact with them, or use "
@@ -4625,7 +4664,7 @@ msgstr ""
 "Ta dokument vsebuje obrazce. Za uporabo kliknite gumb ali pa iz menija "
 "Pogled izberite ukaz Pokaži obrazce."
 
-#: part/part.cpp:1670
+#: part/part.cpp:1623
 #, kde-format
 msgid ""
 "All editing and interactive features for this document are disabled. Please "
@@ -4634,7 +4673,7 @@ msgstr ""
 "Vse urejanje in interaktivne funkcije za ta dokument so onemogočene. Prosim "
 "shranite kopijo in znova jo odprite za urejanje dokumenta."
 
-#: part/part.cpp:1758
+#: part/part.cpp:1742
 #, kde-format
 msgid ""
 "This document wants to be shown full screen.\n"
@@ -4643,27 +4682,27 @@ msgstr ""
 "Ta dokument želi biti prikazan v celozaslonskem načinu.\n"
 "Zapustim običajen način in preidem v predstavitveni način?"
 
-#: part/part.cpp:1760
+#: part/part.cpp:1744
 #, kde-format
 msgid "Request to Change Viewing Mode"
 msgstr "Zahteva za spremembo načina pogleda"
 
-#: part/part.cpp:1761
+#: part/part.cpp:1745
 #, kde-format
 msgid "Enter Presentation Mode"
 msgstr "Vstopi v predstavitveni način"
 
-#: part/part.cpp:1762
+#: part/part.cpp:1746
 #, kde-format
 msgid "Deny Request"
 msgstr "Zavrni zahtevo"
 
-#: part/part.cpp:1852
+#: part/part.cpp:1836
 #, kde-format
 msgid "Could not open %1. %2"
 msgstr "Ni bilo mogoče odpreti %1.%2"
 
-#: part/part.cpp:1882
+#: part/part.cpp:1866
 #, kde-kuit-format
 msgctxt "@info"
 msgid ""
@@ -4677,22 +4716,22 @@ msgstr ""
 "neshranjene spremembe s spremembami drugega programa.<nl/><nl/>Ali želite "
 "nadaljevati s ponovnim nalaganjem datoteke?"
 
-#: part/part.cpp:1886 part/part.cpp:1896
+#: part/part.cpp:1870 part/part.cpp:1880
 #, kde-format
 msgid "File Changed"
 msgstr "Datoteka spremenjena"
 
-#: part/part.cpp:1887
+#: part/part.cpp:1871
 #, kde-format
 msgid "Continue Reloading"
 msgstr "Nadaljuj s ponovnim nalaganjem"
 
-#: part/part.cpp:1888
+#: part/part.cpp:1872
 #, kde-format
 msgid "Abort Reloading"
 msgstr "Prekini ponovno nalaganje"
 
-#: part/part.cpp:1892
+#: part/part.cpp:1876
 #, kde-kuit-format
 msgctxt "@info"
 msgid ""
@@ -4706,27 +4745,27 @@ msgstr ""
 "neshranjene spremembe s spremembami drugega programa.<nl/><nl/>Ali želite "
 "nadaljevati z zapiranjem datoteke?"
 
-#: part/part.cpp:1897
+#: part/part.cpp:1881
 #, kde-format
 msgid "Continue Closing"
 msgstr "Nadaljuj z zapiranjem"
 
-#: part/part.cpp:1898
+#: part/part.cpp:1882
 #, kde-format
 msgid "Abort Closing"
 msgstr "Prekini zapiranje"
 
-#: part/part.cpp:1905
+#: part/part.cpp:1889
 #, kde-format
 msgid "Do you want to save your changes to \"%1\" or discard them?"
 msgstr "Ali želite shraniti vaše spremembe v »%1« ali jih zavreči?"
 
-#: part/part.cpp:1905
+#: part/part.cpp:1889
 #, kde-format
 msgid "Close Document"
 msgstr "Zapri dokument"
 
-#: part/part.cpp:2037
+#: part/part.cpp:2021
 #, kde-format
 msgid ""
 "This link points to a close document action that does not work when using "
@@ -4735,7 +4774,7 @@ msgstr ""
 "Ta povezava kaže na dejanje za zaprtje dokumenta, ki ne deluje, ko je v "
 "uporabi vgrajen pregledovalnik."
 
-#: part/part.cpp:2043
+#: part/part.cpp:2027
 #, kde-format
 msgid ""
 "This link points to a quit application action that does not work when using "
@@ -4744,59 +4783,59 @@ msgstr ""
 "Ta povezava kaže na dejanje za izhod iz programa, ki ne deluje, ko je v "
 "uporabi vgrajen pregledovalnik."
 
-#: part/part.cpp:2135 part/part.cpp:2153
+#: part/part.cpp:2119 part/part.cpp:2141
 #, kde-format
 msgid "Reloading the document…"
 msgstr "Ponovno nalaganje dokumenta…"
 
-#: part/part.cpp:2322 part/toc.cpp:38
+#: part/part.cpp:2310 part/toc.cpp:36
 #, kde-format
 msgid "Contents"
 msgstr "Vsebina"
 
-#: part/part.cpp:2351 part/signaturepanel.cpp:47
+#: part/part.cpp:2339 part/signaturepanel.cpp:45
 #, kde-format
 msgid "Signatures"
 msgstr "Podpisi"
 
-#: part/part.cpp:2378
+#: part/part.cpp:2366
 #, kde-format
 msgid "Go to Page"
 msgstr "Pojdi na stran"
 
-#: part/part.cpp:2401
+#: part/part.cpp:2389
 #, kde-format
 msgid "&Page:"
 msgstr "Stran:"
 
-#: part/part.cpp:2494
+#: part/part.cpp:2482
 #, kde-format
 msgid "Enter the new name of the bookmark:"
 msgstr "Vnesite novo ime za zaznamek:"
 
-#: part/part.cpp:2540
+#: part/part.cpp:2528
 #, kde-format
 msgid "Rename this Bookmark"
 msgstr "Preimenuj ta zaznamek"
 
-#: part/part.cpp:2543
+#: part/part.cpp:2531
 #, kde-format
 msgid "Remove this Bookmark"
 msgstr "Odstrani ta zaznamek"
 
-#: part/part.cpp:2629 part/part.cpp:2630 part/part.cpp:3532
-#: part/signaturepartutils.cpp:261
+#: part/part.cpp:2617 part/part.cpp:2618 part/part.cpp:3534
+#: part/signaturepartutils.cpp:321
 #, kde-format
 msgctxt "File type name and pattern"
 msgid "%1 (%2)"
 msgstr "%1 (%2)"
 
-#: part/part.cpp:2637 part/revisionviewer.cpp:44
+#: part/part.cpp:2625 part/revisionviewer.cpp:44
 #, kde-format
 msgid "Save As"
 msgstr "Shrani kot"
 
-#: part/part.cpp:2654
+#: part/part.cpp:2642
 #, kde-format
 msgid ""
 "You have chosen to save an Okular Archive without the file name ending with "
@@ -4805,18 +4844,18 @@ msgstr ""
 "Izbrali ste shranjevanje Okularjevega arhiva brez podaljška imena datoteke "
 "»%1«. To ni dovoljeno, ali želite izbrati novo ime?"
 
-#: part/part.cpp:2655
+#: part/part.cpp:2643
 #, kde-format
 msgid "Unsupported extension"
 msgstr "Nepodprt podaljšek"
 
-#: part/part.cpp:2656
+#: part/part.cpp:2644
 #, kde-format
 msgctxt "@action:button"
 msgid "Choose New Name"
 msgstr "Izberite novo ime"
 
-#: part/part.cpp:2699
+#: part/part.cpp:2687
 #, kde-kuit-format
 msgctxt "@info"
 msgid ""
@@ -4828,17 +4867,17 @@ msgstr ""
 "shranite zdaj, bodo spremembe zaradi drugega programa izgubljene. Ali ste "
 "prepričani, da želite nadaljevati?"
 
-#: part/part.cpp:2702 part/part.cpp:2721 part/part.cpp:2773
+#: part/part.cpp:2690 part/part.cpp:2709 part/part.cpp:2761
 #, kde-format
 msgid "Save - Warning"
 msgstr "Shranjevanje – opozorilo"
 
-#: part/part.cpp:2704
+#: part/part.cpp:2692
 #, kde-format
 msgid "Save a Copy Elsewhere"
 msgstr "Shrani kopijo nekje drugje"
 
-#: part/part.cpp:2720
+#: part/part.cpp:2708
 #, kde-format
 msgid ""
 "The current document is protected with a password.<br />In order to save, "
@@ -4849,12 +4888,12 @@ msgstr ""
 "ponovno naložiti. Ponovno boste vprašani za geslo, vaša zgodovina urejanj pa "
 "bo izgubljena.<br />Ali želite nadaljevati?"
 
-#: part/part.cpp:2747
+#: part/part.cpp:2735
 #, kde-format
 msgid "Could not open the temporary file for saving."
 msgstr "Ni bilo mogoče odpreti začasne datoteke za shranjevanje."
 
-#: part/part.cpp:2760
+#: part/part.cpp:2748
 #, kde-kuit-format
 msgctxt "@info"
 msgid ""
@@ -4865,7 +4904,7 @@ msgstr ""
 "dovoljeno le brati. Poskusite jo shraniti na drugo mesto ali spremenite "
 "njena dovoljenja datoteke."
 
-#: part/part.cpp:2772
+#: part/part.cpp:2760
 #, kde-format
 msgid ""
 "After saving, the current document format requires the file to be reloaded. "
@@ -4874,24 +4913,24 @@ msgstr ""
 "Oblika trenutnega dokumenta zahteva, da se datoteka po shranitvi znova "
 "naloži. Vaša zgodovina urejanj bo izgubljena.<br />Ali želite nadaljevati?"
 
-#: part/part.cpp:2787 part/part.cpp:2856 part/part.cpp:2877 part/part.cpp:3547
+#: part/part.cpp:2775 part/part.cpp:2844 part/part.cpp:2865 part/part.cpp:3549
 #, kde-format
 msgid "File could not be saved in '%1'. Try to save it to another location."
 msgstr ""
 "Ni bilo mogoče shraniti datoteke v »%1«. Poskusite jo shraniti na drugo "
 "mesto."
 
-#: part/part.cpp:2800
+#: part/part.cpp:2788
 #, kde-format
 msgid "Filled form contents"
 msgstr "Vsebina obrazca zapolnjena"
 
-#: part/part.cpp:2803
+#: part/part.cpp:2791
 #, kde-format
 msgid "User annotations"
 msgstr "Uporabniške zabeležke"
 
-#: part/part.cpp:2808
+#: part/part.cpp:2796
 #, kde-format
 msgid ""
 "You are about to save changes, but the current file format does not support "
@@ -4902,17 +4941,17 @@ msgstr ""
 "vrsta dokumenta ne podpira. Da jih ohranite, uporabite vrsto <i>arhiv "
 "dokumentov za Okular</i>."
 
-#: part/part.cpp:2812 part/part.cpp:2834
+#: part/part.cpp:2800 part/part.cpp:2822
 #, kde-format
 msgid "Warning"
 msgstr "Opozorilo"
 
-#: part/part.cpp:2813 part/part.cpp:2835
+#: part/part.cpp:2801 part/part.cpp:2823
 #, kde-format
 msgid "Save as Okular document archive…"
 msgstr "Shrani kot arhiv dokumentov za Okular…"
 
-#: part/part.cpp:2825
+#: part/part.cpp:2813
 #, kde-format
 msgid ""
 "You are about to save changes, but the current file format does not support "
@@ -4925,7 +4964,7 @@ msgstr ""
 "dokumentov za Okular</i>. Kliknite <i>Nadaljuj</i>, da shranite dokument in "
 "zavržete te predmete."
 
-#: part/part.cpp:2828
+#: part/part.cpp:2816
 #, kde-format
 msgid ""
 "You are about to save changes, but the current file format does not support "
@@ -4939,22 +4978,22 @@ msgstr ""
 "bodo pa pri tem ti predmeti zavrženi, izgubljena pa bo tudi zgodovina "
 "urejanj."
 
-#: part/part.cpp:2830
+#: part/part.cpp:2818
 #, kde-format
 msgid "Continue"
 msgstr "Nadaljuj"
 
-#: part/part.cpp:2830
+#: part/part.cpp:2818
 #, kde-format
 msgid "Continue losing changes"
 msgstr "Nadaljuj z izgubo sprememb"
 
-#: part/part.cpp:2858
+#: part/part.cpp:2846
 #, kde-format
 msgid "File could not be saved in '%1'. %2"
 msgstr "Datoteke ni bilo mogoče shraniti v »%1«. %2"
 
-#: part/part.cpp:2897
+#: part/part.cpp:2885
 #, kde-format
 msgid ""
 "Okular cannot copy %1 to the specified location.\n"
@@ -4965,7 +5004,7 @@ msgstr ""
 "\n"
 "Dokument ne obstaja več."
 
-#: part/part.cpp:2933
+#: part/part.cpp:2921
 #, kde-format
 msgid ""
 "File could not be saved in '%1'. Error: '%2'. Try to save it to another "
@@ -4994,24 +5033,24 @@ msgstr "Sinhroniziraj sličice s stranjo"
 msgid "Tools"
 msgstr "Orodja"
 
-#: part/part.cpp:3427
+#: part/part.cpp:3429
 #, kde-format
 msgctxt "@action:inmenu menu that contains actions to control text to speach"
 msgid "Speak"
 msgstr "Govori"
 
-#: part/part.cpp:3585
+#: part/part.cpp:3587
 #, kde-format
 msgctxt "@title:window"
 msgid "Print"
 msgstr "Natisni"
 
-#: part/part.cpp:3648
+#: part/part.cpp:3650
 #, kde-format
 msgid "Printing this document is not allowed."
 msgstr "Tiskanje tega dokumenta ni dovoljeno."
 
-#: part/part.cpp:3661
+#: part/part.cpp:3663
 #, kde-format
 msgid ""
 "Could not print the document. Unknown error. Please report to bugs.kde.org"
@@ -5019,7 +5058,7 @@ msgstr ""
 "Ni bilo mogoče natisniti dokumenta. Neznana napaka. Sporočite jo na bugs.kde."
 "org"
 
-#: part/part.cpp:3663
+#: part/part.cpp:3665
 #, kde-format
 msgid ""
 "Could not print the document. Detailed error is \"%1\". Please report to "
@@ -5028,17 +5067,17 @@ msgstr ""
 "Ni bilo mogoče natisniti dokumenta. Podrobna napaka je »%1«. Sporočite jo na "
 "bugs.kde.org"
 
-#: part/part.cpp:3752
+#: part/part.cpp:3757
 #, kde-format
 msgid "Go to the place you were before"
 msgstr "Pojdite na mesto, kjer ste bili prej"
 
-#: part/part.cpp:3756
+#: part/part.cpp:3761
 #, kde-format
 msgid "Go to the place you were after"
 msgstr "Pojdite na mesto, kjer ste bili kasneje"
 
-#: part/part.cpp:3781
+#: part/part.cpp:3786
 #, kde-format
 msgid ""
 "<qt><strong>File Error!</strong> Could not create temporary file "
@@ -5047,7 +5086,7 @@ msgstr ""
 "<qt><strong>Napaka datoteke!</strong> Ni bilo mogoče ustvariti začasne "
 "datoteke<nobr><strong>%1</strong></nobr>.</qt>"
 
-#: part/part.cpp:3793
+#: part/part.cpp:3798
 #, kde-format
 msgid ""
 "<qt><strong>File Error!</strong> Could not open the file <nobr><strong>%1</"
@@ -5057,7 +5096,7 @@ msgstr ""
 "<nobr><strong>%1</strong></nobr> za razširjanje. Datoteka ne bo naložena.</"
 "qt>"
 
-#: part/part.cpp:3797
+#: part/part.cpp:3802
 #, kde-format
 msgid ""
 "<qt>This error typically occurs if you do not have enough permissions to "
@@ -5070,7 +5109,7 @@ msgstr ""
 "upravljalniku datotek tako da z desnim gumbom miške kliknete na datoteko in "
 "z menija izberete možnost Lastnosti.</qt>"
 
-#: part/part.cpp:3819
+#: part/part.cpp:3824
 #, kde-format
 msgid ""
 "<qt><strong>File Error!</strong> Could not uncompress the file <nobr><strong>"
@@ -5079,7 +5118,7 @@ msgstr ""
 "<qt><strong>Napaka datoteke</strong> Ni bilo mogoče razširiti datoteke "
 "<nobr><strong>%1</strong></nobr>. Datoteka ne bo naložena.</qt>"
 
-#: part/part.cpp:3823
+#: part/part.cpp:3828
 #, kde-format
 msgid ""
 "<qt>This error typically occurs if the file is corrupt. If you want to be "
@@ -5089,27 +5128,27 @@ msgstr ""
 "prepričate, poskusite datoteko razširiti z uporabo orodij iz ukazne vrstice."
 "</qt>"
 
-#: part/part.cpp:3849
+#: part/part.cpp:3854
 #, kde-format
 msgid "No Bookmarks"
 msgstr "Ni zaznamkov"
 
-#: part/part.cpp:3920
+#: part/part.cpp:3925
 #, kde-format
 msgid "There was a problem sharing the document: %1"
 msgstr "Med deljenjem dokumenta je prišlo do težave: %1"
 
-#: part/part.cpp:3920 part/part.cpp:3926
+#: part/part.cpp:3925 part/part.cpp:3931
 #, kde-format
 msgid "Share"
 msgstr "Deli"
 
-#: part/part.cpp:3924
+#: part/part.cpp:3929
 #, kde-format
 msgid "Document shared successfully"
 msgstr "Dokument je bil uspešno deljen"
 
-#: part/part.cpp:3926
+#: part/part.cpp:3931
 #, kde-format
 msgid "You can find the shared document at: <a href=\"%1\">%1</a>"
 msgstr "Deljen dokument lahko najdete na: <a href=\"%1\">%1</a>"
@@ -5473,11 +5512,6 @@ msgstr "Neznana pisava"
 msgid "Embedded: %1"
 msgstr "Vgrajeno: %1"
 
-#: part/propertiesdialog.cpp:424
-#, kde-format
-msgid "Name"
-msgstr "Ime"
-
 #: part/propertiesdialog.cpp:427
 #, kde-format
 msgid "Type"
@@ -5613,12 +5647,18 @@ msgid "Choose..."
 msgstr "Izbor …"
 
 #. i18n: ectx: property (text), widget (QLabel, recentLabel)
-#: part/selectcertificatedialog.ui:135
+#: part/selectcertificatedialog.ui:136
 #, kde-format
 msgid "Recent backgrounds:"
 msgstr "Nedavna ozadja:"
 
-#: part/side_reviews.cpp:66
+#. i18n: ectx: property (text), widget (QLabel, signatureTypeLabel)
+#: part/selectcertificatedialog.ui:152
+#, kde-format
+msgid "Signature Type"
+msgstr "Vrsta podpisa"
+
+#: part/side_reviews.cpp:64
 #, kde-format
 msgid ""
 "<div align=center><h3>No annotations</h3>To create new annotations press F6 "
@@ -5627,27 +5667,27 @@ msgstr ""
 "<div align=center><h3>Ni zabeležk</h3>Da bi ustvarili nove zabeležke, "
 "pritisnite tipko F6 ali pa iz menija izberite<i>Orodja → Zabeležke</i>.</div>"
 
-#: part/side_reviews.cpp:142
+#: part/side_reviews.cpp:140
 #, kde-format
 msgid "Group by Page"
 msgstr "Združi po strani"
 
-#: part/side_reviews.cpp:147
+#: part/side_reviews.cpp:145
 #, kde-format
 msgid "Group by Author"
 msgstr "Združi po avtorju"
 
-#: part/side_reviews.cpp:155
+#: part/side_reviews.cpp:153
 #, kde-format
 msgid "Show annotations for current page only"
 msgstr "Prikaži zabeležke samo za trenutno stran"
 
-#: part/side_reviews.cpp:165
+#: part/side_reviews.cpp:163
 #, kde-format
 msgid "Expand all elements"
 msgstr "Razširi vse elemente"
 
-#: part/side_reviews.cpp:167
+#: part/side_reviews.cpp:165
 #, kde-format
 msgid "Collapse all elements"
 msgstr "Skrči vse elemente"
@@ -5657,48 +5697,92 @@ msgstr "Skrči vse elemente"
 msgid "Properties"
 msgstr "Lastnosti"
 
-#: part/signaturepartutils.cpp:180
+#: part/signaturepartutils.cpp:57
+#, kde-format
+msgctxt ""
+"This string is describing a default entry that generally shouldn't be shown "
+"to the user. To a point where it would be a coding bug somewhere to have it"
+msgid "NONE"
+msgstr "NONE"
+
+#: part/signaturepartutils.cpp:59
+#, kde-format
+msgctxt "Signature type"
+msgid "Adobe PKCS7 signature"
+msgstr "Podpis Adobe PKCS7"
+
+#: part/signaturepartutils.cpp:61
+#, kde-format
+msgctxt "Signature type"
+msgid "Basic eIDAS signature"
+msgstr "Osnovni podpis eIDAS"
+
+#: part/signaturepartutils.cpp:63
+#, kde-format
+msgctxt "Signature type"
+msgid "eIDAS signature with timestamp"
+msgstr "Podpis eIDAS s časovnim žigom"
+
+#: part/signaturepartutils.cpp:65
+#, kde-format
+msgctxt "Signature type"
+msgid "eIDAS signature with timestamp for long term validation"
+msgstr "Podpis eIDAS z časovnim žigom za dolgoročno preverjanje veljavnosti"
+
+#: part/signaturepartutils.cpp:67
+#, kde-format
+msgctxt "Signature type"
+msgid ""
+"eIDAS signature with timestamp for long term validation and support for re-"
+"validation"
+msgstr ""
+"Podpis eIDAS z časovnim žigom za dolgoročno preverjanje veljavnosti in "
+"podporo za ponovno preverjanje veljavnosti"
+
+#: part/signaturepartutils.cpp:222
 #, kde-format
 msgctxt "file types in a file open dialog"
 msgid "Images (%1)"
 msgstr "Slike (%1)"
 
-#: part/signaturepartutils.cpp:181
+#: part/signaturepartutils.cpp:223
 #, kde-format
 msgid "Select background image"
 msgstr "Izberi sliko ozadja"
 
-#: part/signaturepartutils.cpp:186
+#: part/signaturepartutils.cpp:228
 #, kde-format
 msgid "Forget image"
 msgstr "Pozabi sliko"
 
-#: part/signaturepartutils.cpp:187
+#: part/signaturepartutils.cpp:229
 #, kde-format
 msgid "Forget all images"
 msgstr "Pozabi vse slike"
 
-#: part/signaturepartutils.cpp:229
+#: part/signaturepartutils.cpp:272
 #, kde-format
-msgid "Enter password (if any) to unlock certificate: %1"
-msgstr "Vnesite geslo (če obstaja) za odklepanje potrdila: %1"
+msgid "Enter password/pin (if any) to unlock certificate: %1"
+msgstr "Vnesite geslo/pin (če obstaja) za odklepanje potrdila: %1"
 
-#: part/signaturepartutils.cpp:231
-#, kde-format
-msgid "Enter certificate password"
-msgstr "Vnesite geslo za potrdilo"
-
-#: part/signaturepartutils.cpp:244
+#: part/signaturepartutils.cpp:297
 #, kde-format
 msgid "Enter document password"
 msgstr "Vnesite geslo za dokument"
 
-#: part/signaturepartutils.cpp:267
+#: part/signaturepartutils.cpp:331
 #, kde-format
 msgid "Save Signed File As"
 msgstr "Shrani podpisano datoteko kot"
 
-#: part/signaturepartutils.h:62
+#: part/signaturepartutils.cpp:333
+#, kde-format
+msgctxt "Error message"
+msgid ""
+"The original file cannot be overwritten. Please choose a different filename."
+msgstr "Izvorne datoteke ni mogoče prepisati. Izberite drugo ime datoteke."
+
+#: part/signaturepartutils.h:63
 #, kde-format
 msgctxt ""
 "Used when suggesting a new name for a digitally signed file. %1 is the old "
@@ -5778,35 +5862,35 @@ msgstr "Kvalificirana"
 msgid "PGP"
 msgstr "PGP"
 
-#: part/thumbnaillist.cpp:1015
+#: part/thumbnaillist.cpp:1013
 #, kde-format
 msgid "Show bookmarked pages only"
 msgstr "Pokaži samo strani iz zaznamkov"
 
-#: part/videowidget.cpp:143
+#: part/videowidget.cpp:179
 #, kde-format
 msgctxt "start the movie playback"
 msgid "Play"
 msgstr "Predvajaj"
 
-#: part/videowidget.cpp:146
+#: part/videowidget.cpp:182
 #, kde-format
 msgctxt "pause the movie playback"
 msgid "Pause"
 msgstr "Premor"
 
-#: part/videowidget.cpp:252
+#: part/videowidget.cpp:312
 #, kde-format
 msgctxt "stop the movie playback"
 msgid "Stop"
 msgstr "Zaustavi"
 
-#: part/videowidget.cpp:501
+#: part/videowidget.cpp:561
 #, kde-format
 msgid "Videos not supported in this okular"
 msgstr "Videi niso podprti v tem Okularju"
 
-#: part/videowidget.cpp:505
+#: part/videowidget.cpp:565
 #, kde-format
 msgid "Videos not supported in this Okular"
 msgstr "Videi niso podprti v tem Okularju"
@@ -5933,17 +6017,17 @@ msgstr "Napaka: s stikalom --page ni mogoče odpreti več kot enega dokumenta"
 msgid "Error: Can't open more than one document with the --find switch"
 msgstr "Napaka: Ni mogoče odpreti več kot enega dokumenta z atributom --find"
 
-#: shell/shell.cpp:207
+#: shell/shell.cpp:204
 #, kde-format
 msgid "Unable to find the Okular component: %1"
 msgstr "Ni bilo mogoče najti sestavnega dela Okular: %1"
 
-#: shell/shell.cpp:250
+#: shell/shell.cpp:247
 #, kde-format
 msgid "Sidebar"
 msgstr "Stranska letvica"
 
-#: shell/shell.cpp:286
+#: shell/shell.cpp:283
 #, kde-format
 msgid ""
 "There is already a unique Okular instance running. This instance won't be "
@@ -5951,12 +6035,12 @@ msgid ""
 msgstr ""
 "Edinstven primerek programa Okular že teče. Ta primerek ne bo edinstven."
 
-#: shell/shell.cpp:315
+#: shell/shell.cpp:312
 #, kde-format
 msgid "Unable to find the Okular component."
 msgstr "Ni bilo mogoče najti sestavnega dela Okular."
 
-#: shell/shell.cpp:570
+#: shell/shell.cpp:567
 #, kde-format
 msgid ""
 "Click to open a file\n"
@@ -5965,7 +6049,7 @@ msgstr ""
 "Kliknite, da odprete datoteko\n"
 "Kliknite in držite, da odprete nedavno datoteko"
 
-#: shell/shell.cpp:571
+#: shell/shell.cpp:568
 #, kde-format
 msgid ""
 "<b>Click</b> to open a file or <b>Click and hold</b> to select a recent file"
@@ -5973,63 +6057,63 @@ msgstr ""
 "<b>Kliknite</b>, da odprete datoteko ali <b>kliknite in držite</b>, da "
 "izberete nedavno datoteko"
 
-#: shell/shell.cpp:584
+#: shell/shell.cpp:583
 #, kde-format
 msgid "Next Tab"
 msgstr "Naslednji zavihek"
 
-#: shell/shell.cpp:590
+#: shell/shell.cpp:589
 #, kde-format
 msgid "Previous Tab"
 msgstr "Predhodni zavihek"
 
-#: shell/shell.cpp:598
+#: shell/shell.cpp:597
 #, kde-format
 msgid "Switch to Tab %1"
 msgstr "Preklopi na zavihek %1"
 
-#: shell/shell.cpp:614
+#: shell/shell.cpp:613
 #, kde-format
 msgid "Undo close tab"
 msgstr "Razveljavi zavihek zapiranja"
 
-#: shell/shell.cpp:623
+#: shell/shell.cpp:622
 #, kde-format
 msgid "Lock Sidebar"
 msgstr "Zakleni stransko letvico"
 
-#: shell/shell.cpp:723
+#: shell/shell.cpp:722
 #, kde-format
 msgid "All files (*)"
 msgstr "Vse datoteke (*)"
 
-#: shell/shell.cpp:724
+#: shell/shell.cpp:723
 #, kde-format
 msgid "All supported files (%1)"
 msgstr "Vse podprte datoteke (%1)"
 
-#: shell/shell.cpp:728
+#: shell/shell.cpp:727
 #, kde-format
 msgid "Open Document"
 msgstr "Odpri dokument"
 
-#: shell/shell.cpp:842
+#: shell/shell.cpp:841
 #, kde-format
 msgid "Confirm Close"
 msgstr "Potrdi zaprtje"
 
-#: shell/shell.cpp:846
+#: shell/shell.cpp:845
 #, kde-format
 msgid "Close Tabs"
 msgstr "Zapri zavihke"
 
-#: shell/shell.cpp:853
+#: shell/shell.cpp:852
 #, kde-format
 msgid "You are about to close %1 tabs. Are you sure you want to continue?"
 msgstr ""
 "Pravkar boste zaprli %1 zavihkov. Ali ste prepričani, da želite nadaljevati?"
 
-#: shell/shell.cpp:855
+#: shell/shell.cpp:854
 #, kde-format
 msgid "Warn me when I attempt to close multiple tabs"
 msgstr "Opozori me pred poskusom zaprtja več zavihkov"
@@ -6088,6 +6172,21 @@ msgstr "Pozabi vse"
 #, kde-format
 msgid "Hide welcome screen"
 msgstr "Skrij zaslon dobrodošlice"
+
+#~ msgid "Enter certificate password"
+#~ msgstr "Vnesite geslo za potrdilo"
+
+#~ msgid "Configure Viewer Backends…"
+#~ msgstr "Nastavi zaledja pregledovalnika…"
+
+#~ msgid "Configure Backends…"
+#~ msgstr "Nastavi zaledja…"
+
+#~ msgid "Configure Viewer Backends"
+#~ msgstr "Nastavi zaledja pregledovalnika"
+
+#~ msgid "Configure Backends"
+#~ msgstr "Nastavi zaledja"
 
 #~ msgid "Geometry with Comment"
 #~ msgstr "Geometrija s komentarjem"
@@ -6157,17 +6256,9 @@ msgstr "Skrij zaslon dobrodošlice"
 #~ msgid "Unknown"
 #~ msgstr "Neznano"
 
-#~ msgctxt "Signature type"
-#~ msgid "Unsigned signature"
-#~ msgstr "Nepodpisan podpis"
-
 #~ msgctxt "Suffix for the opacity level, eg '80%'"
 #~ msgid "%"
 #~ msgstr "%"
-
-#~ msgctxt "Spinbox prefix: Advance automatically: every n seconds"
-#~ msgid "every "
-#~ msgstr "vsak "
 
 #~ msgctxt "Suffix for the pen width, eg '10 px'"
 #~ msgid " px"

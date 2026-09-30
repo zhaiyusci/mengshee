@@ -12,8 +12,6 @@
 #include "signaturepartutils.h"
 #include "signaturepropertiesdialog.h"
 
-#include <kwidgetsaddons_version.h>
-
 #include <KLocalizedString>
 #include <KTitleWidget>
 
@@ -93,6 +91,8 @@ void SignaturePanel::activated(const QModelIndex &index)
 void SignaturePanel::slotShowContextMenu()
 {
     Q_D(SignaturePanel);
+    const QModelIndex index = d->m_view->currentIndex();
+    d->m_currentForm = d->m_model->data(index, SignatureModel::FormRole).value<const Okular::FormFieldSignature *>();
     if (!d->m_currentForm) {
         return;
     }
@@ -149,3 +149,5 @@ void SignaturePanel::setPageView(PageView *pv)
     Q_D(SignaturePanel);
     d->m_pageView = pv;
 }
+
+#include "moc_signaturepanel.cpp"

@@ -34,8 +34,6 @@
 #include <KStandardGuiItem>
 #include <KTitleWidget>
 
-#include <kwidgetsaddons_version.h>
-
 // local includes
 #include "core/action.h"
 #include "gui/tocmodel.h"
@@ -767,3 +765,5 @@ void TOC::collapseAll()
 {
     m_treeView->collapseAll();
 }
+
+#include "moc_toc.cpp"

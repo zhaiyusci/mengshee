@@ -1,10 +1,12 @@
 /*
     SPDX-FileCopyrightText: 2018 Chinmoy Ranjan Pradhan <chinmoyrp65@gmail.com>
+    SPDX-FileCopyrightText: 2026  Sune Stolborg Vuorela <sune@vuorela.dk>, work sponsored by the Direction Interministérielle du Numérique
 
     SPDX-License-Identifier: GPL-2.0-or-later
 */
 
 #include "signatureutils.h"
+#include "gui/certificatemodel.h"
 #include <KLocalizedString>
 
 using namespace Okular;
@@ -49,6 +51,7 @@ public:
     bool isSelfSigned = false;
     QByteArray certificateData;
     CertificateInfo::Backend backend = CertificateInfo::Backend::Unknown;
+    QVector<CertificateInfo::SMimeSignatureType> supportedSMimeSignatures = {CertificateInfo::SMimeSignatureType::none};
     CertificateInfo::KeyLocation keyLocation = CertificateInfo::KeyLocation::Unknown;
     CertificateInfo::CertificateType certificateType = CertificateInfo::CertificateType::X509;
     bool isQualified = false;
@@ -108,6 +111,11 @@ QString CertificateInfo::issuerInfo(EntityInfoKey key, EmptyString empty) const
         return handleEmpty(d->issuerInfo.emailAddress, empty);
     case EntityInfoKey::Organization:
         return handleEmpty(d->issuerInfo.organization, empty);
+    case EntityInfoKey::CommonNameOrEmail:
+        if (d->issuerInfo.commonName.isEmpty()) {
+            return handleEmpty(d->issuerInfo.emailAddress, empty);
+        }
+        return d->issuerInfo.commonName;
     }
     return QString();
 }
@@ -127,6 +135,8 @@ void CertificateInfo::setIssuerInfo(EntityInfoKey key, const QString &value)
     case EntityInfoKey::Organization:
         d->issuerInfo.organization = value;
         return;
+    case EntityInfoKey::CommonNameOrEmail:
+        return;
     }
 }
 
@@ -141,6 +151,11 @@ QString CertificateInfo::subjectInfo(EntityInfoKey key, EmptyString empty) const
         return handleEmpty(d->subjectInfo.emailAddress, empty);
     case EntityInfoKey::Organization:
         return handleEmpty(d->subjectInfo.organization, empty);
+    case EntityInfoKey::CommonNameOrEmail:
+        if (d->subjectInfo.commonName.isEmpty()) {
+            return handleEmpty(d->subjectInfo.emailAddress, empty);
+        }
+        return d->subjectInfo.commonName;
     }
     return QString();
 }
@@ -159,6 +174,8 @@ void CertificateInfo::setSubjectInfo(EntityInfoKey key, const QString &value)
         return;
     case EntityInfoKey::Organization:
         d->subjectInfo.organization = value;
+        return;
+    case EntityInfoKey::CommonNameOrEmail:
         return;
     }
 }
@@ -271,6 +288,16 @@ CertificateInfo::Backend CertificateInfo::backend() const
 void CertificateInfo::setBackend(Backend backend)
 {
     d->backend = backend;
+}
+
+QVector<CertificateInfo::SMimeSignatureType> CertificateInfo::supportedSMimeSignatures() const
+{
+    return d->supportedSMimeSignatures;
+}
+
+void CertificateInfo::setSupportedSMimeSignatures(const QVector<SMimeSignatureType> &supported)
+{
+    d->supportedSMimeSignatures = supported;
 }
 
 bool CertificateInfo::checkPassword(const QString &password) const
@@ -490,8 +517,9 @@ QString Okular::errorString(SigningResult result, const QVariant &additionalMess
     switch (result) {
     case SigningSuccess:
         return {};
+    case KeyMissing:
+        return i18nc("signing error", "Signing certificate not found. If you are using a smartcard, it might have been removed or the signature store changed");
     case FieldAlreadySigned: // We should not end up here, code should have caught it earlier and not allowed signature
-    case KeyMissing:         // Given we provide a key id back to poppler, this should only be able to happen if the user removes the key underneath us
     case InternalSigningError:
         return i18nc("%1 is a error code", "Internal signing error. Please report a bug with the steps to reproduce it. Error code %1", additionalMessage.toInt());
     case GenericSigningError:
@@ -499,9 +527,11 @@ QString Okular::errorString(SigningResult result, const QVariant &additionalMess
     case UserCancelled: // This is unlikely to actually happen in a way where we want to show a message
         return i18n("Signing cancelled by user");
     case BadPassphrase:
-        return i18n("Could not sign. Wrong passphrase");
+        return i18n("Signing failed: Wrong passphrase");
     case SignatureWriteFailed:
         return xi18nc("%1 is a filename with path", "Could not write the signed document to <filename>%1</filename>, please ensure you have selected a folder with write permission", additionalMessage.toString());
+    case UnsupportedSignatureType:
+        return i18nc("Unlikely error; user can choose a signature/key-combo and everything possible should be valid combinations", "Unsupported signature type for current certificate");
     }
     return i18n("Unknown signing error");
 }

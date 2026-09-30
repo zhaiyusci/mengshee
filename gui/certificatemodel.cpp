@@ -12,12 +12,24 @@
 
 #include <QCryptographicHash>
 #include <QDebug>
-#include <QFile>
+#include <QSaveFile>
 #include <QUrl>
+
+static QList<CertificateModel::Property> propertiesForType(Okular::CertificateInfo::CertificateType type)
+{
+    switch (type) {
+    case Okular::CertificateInfo::X509:
+        return {
+            CertificateModel::Version, CertificateModel::SerialNumber, CertificateModel::Issuer, CertificateModel::IssuedOn, CertificateModel::ExpiresOn, CertificateModel::Subject, CertificateModel::PublicKey, CertificateModel::KeyUsage};
+    case Okular::CertificateInfo::PGP:
+        return {CertificateModel::IssuedOn, CertificateModel::ExpiresOn, CertificateModel::Subject, CertificateModel::CertificateModel::PublicKey, CertificateModel::KeyUsage};
+    }
+    return {};
+}
 
 CertificateModel::CertificateModel(const Okular::CertificateInfo &certInfo, QObject *parent)
     : QAbstractTableModel(parent)
-    , m_certificateProperties({Version, SerialNumber, Issuer, IssuedOn, ExpiresOn, Subject, PublicKey, KeyUsage})
+    , m_certificateProperties(propertiesForType(certInfo.certificateType()))
     , m_certificateInfo(certInfo)
 {
 }
@@ -32,7 +44,7 @@ int CertificateModel::rowCount(const QModelIndex &) const
     return m_certificateProperties.size();
 }
 
-static QString propertyVisibleName(CertificateModel::Property p)
+static QString propertyVisibleName(CertificateModel::Property p, Okular::CertificateInfo::CertificateType type)
 {
     switch (p) {
     case CertificateModel::Version:
@@ -46,7 +58,7 @@ static QString propertyVisibleName(CertificateModel::Property p)
     case CertificateModel::ExpiresOn:
         return i18n("Expires On");
     case CertificateModel::Subject:
-        return i18nc("The person/company that made the signature", "Subject");
+        return type == Okular::CertificateInfo::X509 ? i18nc("The person/company that made the signature", "Subject") : i18nc("Name/email on key", "User Id");
     case CertificateModel::PublicKey:
         return i18n("Public Key");
     case CertificateModel::KeyUsage:
@@ -116,7 +128,7 @@ QVariant CertificateModel::data(const QModelIndex &index, int role) const
     case Qt::ToolTipRole:
         switch (index.column()) {
         case 0:
-            return propertyVisibleName(m_certificateProperties[row]);
+            return propertyVisibleName(m_certificateProperties[row], m_certificateInfo.certificateType());
         case 1:
             return propertyVisibleValue(m_certificateProperties[row]);
         default:
@@ -157,10 +169,50 @@ bool CertificateModel::exportCertificateTo(const QString &path)
     if (!url.isLocalFile()) {
         return false;
     }
-    QFile targetFile(url.toLocalFile());
+    QSaveFile targetFile(url.toLocalFile());
     if (!targetFile.open(QIODevice::WriteOnly)) {
         return false;
     }
     const QByteArray certificateData = m_certificateInfo.certificateData();
-    return targetFile.write(certificateData) == certificateData.size();
+    switch (m_certificateInfo.certificateType()) {
+    case Okular::CertificateInfo::X509:
+        if (targetFile.write(certificateData) == certificateData.size()) {
+            return targetFile.commit();
+        } else {
+            targetFile.cancelWriting();
+            return false;
+        }
+    case Okular::CertificateInfo::PGP: {
+        if (targetFile.write("-----BEGIN PGP PUBLIC KEY BLOCK-----\n\n") != 38) {
+            return false;
+        }
+        const auto base64 = certificateData.toBase64(QByteArray::Base64Encoding | QByteArray::KeepTrailingEquals);
+
+        bool last = false;
+        for (qsizetype i = 0; i < base64.size(); i += 64) {
+            qsizetype remainder = base64.size() - i;
+            auto written = targetFile.write(base64.sliced(i, std::min<qsizetype>(64, remainder)));
+            if (last) {
+                qWarning("Some failed write during export");
+                return false;
+            }
+            if (written != 64) {
+                last = true;
+                if (written != remainder) {
+                    return false;
+                }
+            }
+            if (targetFile.write("\n") != 1) {
+                return false;
+            }
+        }
+        if (targetFile.write("-----END PGP PUBLIC KEY BLOCK-----\n") != 35) {
+            return false;
+        }
+        return targetFile.commit();
+    }
+    }
+    return false;
 }
+
+#include "moc_certificatemodel.cpp"

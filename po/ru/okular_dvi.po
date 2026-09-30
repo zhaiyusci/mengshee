@@ -8,20 +8,20 @@
 # Andrey Cherepanov <skull@kde.ru>, 2009.
 # Alexander Potashev <aspotashev@gmail.com>, 2010, 2014.
 # Alexander Lakhin <exclusion@gmail.com>, 2013.
-# SPDX-FileCopyrightText: 2024, 2025 Alexander Yavorsky <kekcuha@gmail.com>
+# SPDX-FileCopyrightText: 2024-2026 Alexander Yavorsky <kekcuha@gmail.com>
 msgid ""
 msgstr ""
 "Project-Id-Version: okular_dvi\n"
 "Report-Msgid-Bugs-To: https://bugs.kde.org\n"
-"POT-Creation-Date: 2025-12-22 00:41+0000\n"
-"PO-Revision-Date: 2025-12-23 18:44+0300\n"
-"Last-Translator: Alexander Yavorsky <kekcuha@gmail.com>\n"
+"POT-Creation-Date: 2026-09-22 15:58+0000\n"
+"PO-Revision-Date: 2026-09-06 19:58+0200\n"
+"Last-Translator: Alexander Yavorskiy <kekcuha@gmail.com>\n"
 "Language-Team: Russian <kde-russian@lists.kde.ru>\n"
 "Language: ru\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"X-Generator: Lokalize 25.12.0\n"
+"X-Generator: Lokalize 26.08.0\n"
 "Plural-Forms: nplurals=4; plural=n==1 ? 3 : n%10==1 && n%100!=11 ? 0 : n"
 "%10>=2 && n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2;\n"
 "X-Environment: kde\n"
@@ -195,47 +195,52 @@ msgid ""
 msgstr ""
 "Не удалось найти участок документа, связанный со строкой %1 в файле TeX %2."
 
-#: dviRenderer_draw.cpp:239
+#: dviRenderer_draw.cpp:241
 #, kde-format
 msgid "The DVI code set a character of an unknown font."
 msgstr "Код DVI содержит символ неизвестного шрифта."
 
-#: dviRenderer_draw.cpp:266 dviRenderer_prescan.cpp:667
+#: dviRenderer_draw.cpp:268 dviRenderer_prescan.cpp:669
 #, kde-format
 msgid "The DVI code referred to font #%1, which was not previously defined."
 msgstr "Код DVI ссылается на шрифт №%1, который не был ранее определён."
 
-#: dviRenderer_draw.cpp:349
+#: dviRenderer_draw.cpp:351
 #, kde-format
 msgid "The stack was not empty when the EOP command was encountered."
 msgstr "При интерпретации команды EOP стек не был пуст."
 
-#: dviRenderer_draw.cpp:361
+#: dviRenderer_draw.cpp:363
 #, kde-format
 msgid "The stack was empty when a POP command was encountered."
 msgstr "При интерпретации команды POP стек был пуст."
 
-#: dviRenderer_draw.cpp:485 dviRenderer_draw.cpp:494
+#: dviRenderer_draw.cpp:487 dviRenderer_draw.cpp:496
 #, kde-format
 msgid "The DVI code referred to a font which was not previously defined."
 msgstr "Код DVI ссылается на шрифт, который не был ранее определён."
 
-#: dviRenderer_draw.cpp:535
+#: dviRenderer_draw.cpp:514 dviRenderer_prescan.cpp:802
+#, kde-format
+msgid "The DVI file contains an invalid special command."
+msgstr "Ошибка: файл DVI содержит недопустимую специальную команду."
+
+#: dviRenderer_draw.cpp:542
 #, kde-format
 msgid "An illegal command was encountered."
 msgstr "Обнаружена неизвестная команда."
 
-#: dviRenderer_draw.cpp:540
+#: dviRenderer_draw.cpp:547
 #, kde-format
 msgid "The unknown op-code %1 was encountered."
 msgstr "Обнаружен неизвестный код операции %1."
 
-#: dviRenderer_prescan.cpp:87
+#: dviRenderer_prescan.cpp:89
 #, kde-format
 msgid "Embedding %1"
 msgstr "Внедрение %1"
 
-#: dviRenderer_prescan.cpp:105
+#: dviRenderer_prescan.cpp:107
 #, kde-format
 msgid ""
 "Page %1: The PDF file <strong>%2</strong> could not be converted to "
@@ -244,13 +249,13 @@ msgstr ""
 "Страница %1: невозможно преобразовать файл PDF <strong>%2</strong> в "
 "PostScript.<br>"
 
-#: dviRenderer_prescan.cpp:107
+#: dviRenderer_prescan.cpp:109
 #, kde-format
 msgid ""
 "Page %1: The PostScript file <strong>%2</strong> could not be found.<br>"
 msgstr "Страница %1: файл PostScript <strong>%2</strong> не найден.<br>"
 
-#: dviRenderer_prescan.cpp:261
+#: dviRenderer_prescan.cpp:263
 #, kde-format
 msgid "The papersize data '%1' could not be parsed."
 msgstr "Невозможно обработать данные о размере страницы %1."
@@ -267,7 +272,7 @@ msgstr ""
 "p><p><small><b>Значение переменной PATH:</b> %1</small></p><p><small>%2</"
 "small></p></qt>"
 
-#: fontpool.cpp:269
+#: fontpool.cpp:273
 #, kde-format
 msgid ""
 "<qt><p>There were problems running <em>kpsewhich</em>. As a result, some "
@@ -283,7 +288,7 @@ msgstr ""
 "p><p><small>Значение переменной <b>PATH:</b> %1</small></p><p><small>%2</"
 "small></p></qt>"
 
-#: fontpool.cpp:290
+#: fontpool.cpp:294
 #, kde-format
 msgid ""
 "<qt>The font generation by <em>kpsewhich</em> was aborted (exit code %1, "
@@ -294,7 +299,7 @@ msgstr ""
 "возврата %1, ошибка %2). Как результат этого, некоторые файлы не созданы и "
 "документ может быть нечитаемым.</qt>"
 
-#: fontpool.cpp:467
+#: fontpool.cpp:471
 #, kde-format
 msgid "Currently generating %1 at %2 dpi…"
 msgstr "Создание %1 с %2 dpi…"
@@ -309,7 +314,7 @@ msgstr "Генератор/Дата"
 msgid "Font file not found"
 msgstr "Файл не найден"
 
-#: psgs.cpp:286
+#: psgs.cpp:285
 #, kde-format
 msgid ""
 "The version of Ghostview that is installed on this computer does not contain "

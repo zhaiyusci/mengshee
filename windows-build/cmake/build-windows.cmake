@@ -213,7 +213,7 @@ if(NOT DEFINED SKIP_BUILD OR NOT SKIP_BUILD)
     file(MAKE_DIRECTORY "${BUILD_DIR}")
 
     set(_cmake_prefix_path "${QT_PREFIX}\\;${SDK_PREFIX}")
-    set(_force_not_required "KF6Purpose\\;Qt6TextToSpeech\\;Phonon4Qt6\\;Freetype\\;TIFF\\;LibSpectre\\;KExiv2Qt6\\;DjVuLibre\\;EPub\\;Discount")
+    set(_force_not_required "KF6Purpose\\;Qt6TextToSpeech\\;Qt6MultimediaWidgets\\;Freetype\\;TIFF\\;LibSpectre\\;KExiv2Qt6\\;DjVuLibre\\;EPub\\;Discount")
     set(_configure
         "\"${CMAKE_PROGRAM}\""
         -S "\"${SOURCE_ROOT}\""
@@ -229,6 +229,7 @@ if(NOT DEFINED SKIP_BUILD OR NOT SKIP_BUILD)
         -DBUILD_TESTING=OFF
         -DOKULAR_PDF_ONLY=ON
         -DCMAKE_DISABLE_FIND_PACKAGE_KF6DocTools=ON
+        -DCMAKE_DISABLE_FIND_PACKAGE_Qt6MultimediaWidgets=ON
         -DKDE_INSTALL_PLUGINDIR=bin/plugins
         "-DFORCE_NOT_REQUIRED_DEPENDENCIES=\"${_force_not_required}\""
     )

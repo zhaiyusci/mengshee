@@ -7,6 +7,9 @@
 #ifndef _OKULAR_VIDEOWIDGET_H_
 #define _OKULAR_VIDEOWIDGET_H_
 
+#include "config-okular.h"
+
+#include <qslider.h>
 #include <qwidget.h>
 
 namespace Okular
@@ -16,6 +19,20 @@ class Document;
 class Movie;
 class NormalizedRect;
 }
+
+#if HAVE_MULTIMEDIA
+class SeekSlider : public QSlider
+{
+    Q_OBJECT
+
+public:
+    explicit SeekSlider(QWidget *parent = nullptr);
+
+protected:
+    int pixelPosToRangeValue(int pos) const;
+    void mousePressEvent(QMouseEvent *event) override;
+};
+#endif
 
 class VideoWidget : public QWidget
 {

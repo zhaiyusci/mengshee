@@ -7,20 +7,20 @@
 # Frank Weng (a.k.a. Franklin) <franklin at goodhorse dot idv dot tw>, 2006, 2008, 2009.
 # Franklin Weng <franklin at goodhorse dot idv dot tw>, 2007, 2008, 2013, 2014.
 # pan93412 <pan93412@gmail.com>, 2020.
-# SPDX-FileCopyrightText: 2024, 2025 Kisaragi Hiu <mail@kisaragi-hiu.com>
+# SPDX-FileCopyrightText: 2024-2026 Kisaragi Hiu <mail@kisaragi-hiu.com>
 msgid ""
 msgstr ""
 "Project-Id-Version: okular_dvi\n"
 "Report-Msgid-Bugs-To: https://bugs.kde.org\n"
-"POT-Creation-Date: 2025-12-22 00:41+0000\n"
-"PO-Revision-Date: 2025-08-29 23:17+0900\n"
+"POT-Creation-Date: 2026-09-22 15:58+0000\n"
+"PO-Revision-Date: 2026-09-15 16:40+0900\n"
 "Last-Translator: Kisaragi Hiu <mail@kisaragi-hiu.com>\n"
 "Language-Team: Traditional Chinese <zh-l10n@lists.slat.org>\n"
 "Language: zh_TW\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"X-Generator: Lokalize 25.11.70\n"
+"X-Generator: Lokalize 26.11.70\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
 
 #, kde-format
@@ -176,60 +176,65 @@ msgid ""
 "line %1 in the TeX-file %2."
 msgstr "Okular 無法在 DVI 檔中定位 TeX 檔 %2 的第 %1 行。"
 
-#: dviRenderer_draw.cpp:239
+#: dviRenderer_draw.cpp:241
 #, kde-format
 msgid "The DVI code set a character of an unknown font."
 msgstr "DVI 碼含不明字型的字元。"
 
-#: dviRenderer_draw.cpp:266 dviRenderer_prescan.cpp:667
+#: dviRenderer_draw.cpp:268 dviRenderer_prescan.cpp:669
 #, kde-format
 msgid "The DVI code referred to font #%1, which was not previously defined."
 msgstr "DVI 碼所參考的字型 #%1，事先並未被定義。"
 
-#: dviRenderer_draw.cpp:349
+#: dviRenderer_draw.cpp:351
 #, kde-format
 msgid "The stack was not empty when the EOP command was encountered."
 msgstr "EOP 指令出現時，堆疊尚未被清空。"
 
-#: dviRenderer_draw.cpp:361
+#: dviRenderer_draw.cpp:363
 #, kde-format
 msgid "The stack was empty when a POP command was encountered."
 msgstr "POP 指令出現時，堆疊已被清空。"
 
-#: dviRenderer_draw.cpp:485 dviRenderer_draw.cpp:494
+#: dviRenderer_draw.cpp:487 dviRenderer_draw.cpp:496
 #, kde-format
 msgid "The DVI code referred to a font which was not previously defined."
 msgstr "DVI 碼所參考的字型，事先並未被定義。"
 
-#: dviRenderer_draw.cpp:535
+#: dviRenderer_draw.cpp:514 dviRenderer_prescan.cpp:802
+#, kde-format
+msgid "The DVI file contains an invalid special command."
+msgstr "DVI 檔案包含無效的特殊指令。"
+
+#: dviRenderer_draw.cpp:542
 #, kde-format
 msgid "An illegal command was encountered."
 msgstr "出現不合法的指令。"
 
-#: dviRenderer_draw.cpp:540
+#: dviRenderer_draw.cpp:547
 #, kde-format
 msgid "The unknown op-code %1 was encountered."
 msgstr "出現未知的 op-code %1。"
 
-#: dviRenderer_prescan.cpp:87
+#: dviRenderer_prescan.cpp:89
 #, kde-format
 msgid "Embedding %1"
 msgstr "嵌入 %1"
 
-#: dviRenderer_prescan.cpp:105
+#: dviRenderer_prescan.cpp:107
 #, kde-format
 msgid ""
 "Page %1: The PDF file <strong>%2</strong> could not be converted to "
 "PostScript.<br>"
 msgstr "頁 %1：PDF 檔案 <strong>%2</strong> 無法轉為 PostScript。<br/>"
 
-#: dviRenderer_prescan.cpp:107
+#: dviRenderer_prescan.cpp:109
 #, kde-format
 msgid ""
 "Page %1: The PostScript file <strong>%2</strong> could not be found.<br>"
 msgstr "頁 %1：PostScript 檔案 <strong>%2</strong> 找不到。<br/>"
 
-#: dviRenderer_prescan.cpp:261
+#: dviRenderer_prescan.cpp:263
 #, kde-format
 msgid "The papersize data '%1' could not be parsed."
 msgstr "紙張大小 '%1' 無法被分析。"
@@ -244,7 +249,7 @@ msgstr ""
 "<qt><p>Okular 無法找到完整的字型來顯示這個 DVI 檔。您的文件有可能沒辦法閱讀。"
 "</p><p><small><b>路徑：</b>%1</small></p><p><small>%2</small></p></qt>"
 
-#: fontpool.cpp:269
+#: fontpool.cpp:273
 #, kde-format
 msgid ""
 "<qt><p>There were problems running <em>kpsewhich</em>. As a result, some "
@@ -258,7 +263,7 @@ msgstr ""
 "是在目前的執行路徑上找不到。</p><p><small><b>路徑：</b>%1</small></"
 "p><p><small>%2</small></p></qt>"
 
-#: fontpool.cpp:290
+#: fontpool.cpp:294
 #, kde-format
 msgid ""
 "<qt>The font generation by <em>kpsewhich</em> was aborted (exit code %1, "
@@ -268,7 +273,7 @@ msgstr ""
 "<qt><em>kpsewhich</em> 的產生字型功能已被中止（離開代碼 %1，錯誤 %2）。因此，"
 "無法定位某些字型檔，您的文件可能無法讀取。</qt>"
 
-#: fontpool.cpp:467
+#: fontpool.cpp:471
 #, kde-format
 msgid "Currently generating %1 at %2 dpi…"
 msgstr "以 %2 dpi 產生 %1 中…"
@@ -283,7 +288,7 @@ msgstr "產生器/日期"
 msgid "Font file not found"
 msgstr "找不到檔案"
 
-#: psgs.cpp:286
+#: psgs.cpp:285
 #, kde-format
 msgid ""
 "The version of Ghostview that is installed on this computer does not contain "

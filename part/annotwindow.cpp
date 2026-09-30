@@ -14,6 +14,7 @@
 #include <KLocalizedString>
 #include <KTextEdit>
 #include <QAbstractScrollArea>
+#include <QAction>
 #include <QApplication>
 #include <QBoxLayout>
 #include <QCloseEvent>
@@ -340,6 +341,7 @@ public:
             break;
         case QEvent::MouseMove: {
             me = static_cast<QMouseEvent *>(event);
+
             const QPoint mouseMovePos = me->pos();
             const QPoint mouseDelta = mouseMovePos - mousePressPos;
 
@@ -1056,3 +1058,4 @@ void AnnotWindow::slotHandleContentsChangedByUndoRedo(Okular::Annotation *annot,
 }
 
 #include "annotwindow.moc"
+#include "moc_annotwindow.cpp"

@@ -86,6 +86,7 @@ class JSFunctionsTest : public QObject
 private Q_SLOTS:
     void initTestCase();
     void testNthFieldName();
+    void testScriptActionWithSignatureField();
     void testDisplay();
     void testSetClearInterval();
     void testSetClearTimeOut();
@@ -117,6 +118,25 @@ void JSFunctionsTest::initTestCase()
     for (Okular::FormField *ff : pageFormFields) {
         m_fields.insert(ff->name(), ff);
     }
+}
+
+void JSFunctionsTest::testScriptActionWithSignatureField()
+{
+    Okular::Document document(nullptr);
+    const QString testFile = QStringLiteral(KDESRCDIR "data/hello_with_dummy_signature.pdf");
+    QMimeDatabase db;
+    QCOMPARE(document.openDocument(testFile, QUrl(), db.mimeTypeForFile(testFile)), Okular::Document::OpenSuccess);
+    QVERIFY(document.pages() > 0);
+    const auto fields = document.page(0)->formFields();
+    QVERIFY(!fields.isEmpty());
+    QCOMPARE(fields.first()->type(), Okular::FormField::FormSignature);
+
+    // Generic script actions have no Event, even in a document containing a
+    // signature field. Check actual execution without relying on signature
+    // field visibility setters, which this backend does not implement.
+    MessageBoxHelper helper(QMessageBox::Ok, QStringLiteral("Signature action ran"), QMessageBox::Information, QStringLiteral("Signature regression"), false);
+    Okular::ScriptAction action(Okular::JavaScript, QStringLiteral("app.alert('Signature action ran', 3, 0, 'Signature regression');"));
+    document.processAction(&action);
 }
 
 void JSFunctionsTest::testNthFieldName()

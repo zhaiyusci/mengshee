@@ -124,4 +124,4 @@ void GSRendererThread::run()
     }
 }
 
-/* kate: replace-tabs on; indent-width 4; */
+#include "moc_rendererthread.cpp"

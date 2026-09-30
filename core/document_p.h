@@ -52,37 +52,15 @@ struct GeneratorInfo {
     explicit GeneratorInfo(Okular::Generator *g, const KPluginMetaData &data)
         : generator(g)
         , metadata(data)
-        , config(nullptr)
-        , save(nullptr)
-        , configChecked(false)
-        , saveChecked(false)
     {
     }
 
     Okular::Generator *generator;
     KPluginMetaData metadata;
-    Okular::ConfigInterface *config;
-    Okular::SaveInterface *save;
-    bool configChecked : 1;
-    bool saveChecked : 1;
 };
 
 namespace Okular
 {
-class OKULARCORE_EXPORT BackendConfigDialog : public KConfigDialog
-{
-    Q_OBJECT
-public:
-    BackendConfigDialog(QWidget *parent, const QString &name, KCoreConfigSkeleton *config)
-        : KConfigDialog(parent, name, config)
-    {
-    }
-
-    KPageWidget *thePageWidget()
-    {
-        return pageWidget();
-    }
-};
 
 class FontExtractionThread;
 
@@ -121,7 +99,6 @@ public:
         , m_saveBookmarksTimer(nullptr)
         , m_generator(nullptr)
         , m_walletGenerator(nullptr)
-        , m_generatorsLoaded(false)
         , m_pageController(nullptr)
         , m_closingLoop(nullptr)
         , m_scripter(nullptr)
@@ -132,6 +109,7 @@ public:
         , m_docdataMigrationNeeded(false)
         , m_synctex_scanner(nullptr)
     {
+        QDomImplementation::setInvalidDataPolicy(QDomImplementation::AcceptInvalidChars);
         calculateMaxTextPages();
     }
 
@@ -162,9 +140,7 @@ public:
     QUrl giveAbsoluteUrl(const QString &fileName) const;
     bool openRelativeFile(const QString &fileName);
     Generator *loadGeneratorLibrary(const KPluginMetaData &service);
-    void loadAllGeneratorLibraries();
     void loadServiceList(const QList<KPluginMetaData> &offers);
-    void unloadGenerator(GeneratorInfo &info);
     void cacheExportFormats();
     void setRotationInternal(int r, bool notify);
     ConfigInterface *generatorConfig(GeneratorInfo &info);
@@ -251,7 +227,8 @@ public:
     /*
      * Executes a ScriptAction with the event passed as parameter.
      */
-    void executeScriptEvent(const std::shared_ptr<Event> &event, const Okular::ScriptAction *linkscript);
+    void executeScriptEvent(const std::shared_ptr<Event> &event, const Okular::ScriptAction &linkscript);
+    void executeScriptEvent(const std::shared_ptr<Event> &event, ScriptType type, const QString &script);
 
     /*
      * Find the corresponding page number for the form field passed as parameter.
@@ -321,7 +298,6 @@ public:
     Generator *m_generator;
     QString m_generatorName;
     Generator *m_walletGenerator;
-    bool m_generatorsLoaded;
     QList<Page *> m_pagesVector;
     QList<VisiblePageRect *> m_pageRects;
 
@@ -362,7 +338,6 @@ public:
 
     // generator selection
     static QList<KPluginMetaData> availableGenerators();
-    static QList<KPluginMetaData> configurableGenerators();
     static KPluginMetaData generatorForMimeType(const QMimeType &type, QWidget *widget, const QList<KPluginMetaData> &triedOffers = QList<KPluginMetaData>());
 
     // overrides the editor command (for example with a command from the command line)
@@ -379,5 +354,3 @@ public:
 }
 
 #endif
-
-/* kate: replace-tabs on; indent-width 4; */

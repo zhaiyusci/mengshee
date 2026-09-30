@@ -224,7 +224,7 @@ QList<Okular::Annotation *> SmoothPathEngine::end()
     }
 
     // return annotation
-    return QList<Okular::Annotation *>() << ann;
+    return {ann};
 }
 
 SmoothPath SmoothPathEngine::endSmoothPath()
@@ -238,5 +238,3 @@ SmoothPath SmoothPathEngine::endSmoothPath()
 
     return SmoothPath(points, QPen(color, width), opacity, compositionMode);
 }
-
-/* kate: replace-tabs on; indent-width 4; */

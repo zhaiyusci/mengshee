@@ -1,13 +1,13 @@
 # Copyright (C) 2024 This file is copyright:
 # This file is distributed under the same license as the okular package.
 #
-# SPDX-FileCopyrightText: 2024, 2025 Yaron Shahrabani <sh.yaron@gmail.com>
+# SPDX-FileCopyrightText: 2024-2026 Yaron Shahrabani <sh.yaron@gmail.com>
 msgid ""
 msgstr ""
 "Project-Id-Version: okular\n"
 "Report-Msgid-Bugs-To: https://bugs.kde.org\n"
-"POT-Creation-Date: 2026-02-17 00:41+0000\n"
-"PO-Revision-Date: 2025-07-11 10:02+0300\n"
+"POT-Creation-Date: 2026-09-26 00:43+0000\n"
+"PO-Revision-Date: 2026-09-21 23:09+0300\n"
 "Last-Translator: Yaron Shahrabani <sh.yaron@gmail.com>\n"
 "Language-Team: צוות התרגום של KDE ישראל\n"
 "Language: he\n"
@@ -16,7 +16,7 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=4; plural=(n == 1) ? 0 : ((n == 2) ? 1 : ((n > 10 && "
 "n % 10 == 0) ? 2 : 3));\n"
-"X-Generator: Lokalize 25.04.3\n"
+"X-Generator: Lokalize 26.08.0\n"
 
 #, kde-format
 msgctxt "NAME OF TRANSLATORS"
@@ -27,6 +27,22 @@ msgstr "צוות התרגום של KDE ישראל"
 msgctxt "EMAIL OF TRANSLATORS"
 msgid "Your emails"
 msgstr "kde-l10n-he@kde.org"
+
+#: annots.cpp:592 formfields.cpp:539 generator_pdf.cpp:2213
+#: generator_pdf.cpp:2241
+#, kde-format
+msgid "Failed writing temporary file"
+msgstr "הכתיבה לקובץ הזמני נכשלה"
+
+#: annots.cpp:608 formfields.cpp:561 generator_pdf.cpp:2264
+#, kde-format
+msgid "Failed removing file"
+msgstr "הסרת הקובץ נכשלה"
+
+#: annots.cpp:612
+#, kde-format
+msgid "Failed renaming temporary file"
+msgstr "שינוי שם הקובץ הזמני נכשל"
 
 #. i18n: ectx: property (text), widget (QLabel, label_3)
 #: conf/pdfsettingswidget.ui:19
@@ -59,7 +75,7 @@ msgid "Enhance thin lines:"
 msgstr "חידוד קווים דקים:"
 
 #. i18n: ectx: property (text), item, widget (KComboBox, kcfg_EnhanceThinLines)
-#: conf/pdfsettingswidget.ui:73 generator_pdf.cpp:1025
+#: conf/pdfsettingswidget.ui:73 generator_pdf.cpp:1026
 #, kde-format
 msgid "No"
 msgstr "ללא"
@@ -83,19 +99,19 @@ msgid "Default scaling mode when printing:"
 msgstr "שיטת שינוי קנה מידה כברירת מחדל בעת הדפסה:"
 
 #. i18n: ectx: property (text), item, widget (QComboBox, kcfg_PrintScaleMode)
-#: conf/pdfsettingswidget.ui:116 generator_pdf.cpp:100
+#: conf/pdfsettingswidget.ui:116 generator_pdf.cpp:101
 #, kde-format
 msgid "Fit to printable area"
 msgstr "התאמה לאזור המודפס"
 
 #. i18n: ectx: property (text), item, widget (QComboBox, kcfg_PrintScaleMode)
-#: conf/pdfsettingswidget.ui:121 generator_pdf.cpp:101
+#: conf/pdfsettingswidget.ui:121 generator_pdf.cpp:102
 #, kde-format
 msgid "Fit to full page"
 msgstr "התאמה לעמוד מלא"
 
 #. i18n: ectx: property (text), item, widget (QComboBox, kcfg_PrintScaleMode)
-#: conf/pdfsettingswidget.ui:126 generator_pdf.cpp:102
+#: conf/pdfsettingswidget.ui:126 generator_pdf.cpp:103
 #, kde-format
 msgid "None; print original size"
 msgstr "ללא, הדפסת הגודל המקורי"
@@ -172,22 +188,28 @@ msgstr "אישורים זמינים"
 msgid "&Load Signatures"
 msgstr "&טעינת חתימות"
 
-#: generator_pdf.cpp:85
+#: formfields.cpp:565 generator_pdf.cpp:2268
+#, kde-format
+msgctxt "%1 is an error message"
+msgid "Failed renaming temporary file: %1"
+msgstr "שינוי שם הקובץ הזמני נכשל: %1"
+
+#: generator_pdf.cpp:86
 #, kde-format
 msgid "PDF Options"
 msgstr "אפשרויות PDF"
 
-#: generator_pdf.cpp:87
+#: generator_pdf.cpp:88
 #, kde-format
 msgid "Print annotations"
 msgstr "הדפסת הסברים"
 
-#: generator_pdf.cpp:88
+#: generator_pdf.cpp:89
 #, kde-format
 msgid "Include annotations in the printed document"
 msgstr "לכלול הסברים במסמך המודפס"
 
-#: generator_pdf.cpp:89
+#: generator_pdf.cpp:90
 #, kde-format
 msgid ""
 "Includes annotations in the printed document. You can disable this if you "
@@ -195,17 +217,17 @@ msgid ""
 msgstr ""
 "כולל הסברים במסמך המודפס. אפשר להשבית כדי להדפיס את המסמך המקורי ללא ההסברים."
 
-#: generator_pdf.cpp:91
+#: generator_pdf.cpp:92
 #, kde-format
 msgid "Force rasterization"
 msgstr "אילוץ המרה לתמונה"
 
-#: generator_pdf.cpp:92
+#: generator_pdf.cpp:93
 #, kde-format
 msgid "Rasterize into an image before printing"
 msgstr "המרת וקטורים לתמונה לפני ההדפסה"
 
-#: generator_pdf.cpp:93
+#: generator_pdf.cpp:94
 #, kde-format
 msgid ""
 "Forces the rasterization of each page into an image before printing it. This "
@@ -215,53 +237,53 @@ msgstr ""
 "מאלץ המרה של כל עמוד לתמונה לפני ההדפסה שלו. בדרך כלל ההגדרה הזאת מייצרת "
 "תוצאות נחותות אך היא חיונית להדפסת מסמכים שמודפסים לא נכון."
 
-#: generator_pdf.cpp:103
+#: generator_pdf.cpp:104
 #, kde-format
 msgid "Scaling mode for the printed pages"
 msgstr "מצב קנה־מידה לעמודים המודפסים"
 
-#: generator_pdf.cpp:104
+#: generator_pdf.cpp:105
 #, kde-format
 msgid "Scale mode:"
 msgstr "מצב קנה־מידה:"
 
-#: generator_pdf.cpp:1023
+#: generator_pdf.cpp:1024
 #, kde-format
 msgctxt "PDF v. <version>"
 msgid "PDF v. %1.%2"
 msgstr "PDF בגרסה %1.%2"
 
-#: generator_pdf.cpp:1023
+#: generator_pdf.cpp:1024
 #, kde-format
 msgid "Format"
 msgstr "תסדיר"
 
-#: generator_pdf.cpp:1024
+#: generator_pdf.cpp:1025
 #, kde-format
 msgid "Encrypted"
 msgstr "מוצפן"
 
-#: generator_pdf.cpp:1024
+#: generator_pdf.cpp:1025
 #, kde-format
 msgid "Unencrypted"
 msgstr "גלוי"
 
-#: generator_pdf.cpp:1024
+#: generator_pdf.cpp:1025
 #, kde-format
 msgid "Security"
 msgstr "אבטחה"
 
-#: generator_pdf.cpp:1025
+#: generator_pdf.cpp:1026
 #, kde-format
 msgid "Yes"
 msgstr "כן"
 
-#: generator_pdf.cpp:1025
+#: generator_pdf.cpp:1026
 #, kde-format
 msgid "Optimized"
 msgstr "ממוטבת"
 
-#: generator_pdf.cpp:1489
+#: generator_pdf.cpp:1511
 #, kde-format
 msgid ""
 "Signed by: %1\n"
@@ -272,12 +294,12 @@ msgstr ""
 "\n"
 "תאריך: %2"
 
-#: generator_pdf.cpp:1708
+#: generator_pdf.cpp:1733
 #, kde-format
 msgid "Using Poppler %1"
 msgstr "נעשה שימוש ב־Poppler %1"
 
-#: generator_pdf.cpp:1710
+#: generator_pdf.cpp:1735
 #, kde-format
 msgid ""
 "Using Poppler %1\n"
@@ -288,27 +310,17 @@ msgstr ""
 "\n"
 "נבנה כנגד Poppler %2"
 
-#: generator_pdf.cpp:1745
+#: generator_pdf.cpp:1770
 #, kde-format
 msgid "PDF"
 msgstr "PDF"
 
-#: generator_pdf.cpp:1745
+#: generator_pdf.cpp:1770
 #, kde-format
 msgid "PDF Backend Configuration"
 msgstr "הגדרות מנגנון PDF"
 
-#: generator_pdf.cpp:2184 generator_pdf.cpp:2212
-#, kde-format
-msgid "Failed writing temporary file"
-msgstr "הכתיבה לקובץ הזמני נכשלה"
-
-#: generator_pdf.cpp:2234
-#, kde-format
-msgid "Failed renaming temporary file"
-msgstr "שינוי שם הקובץ הזמני נכשל"
-
-#: generator_pdf.cpp:2254
+#: generator_pdf.cpp:2288
 #, kde-format
 msgid ""
 "Some errors were found in the document, Okular might not be able to show the "
@@ -316,7 +328,7 @@ msgid ""
 msgstr ""
 "נמצאו כל מיני שגיאות במסמך, יכול להיות ש־Okular לא יוכל להציג את התוכן כראוי"
 
-#: pdfsettingswidget.cpp:115
+#: pdfsettingswidget.cpp:116
 #, kde-format
 msgctxt "@info Kind of a notice/warning"
 msgid ""
@@ -326,30 +338,36 @@ msgstr ""
 "החתימות האלה עובדות רק בין גרסאות עדכניות של Okular עם מנגנון מבוסס GnuPG "
 "פעיל"
 
-#: pdfsettingswidget.cpp:116
+#: pdfsettingswidget.cpp:117
 #, kde-format
 msgctxt "@title:dialog"
 msgid "Enable PGP Signatures"
 msgstr "הפעלת חתימות PGP"
 
-#: pdfsettingswidget.cpp:146
+#: pdfsettingswidget.cpp:147
 #, kde-format
 msgctxt "Name of the person to whom the cerficate was issued"
 msgid "Issued to"
 msgstr "הונפק לטובת"
 
-#: pdfsettingswidget.cpp:146
+#: pdfsettingswidget.cpp:147
 #, kde-format
 msgid "E-mail"
 msgstr "דוא״ל"
 
-#: pdfsettingswidget.cpp:146
+#: pdfsettingswidget.cpp:147
 #, kde-format
 msgctxt "Certificate expiration date"
 msgid "Expiration date"
 msgstr "תאריך תפוגה"
 
-#: pdfsettingswidget.cpp:163
+#: pdfsettingswidget.cpp:152
+#, kde-format
+msgctxt "@button"
+msgid "List certificates"
+msgstr "הצגת אישורים"
+
+#: pdfsettingswidget.cpp:174
 #, kde-format
 msgid ""
 "You are using a Poppler library built without NSS support.\n"
@@ -358,28 +376,31 @@ msgstr ""
 "נעשה שימוש בספריית Poppler שנבנתה ללא תמיכה ב־NSS.\n"
 "הוספת חתימות דיגיטליות אינה אפשרית בדיוק מהסיבה הזאת"
 
-#: pdfsettingswidget.cpp:187
+#: pdfsettingswidget.cpp:198
 #, kde-format
 msgctxt "certificate end validity"
 msgid "forever"
 msgstr "לעד"
 
-#: pdfsettingswidget.cpp:211
+#: pdfsettingswidget.cpp:222
 #, kde-format
 msgid "Restart needed"
 msgstr "צריך להפעיל מחדש"
 
-#: pdfsettingswidget.cpp:211
+#: pdfsettingswidget.cpp:222
 #, kde-format
 msgid "You need to restart Okular after changing the NSS directory settings"
 msgstr "צריך להפעיל את Okular מחדש לאחר שינוי הגדרות תיקיית ה־NSS"
 
-#: pdfsignatureutils.cpp:230
+#: pdfsignatureutils.cpp:275 pdfsignatureutils.cpp:315
 #, kde-format
-msgid "Enter Password"
-msgstr "נא למלא סיסמה"
+msgctxt ""
+"%1 is the thing to open (hardware or software token, certificate DB,...)"
+msgid "Enter password to open: %1"
+msgstr "נא למלא סיסמה כדי לפתוח את: %1"
 
-#: pdfsignatureutils.cpp:230
-#, kde-format
-msgid "Enter password to open %1:"
-msgstr "נא למלא סיסמה כדי לפתוח את %1:"
+#~ msgid "Enter Password"
+#~ msgstr "נא למלא סיסמה"
+
+#~ msgid "Failed renaming temporary file %1:"
+#~ msgstr "שינוי שם הקובץ הזמני %1 נכשל:"

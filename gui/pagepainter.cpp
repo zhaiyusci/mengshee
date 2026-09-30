@@ -1261,5 +1261,3 @@ double LineAnnotPainter::shortenForArrow(double size, Okular::LineAnnotation::Te
 
     return shortenBy;
 }
-
-/* kate: replace-tabs on; indent-width 4; */

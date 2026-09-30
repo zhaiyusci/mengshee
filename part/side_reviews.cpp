@@ -23,8 +23,6 @@
 #include <KTitleWidget>
 #include <KViewStateSerializer>
 
-#include <kwidgetsaddons_version.h>
-
 // local includes
 #include "annotationmodel.h"
 #include "annotationpopup.h"
@@ -399,4 +397,5 @@ QAbstractItemModel *Reviews::annotationsModel() const
     return m_model;
 }
 
+#include "moc_side_reviews.cpp"
 #include "side_reviews.moc"

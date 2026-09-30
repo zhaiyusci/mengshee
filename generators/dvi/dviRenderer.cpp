@@ -675,7 +675,7 @@ void dviRenderer::exportPS(const QString &fname, const QStringList &options, QPr
 {
     QExplicitlySharedDataPointer<DVIExport> exporter(new DVIExportToPS(*this, fname, options, printer, font_pool.getUseFontHints(), orientation));
     if (exporter->started()) {
-        all_exports_[exporter.data()] = exporter;
+        all_exports_[exporter.data()] = std::move(exporter);
     }
 }
 
@@ -704,3 +704,5 @@ void dviRenderer::setEventLoop(QEventLoop *el)
         m_eventLoop = el;
     }
 }
+
+#include "moc_dviRenderer.cpp"

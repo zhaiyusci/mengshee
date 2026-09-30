@@ -194,4 +194,5 @@ void WelcomeScreen::recentListChanged()
     }
 }
 
+#include "moc_welcomescreen.cpp"
 #include "welcomescreen.moc"

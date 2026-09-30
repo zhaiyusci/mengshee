@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: okular\n"
 "Report-Msgid-Bugs-To: https://bugs.kde.org\n"
-"POT-Creation-Date: 2025-12-22 00:41+0000\n"
-"PO-Revision-Date: 2025-07-11 03:43+0200\n"
+"POT-Creation-Date: 2026-09-22 15:58+0000\n"
+"PO-Revision-Date: 2026-09-05 08:20+0200\n"
 "Last-Translator: Temuri Doghonadze <temuri.doghonadze@gmail.com>\n"
 "Language-Team: Georgian <kde-i18n-doc@kde.org>\n"
 "Language: ka\n"
@@ -16,7 +16,7 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
-"X-Generator: Poedit 3.6\n"
+"X-Generator: Poedit 3.9\n"
 
 #, kde-format
 msgctxt "NAME OF TRANSLATORS"
@@ -188,47 +188,52 @@ msgstr ""
 "Okular-მა ვერ იპოვა ადგილი DVI ფაილში, რომელიც შეესაბამება ხაზს %1 TeX-"
 "ფაილში %2."
 
-#: dviRenderer_draw.cpp:239
+#: dviRenderer_draw.cpp:241
 #, kde-format
 msgid "The DVI code set a character of an unknown font."
 msgstr "DVI კოდის ფონტი უცნობ კოდირებას მიუთითებს."
 
-#: dviRenderer_draw.cpp:266 dviRenderer_prescan.cpp:667
+#: dviRenderer_draw.cpp:268 dviRenderer_prescan.cpp:669
 #, kde-format
 msgid "The DVI code referred to font #%1, which was not previously defined."
 msgstr "DVI კოდი მიმართავს ფონტს #%1, რომელიც აღწერილი არ ყოფილა."
 
-#: dviRenderer_draw.cpp:349
+#: dviRenderer_draw.cpp:351
 #, kde-format
 msgid "The stack was not empty when the EOP command was encountered."
 msgstr "EOP ბრძანების შესრულებისას სტეკი ცარიელი არ იყო."
 
-#: dviRenderer_draw.cpp:361
+#: dviRenderer_draw.cpp:363
 #, kde-format
 msgid "The stack was empty when a POP command was encountered."
 msgstr "POP ბრძანების შესრულებისას სტეკი ცარიელი იყო."
 
-#: dviRenderer_draw.cpp:485 dviRenderer_draw.cpp:494
+#: dviRenderer_draw.cpp:487 dviRenderer_draw.cpp:496
 #, kde-format
 msgid "The DVI code referred to a font which was not previously defined."
 msgstr "DVI კოდი მიმართავს ფონტს, რომელიც აღწერილი არ ყოფილა."
 
-#: dviRenderer_draw.cpp:535
+#: dviRenderer_draw.cpp:514 dviRenderer_prescan.cpp:802
+#, kde-format
+msgid "The DVI file contains an invalid special command."
+msgstr "DVI ფაილი არასწორ სპეციალურ ბრძანებას შეიცავს."
+
+#: dviRenderer_draw.cpp:542
 #, kde-format
 msgid "An illegal command was encountered."
 msgstr "შემჩნეულია არასწორი ბრძანება."
 
-#: dviRenderer_draw.cpp:540
+#: dviRenderer_draw.cpp:547
 #, kde-format
 msgid "The unknown op-code %1 was encountered."
 msgstr "შეჩნეულია უცნობი ოპკოდი %1."
 
-#: dviRenderer_prescan.cpp:87
+#: dviRenderer_prescan.cpp:89
 #, kde-format
 msgid "Embedding %1"
 msgstr "%1-ის ჩაშენება"
 
-#: dviRenderer_prescan.cpp:105
+#: dviRenderer_prescan.cpp:107
 #, kde-format
 msgid ""
 "Page %1: The PDF file <strong>%2</strong> could not be converted to "
@@ -236,13 +241,13 @@ msgid ""
 msgstr ""
 "გვერდი %1: PDF ფაილი <strong>%2</strong> PostScript-ში ვერ გადავიყვანე.<br>"
 
-#: dviRenderer_prescan.cpp:107
+#: dviRenderer_prescan.cpp:109
 #, kde-format
 msgid ""
 "Page %1: The PostScript file <strong>%2</strong> could not be found.<br>"
 msgstr "გვერდი %1: PostScript ფაილი <strong>%2</strong> ვერ ვიპოვე.<br>"
 
-#: dviRenderer_prescan.cpp:261
+#: dviRenderer_prescan.cpp:263
 #, kde-format
 msgid "The papersize data '%1' could not be parsed."
 msgstr "ფურცლის მონაცემების ('%1') დამუშავება შეუძლებელია."
@@ -258,7 +263,7 @@ msgstr ""
 "საჩვენებლადაა საჭირო. თქვენი დოკუმენტი, შეძლება, ვერ წავიკითხო.</"
 "p><p><small><b>ბილიკი:</b> %1</small></p><p><small>%2</small></p></qt>"
 
-#: fontpool.cpp:269
+#: fontpool.cpp:273
 #, kde-format
 msgid ""
 "<qt><p>There were problems running <em>kpsewhich</em>. As a result, some "
@@ -273,7 +278,7 @@ msgstr ""
 "დაყენებული არც გაქვთ, ან ის მიმდინარე ძებნის ბილიკში არაა. </"
 "p><p><small><b>ბილიკი:</b> %1</small> <p><p></small>%2</small></p></qt>"
 
-#: fontpool.cpp:290
+#: fontpool.cpp:294
 #, kde-format
 msgid ""
 "<qt>The font generation by <em>kpsewhich</em> was aborted (exit code %1, "
@@ -284,7 +289,7 @@ msgstr ""
 "(გამოსვლის კოდი %1, შეცდომა %2). შედეგად, ზოგიერთი ფონტის ფაილის მოძებნა "
 "შეუძლებელია და თქვენი დოკუმენტის წაკითხვა, შეიძლება, ვერ შეძლოთ.</qt>"
 
-#: fontpool.cpp:467
+#: fontpool.cpp:471
 #, kde-format
 msgid "Currently generating %1 at %2 dpi…"
 msgstr "მიმდინარეობს გენერაცია %1 %2 dpi-ით…"
@@ -299,7 +304,7 @@ msgstr "გენერატორი/თარიღი"
 msgid "Font file not found"
 msgstr "ფონტის ფაილი ვერ ვიპოვე"
 
-#: psgs.cpp:286
+#: psgs.cpp:285
 #, kde-format
 msgid ""
 "The version of Ghostview that is installed on this computer does not contain "

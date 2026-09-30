@@ -7,10 +7,10 @@ msgid ""
 msgstr ""
 "Project-Id-Version: okular\n"
 "Report-Msgid-Bugs-To: https://bugs.kde.org\n"
-"POT-Creation-Date: 2026-05-12 00:42+0000\n"
-"PO-Revision-Date: 2026-06-01 16:30-0400\n"
+"POT-Creation-Date: 2026-09-26 00:43+0000\n"
+"PO-Revision-Date: 2026-09-23 06:56+0900\n"
 "Last-Translator: Abduqadir Abliz <sahranbay@gmail.com>\n"
-"Language-Team: Uyghur Computer Science Association <UKIJ@yahoogroups.com>\n"
+"Language-Team: Uyghur <kde-i18n-doc@kde.org>\n"
 "Language: ug\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
@@ -47,16 +47,11 @@ msgid ""
 "(C) 2004-2017 Albert Astals Cid\n"
 "(C) 2006-2009 Pino Toscano"
 msgstr ""
-"(C) 2002 Wilco Greven, Christophe Devriese\n"
-"(C) 2004-2005 Enrico Ros\n"
-"(C) 2005 Piotr Szymanski\n"
-"(C) 2004-2017 Albert Astals Cid\n"
-"(C) 2006-2009 Pino Toscano"
 
 #: aboutdata.h:31
 #, kde-format
 msgid "Pino Toscano"
-msgstr "Pino Toscano"
+msgstr ""
 
 #: aboutdata.h:31
 #, kde-format
@@ -66,7 +61,7 @@ msgstr "سابىق ئاسرىغۇچى"
 #: aboutdata.h:32
 #, kde-format
 msgid "Tobias Koenig"
-msgstr "Tobias Koenig"
+msgstr ""
 
 #: aboutdata.h:32
 #, kde-format
@@ -78,7 +73,7 @@ msgstr ""
 #: aboutdata.h:33
 #, kde-format
 msgid "Albert Astals Cid"
-msgstr "Albert Astals Cid"
+msgstr ""
 
 #: aboutdata.h:33
 #, kde-format
@@ -88,7 +83,7 @@ msgstr "ئىجادكار"
 #: aboutdata.h:34
 #, kde-format
 msgid "Piotr Szymanski"
-msgstr "Piotr Szymanski"
+msgstr ""
 
 #: aboutdata.h:34
 #, kde-format
@@ -98,7 +93,7 @@ msgstr "Okular نى KPDF كودى ئاساسىدا قۇرغان"
 #: aboutdata.h:35
 #, kde-format
 msgid "Enrico Ros"
-msgstr "Enrico Ros"
+msgstr ""
 
 #: aboutdata.h:35
 #, kde-format
@@ -108,7 +103,7 @@ msgstr "KPDF ئىجادكارى"
 #: aboutdata.h:36
 #, kde-format
 msgid "Eugene Trounev"
-msgstr "Eugene Trounev"
+msgstr ""
 
 #: aboutdata.h:36
 #, kde-format
@@ -118,7 +113,7 @@ msgstr "ئىزاھات ئىقتىدارىنىڭ گۈزەل سەنئىتى"
 #: aboutdata.h:37
 #, kde-format
 msgid "Jiri Baum - NICTA"
-msgstr "Jiri Baum - NICTA"
+msgstr ""
 
 #: aboutdata.h:37
 #, kde-format
@@ -128,7 +123,7 @@ msgstr "جەدۋەل تاللاش قورالى"
 #: aboutdata.h:38
 #, kde-format
 msgid "Fabio D'Urso"
-msgstr "Fabio D'Urso"
+msgstr ""
 
 #: aboutdata.h:38
 #, kde-format
@@ -240,7 +235,7 @@ msgstr "كىنونى ۋاقىتلىق توختات"
 msgid "Resume movie"
 msgstr "كىنونى داۋاملاشتۇر"
 
-#: core/audioplayer.cpp:315
+#: core/audioplayer.cpp:313
 #, kde-format
 msgid "This Okular is built without audio support"
 msgstr "بۇ Okular نەشرىنى ھاسىللىغاندا ئاۋاز قوللاش تاللانمىغان"
@@ -259,65 +254,65 @@ msgstr ""
 "نۆۋەتتە كۆپ خىل <qt>mime تۈرىنى قوللايدىغان:<br /><b>%1</b> (%2) مەۋجۇت.<br /"
 "><br />قايسىسىنى ئىشلىتىدىغانلىقىڭىزنى تاللاڭ:</qt>"
 
-#: core/document.cpp:200
+#: core/document.cpp:199
 #, kde-format
 msgctxt "@info %1 is a page size"
 msgid "Most pages are %1."
 msgstr "كۆپ قىسىم بەت %1."
 
-#: core/document.cpp:221
+#: core/document.cpp:220
 #, kde-format
 msgctxt "paper type and orientation (eg: Portrait A4)"
 msgid "Portrait %1"
 msgstr "بويىغا %1"
 
-#: core/document.cpp:223
+#: core/document.cpp:222
 #, kde-format
 msgctxt "paper type and orientation (eg: Portrait A4)"
 msgid "Landscape %1"
 msgstr "توغرىسىغا %1"
 
-#: core/document.cpp:246
+#: core/document.cpp:245
 #, kde-format
 msgctxt "%1 is width, %2 is height, %3 is paper size name"
 msgid "%1 × %2 in (%3)"
 msgstr "%1 × %2 دىيۇم (%3)"
 
-#: core/document.cpp:248
+#: core/document.cpp:247
 #, kde-format
 msgctxt "%1 is width, %2 is height, %3 is paper size name"
 msgid "%1 × %2 mm (%3)"
-msgstr "%1 × %2 mm (%3)"
+msgstr ""
 
-#: core/document.cpp:1702
+#: core/document.cpp:1672
 #, kde-format
 msgid "Continuing search from beginning"
 msgstr "باشتىن ئىزدەشنى داۋاملاشتۇرۇۋاتىدۇ"
 
-#: core/document.cpp:1705
+#: core/document.cpp:1675
 #, kde-format
 msgid "Continuing search from bottom"
 msgstr "ئاخىرىدىن ئىزدەشنى داۋاملاشتۇرۇۋاتىدۇ"
 
-#: core/document.cpp:2421
+#: core/document.cpp:2396
 #, kde-format
 msgid ""
 "Can not find a plugin which is able to handle the document being passed."
 msgstr "بېرىلگەن پۈتۈكنى بىر تەرەپ قىلالايدىغان قىستۇرما تېپىلمىدى."
 
-#: core/document.cpp:2843
+#: core/document.cpp:2817
 #, kde-format
 msgctxt "Unsupported action"
 msgid "Signing not implemented for this document type"
 msgstr "بۇ پۈتۈك تۈرىدە ئىمزا ئىقتىدارى ئەمەلىيلەشمىگەن"
 
-#: core/document.cpp:3557
+#: core/document.cpp:3531
 #, kde-format
 msgctxt "remove a collection of annotations from the page"
 msgid "remove annotations"
 msgstr "ئىزاھاتنى چىقىرىۋەت"
 
-#: core/document.cpp:4149 core/document.cpp:4155
+#: core/document.cpp:4123 core/document.cpp:4129
 #, kde-format
 msgid ""
 "The document is trying to execute an external application and, for your "
@@ -326,146 +321,144 @@ msgstr ""
 "بۇ پۈتۈك سىرتقى پىروگراممىنى ئىجرا قىلىشقا ئۇرۇنۇۋاتىدۇ، بىخەتەرلىكىڭىز "
 "ئۈچۈن، Okular بۇنداق قىلىشقا يول قويمايدۇ."
 
-#: core/document.cpp:4165
+#: core/document.cpp:4139
 #, kde-format
 msgid "No application found for opening file of mimetype %1."
 msgstr "mime تۈرى %1 بولغان ھۆججەتنى ئاچىدىغان پىروگراممىنى تاپالمىدى."
 
-#: core/document.cpp:4801
+#: core/document.cpp:4799
 #, kde-format
 msgid "Could not open a temporary file"
 msgstr "ۋاقىتلىق ھۆججەتنى ئاچالمايدۇ"
 
-#: core/document.cpp:4803
+#: core/document.cpp:4801
 #, kde-format
 msgid "Print conversion failed"
 msgstr "ئايلاندۇرۇشنى باسالمىدى"
 
-#: core/document.cpp:4805
+#: core/document.cpp:4803
 #, kde-format
 msgid "Printing process crashed"
 msgstr "بېسىش جەريانى يىمىرىلدى"
 
-#: core/document.cpp:4807
+#: core/document.cpp:4805
 #, kde-format
 msgid "Printing process could not start"
 msgstr "بېسىش جەريانىنى قوزغىتالمايدۇ"
 
-#: core/document.cpp:4809
+#: core/document.cpp:4807
 #, kde-format
 msgid "Printing to file failed"
 msgstr "ھۆججەتكە باسالمىدى"
 
-#: core/document.cpp:4811
+#: core/document.cpp:4809
 #, kde-format
 msgid "Printer was in invalid state"
 msgstr "باسقۇ ئىشلەتكىلى بولمايدىغان ھالەتتە ئىكەن"
 
-#: core/document.cpp:4813
+#: core/document.cpp:4811
 #, kde-format
 msgid "Unable to find file to print"
 msgstr "باسىدىغان ھۆججەتنى تاپالمىدى"
 
-#: core/document.cpp:4815
+#: core/document.cpp:4813
 #, kde-format
 msgid "There was no file to print"
 msgstr "باسىدىغان ھېچقانداق ھۆججەت يوق"
 
-#: core/document.cpp:4817
+#: core/document.cpp:4815
 #, kde-format
 msgid ""
 "Could not find a suitable binary for printing. Make sure CUPS lpr binary is "
 "available"
 msgstr ""
-"بېسىشقا زۆرۈر بولغان ئىككىلىك پىروگراممىنى تاپالمىدى. CUPS lpr ئىككىلىك "
-"پىروگراممىنى ئىشلەتكىلى بولىدىغانلىقىنى جەزملەڭ"
 
-#: core/document.cpp:4819
+#: core/document.cpp:4817
 #, kde-format
 msgid "The page print size is invalid"
 msgstr "بەتنىڭ بېسىش چوڭلۇقى ئىناۋەتسىز"
 
-#: core/document.cpp:5493 part/part.cpp:1167
+#: core/document.cpp:5473 part/part.cpp:1141
 #, kde-format
 msgid "Could not open '%1'. File does not exist"
-msgstr "«%1» نى ئاچالمىدى. ھۆججەت مەۋجۇت ئەمەس"
+msgstr "Could not open '%1'. ھۆججەت مەۋجۇت ئەمەس"
 
-#: core/document.cpp:6002
+#: core/document.cpp:5982
 #, kde-format
 msgid "Title"
 msgstr "ماۋزۇ"
 
-#: core/document.cpp:6005
+#: core/document.cpp:5985
 #, kde-format
 msgid "Subject"
 msgstr "ماۋزۇ"
 
-#: core/document.cpp:6008
+#: core/document.cpp:5988
 #, kde-format
 msgid "Description"
 msgstr "چۈشەندۈرۈش"
 
-#: core/document.cpp:6011
+#: core/document.cpp:5991
 #, kde-format
 msgid "Author"
 msgstr "يازغۇچى"
 
-#: core/document.cpp:6014
+#: core/document.cpp:5994
 #, kde-format
 msgid "Creator"
 msgstr "تۈزگۈچى"
 
-#: core/document.cpp:6017
+#: core/document.cpp:5997
 #, kde-format
 msgid "Producer"
 msgstr "فىلىم ئىشلىگۈچى"
 
-#: core/document.cpp:6020
+#: core/document.cpp:6000
 #, kde-format
 msgid "Copyright"
 msgstr "نەشر ھوقۇقى"
 
-#: core/document.cpp:6023
+#: core/document.cpp:6003
 #, kde-format
 msgid "Pages"
 msgstr "بەت"
 
-#: core/document.cpp:6026
+#: core/document.cpp:6006
 #, kde-format
 msgid "Created"
 msgstr "قۇرغان ۋاقتى"
 
-#: core/document.cpp:6029
+#: core/document.cpp:6009
 #, kde-format
 msgid "Modified"
 msgstr "ئۆزگەرتىلگەن ۋاقتى"
 
-#: core/document.cpp:6032
+#: core/document.cpp:6012
 #, kde-format
 msgid "MIME Type"
 msgstr "MIME تۈرى"
 
-#: core/document.cpp:6035
+#: core/document.cpp:6015
 #, kde-format
 msgid "Category"
 msgstr "كاتېگورىيە"
 
-#: core/document.cpp:6038
+#: core/document.cpp:6018
 #, kde-format
 msgid "Keywords"
 msgstr "ئاچقۇچلۇق سۆز"
 
-#: core/document.cpp:6041
+#: core/document.cpp:6021
 #, kde-format
 msgid "File Path"
 msgstr "ھۆججەت يولى"
 
-#: core/document.cpp:6044
+#: core/document.cpp:6024
 #, kde-format
 msgid "File Size"
 msgstr "ھۆججەت چوڭلۇقى"
 
-#: core/document.cpp:6047
+#: core/document.cpp:6027
 #, kde-format
 msgid "Page Size"
 msgstr "بەت چوڭلۇقى"
@@ -544,7 +537,7 @@ msgstr "ساپ تېكىست(&T)…"
 #: core/generator.cpp:793
 #, kde-format
 msgid "PDF"
-msgstr "PDF"
+msgstr ""
 
 #: core/generator.cpp:797
 #, kde-format
@@ -556,7 +549,7 @@ msgstr "OpenDocument تېكىست"
 #, kde-format
 msgctxt "This is the document format"
 msgid "HTML"
-msgstr "HTML"
+msgstr ""
 
 #: core/printoptionswidget.cpp:19
 #, kde-format
@@ -583,38 +576,44 @@ msgstr "نىسبەت ھالىتى:"
 msgid "Do not show this message again"
 msgstr "بۇ ئۇچۇرنى قايتا كۆرسەتمە"
 
-#: core/signatureutils.cpp:19 part/signaturepropertiesdialog.cpp:34
+#: core/signatureutils.cpp:21 part/signaturepropertiesdialog.cpp:34
 #, kde-format
 msgid "Not Available"
 msgstr "ئىشلەتكىلى بولمايدۇ"
 
-#: core/signatureutils.cpp:496
+#: core/signatureutils.cpp:521
+#, kde-format
+msgctxt "signing error"
+msgid ""
+"Signing certificate not found. If you are using a smartcard, it might have "
+"been removed or the signature store changed"
+msgstr ""
+
+#: core/signatureutils.cpp:524
 #, kde-format
 msgctxt "%1 is a error code"
 msgid ""
 "Internal signing error. Please report a bug with the steps to reproduce it. "
 "Error code %1"
 msgstr ""
-"ئىچكى ئىمزا خاتالىقى. كەمتۈك دوكلاتى يوللاپ خاتالىق كۆرۈلگەن قەدەم باسقۇچنى "
-"قوشۇڭ. خاتالىق كودى %1"
 
-#: core/signatureutils.cpp:498
+#: core/signatureutils.cpp:526
 #, kde-kuit-format
 msgctxt "%1 is a filename with path"
 msgid "Could not sign the document: <filename>%1</filename>"
 msgstr "پۈتۈككە ئىمزا قويالمايدۇ: <filename>%1</filename>"
 
-#: core/signatureutils.cpp:500
+#: core/signatureutils.cpp:528
 #, kde-format
 msgid "Signing cancelled by user"
 msgstr "ئىشلەتكۈچى ئىمزانى بىكار قىلدى"
 
-#: core/signatureutils.cpp:502
+#: core/signatureutils.cpp:530
 #, kde-format
-msgid "Could not sign. Wrong passphrase"
-msgstr "ئىمزا قويالمايدۇ. ئىم ئىبارە خاتا"
+msgid "Signing failed: Wrong passphrase"
+msgstr ""
 
-#: core/signatureutils.cpp:504
+#: core/signatureutils.cpp:532
 #, kde-kuit-format
 msgctxt "%1 is a filename with path"
 msgid ""
@@ -624,7 +623,15 @@ msgstr ""
 "ئىمزالىق پۈتۈكنى <filename>%1</filename> غا يازالمايدۇ، يېزىش ئىجازىتى بار "
 "قىسقۇچ تاللىغانلىقىڭىزنى جەزملەڭ"
 
-#: core/signatureutils.cpp:506
+#: core/signatureutils.cpp:534
+#, kde-format
+msgctxt ""
+"Unlikely error; user can choose a signature/key-combo and everything "
+"possible should be valid combinations"
+msgid "Unsupported signature type for current certificate"
+msgstr ""
+
+#: core/signatureutils.cpp:536
 #, kde-format
 msgid "Unknown signing error"
 msgstr "يوچۇن ئىمزا خاتالىقى"
@@ -640,81 +647,87 @@ msgstr "مەنبە: %1"
 msgid "&Default Font:"
 msgstr "كۆڭۈلدىكى خەت نۇسخا(&D):"
 
-#: gui/certificatemodel.cpp:39
+#: gui/certificatemodel.cpp:51
 #, kde-format
 msgid "Version"
 msgstr "نەشرى"
 
-#: gui/certificatemodel.cpp:41
+#: gui/certificatemodel.cpp:53
 #, kde-format
 msgid "Serial Number"
 msgstr "تەرتىپ نومۇرى"
 
-#: gui/certificatemodel.cpp:43
+#: gui/certificatemodel.cpp:55
 #, kde-format
 msgid "Issuer"
 msgstr "تارقاتقۇچى"
 
-#: gui/certificatemodel.cpp:45 part/certificateviewer.cpp:75
+#: gui/certificatemodel.cpp:57 part/certificateviewer.cpp:89
 #, kde-format
 msgid "Issued On"
 msgstr "تارقاتقان ۋاقىت"
 
-#: gui/certificatemodel.cpp:47 part/certificateviewer.cpp:76
+#: gui/certificatemodel.cpp:59 part/certificateviewer.cpp:90
 #, kde-format
 msgid "Expires On"
 msgstr "توشىدىغان ۋاقىت"
 
-#: gui/certificatemodel.cpp:49
+#: gui/certificatemodel.cpp:61
 #, kde-format
 msgctxt "The person/company that made the signature"
 msgid "Subject"
 msgstr "ماۋزۇ"
 
-#: gui/certificatemodel.cpp:51
+#: gui/certificatemodel.cpp:61
+#, kde-format
+msgctxt "Name/email on key"
+msgid "User Id"
+msgstr ""
+
+#: gui/certificatemodel.cpp:63
 #, kde-format
 msgid "Public Key"
 msgstr "ئاممىۋى شىفىرلىق ئاچقۇچ"
 
-#: gui/certificatemodel.cpp:53
+#: gui/certificatemodel.cpp:65
 #, kde-format
 msgid "Key Usage"
 msgstr "ئاچقۇچنىڭ ئىشلىتىلىشى"
 
-#: gui/certificatemodel.cpp:72
-#, kde-format
-msgid "V%1"
-msgstr "V%1"
-
 #: gui/certificatemodel.cpp:84
 #, kde-format
-msgid "%1 (%2 bits)"
-msgstr "%1 (%2 bits)"
+msgid "V%1"
+msgstr ""
 
-#: gui/certificatemodel.cpp:146
+#: gui/certificatemodel.cpp:96
+#, kde-format
+msgid "%1 (%2 bits)"
+msgstr ""
+
+#: gui/certificatemodel.cpp:158
 #, kde-format
 msgid "Property"
 msgstr "خاسلىق"
 
-#: gui/certificatemodel.cpp:148
+#: gui/certificatemodel.cpp:160
 #, kde-format
 msgid "Value"
 msgstr "قىممەت"
 
 #: gui/guiutils.cpp:39 part/editannottooldialog.cpp:88
-#: part/pageviewannotator.cpp:277 part/pageviewannotator.cpp:1488
+#: part/pageviewannotator.cpp:277 part/pageviewannotator.cpp:1484
 #, kde-format
 msgid "Pop-up Note"
 msgstr "قاڭقىش ئىزاھاتى"
 
 #: gui/guiutils.cpp:43 part/editannottooldialog.cpp:96
-#: part/pageviewannotator.cpp:264 part/pageviewannotator.cpp:1504
+#: part/pageviewannotator.cpp:264 part/pageviewannotator.cpp:1500
 #, kde-format
 msgid "Typewriter"
 msgstr "خەت باسقۇ"
 
 #: gui/guiutils.cpp:46 part/editannottooldialog.cpp:89
-#: part/pageviewannotator.cpp:259 part/pageviewannotator.cpp:1486
+#: part/pageviewannotator.cpp:259 part/pageviewannotator.cpp:1482
 #, kde-format
 msgid "Inline Note"
 msgstr "ئىچكى ئىزاھات"
@@ -736,7 +749,7 @@ msgid "Straight Line with Comment"
 msgstr "ئىزاھلىق تۈز سىزىق"
 
 #: gui/guiutils.cpp:59 part/editannottooldialog.cpp:91
-#: part/pageviewannotator.cpp:1498
+#: part/pageviewannotator.cpp:1494
 #, kde-format
 msgid "Straight Line"
 msgstr "تۈز سىزىق"
@@ -747,7 +760,7 @@ msgid "Polygon with Comment"
 msgstr "ئىنكاسلىق كۆپ تەرەپلىك"
 
 #: gui/guiutils.cpp:63 part/editannottooldialog.cpp:92
-#: part/pageviewannotator.cpp:1490
+#: part/pageviewannotator.cpp:1486
 #, kde-format
 msgid "Polygon"
 msgstr "كۆپ تەرەپلىك"
@@ -758,7 +771,7 @@ msgid "Rectangle with Comment"
 msgstr "ئىزاھلىق تىك تۆت بۇلۇڭ"
 
 #: gui/guiutils.cpp:71 part/annotationwidgets.cpp:700
-#: part/pageviewannotator.cpp:1492
+#: part/pageviewannotator.cpp:1488
 #, kde-format
 msgid "Rectangle"
 msgstr "تىك تۆت بۇلۇڭ"
@@ -769,7 +782,7 @@ msgid "Ellipse with Comment"
 msgstr "ئىزاھلىق ئېللىپىس"
 
 #: gui/guiutils.cpp:74 part/annotationwidgets.cpp:701
-#: part/pageviewannotator.cpp:1480
+#: part/pageviewannotator.cpp:1476
 #, kde-format
 msgid "Ellipse"
 msgstr "ئېللىپىس"
@@ -790,7 +803,7 @@ msgid "Squiggle with Comment"
 msgstr "ئىزاھلىق ئەگرى سىزىق"
 
 #: gui/guiutils.cpp:87 part/annotationwidgets.cpp:654
-#: part/pageviewannotator.cpp:1494
+#: part/pageviewannotator.cpp:1490
 #, kde-format
 msgid "Squiggle"
 msgstr "ئەگرى سىزىق"
@@ -801,7 +814,7 @@ msgid "Underline with Comment"
 msgstr "ئىزاھلىق ئاستى سىزىق"
 
 #: gui/guiutils.cpp:91 part/annotationwidgets.cpp:655
-#: part/pageviewannotator.cpp:1502
+#: part/pageviewannotator.cpp:1498
 #, kde-format
 msgid "Underline"
 msgstr "ئاستى سىزىق"
@@ -822,7 +835,7 @@ msgid "Stamp with Comment"
 msgstr "ئىزاھلىق تامغا"
 
 #: gui/guiutils.cpp:102 part/editannottooldialog.cpp:95
-#: part/pageviewannotator.cpp:1496
+#: part/pageviewannotator.cpp:1492
 #, kde-format
 msgid "Stamp"
 msgstr "تامغا"
@@ -833,7 +846,7 @@ msgid "Freehand Line with Comment"
 msgstr "ئىزاھلىق قولدا سىزىلغان سىزىق"
 
 #: gui/guiutils.cpp:106 part/editannottooldialog.cpp:90
-#: part/pageviewannotator.cpp:1484
+#: part/pageviewannotator.cpp:1480
 #, kde-format
 msgid "Freehand Line"
 msgstr "قولدا سىزىلغان سىزىق"
@@ -900,7 +913,7 @@ msgstr "%1 نى قەيەرگە ساقلايسىز؟"
 #: gui/guiutils.cpp:213 part/propertiesdialog.cpp:240
 #, kde-format
 msgid "Could not open \"%1\" for writing. File was not saved."
-msgstr "«%1» نى ئېچىپ يازالمايدۇ. ھۆججەت تېخى ساقلانمىغان."
+msgstr ""
 
 #: gui/signatureguiutils.cpp:42
 #, kde-format
@@ -975,37 +988,37 @@ msgstr "گۇۋاھنامىدە يوچۇن مەسىلە بار ياكى سانل�
 #: gui/signatureguiutils.cpp:82
 #, kde-format
 msgid "MD2"
-msgstr "MD2"
+msgstr ""
 
 #: gui/signatureguiutils.cpp:84
 #, kde-format
 msgid "MD5"
-msgstr "MD5"
+msgstr ""
 
 #: gui/signatureguiutils.cpp:86
 #, kde-format
 msgid "SHA1"
-msgstr "SHA1"
+msgstr ""
 
 #: gui/signatureguiutils.cpp:88
 #, kde-format
 msgid "SHA256"
-msgstr "SHA256"
+msgstr ""
 
 #: gui/signatureguiutils.cpp:90
 #, kde-format
 msgid "SHA384"
-msgstr "SHA384"
+msgstr ""
 
 #: gui/signatureguiutils.cpp:92
 #, kde-format
 msgid "SHA512"
-msgstr "SHA512"
+msgstr ""
 
 #: gui/signatureguiutils.cpp:94
 #, kde-format
 msgid "SHA224"
-msgstr "SHA224"
+msgstr ""
 
 #: gui/signatureguiutils.cpp:96
 #, kde-format
@@ -1015,17 +1028,17 @@ msgstr "يوچۇن ھېسابلاش ئۇسۇلى"
 #: gui/signatureguiutils.cpp:104
 #, kde-format
 msgid "RSA"
-msgstr "RSA"
+msgstr ""
 
 #: gui/signatureguiutils.cpp:106
 #, kde-format
 msgid "DSA"
-msgstr "DSA"
+msgstr ""
 
 #: gui/signatureguiutils.cpp:108
 #, kde-format
 msgid "EC"
-msgstr "EC"
+msgstr ""
 
 #: gui/signatureguiutils.cpp:110 gui/signatureguiutils.cpp:113
 #, kde-format
@@ -1110,32 +1123,33 @@ msgstr ""
 msgid "The document integrity verification could not be completed."
 msgstr "بۇ پۈتۈكنىڭ بىردەكلىك دەلىللىنىشىنى تاماملىغىلى بولمايدۇ."
 
-#: gui/signatureguiutils.cpp:208
+#: gui/signatureguiutils.cpp:212
 #, kde-format
 msgctxt "Digital signature"
 msgid "This document has signature placeholder fields."
 msgstr "بۇ پۈتۈكنىڭ ئىمزا ئورۇن بەلگە بۆلىكى بار."
 
-#: gui/signatureguiutils.cpp:211
+#: gui/signatureguiutils.cpp:215
 #, kde-format
 msgid "This document is digitally signed."
 msgstr "بۇ پۈتۈككە رەقەملىك ئىمزا قويۇلغان."
 
-#: gui/signatureguiutils.cpp:213
+#: gui/signatureguiutils.cpp:217
 #, kde-format
 msgid ""
 "This document is digitally signed. There have been changes since last signed."
 msgstr ""
-"بۇ پۈتۈككە رەقەملىك ئىمزا قويۇلغان. ئالدىنقى قېتىم ئىمزا قويۇلغاندىن كېيىن "
-"ئۆزگەرتىلگەن."
+"بۇ پۈتۈككە رەقەملىك ئىمزا قويۇلغان. There have been changes since last "
+"signed."
 
-#: gui/signatureguiutils.cpp:216
+#: gui/signatureguiutils.cpp:220
 #, kde-format
 msgid ""
 "This document is digitally signed. Some of the signatures could not be "
 "validated properly."
 msgstr ""
-"بۇ پۈتۈككە رەقەملىك ئىمزا قويۇلغان. بەزى ئىمزانى توغرا دەلىللىگىلى بولمايدۇ."
+"بۇ پۈتۈككە رەقەملىك ئىمزا قويۇلغان. Some of the signatures could not be "
+"validated properly."
 
 #: gui/signaturemodel.cpp:141
 #, kde-format
@@ -1151,7 +1165,7 @@ msgstr "بۆلەك: %2-بەتتىكى %1"
 #: gui/signaturemodel.cpp:152
 #, kde-format
 msgid "Rev. %1: Signed By %2"
-msgstr "تۈزىتىلگەن نەشرى %1: ئىمزا قويغۇچى %2"
+msgstr ""
 
 #: gui/signaturemodel.cpp:167
 #, kde-format
@@ -1178,19 +1192,19 @@ msgstr "PGP ئىمزا"
 #, kde-format
 msgctxt "Digital signature type"
 msgid "Adobe PKCS7"
-msgstr "Adobe PKCS7"
+msgstr ""
 
 #: gui/signaturemodel.cpp:189
 #, kde-format
 msgctxt "Digital signature type"
 msgid "Adobe PKCS7 Sha1"
-msgstr "Adobe PKCS7 Sha1"
+msgstr ""
 
 #: gui/signaturemodel.cpp:191
 #, kde-format
 msgctxt "Digital signature type"
 msgid "ETSI CAdES"
-msgstr "ETSI CAdES"
+msgstr ""
 
 #: gui/signaturemodel.cpp:193
 #, kde-format
@@ -1209,109 +1223,109 @@ msgstr "ئىمزا ئورۇن بەلگىسى"
 msgid "Signature Type: %1"
 msgstr "ئىمزا تۈرى: %1"
 
-#: part/annotationactionhandler.cpp:148
+#: part/annotationactionhandler.cpp:147
 #, kde-format
 msgctxt "@item:inlistbox Color name"
 msgid "Red"
 msgstr "قىزىل"
 
-#: part/annotationactionhandler.cpp:149
+#: part/annotationactionhandler.cpp:148
 #, kde-format
 msgctxt "@item:inlistbox Color name"
 msgid "Orange"
 msgstr "قىزغۇچ سېرىق"
 
-#: part/annotationactionhandler.cpp:150
+#: part/annotationactionhandler.cpp:149
 #, kde-format
 msgctxt "@item:inlistbox Color name"
 msgid "Yellow"
 msgstr "سېرىق"
 
-#: part/annotationactionhandler.cpp:151
+#: part/annotationactionhandler.cpp:150
 #, kde-format
 msgctxt "@item:inlistbox Color name"
 msgid "Green"
 msgstr "يېشىل"
 
-#: part/annotationactionhandler.cpp:152
+#: part/annotationactionhandler.cpp:151
 #, kde-format
 msgctxt "@item:inlistbox Color name"
 msgid "Cyan"
 msgstr "كۆكۈچ"
 
-#: part/annotationactionhandler.cpp:153
+#: part/annotationactionhandler.cpp:152
 #, kde-format
 msgctxt "@item:inlistbox Color name"
 msgid "Blue"
 msgstr "كۆك"
 
-#: part/annotationactionhandler.cpp:154
+#: part/annotationactionhandler.cpp:153
 #, kde-format
 msgctxt "@item:inlistbox Color name"
 msgid "Magenta"
 msgstr "ھال رەڭ"
 
-#: part/annotationactionhandler.cpp:155
+#: part/annotationactionhandler.cpp:154
 #, kde-format
 msgctxt "@item:inlistbox Color name"
 msgid "White"
 msgstr "ئاق"
 
-#: part/annotationactionhandler.cpp:156
+#: part/annotationactionhandler.cpp:155
 #, kde-format
 msgctxt "@item:inlistbox Color name"
 msgid "Gray"
 msgstr "كۈلرەڭ"
 
-#: part/annotationactionhandler.cpp:157
+#: part/annotationactionhandler.cpp:156
 #, kde-format
 msgctxt "@item:inlistbox Color name"
 msgid "Black"
 msgstr "قارا"
 
-#: part/annotationactionhandler.cpp:246 part/annotationactionhandler.cpp:687
+#: part/annotationactionhandler.cpp:245 part/annotationactionhandler.cpp:686
 #, kde-format
 msgctxt "@item:inlistbox"
 msgid "Width %1"
 msgstr "كەڭلىك %1"
 
-#: part/annotationactionhandler.cpp:252
+#: part/annotationactionhandler.cpp:251
 #, kde-format
 msgctxt "@item:inlistbox"
 msgid "%1%"
-msgstr "%1%"
+msgstr ""
 
-#: part/annotationactionhandler.cpp:296
+#: part/annotationactionhandler.cpp:295
 #, kde-format
 msgctxt "@info:tooltip"
 msgid "Annotation line width (No annotation selected)"
 msgstr "ئىزاھ قۇرىنىڭ كەڭلىكى (ئىزاھ تاللانمىغان)"
 
-#: part/annotationactionhandler.cpp:297
+#: part/annotationactionhandler.cpp:296
 #, kde-format
 msgctxt "@info:tooltip"
 msgid "Annotation color (No annotation selected)"
 msgstr "ئىزاھ رەڭگى (ئىزاھ تاللانمىغان)"
 
-#: part/annotationactionhandler.cpp:298
+#: part/annotationactionhandler.cpp:297
 #, kde-format
 msgctxt "@info:tooltip"
 msgid "Annotation fill color (No annotation selected)"
 msgstr "ئىزاھ تولدۇرۇش رەڭگى (ئىزاھ تاللانمىغان)"
 
-#: part/annotationactionhandler.cpp:299
+#: part/annotationactionhandler.cpp:298
 #, kde-format
 msgctxt "@info:tooltip"
 msgid "Annotation opacity (No annotation selected)"
 msgstr "ئىزاھ تۇتۇقلۇقى (ئىزاھ تاللانمىغان)"
 
-#: part/annotationactionhandler.cpp:300
+#: part/annotationactionhandler.cpp:299
 #, kde-format
 msgctxt "@info:tooltip"
 msgid "Annotation font (No annotation selected)"
 msgstr "ئىزاھ خەت نۇسخىسى (ئىزاھ تاللانمىغان)"
 
-#: part/annotationactionhandler.cpp:301
+#: part/annotationactionhandler.cpp:300
 #, kde-format
 msgctxt "@info:tooltip"
 msgid ""
@@ -1319,7 +1333,7 @@ msgid ""
 "selected)"
 msgstr "نۆۋەتتىكى ئىزاھنى تېز ئىزاھ تىزىملىكىگە قوشىدۇ (ئىزاھ تاللانمىغان)"
 
-#: part/annotationactionhandler.cpp:302
+#: part/annotationactionhandler.cpp:301
 #, kde-format
 msgctxt "@info:tooltip"
 msgid ""
@@ -1329,80 +1343,80 @@ msgstr ""
 "شەكىل تەرەپ نىسبىتى 1:1 ياكى سىزىق بۇلۇڭىنىڭ ھەر قەدىمى 15°  (ئىزاھ "
 "تاللانمىغان)"
 
-#: part/annotationactionhandler.cpp:303
+#: part/annotationactionhandler.cpp:302
 #, kde-format
 msgctxt "@info:tooltip"
 msgid ""
 "Advanced settings for the current annotation tool (No annotation selected)"
 msgstr "نۆۋەتتىكى ئىزاھ قورالىنىڭ ئالىي تەڭشىكى (ئىزاھ تاللانمىغان)"
 
-#: part/annotationactionhandler.cpp:308
+#: part/annotationactionhandler.cpp:307
 #, kde-format
 msgctxt "@info:tooltip"
 msgid "Annotation line width"
 msgstr "ئىزاھنىڭ قۇر كەڭلىكى"
 
-#: part/annotationactionhandler.cpp:310
+#: part/annotationactionhandler.cpp:309
 #, kde-format
 msgctxt "@info:tooltip"
 msgid "Annotation line width (Current annotation has no line width)"
 msgstr "ئىزاھنىڭ قۇر كەڭلىكى (نۆۋەتتىكى ئىزاھنىڭ قۇر كەڭلىكى يوق)"
 
-#: part/annotationactionhandler.cpp:314
+#: part/annotationactionhandler.cpp:313
 #, kde-format
 msgctxt "@info:tooltip"
 msgid "Annotation text color"
 msgstr "ئىزاھ تېكىست رەڭگى"
 
-#: part/annotationactionhandler.cpp:316
+#: part/annotationactionhandler.cpp:315
 #, kde-format
 msgctxt "@info:tooltip"
 msgid "Annotation border color"
 msgstr "ئىزاھ گىرۋەك رەڭگى"
 
-#: part/annotationactionhandler.cpp:318
+#: part/annotationactionhandler.cpp:317
 #, kde-format
 msgctxt "@info:tooltip"
 msgid "Annotation color"
 msgstr "ئىزاھ رەڭگى"
 
-#: part/annotationactionhandler.cpp:322
+#: part/annotationactionhandler.cpp:321
 #, kde-format
 msgctxt "@info:tooltip"
 msgid "Annotation fill color"
 msgstr "ئىزاھ تولدۇرۇش رەڭگى"
 
-#: part/annotationactionhandler.cpp:324
+#: part/annotationactionhandler.cpp:323
 #, kde-format
 msgctxt "@info:tooltip"
 msgid "Annotation fill color (Current annotation has no fill color)"
 msgstr "ئىزاھ تولدۇرۇش رەڭگى (نۆۋەتتىكى ئىزاھنىڭ تولدۇرۇش رەڭگى يوق)"
 
-#: part/annotationactionhandler.cpp:328
+#: part/annotationactionhandler.cpp:327
 #, kde-format
 msgctxt "@info:tooltip"
 msgid "Annotation font"
 msgstr "ئىزاھ خەت نۇسخىسى"
 
-#: part/annotationactionhandler.cpp:330
+#: part/annotationactionhandler.cpp:329
 #, kde-format
 msgctxt "@info:tooltip"
 msgid "Annotation font (Current annotation has no font)"
 msgstr "ئىزاھ خەت نۇسخىسى (نۆۋەتتىكى ئىزاھنىڭ خەت نۇسخىسى يوق)"
 
-#: part/annotationactionhandler.cpp:334
+#: part/annotationactionhandler.cpp:333
 #, kde-format
 msgctxt "@info:tooltip"
 msgid "Constrain line angle to 15° steps"
 msgstr "چەكلىمە سىزىق بۇلۇڭىنىڭ ھەر قەدىمى 15°"
 
-#: part/annotationactionhandler.cpp:336
+#: part/annotationactionhandler.cpp:335
 #, kde-format
 msgctxt "@info:tooltip"
 msgid "Constrain shape ratio to 1:1"
 msgstr "چەكلىمە شەكىلنىڭ تەرەپ نىسبىتى 1:1"
 
-#: part/annotationactionhandler.cpp:338
+#: part/annotationactionhandler.cpp:337
 #, kde-format
 msgctxt "@info:tooltip"
 msgid ""
@@ -1412,186 +1426,186 @@ msgstr ""
 "چەكلىمە شەكىلنىڭ تەرەپ نىسبىتى 1:1 ياكى سىزىق بۇلۇڭىنىڭ ھەر قەدىمى 15°  "
 "(نۆۋەتتىكى ئىزاھ قوللىمايدۇ)"
 
-#: part/annotationactionhandler.cpp:341
+#: part/annotationactionhandler.cpp:340
 #, kde-format
 msgctxt "@info:tooltip"
 msgid "Annotation opacity"
 msgstr "ئىزاھنىڭ تۇتۇقلۇقى"
 
-#: part/annotationactionhandler.cpp:342
+#: part/annotationactionhandler.cpp:341
 #, kde-format
 msgctxt "@info:tooltip"
 msgid "Add the current annotation to the quick annotations menu"
 msgstr "نۆۋەتتىكى ئىزاھنى تېز ئىزاھ تىزىملىكىگە قوشىدۇ"
 
-#: part/annotationactionhandler.cpp:343
+#: part/annotationactionhandler.cpp:342
 #, kde-format
 msgctxt "@info:tooltip"
 msgid "Advanced settings for the current annotation tool"
 msgstr "نۆۋەتتىكى ئىزاھ قورالىنىڭ ئالىي تەڭشىكى"
 
-#: part/annotationactionhandler.cpp:432
+#: part/annotationactionhandler.cpp:431
 #, kde-format
 msgctxt "@action:intoolbar Current annotation config option"
 msgid "Color"
 msgstr "رەڭ"
 
-#: part/annotationactionhandler.cpp:434
+#: part/annotationactionhandler.cpp:433
 #, kde-format
 msgctxt "@action:intoolbar Current annotation config option"
 msgid "Fill Color"
 msgstr "تولدۇرغان رەڭ"
 
-#: part/annotationactionhandler.cpp:435
+#: part/annotationactionhandler.cpp:434
 #, kde-format
 msgctxt "@item:inlistbox Color name"
 msgid "Transparent"
 msgstr "سۈزۈك"
 
-#: part/annotationactionhandler.cpp:445
+#: part/annotationactionhandler.cpp:444
 #, kde-format
 msgctxt "@item:inlistbox"
 msgid "Custom Color…"
 msgstr "ئىختىيارىي رەڭ…"
 
-#: part/annotationactionhandler.cpp:499
+#: part/annotationactionhandler.cpp:498
 #, kde-format
 msgctxt "@title:window"
 msgid "Select color"
 msgstr "رەڭ تاللىنىدۇ"
 
-#: part/annotationactionhandler.cpp:552
+#: part/annotationactionhandler.cpp:551
 #, kde-format
 msgid "&Annotations"
 msgstr "ئىزاھات(&A)"
 
-#: part/annotationactionhandler.cpp:553
+#: part/annotationactionhandler.cpp:552
 #, kde-format
 msgctxt "@action:intoolbar Hide the toolbar"
 msgid "Hide"
 msgstr "يوشۇر"
 
-#: part/annotationactionhandler.cpp:554
+#: part/annotationactionhandler.cpp:553
 #, kde-format
 msgctxt "@action:intoolbar Show the builtin annotation toolbar"
 msgid "Show more annotation tools"
 msgstr "تېخىمۇ كۆپ ئىزاھ قورالىنى كۆرسەت"
 
-#: part/annotationactionhandler.cpp:557
+#: part/annotationactionhandler.cpp:556
 #, kde-format
 msgctxt "@action:intoolbar Annotation tool"
 msgid "Highlighter"
 msgstr "يورۇتقۇچ"
 
-#: part/annotationactionhandler.cpp:558
+#: part/annotationactionhandler.cpp:557
 #, kde-format
 msgctxt "@action:intoolbar Annotation tool"
 msgid "Underline"
 msgstr "ئاستى سىزىق"
 
-#: part/annotationactionhandler.cpp:559
+#: part/annotationactionhandler.cpp:558
 #, kde-format
 msgctxt "@action:intoolbar Annotation tool"
 msgid "Squiggle"
 msgstr "ئەگرى سىزىق"
 
-#: part/annotationactionhandler.cpp:560
+#: part/annotationactionhandler.cpp:559
 #, kde-format
 msgctxt "@action:intoolbar Annotation tool"
 msgid "Strike Out"
 msgstr "ئۆچۈرۈش سىزىقى"
 
-#: part/annotationactionhandler.cpp:562
+#: part/annotationactionhandler.cpp:561
 #, kde-format
 msgctxt "@action:intoolbar Annotation tool"
 msgid "Typewriter"
 msgstr "خەت باسقۇ"
 
-#: part/annotationactionhandler.cpp:563
+#: part/annotationactionhandler.cpp:562
 #, kde-format
 msgctxt "@action:intoolbar Annotation tool"
 msgid "Inline Note"
 msgstr "ئىچكى ئىزاھات"
 
-#: part/annotationactionhandler.cpp:564
+#: part/annotationactionhandler.cpp:563
 #, kde-format
 msgctxt "@action:intoolbar Annotation tool"
 msgid "Popup Note"
 msgstr "قاڭقىش ئىزاھ"
 
-#: part/annotationactionhandler.cpp:565
+#: part/annotationactionhandler.cpp:564
 #, kde-format
 msgctxt "@action:intoolbar Annotation tool"
 msgid "Freehand Line"
 msgstr "قولدا سىزىلغان سىزىق"
 
-#: part/annotationactionhandler.cpp:567
+#: part/annotationactionhandler.cpp:566
 #, kde-format
 msgctxt "@action:intoolbar Annotation tool"
 msgid "Straight line"
 msgstr "تۈز سىزىق"
 
-#: part/annotationactionhandler.cpp:568
+#: part/annotationactionhandler.cpp:567
 #, kde-format
 msgctxt "@action:intoolbar Annotation tool"
 msgid "Arrow"
 msgstr "يا ئوق"
 
-#: part/annotationactionhandler.cpp:569
+#: part/annotationactionhandler.cpp:568
 #, kde-format
 msgctxt "@action:intoolbar Annotation tool"
 msgid "Rectangle"
 msgstr "تىك تۆت بۇلۇڭ"
 
-#: part/annotationactionhandler.cpp:570
+#: part/annotationactionhandler.cpp:569
 #, kde-format
 msgctxt "@action:intoolbar Annotation tool"
 msgid "Ellipse"
 msgstr "ئېللىپىس"
 
-#: part/annotationactionhandler.cpp:571
+#: part/annotationactionhandler.cpp:570
 #, kde-format
 msgctxt "@action:intoolbar Annotation tool"
 msgid "Polygon"
 msgstr "كۆپ تەرەپلىك"
 
-#: part/annotationactionhandler.cpp:572
+#: part/annotationactionhandler.cpp:571
 #, kde-format
 msgctxt "@action"
 msgid "Geometrical shapes"
 msgstr "گېئومېتىرىيەلىك شەكىل"
 
-#: part/annotationactionhandler.cpp:618
+#: part/annotationactionhandler.cpp:617
 #, kde-format
 msgctxt "@action"
 msgid "Stamp"
 msgstr "تامغا"
 
-#: part/annotationactionhandler.cpp:638
+#: part/annotationactionhandler.cpp:637
 #, kde-format
 msgctxt "@action:intoolbar Show list of quick annotation tools"
 msgid "Quick Annotations"
 msgstr "تېز ئىزاھ"
 
-#: part/annotationactionhandler.cpp:641
+#: part/annotationactionhandler.cpp:640
 #, kde-format
 msgctxt "@info:tooltip"
 msgid "Choose an annotation tool from the quick annotations"
 msgstr "تېز ئىزاھتىن ئىزاھ قورالىدىن بىرى تاللىنىدۇ"
 
-#: part/annotationactionhandler.cpp:651
+#: part/annotationactionhandler.cpp:650
 #, kde-format
 msgid "Quick Annotation Bar"
 msgstr "تېز ئىزاھ بالداق"
 
-#: part/annotationactionhandler.cpp:665
+#: part/annotationactionhandler.cpp:664
 #, kde-format
 msgctxt ""
 "@action:intoolbar Add current annotation tool to the quick annotations list"
 msgid "Add to Quick Annotations"
 msgstr "تېز ئىزاھ بالداققا قوش"
 
-#: part/annotationactionhandler.cpp:668
+#: part/annotationactionhandler.cpp:667
 #, kde-format
 msgctxt ""
 "@action:intoolbar When checked keep the current annotation tool active after "
@@ -1599,13 +1613,13 @@ msgctxt ""
 msgid "Keep Active"
 msgstr "ئاكتىپ تۇت"
 
-#: part/annotationactionhandler.cpp:669
+#: part/annotationactionhandler.cpp:668
 #, kde-format
 msgctxt "@info:tooltip"
 msgid "Keep the annotation tool active after use"
 msgstr "ئىشلەتكەندىن كېيىن ئىزاھ قورالىنى ئاكتىپ تۇتىدۇ"
 
-#: part/annotationactionhandler.cpp:674
+#: part/annotationactionhandler.cpp:673
 #, kde-format
 msgctxt ""
 "@action When checked, line annotations are constrained to 15° steps, shape "
@@ -1613,37 +1627,37 @@ msgctxt ""
 msgid "Constrain Ratio and Angle of Annotation Tools"
 msgstr "ئىزاھ قورالىنىڭ شەكىل تەرەپ نىسىبىتى ۋە سىزىق بۇلۇڭىنى چەكلەيدۇ"
 
-#: part/annotationactionhandler.cpp:680
+#: part/annotationactionhandler.cpp:679
 #, kde-format
 msgctxt "@action:intoolbar Current annotation config option"
 msgid "Font"
 msgstr "خەت نۇسخا"
 
-#: part/annotationactionhandler.cpp:681
+#: part/annotationactionhandler.cpp:680
 #, kde-format
 msgctxt "@action:intoolbar Current annotation advanced settings"
 msgid "Annotation Settings"
 msgstr "ئىزاھ تەڭشىكى"
 
-#: part/annotationactionhandler.cpp:684
+#: part/annotationactionhandler.cpp:683
 #, kde-format
 msgctxt "@action:intoolbar Current annotation config option"
 msgid "Line width"
 msgstr "سىزىق توملۇقى"
 
-#: part/annotationactionhandler.cpp:693
+#: part/annotationactionhandler.cpp:692
 #, kde-format
 msgctxt "@action:intoolbar Current annotation config option"
 msgid "Opacity"
 msgstr "غۇۋالىقى"
 
-#: part/annotationactionhandler.cpp:696
+#: part/annotationactionhandler.cpp:695
 #, kde-format
 msgctxt ""
 "@item:inlistbox Annotation opacity percentage level, make sure to include %1 "
 "in your translation"
 msgid "%1%"
-msgstr "%1%"
+msgstr ""
 
 #: part/annotationmodel.cpp:322
 #, kde-format
@@ -1669,7 +1683,7 @@ msgid "&Open Pop-up Note"
 msgstr "قاڭقىش ئىزاھنى ئاچ(&O)"
 
 #: part/annotationpopup.cpp:137 part/annotationpopup.cpp:206
-#: part/bookmarklist.cpp:265 part/part.cpp:2299 part/part.cpp:3212
+#: part/bookmarklist.cpp:263 part/part.cpp:2287 part/part.cpp:3212
 #, kde-format
 msgid "Remove Bookmark"
 msgstr "خەتكۈش چىقىرىۋەت"
@@ -1681,6 +1695,7 @@ msgstr "خەتكۈش قوش"
 
 #: part/annotationpopup.cpp:146 part/annotationpopup.cpp:213
 #, kde-format
+msgctxt "@action"
 msgid "Copy"
 msgstr "كۆچۈر"
 
@@ -1695,8 +1710,8 @@ msgid "Copy Text to Clipboard"
 msgstr "تېكىستنى چاپلاش تاختىسىغا كۆچۈر"
 
 #: part/annotationpopup.cpp:159 part/annotationpopup.cpp:226
-#: part/pageview.cpp:2599 part/pageview.cpp:2951 part/pageview.cpp:2953
-#: part/pageview.cpp:3113 part/pageview.cpp:3174 part/pageview.cpp:3176
+#: part/pageview.cpp:2589 part/pageview.cpp:2941 part/pageview.cpp:2943
+#: part/pageview.cpp:3103 part/pageview.cpp:3164 part/pageview.cpp:3166
 #, kde-format
 msgid "Copy forbidden by DRM"
 msgstr "كۆچۈرۈش مەشغۇلاتىنى DRM چەكلىگەن"
@@ -1706,7 +1721,7 @@ msgstr "كۆچۈرۈش مەشغۇلاتىنى DRM چەكلىگەن"
 msgid "&Delete"
 msgstr "ئۆچۈر(&D)"
 
-#: part/annotationpopup.cpp:178 part/annotationpopup.cpp:235 part/part.cpp:779
+#: part/annotationpopup.cpp:178 part/annotationpopup.cpp:235 part/part.cpp:750
 #: part/propertiesdialog.cpp:54
 #, kde-format
 msgid "&Properties"
@@ -1860,7 +1875,7 @@ msgstr "رەڭ(&C):"
 #, kde-format
 msgctxt "@label:spinbox Suffix for the opacity level, e.g. '80%'"
 msgid "%v%"
-msgstr "%v%"
+msgstr ""
 
 #: part/annotationwidgets.cpp:275 part/editdrawingtooldialog.cpp:68
 #, kde-format
@@ -2025,7 +2040,7 @@ msgstr "ئۇچۇر"
 #: part/annotationwidgets.cpp:430
 #, kde-format
 msgid "KDE"
-msgstr "KDE"
+msgstr ""
 
 #: part/annotationwidgets.cpp:451
 #, kde-format
@@ -2124,7 +2139,7 @@ msgstr "شەكىل تولدۇرۇش:"
 msgid "Type:"
 msgstr "تۈرى:"
 
-#: part/annotationwidgets.cpp:656 part/pageviewannotator.cpp:1500
+#: part/annotationwidgets.cpp:656 part/pageviewannotator.cpp:1496
 #, kde-format
 msgid "Strike out"
 msgstr "ئۆچۈرۈش سىزىقى"
@@ -2164,7 +2179,7 @@ msgctxt "'File' as normal file, that can be opened, saved, etc.."
 msgid "File"
 msgstr "ھۆججەت"
 
-#: part/annotationwidgets.cpp:764 part/embeddedfilesdialog.cpp:95
+#: part/annotationwidgets.cpp:764 part/embeddedfilesdialog.cpp:94
 #, kde-format
 msgctxt "Not available size"
 msgid "N/A"
@@ -2200,64 +2215,62 @@ msgstr "يوق"
 #, kde-format
 msgctxt "Symbol for caret annotations"
 msgid "P"
-msgstr "P"
+msgstr ""
 
-#: part/annotwindow.cpp:59
+#: part/annotwindow.cpp:58
 #, kde-format
 msgid "Close this note"
 msgstr "بۇ خاتىرىنى ياپ"
 
-#: part/annotwindow.cpp:139 part/findbar.cpp:63
+#: part/annotwindow.cpp:138 part/findbar.cpp:63
 #, kde-format
 msgid "Options"
 msgstr "تاللانما"
 
-#: part/annotwindow.cpp:150
+#: part/annotwindow.cpp:149
 #, kde-format
 msgid ""
 "This annotation may contain LaTeX code.\n"
 "Click here to render."
 msgstr ""
-"بۇ ئىزاھتا LaTeX كودى بولۇشى مۇمكىن.\n"
-"بۇ جاي چېكىلسە شەكىللەندۈرىدۇ."
 
-#: part/annotwindow.cpp:231 part/annotwindow.cpp:253
+#: part/annotwindow.cpp:250 part/annotwindow.cpp:272
 #, kde-format
 msgid "Unknown author"
 msgstr "نامەلۇم يازغۇچى"
 
-#: part/annotwindow.cpp:234 part/annotwindow.cpp:256
+#: part/annotwindow.cpp:253 part/annotwindow.cpp:275
 #, kde-format
 msgid "No date recognized"
 msgstr ""
 
-#: part/annotwindow.cpp:583
+#: part/annotwindow.cpp:562
 #, kde-format
 msgid "Cannot find latex executable."
 msgstr "LaTeX ئىجرا ھۆججىتىنى تاپالمىدى."
 
-#: part/annotwindow.cpp:583 part/annotwindow.cpp:588 part/annotwindow.cpp:593
-#: part/annotwindow.cpp:598
+#: part/annotwindow.cpp:562 part/annotwindow.cpp:567 part/annotwindow.cpp:572
+#: part/annotwindow.cpp:577
 #, kde-format
 msgid "LaTeX rendering failed"
 msgstr "LaTeX شەكىللەندۈرەلمىدى"
 
-#: part/annotwindow.cpp:588
+#: part/annotwindow.cpp:567
 #, kde-format
 msgid "Cannot find dvipng executable."
 msgstr "dvipng ئىجرا ھۆججىتىنى تاپالمىدى."
 
-#: part/annotwindow.cpp:593
+#: part/annotwindow.cpp:572
 #, kde-format
 msgid "A problem occurred during the execution of the 'latex' command."
 msgstr "«LaTeX» بۇيرۇقىنى ئىجرا قىلىۋاتقاندا مەسىلە كۆرۈلدى."
 
-#: part/annotwindow.cpp:598
+#: part/annotwindow.cpp:577
 #, kde-format
 msgid "A problem occurred during the execution of the 'dvipng' command."
 msgstr "«dvipng» بۇيرۇقىنى ئىجرا قىلىۋاتقاندا مەسىلە كۆرۈلدى."
 
-#: part/bookmarklist.cpp:116
+#: part/bookmarklist.cpp:114
 #, kde-format
 msgctxt "%1 is the file name"
 msgid ""
@@ -2273,50 +2286,50 @@ msgstr[0] ""
 "\n"
 "%2 خەتكۈش"
 
-#: part/bookmarklist.cpp:132 part/part.cpp:417
+#: part/bookmarklist.cpp:130 part/part.cpp:416
 #, kde-format
 msgid "Bookmarks"
 msgstr "خەتكۈش"
 
-#: part/bookmarklist.cpp:136
+#: part/bookmarklist.cpp:134
 #, kde-format
 msgid "Show for all documents"
 msgstr "ھەممە پۈتۈكتە كۆرسەت"
 
-#: part/bookmarklist.cpp:143 part/searchwidget.cpp:38 part/side_reviews.cpp:129
-#: part/toc.cpp:43
+#: part/bookmarklist.cpp:141 part/searchwidget.cpp:38 part/side_reviews.cpp:127
+#: part/toc.cpp:41
 #, kde-format
 msgid "Search…"
 msgstr "ئىزدە…"
 
-#: part/bookmarklist.cpp:261 part/bookmarklist.cpp:295 part/part.cpp:3194
+#: part/bookmarklist.cpp:259 part/bookmarklist.cpp:293 part/part.cpp:3194
 #, kde-format
 msgid "Expand All"
 msgstr "ھەممىنى ياي"
 
-#: part/bookmarklist.cpp:262 part/bookmarklist.cpp:296 part/part.cpp:3195
+#: part/bookmarklist.cpp:260 part/bookmarklist.cpp:294 part/part.cpp:3195
 #, kde-format
 msgid "Collapse All"
 msgstr "ھەممىنى يىغ"
 
-#: part/bookmarklist.cpp:263
+#: part/bookmarklist.cpp:261
 #, kde-format
 msgid "Go to This Bookmark"
 msgstr "بۇ خەتكۈشكە يۆتكەل"
 
-#: part/bookmarklist.cpp:264 part/bookmarklist.cpp:301 part/part.cpp:710
-#: part/part.cpp:2494
+#: part/bookmarklist.cpp:262 part/bookmarklist.cpp:299 part/part.cpp:692
+#: part/part.cpp:2482
 #, kde-format
 msgid "Rename Bookmark"
 msgstr "خەتكۈش ئاتىنى ئۆزگەرت"
 
-#: part/bookmarklist.cpp:299
+#: part/bookmarklist.cpp:297
 #, kde-format
 msgctxt "Opens the selected document"
 msgid "Open Document"
 msgstr "پۈتۈك ئاچ"
 
-#: part/bookmarklist.cpp:302
+#: part/bookmarklist.cpp:300
 #, kde-format
 msgid "Remove all Bookmarks for this Document"
 msgstr "بۇ پۈتۈكنىڭ ھەممە خەتكۈشىنى چىقىرىۋەت"
@@ -2336,143 +2349,165 @@ msgstr "چىقار…"
 msgid "General"
 msgstr "ئادەتتىكى"
 
-#: part/certificateviewer.cpp:58
+#: part/certificateviewer.cpp:63
 #, kde-format
 msgid "Issued By"
 msgstr "تارقاتقۇچى"
 
-#: part/certificateviewer.cpp:61 part/certificateviewer.cpp:68
+#: part/certificateviewer.cpp:66 part/certificateviewer.cpp:76
 #, kde-format
 msgid "Common Name(CN)"
 msgstr "ھەممىباپ ئىسمى(CN)"
 
-#: part/certificateviewer.cpp:62 part/certificateviewer.cpp:69
+#: part/certificateviewer.cpp:67 part/certificateviewer.cpp:78
 #, kde-format
 msgid "EMail"
 msgstr "ئېلخەت"
 
-#: part/certificateviewer.cpp:63 part/certificateviewer.cpp:70
+#: part/certificateviewer.cpp:68 part/certificateviewer.cpp:81
 #, kde-format
 msgid "Organization(O)"
 msgstr "تەشكىل (O)"
 
-#: part/certificateviewer.cpp:65
+#: part/certificateviewer.cpp:73
 #, kde-format
 msgid "Issued To"
 msgstr "تارقىتىلغۇچى"
 
-#: part/certificateviewer.cpp:72
+#: part/certificateviewer.cpp:76 part/propertiesdialog.cpp:424
+#, kde-format
+msgid "Name"
+msgstr "ئاتى"
+
+#: part/certificateviewer.cpp:86
 #, kde-format
 msgid "Validity"
 msgstr "ئۈنۈملۈكلۈكى"
 
-#: part/certificateviewer.cpp:78
+#: part/certificateviewer.cpp:90
+#, kde-format
+msgctxt "certificate that never expires"
+msgid "Never"
+msgstr "ھەرگىز"
+
+#: part/certificateviewer.cpp:94
 #, kde-format
 msgid "Fingerprints"
 msgstr "بارماق ئىزى"
 
-#: part/certificateviewer.cpp:87
+#: part/certificateviewer.cpp:104
 #, kde-format
 msgid "SHA-1 Fingerprint"
 msgstr "‪SHA-1‬ بارماق ئىزى"
 
-#: part/certificateviewer.cpp:88
+#: part/certificateviewer.cpp:105
 #, kde-format
 msgid "SHA-256 Fingerprint"
 msgstr "SHA-256 بارماق ئىزى"
 
-#: part/certificateviewer.cpp:106
+#: part/certificateviewer.cpp:107
+#, kde-format
+msgctxt "certificate key"
+msgid "Fingerprint"
+msgstr "بارماق ئىزى"
+
+#: part/certificateviewer.cpp:116
 #, kde-format
 msgid "Details"
 msgstr "تەپسىلاتى"
 
-#: part/certificateviewer.cpp:107
+#: part/certificateviewer.cpp:117
 #, kde-format
 msgid "Certificate Data:"
 msgstr "گۇۋاھنامە سانلىق مەلۇماتى:"
 
-#: part/certificateviewer.cpp:159
+#: part/certificateviewer.cpp:178
 #, kde-format
 msgid "Where do you want to save this certificate?"
 msgstr "بۇ گۇۋاھنامىنى قەيەرگە ساقلايسىز؟"
 
-#: part/certificateviewer.cpp:160
+#: part/certificateviewer.cpp:182
+#, kde-format
+msgid "Certificate File (*.asc)"
+msgstr ""
+
+#: part/certificateviewer.cpp:185
 #, kde-format
 msgid "Certificate File (*.cer)"
 msgstr "گۇۋاھنامە ھۆججەت (*.cer)"
 
-#: part/certificateviewer.cpp:163
+#: part/certificateviewer.cpp:191
 #, kde-format
 msgid "Could not export the certificate"
 msgstr "گۇۋاھنامىنى چىقىرالمايدۇ"
 
-#: part/colormodemenu.cpp:19
+#: part/colormodemenu.cpp:18
 #, kde-format
 msgctxt "@title:menu"
 msgid "&Color Mode"
 msgstr "رەڭ ھالىتى(&C)"
 
-#: part/colormodemenu.cpp:21
+#: part/colormodemenu.cpp:20
 #, kde-format
 msgctxt "@action Change Colors feature toggle action"
 msgid "Change Colors"
 msgstr "رەڭ ئۆزگەرت"
 
-#: part/colormodemenu.cpp:29
+#: part/colormodemenu.cpp:28
 #, kde-format
 msgctxt "@item:inmenu color mode"
 msgid "&Normal Colors"
 msgstr "(ئادەتتىكى رەڭ(&N)"
 
-#: part/colormodemenu.cpp:42
+#: part/colormodemenu.cpp:41
 #, kde-format
 msgctxt "@item:inmenu color mode"
 msgid "&Invert Colors"
 msgstr "ئەكسى رەڭ(&I)"
 
-#: part/colormodemenu.cpp:43
+#: part/colormodemenu.cpp:42
 #, kde-format
 msgctxt "@item:inmenu color mode"
 msgid "Change &Paper Color"
 msgstr "بەت رەڭگىنى ئۆزگەرت(&P)"
 
-#: part/colormodemenu.cpp:45
+#: part/colormodemenu.cpp:44
 #, kde-format
 msgctxt "@item:inmenu color mode"
 msgid "Change &Dark && Light Colors"
 msgstr "قاراڭغۇ ۋە يورۇق رەڭنى ئالماشتۇر(&D)"
 
-#: part/colormodemenu.cpp:47
+#: part/colormodemenu.cpp:46
 #, kde-format
 msgctxt "@item:inmenu color mode"
 msgid "Convert to &Black && White"
 msgstr "ئاق ۋە قارا رەڭگە ئايلاندۇر(&B)"
 
-#: part/colormodemenu.cpp:50
+#: part/colormodemenu.cpp:49
 #, kde-format
 msgctxt "@item:inmenu color mode"
 msgid "Invert &Lightness"
 msgstr "ئەكسى يورۇقلۇق(&L)"
 
-#: part/colormodemenu.cpp:53
+#: part/colormodemenu.cpp:52
 #, kde-format
 msgctxt "@item:inmenu color mode"
 msgid "Invert L&uma (sRGB Linear)"
 msgstr "ئەكسى يورۇقلۇق (sRGB سىزىقلىق)(&U)"
 
-#: part/colormodemenu.cpp:56
+#: part/colormodemenu.cpp:55
 #, kde-format
 msgctxt "@item:inmenu color mode"
 msgid "Invert Luma (&Symmetric)"
 msgstr "ئەكسى يورۇقلۇق (سىممېتىرىك)(&S)"
 
-#: part/colormodemenu.cpp:59
+#: part/colormodemenu.cpp:58
 #, kde-format
 msgctxt "@item:inmenu color mode"
 msgid "Shift Hue P&ositive"
 msgstr "رەڭ تۈسى مۇسبەت ئېغىش(&O)"
 
-#: part/colormodemenu.cpp:62
+#: part/colormodemenu.cpp:61
 #, kde-format
 msgctxt "@item:inmenu color mode"
 msgid "Shift Hue N&egative"
@@ -2685,8 +2720,6 @@ msgid ""
 "information is saved in annotated documents, and so will be transmitted "
 "together with the document."
 msgstr ""
-"<b>ئەسكەرتىش:</b> بۇ ئۇچۇر پەقەت ئىزاھاتقا ئىشلىتىلىدۇ. ئۇچۇر ئىزاھ قوشۇلغان "
-"پۈتۈككە ساقلىنىدۇ ۋە پۈتۈك بىلەن بىللە يەتكۈزۈلىدۇ."
 
 #: part/dlgannotations.cpp:48
 #, kde-format
@@ -2714,19 +2747,19 @@ msgstr "ئىختىيارى تېكىست تەھرىرلىگۈچ"
 #, kde-format
 msgctxt "@item:inlistbox Config dialog, editor page"
 msgid "Kate"
-msgstr "Kate"
+msgstr ""
 
 #: part/dlgeditor.cpp:31
 #, kde-format
 msgctxt "@item:inlistbox Config dialog, editor page"
 msgid "Kile"
-msgstr "Kile"
+msgstr ""
 
 #: part/dlgeditor.cpp:32
 #, kde-format
 msgctxt "@item:inlistbox Config dialog, editor page"
 msgid "SciTE"
-msgstr "SciTE"
+msgstr ""
 
 #: part/dlgeditor.cpp:33
 #, kde-format
@@ -2744,13 +2777,13 @@ msgstr "Lyx خېرىدارى"
 #, kde-format
 msgctxt "@item:inlistbox Config dialog, editor page"
 msgid "TeXstudio"
-msgstr "TeXstudio"
+msgstr ""
 
 #: part/dlgeditor.cpp:36
 #, kde-format
 msgctxt "@item:inlistbox Config dialog, editor page"
 msgid "TeXiFy IDEA"
-msgstr "TeXiFy IDEA"
+msgstr ""
 
 #: part/dlgeditor.cpp:37
 #, kde-format
@@ -2772,16 +2805,6 @@ msgid ""
 "If %f is not specified, then the file name is appended to the specified "
 "command."
 msgstr ""
-"<qt>قوزغىتىدىغان ئىختىيارى تېكىست تەھرىرلىگۈچنىڭ قوزغىتىش بۇيرۇقىنى تەڭشەيدۇ."
-"<br />\n"
-"بۇيرۇق قۇرىدا بىر قانچە ئورۇن بەلگىسىنى قىستۇرالايسىز:\n"
-"<ul>\n"
-"  <li>%f - ھۆججەت ئاتى</li>\n"
-"  <li>%l - ھۆججەتتىكى يۆتكەلمەكچى بولغان قۇر سانى </li>\n"
-"  <li>%c - ھۆججەتتىكى يۆتكەلمەكچى بولغان رەت سانى </li>\n"
-"</ul> \n"
-"ئەگەر %f بەلگىلەنمىگەن بولسا ئۇنداقتا ھۆججەت ئاتى بەلگىلەنگەن بۇيرۇقنىڭ ئەڭ "
-"ئاخىرىغا قوشۇلىدۇ."
 
 #: part/dlgeditor.cpp:63
 #, kde-format
@@ -2951,7 +2974,7 @@ msgstr "ئىخچام كۆرۈنۈش رەت سانى:"
 #, kde-format
 msgctxt "@item:spinbox Config dialog, general page, page overlap factor"
 msgid "%v%"
-msgstr "%v%"
+msgstr ""
 
 #: part/dlggeneral.cpp:226
 #, kde-format
@@ -2973,13 +2996,13 @@ msgstr "ئالدى بەت/كەينى بەت دەستىلىنىشى:"
 #, kde-format
 msgctxt "@item:inlistbox Config dialog, general page, custom zoom factor"
 msgid "%v%"
-msgstr "%v%"
+msgstr ""
 
 #: part/dlggeneral.cpp:237
 #, kde-format
 msgctxt "@item:inlistbox Config dialog, general page, default zoom"
 msgid "100%"
-msgstr "100%"
+msgstr ""
 
 #: part/dlggeneral.cpp:238
 #, kde-format
@@ -3012,8 +3035,6 @@ msgid ""
 "Defines the default zoom mode for files which were never opened before. For "
 "files which were opened before the previous zoom is applied."
 msgstr ""
-"تۇنجى قېتىم ئېچىلغان ھۆججەتنىڭ كۆڭۈلدىكى كۆرسىتىش نىسبىتىنى بەلگىلەيدۇ. "
-"ئىلگىرى ئېچىلغان ھۆججەتنىڭ ئالدىنقى كۆرسىتىش نىسبىتىنى قوللىنىدۇ."
 
 #: part/dlggeneral.cpp:246
 #, kde-format
@@ -3093,8 +3114,6 @@ msgid ""
 "Keeps used memory as low as possible. Do not reuse anything. (For systems "
 "with low memory.)"
 msgstr ""
-"ئىمكانىيەتنىڭ بارىچە ئەسلەكنى ئاز ئىشلىتىدۇ. ھەر قانداق مەنبەنى قايتا "
-"ئىشلەتمەيدۇ.(ئەسلەك تۆۋەن بولغان سىستېمىغا ماس كېلىدۇ.)"
 
 #: part/dlgperformance.cpp:80
 #, kde-format
@@ -3102,8 +3121,6 @@ msgid ""
 "A good compromise between memory usage and speed gain. Preload next page and "
 "boost searches. (For systems with 2GB of memory, typically.)"
 msgstr ""
-"ئەسلەك ئىگىلەش ۋە سۈرئەت ئارىسىدىكى تەڭپۇڭلۇققا يەتكەن. كېيىنكى بەتنى ئالدىن "
-"يۈكلەپ ئىزدەشنى تېزلىتىدۇ(‏‎2GB ئەسلەك بار سىستېمىغا ماس كېلىدۇ.)"
 
 #: part/dlgperformance.cpp:83
 #, kde-format
@@ -3111,8 +3128,6 @@ msgid ""
 "Keeps everything in memory. Preload next pages. Boost searches. (For systems "
 "with more than 4GB of memory.)"
 msgstr ""
-"ھەممە مەزمۇننى ئەسلەككە قويىدۇ. كېيىنكى بەتنى ئالدىن يۈكلەپ ئىزدەشنى "
-"تېزلىتىدۇ(4GB ياكى ئۇنىڭدىن كۆپ ئەسلەك بار سىستېمىغا ماس كېلىدۇ.)"
 
 #: part/dlgperformance.cpp:87
 #, no-c-format, kde-format
@@ -3120,9 +3135,6 @@ msgid ""
 "Loads and keeps everything in memory. Preload all pages. (Will use at "
 "maximum 50% of your total memory or your free memory, whatever is bigger.)"
 msgstr ""
-"ھەممە مەزمۇننى ئەسلەككە قويىدۇ. كېيىنكى بەتنى ئالدىن يۈكلەپ ئىزدەشنى "
-"تېزلىتىدۇ(ئەڭ كۆپ بولغاندا ئەسلەك ئومۇمىي مىقدارى ياكى بوش ئەسلەكنىڭ 50% نى "
-"ئىشلىتىدۇ، قايسى چوڭ بولسا شۇنى ئىشلىتىدۇ.)"
 
 #: part/dlgpresentation.cpp:38
 #, kde-format
@@ -3437,7 +3449,7 @@ msgstr "قەلەم كەڭلىكى(&P):"
 #, kde-format
 msgctxt "@label:spinbox Suffix for the pen width, e.g. '10 px'"
 msgid "%v px"
-msgstr "%v px"
+msgstr ""
 
 #: part/editdrawingtooldialog.cpp:79
 #, kde-format
@@ -3449,73 +3461,73 @@ msgstr "سىزمىچىلىق قورالى قۇر"
 msgid "Edit drawing tool"
 msgstr "سىزمىچىلىق قورالى تەھرىر"
 
-#: part/embeddedfilesdialog.cpp:42
+#: part/embeddedfilesdialog.cpp:41
 #, kde-format
 msgctxt "Unknown date"
 msgid "Unknown"
 msgstr "يوچۇن"
 
-#: part/embeddedfilesdialog.cpp:48
+#: part/embeddedfilesdialog.cpp:47
 #, kde-format
 msgctxt "@title:window"
 msgid "Embedded Files"
 msgstr "سىڭدۈرمە ھۆججەت"
 
-#: part/embeddedfilesdialog.cpp:62
+#: part/embeddedfilesdialog.cpp:61
 #, kde-format
 msgctxt "@action:button"
 msgid "View"
 msgstr "كۆرۈنۈش"
 
-#: part/embeddedfilesdialog.cpp:67
+#: part/embeddedfilesdialog.cpp:66
 #, kde-format
 msgctxt "@action:button"
 msgid "Open"
 msgstr "ئاچ"
 
-#: part/embeddedfilesdialog.cpp:75
+#: part/embeddedfilesdialog.cpp:74
 #, kde-format
 msgctxt "@title:column"
 msgid "Name"
 msgstr "ئاتى"
 
-#: part/embeddedfilesdialog.cpp:76
+#: part/embeddedfilesdialog.cpp:75
 #, kde-format
 msgctxt "@title:column"
 msgid "Description"
 msgstr "چۈشەندۈرۈش"
 
-#: part/embeddedfilesdialog.cpp:77
+#: part/embeddedfilesdialog.cpp:76
 #, kde-format
 msgctxt "@title:column"
 msgid "Size"
 msgstr "چوڭلۇقى"
 
-#: part/embeddedfilesdialog.cpp:78
+#: part/embeddedfilesdialog.cpp:77
 #, kde-format
 msgctxt "@title:column"
 msgid "Created"
 msgstr "قۇرغان ۋاقتى"
 
-#: part/embeddedfilesdialog.cpp:79
+#: part/embeddedfilesdialog.cpp:78
 #, kde-format
 msgctxt "@title:column"
 msgid "Modified"
 msgstr "ئۆزگەرتىلگەن ۋاقتى"
 
-#: part/embeddedfilesdialog.cpp:170
+#: part/embeddedfilesdialog.cpp:169
 #, kde-format
 msgctxt "@action:inmenu"
 msgid "&Save As…"
 msgstr "باشقا ئاتتا ساقلا(&A)…"
 
-#: part/embeddedfilesdialog.cpp:171
+#: part/embeddedfilesdialog.cpp:170
 #, kde-format
 msgctxt "@action:inmenu"
 msgid "&View…"
 msgstr "كۆرۈنۈش(&V)…"
 
-#: part/embeddedfilesdialog.cpp:172
+#: part/embeddedfilesdialog.cpp:171
 #, kde-format
 msgctxt "@action:inmenu"
 msgid "&Open…"
@@ -3589,23 +3601,23 @@ msgstr "نۆۋەتتىكى بەتتىن باشلاپ"
 msgid "Find as you type"
 msgstr "خەت بېسىۋاتقاندا ئىزدە"
 
-#: part/formwidgets.cpp:870
+#: part/formwidgets.cpp:873
 #, kde-format
 msgid "All Files (*)"
 msgstr "ھەممە ھۆججەت(*)"
 
-#: part/formwidgets.cpp:1280
+#: part/formwidgets.cpp:1283
 #, kde-format
 msgctxt "Digital signature"
 msgid "Signature placeholder (Click to Sign)"
 msgstr "ئىمزا ئورۇن بەلگىسى (چېكىپ ئىمزا قويۇلىدۇ)"
 
-#: part/formwidgets.cpp:1346 part/signaturepanel.cpp:97
+#: part/formwidgets.cpp:1349 part/signaturepanel.cpp:97
 #, kde-format
 msgid "&Sign…"
 msgstr "ئىمزا(&S)…"
 
-#: part/formwidgets.cpp:1350 part/signaturepropertiesdialog.cpp:43
+#: part/formwidgets.cpp:1353 part/signaturepropertiesdialog.cpp:43
 #, kde-format
 msgid "Signature Properties"
 msgstr "ئىمزا خاسلىقى"
@@ -3627,382 +3639,382 @@ msgctxt "Enable regular expression search in the side navigation panels"
 msgid "Regular Expression"
 msgstr "مۇنتىزىم ئىپادە"
 
-#: part/layers.cpp:35 part/part.cpp:2342
+#: part/layers.cpp:33 part/part.cpp:2330
 #, kde-format
 msgid "Layers"
 msgstr "قەۋەت"
 
-#: part/minibar.cpp:190
+#: part/minibar.cpp:192
 #, kde-format
 msgctxt "Layouted like: '5 [pages] of 10'"
 msgid "of"
 msgstr "/"
 
-#: part/pageview.cpp:541
+#: part/pageview.cpp:534
 #, kde-format
 msgid "Zoom"
 msgstr "نىسبەت"
 
-#: part/pageview.cpp:553
+#: part/pageview.cpp:546
 #, kde-format
 msgid "Zoom to 100%"
 msgstr "100% كە توغرىلا"
 
-#: part/pageview.cpp:564
+#: part/pageview.cpp:557
 #, kde-format
 msgid "Rotate &Right"
 msgstr "ئوڭغا چۆرگىلەت(&R)"
 
-#: part/pageview.cpp:565
+#: part/pageview.cpp:558
 #, kde-format
 msgctxt "Rotate right"
 msgid "Right"
 msgstr "ئوڭ"
 
-#: part/pageview.cpp:569
+#: part/pageview.cpp:562
 #, kde-format
 msgid "Rotate &Left"
 msgstr "سولغا چۆرگىلەت(&L)"
 
-#: part/pageview.cpp:570
+#: part/pageview.cpp:563
 #, kde-format
 msgctxt "Rotate left"
 msgid "Left"
 msgstr "سول"
 
-#: part/pageview.cpp:574
+#: part/pageview.cpp:567
 #, kde-format
 msgid "Original Orientation"
 msgstr "ئەسلى يۆنىلىش"
 
-#: part/pageview.cpp:580
+#: part/pageview.cpp:573
 #, kde-format
 msgid "&Trim View"
 msgstr "قىرقىش كۆرۈنۈشى(&T)"
 
-#: part/pageview.cpp:584
+#: part/pageview.cpp:577
 #, kde-format
 msgid "&Trim Margins"
 msgstr "قىرقىش گىرۋىكى(&T)"
 
-#: part/pageview.cpp:591
+#: part/pageview.cpp:584
 #, kde-format
 msgid "Trim To &Selection"
 msgstr "تاللىغانغىچە قىرقى(&S)"
 
-#: part/pageview.cpp:597
+#: part/pageview.cpp:590
 #, kde-format
 msgid "Fit &Width"
 msgstr "كەڭلىككە سىغدۇر(&W)"
 
-#: part/pageview.cpp:601
+#: part/pageview.cpp:594
 #, kde-format
 msgid "Fit &Page"
 msgstr "بەتكە سىغدۇر(&P)"
 
-#: part/pageview.cpp:605
+#: part/pageview.cpp:598
 #, kde-format
 msgid "&Auto Fit"
 msgstr "ئۆزلۈكىدىن سىغدۇر(&A)"
 
-#: part/pageview.cpp:609
+#: part/pageview.cpp:602
 #, kde-format
 msgid "Fit Wi&ndow to Page"
 msgstr "كۆزنەكنى بەتكە سىغدۇر(&N)"
 
-#: part/pageview.cpp:616
+#: part/pageview.cpp:609
 #, kde-format
 msgid "&View Mode"
 msgstr "كۆرۈنۈش ھالىتى(&V)"
 
-#: part/pageview.cpp:628
+#: part/pageview.cpp:621
 #, kde-format
 msgctxt "@item:inmenu"
 msgid "&Single Page"
 msgstr "يەككە بەت(&S)"
 
-#: part/pageview.cpp:629
+#: part/pageview.cpp:622
 #, kde-format
 msgctxt "@item:inmenu"
 msgid "&Facing Pages"
 msgstr "قوش بەت(&F)"
 
-#: part/pageview.cpp:630
+#: part/pageview.cpp:623
 #, kde-format
 msgctxt "@item:inmenu"
 msgid "Facing Pages (&Center First Page)"
 msgstr "قوش بەت(باش بەتنى ئوتتۇرىغا توغرىلا)(&C)"
 
-#: part/pageview.cpp:633
+#: part/pageview.cpp:626
 #, kde-format
 msgctxt "@item:inmenu"
 msgid "&Overview"
 msgstr "ئىخچام كۆرۈنۈش(&O)"
 
-#: part/pageview.cpp:645
+#: part/pageview.cpp:638
 #, kde-format
 msgid "&Continuous"
 msgstr "ئۈزلۈكسىز(&C)"
 
-#: part/pageview.cpp:652
+#: part/pageview.cpp:645
 #, kde-format
 msgctxt "@action page layout"
 msgid "Use Right to Left Reading Direction"
 msgstr "ئوڭدىن سولغا ئوقۇش يۆنىلىشىنى ئىشلىتىدۇ"
 
-#: part/pageview.cpp:661
+#: part/pageview.cpp:654
 #, kde-format
 msgid "&Browse"
 msgstr "كۆز يۈگۈرت(&B)"
 
-#: part/pageview.cpp:669
+#: part/pageview.cpp:662
 #, kde-format
 msgid "&Zoom"
 msgstr "نىسبەت(&Z)"
 
-#: part/pageview.cpp:689
+#: part/pageview.cpp:682
 #, kde-format
 msgid "Area &Selection"
 msgstr "دائىرە تاللا(&S)"
 
-#: part/pageview.cpp:696
+#: part/pageview.cpp:689
 #, kde-format
 msgid "&Text Selection"
 msgstr "تېكىست تاللا(&T)"
 
-#: part/pageview.cpp:703
+#: part/pageview.cpp:696
 #, kde-format
 msgid "T&able Selection"
 msgstr "جەدۋەل تاللا(&A)"
 
-#: part/pageview.cpp:710
+#: part/pageview.cpp:703
 #, kde-format
 msgid "&Magnifier"
 msgstr "چوڭايتقۇچ(&M)"
 
-#: part/pageview.cpp:719
+#: part/pageview.cpp:712
 #, kde-format
 msgctxt "@action"
 msgid "Selection Tools"
 msgstr "تاللاش قورالى"
 
-#: part/pageview.cpp:745
+#: part/pageview.cpp:738
 #, kde-format
 msgid "Digitally &Sign…"
 msgstr "رەقەملىك ئىمزا(&S)…"
 
-#: part/pageview.cpp:751
+#: part/pageview.cpp:744
 #, kde-format
 msgid "Speak Whole Document"
 msgstr "پۈتكۈل پۈتۈكنى ئوقۇ"
 
-#: part/pageview.cpp:756
+#: part/pageview.cpp:749
 #, kde-format
 msgid "Speak From Current Page"
 msgstr "نۆۋەتتىكى بەتتىن باشلاپ ئوقۇ"
 
-#: part/pageview.cpp:761
+#: part/pageview.cpp:754
 #, kde-format
 msgid "Speak Current Page"
 msgstr "نۆۋەتتىكى بەتنى ئوقۇ"
 
-#: part/pageview.cpp:766
+#: part/pageview.cpp:759
 #, kde-format
 msgid "Stop Speaking"
 msgstr "ئوقۇشنى توختات"
 
-#: part/pageview.cpp:771
+#: part/pageview.cpp:764
 #, kde-format
 msgid "Pause/Resume Speaking"
 msgstr "ئوقۇشنى ۋاقىتلىق توختات/داۋاملاشتۇر"
 
-#: part/pageview.cpp:783
+#: part/pageview.cpp:776
 #, kde-format
 msgid "Scroll Up"
 msgstr "ئۈستىگە سىيرىش"
 
-#: part/pageview.cpp:789
+#: part/pageview.cpp:782
 #, kde-format
 msgid "Scroll Down"
 msgstr "ئاستىغا سىيرىش"
 
-#: part/pageview.cpp:795
+#: part/pageview.cpp:788
 #, kde-format
 msgid "Scroll Page Up"
 msgstr "ئۈستىگە بىر بەت سىيرىل"
 
-#: part/pageview.cpp:801
+#: part/pageview.cpp:794
 #, kde-format
 msgid "Scroll Page Down"
 msgstr "ئاستىغا بىر بەت سىيرىل"
 
-#: part/pageview.cpp:807
+#: part/pageview.cpp:800
 #, kde-format
 msgid "Show Forms"
 msgstr "كۆزنەكچە كۆرسەت"
 
-#: part/pageview.cpp:1320
+#: part/pageview.cpp:1312
 #, kde-format
 msgid " Loaded a one-page document."
 msgid_plural " Loaded a %1-page document."
 msgstr[0] " %1 بەتلىك پۈتۈكنى يۈكلىدى."
 
-#: part/pageview.cpp:2593
+#: part/pageview.cpp:2583
 #, kde-format
 msgid "Copy Table Contents to Clipboard"
 msgstr "جەدۋەل مەزمۇنىنى چاپلاش تاختىسىغا كۆچۈر"
 
-#: part/pageview.cpp:2943
+#: part/pageview.cpp:2933
 #, kde-format
 msgid "Text (1 character)"
 msgid_plural "Text (%1 characters)"
 msgstr[0] "تېكىست (%1 ھەرپ)"
 
-#: part/pageview.cpp:2944 part/pageview.cpp:2966
+#: part/pageview.cpp:2934 part/pageview.cpp:2956
 #, kde-format
 msgid "Copy to Clipboard"
 msgstr "چاپلاش تاختىسىغا كۆچۈر"
 
-#: part/pageview.cpp:2946 part/pageview.cpp:3165 part/part.cpp:870
+#: part/pageview.cpp:2936 part/pageview.cpp:3155 part/part.cpp:843
 #, kde-format
 msgid "Copy Text (Without line breaks)"
 msgstr "تېكىست كۆچۈر (قۇر ئالماشتۇرۇش بەلگىسى بۇنىڭ سىرتىدا)"
 
-#: part/pageview.cpp:2957 part/pageview.cpp:3169
+#: part/pageview.cpp:2947 part/pageview.cpp:3159
 #, kde-format
 msgid "Speak Text"
 msgstr "تېكىستنى ئوقۇ"
 
-#: part/pageview.cpp:2965
+#: part/pageview.cpp:2955
 #, kde-format
 msgid "Image (%1 × %2 pixels)"
 msgstr "سۈرەت (%1×%2 پىكسېل)"
 
-#: part/pageview.cpp:2967
+#: part/pageview.cpp:2957
 #, kde-format
 msgid "Save to File…"
 msgstr "ھۆججەتكە ساقلا…"
 
-#: part/pageview.cpp:2987
+#: part/pageview.cpp:2977
 #, kde-format
 msgid "Image [%1 × %2] copied to clipboard."
 msgstr "سۈرەت (%1×%2) چاپلاش تاختىسىغا كۆچۈرۈلدى."
 
-#: part/pageview.cpp:2990
+#: part/pageview.cpp:2980
 #, kde-format
 msgid "Save file"
 msgstr "ھۆججەت ساقلا"
 
-#: part/pageview.cpp:2990
+#: part/pageview.cpp:2980
 #, kde-format
 msgid "Images (*.png *.jpeg)"
 msgstr "سۈرەت (*.png *.jpeg)"
 
-#: part/pageview.cpp:2992
+#: part/pageview.cpp:2982
 #, kde-format
 msgid "File not saved."
 msgstr "ھۆججەت ساقلانمىدى."
 
-#: part/pageview.cpp:3003
+#: part/pageview.cpp:2993
 #, kde-format
 msgid "Image [%1 × %2] saved to %3 file."
 msgstr "سۈرەت (%1×%2)  نى %3 ھۆججەتكە ساقلىدى."
 
-#: part/pageview.cpp:3164
+#: part/pageview.cpp:3154
 #, kde-format
 msgid "Copy Text"
 msgstr "تېكىست كۆچۈر"
 
-#: part/pageview.cpp:3187
+#: part/pageview.cpp:3177
 #, kde-format
 msgid "Go to '%1'"
 msgstr "«%1» غا يۆتكەل"
 
-#: part/pageview.cpp:4229 part/part.cpp:3217
+#: part/pageview.cpp:4208 part/part.cpp:3217
 #, kde-format
 msgid "Fit Width"
 msgstr "كەڭلىككە سىغدۇر"
 
-#: part/pageview.cpp:4229
+#: part/pageview.cpp:4208
 #, kde-format
 msgid "Fit Page"
 msgstr "بەتكە سىغدۇر"
 
-#: part/pageview.cpp:4229
+#: part/pageview.cpp:4208
 #, kde-format
 msgid "Auto Fit"
 msgstr "ئۆزلۈكىدىن سىغدۇر"
 
-#: part/pageview.cpp:4252
+#: part/pageview.cpp:4231
 #, kde-format
 msgctxt ""
 "Zoom percentage value %1 will be replaced by the actual zoom factor value, "
 "so make sure you include it in your translation in order to not to break "
 "anything"
 msgid "%1%"
-msgstr "%1%"
+msgstr ""
 
-#: part/pageview.cpp:4535
+#: part/pageview.cpp:4514
 #, kde-format
 msgid "Search for '%1' with"
 msgstr "«%1» نى ئىزدەش ئۇسۇلى"
 
-#: part/pageview.cpp:4549
+#: part/pageview.cpp:4528
 #, kde-format
 msgid "Configure Web Shortcuts…"
 msgstr "تور تېزلەتمىسىنى سەپلەش…"
 
-#: part/pageview.cpp:4575
+#: part/pageview.cpp:4554
 #, kde-format
 msgid "Follow This Link"
 msgstr "بۇ ئۇلانمىغا ئەگەش"
 
-#: part/pageview.cpp:4578
+#: part/pageview.cpp:4557
 #, kde-format
 msgid "Play this Sound"
 msgstr "بۇ ئاۋازنى ياڭرات"
 
-#: part/pageview.cpp:4580
+#: part/pageview.cpp:4559
 #, kde-format
 msgid "Stop Sound"
 msgstr "ئاۋازنى توختات"
 
-#: part/pageview.cpp:4586
+#: part/pageview.cpp:4565
 #, kde-format
 msgid "Copy Link Address"
 msgstr "ئۇلانما ئادرېسىنى كۆچۈر"
 
-#: part/pageview.cpp:4643
+#: part/pageview.cpp:4622
 #, kde-format
 msgid "Search for '%1' in this document"
 msgstr "بۇ پۈتۈكتىكى «%1» نى ئىزدە"
 
-#: part/pageview.cpp:5175
+#: part/pageview.cpp:5154
 #, kde-format
 msgid "Welcome"
 msgstr "مەرھابا"
 
-#: part/pageview.cpp:5301
+#: part/pageview.cpp:5280
 #, kde-format
 msgid "Select zooming area. Right-click to zoom out."
-msgstr "چوڭايتىدىغان دائىرىنى تاللاڭ. چاشقىنەك ئوڭ چېكىلسە كىچىكلىتىدۇ."
+msgstr ""
 
-#: part/pageview.cpp:5316
+#: part/pageview.cpp:5295
 #, kde-format
 msgid "Click to see the magnified view."
 msgstr "چوڭايتىپ كۆرۈشتە چېكىلىدۇ."
 
-#: part/pageview.cpp:5333
+#: part/pageview.cpp:5312
 #, kde-format
 msgid "Draw a rectangle around the text/graphics to copy."
 msgstr "كۆچۈرىدىغان تېكىست/گىرافىك ئەتراپىدا تىك تۆت تەرەپلىك سىزىلىدۇ."
 
-#: part/pageview.cpp:5349
+#: part/pageview.cpp:5328
 #, kde-format
 msgid "Select text"
 msgstr "تېكىست تاللا"
 
-#: part/pageview.cpp:5365
+#: part/pageview.cpp:5344
 #, kde-format
 msgid ""
 "Draw a rectangle around the table, then click near edges to divide up; press "
@@ -4011,26 +4023,24 @@ msgstr ""
 "جەدۋەلنىڭ ئەتراپىدا تىك تۆت تەرەپلىكتىن بىرنى سىزىپ ئاندىن بۆلۈش ئۈچۈن "
 "گىرۋەككە يېقىن جاي چېكىلىدۇ؛ Esc بېسىلسا تازىلايدۇ."
 
-#: part/pageview.cpp:5380 part/pageview.cpp:5388
+#: part/pageview.cpp:5359 part/pageview.cpp:5367
 #, kde-format
 msgid ""
 "All your signing certificates are invalid. In case signing worked before, "
 "please check their validity dates."
 msgstr ""
-"بارلىق ئىمزالىق گۇۋاھنامىڭىز ئىناۋەتسىز. ئەگەر ئىلگىرى ئىمزا قويۇش "
-"ئادەتتىكىدەك ئىشلىگەن بولسا، گۇۋاھنامىنىڭ ئىناۋەتلىك ۋاقتىنى تەكشۈرۈڭ."
 
-#: part/pageview.cpp:5381
+#: part/pageview.cpp:5360
 #, kde-format
 msgid "No valid certificates"
 msgstr "ئىناۋەتلىك گۇۋاھنامە يوق"
 
-#: part/pageview.cpp:5382 part/pageview.cpp:5397
+#: part/pageview.cpp:5361 part/pageview.cpp:5376
 #, kde-format
 msgid "Open Certificate Manager"
 msgstr "گۇۋاھنامە باشقۇرغۇچنى ئاچ"
 
-#: part/pageview.cpp:5393
+#: part/pageview.cpp:5372
 #, kde-format
 msgid ""
 "There are no available signing certificates.<br/>Launch Certificate Manager "
@@ -4042,12 +4052,12 @@ msgstr ""
 "كۆرۈش ئۈچۈن قوللانمىدىكى <a href=\"%1\">رەقەملىك ئىمزا قوشۇش</a> قا ئائىت "
 "بۆلەكنى كۆرۈڭ."
 
-#: part/pageview.cpp:5396 part/pageview.cpp:5408
+#: part/pageview.cpp:5375 part/pageview.cpp:5387
 #, kde-format
 msgid "No certificates found"
 msgstr "ھېچقانداق گۇۋاھنامە تېپىلمىدى"
 
-#: part/pageview.cpp:5406
+#: part/pageview.cpp:5385
 #, kde-format
 msgid ""
 "There are no available signing certificates.<br/>For more information, "
@@ -4058,18 +4068,17 @@ msgstr ""
 "كۆرۈش ئۈچۈن قوللانمىدىكى <a href=\"%1\">رەقەملىك ئىمزا قوشۇش</a> قا ئائىت "
 "بۆلەكنى كۆرۈڭ."
 
-#: part/pageview.cpp:5431
+#: part/pageview.cpp:5410
 #, kde-format
 msgid "You have unsaved changes. Please save the document before signing it."
 msgstr ""
-"ساقلىمىغان ئۆزگەرتىشلىرىڭىز بار. پۈتۈككە ئىمزا قويۇشتىن ئىلگىرى ئۇنى ساقلاڭ."
 
-#: part/pageview.cpp:5454
+#: part/pageview.cpp:5433
 #, kde-format
 msgid "Draw a rectangle to insert the signature field"
 msgstr "ئىمزا بۆلىكى قىستۇرۇش ئۈچۈن تىك تۆت تەرەپلىك سىزىلىدۇ"
 
-#: part/pageview.cpp:5602
+#: part/pageview.cpp:5583
 #, kde-format
 msgid "Draw a rectangle around the page area you wish to keep visible"
 msgstr ""
@@ -4096,7 +4105,7 @@ msgstr ""
 "\n"
 "چېسلا: %2"
 
-#: part/pageviewannotator.cpp:490
+#: part/pageviewannotator.cpp:486
 #, kde-kuit-format
 msgctxt "@info"
 msgid ""
@@ -4104,121 +4113,118 @@ msgid ""
 "create a potentially more readable signature, press <interface>Start over</"
 "interface> and draw a bigger rectangle."
 msgstr ""
-"ئىمزانىڭ چوڭلۇقى بەك كىچىك ئوقۇغىلى بولمايدۇ. ئەگەر ئوقۇشقا قولاي ئىمزا "
-"قۇرماقچى بولسىڭىز، <interface>قايتىدىن باشلا </interface> توپچىنى چېكىپ "
-"ئاندىن چوڭراق تىك تۆت تەرەپلىك سىزىڭ."
 
-#: part/pageviewannotator.cpp:492
+#: part/pageviewannotator.cpp:488
 #, kde-format
 msgctxt "@action:button"
 msgid "Start Over"
 msgstr "قايتىدىن باشلا"
 
-#: part/pageviewannotator.cpp:493
+#: part/pageviewannotator.cpp:489
 #, kde-format
 msgctxt "@action:button"
 msgid "Sign"
 msgstr "ئىمزا"
 
-#: part/pageviewannotator.cpp:1338
+#: part/pageviewannotator.cpp:1334
 #, kde-format
 msgid "Author name"
 msgstr "يازغۇچى ئاتى"
 
-#: part/pageviewannotator.cpp:1338
+#: part/pageviewannotator.cpp:1334
 #, kde-format
 msgid "Author name for the annotation:"
 msgstr "ئىزاھ يازغۇچىنىڭ ئاتى:"
 
-#: part/pageviewannotator.cpp:1399
+#: part/pageviewannotator.cpp:1395
 #, kde-format
 msgctxt "Annotation tool"
 msgid "Draw an ellipse (drag to select a zone)"
 msgstr "ئېللىپس سىز (سۆرەلسە دائىرە تاللىنىدۇ)"
 
-#: part/pageviewannotator.cpp:1401
+#: part/pageviewannotator.cpp:1397
 #, kde-format
 msgctxt "Annotation tool"
 msgid "Highlight text"
 msgstr "تېكىستنى يورۇت"
 
-#: part/pageviewannotator.cpp:1403
+#: part/pageviewannotator.cpp:1399
 #, kde-format
 msgctxt "Annotation tool"
 msgid "Draw a freehand line"
 msgstr "قولدا سىزىق سىزىدۇ"
 
-#: part/pageviewannotator.cpp:1405
+#: part/pageviewannotator.cpp:1401
 #, kde-format
 msgctxt "Annotation tool"
 msgid "Inline Text Annotation (drag to select a zone)"
 msgstr "ئىچكى تېكىست ئىزاھ (سۆرەلسە دائىرە تاللىنىدۇ)"
 
-#: part/pageviewannotator.cpp:1407
+#: part/pageviewannotator.cpp:1403
 #, kde-format
 msgctxt "Annotation tool"
 msgid "Put a pop-up note"
 msgstr "قاڭقىش ئىزاھ قوش"
 
-#: part/pageviewannotator.cpp:1409
+#: part/pageviewannotator.cpp:1405
 #, kde-format
 msgctxt "Annotation tool"
 msgid "Draw a polygon (click on the first point to close it)"
 msgstr "كۆپ تەرەپلىك سىز (تۇنجى نۇقتا چېكىلسە ئۇنى ياپىدۇ)"
 
-#: part/pageviewannotator.cpp:1411
+#: part/pageviewannotator.cpp:1407
 #, kde-format
 msgctxt "Annotation tool"
 msgid "Draw a rectangle"
 msgstr "تىك تۆت تەرەپلىك سىز"
 
-#: part/pageviewannotator.cpp:1413
+#: part/pageviewannotator.cpp:1409
 #, kde-format
 msgctxt "Annotation tool"
 msgid "Squiggle text"
 msgstr "ئەگرى سىزىقلىق تېكىست"
 
-#: part/pageviewannotator.cpp:1415
+#: part/pageviewannotator.cpp:1411
 #, kde-format
 msgctxt "Annotation tool"
 msgid "Put a stamp symbol"
 msgstr "تامغا بەلگىسى قوي"
 
-#: part/pageviewannotator.cpp:1417
+#: part/pageviewannotator.cpp:1413
 #, kde-format
 msgctxt "Annotation tool"
 msgid "Draw a straight line"
 msgstr "تۈز سىزىق سىزىدۇ"
 
-#: part/pageviewannotator.cpp:1419
+#: part/pageviewannotator.cpp:1415
 #, kde-format
 msgctxt "Annotation tool"
 msgid "Strike out text"
 msgstr "ئۆچۈرۈش سىزىقلىق تېكىست"
 
-#: part/pageviewannotator.cpp:1421
+#: part/pageviewannotator.cpp:1417
 #, kde-format
 msgctxt "Annotation tool"
 msgid "Underline text"
 msgstr "ئاستى سىزىقلىق تېكىست"
 
-#: part/pageviewannotator.cpp:1423
+#: part/pageviewannotator.cpp:1419
 #, kde-format
 msgctxt "Annotation tool"
 msgid "Typewriter Annotation (drag to select a zone)"
 msgstr "خەت باسقۇ ئىزاھ (سۆرەلسە دائىرە تاللىنىدۇ)"
 
-#: part/pageviewannotator.cpp:1482
+#: part/pageviewannotator.cpp:1478
 #, kde-format
 msgid "Highlighter"
 msgstr "يورۇتقۇچ"
 
-#: part/pageviewannotator.cpp:1779
+#: part/pageviewannotator.cpp:1775
 #, kde-format
 msgid "Add favorite annotation"
 msgstr "ياقتۇرىدىغان ئىزاھ قوش"
 
-#: part/pageviewannotator.cpp:1779
+#: part/pageviewannotator.cpp:1775
 #, kde-format
 msgid "Custom annotation name:"
 msgstr "ئىختىيارى ئىزاھ ئىسمى:"
@@ -4260,17 +4266,17 @@ msgstr "خەتكۈچ(&B)"
 msgid "Viewer Toolbar"
 msgstr "كۆرگۈچ قورال بالداق"
 
-#: part/part.cpp:407 part/thumbnaillist.cpp:48
+#: part/part.cpp:406 part/thumbnaillist.cpp:46
 #, kde-format
 msgid "Thumbnails"
 msgstr "كىچىك سۈرەت"
 
-#: part/part.cpp:413 part/preferencesdialog.cpp:50 part/side_reviews.cpp:99
+#: part/part.cpp:412 part/preferencesdialog.cpp:50 part/side_reviews.cpp:97
 #, kde-format
 msgid "Annotations"
 msgstr "ئىزاھات"
 
-#: part/part.cpp:456
+#: part/part.cpp:436
 #, kde-format
 msgid ""
 "This document contains annotations or form data that were saved internally "
@@ -4278,275 +4284,256 @@ msgid ""
 "<br/>Please save to a file in order to move them if you want to continue to "
 "edit the document."
 msgstr ""
-"بۇ پۈتۈكتە كونا نەشرىدىكى Okular ئىچكى ساقلاش ئىقتىدارى ئارقىلىق ساقلىغان "
-"ئىزاھ ياكى كۆزنەك سانلىق مەلۇماتى بار. يېڭى نەشرىدىكى يۇمشاق دېتال بۇ "
-"ئىقتىدارنى <b>ئەمدى قوللىمايدۇ</b>.<br/>بۇ پۈتۈكنى تەھرىرلەشنى داۋاملاشتۇرۇش "
-"ئۈچۈن ئۇنى باشقا ھۆججەتكە ساقلاڭ."
 
-#: part/part.cpp:464
+#: part/part.cpp:444
 #, kde-format
 msgid ""
 "This document has embedded files. <a href=\"okular:/embeddedfiles\">Click "
 "here to see them</a> or go to File -> Embedded Files."
 msgstr ""
-"بۇ پۈتۈكتە سىڭدۈرمە ھۆججەت بار. <a href=\"okular:/embeddedfiles\">ئۇلارنى "
-"كۆرۈش ئۈچۈن بۇ جاينى چېكىڭ</a> ياكى ھۆججەت -› سىڭدۈرۈلگەن ھۆججەتكە يۆتكىلىڭ."
 
-#: part/part.cpp:493
+#: part/part.cpp:468
+#, kde-format
+msgctxt "This is a normal pdf feature, but can be abused by hostile parties"
+msgid ""
+"This document has elements that might be hidden or shown differently when "
+"printed. For important documents, please verify both."
+msgstr ""
+
+#: part/part.cpp:480
 #, kde-format
 msgid ""
 "Signing in progress. You can adjust the position and size of the signature"
-msgstr "ئىمزا قويۇۋاتىدۇ. ئىمزانىڭ ئورنى ۋە چوڭلۇقىنى تەڭشىيەلەيسىز"
+msgstr ""
 
-#: part/part.cpp:495
+#: part/part.cpp:482
 #, kde-format
 msgctxt "@action:button finish the signing process"
 msgid "Finish Signing"
 msgstr "ئىمزا تامام"
 
-#: part/part.cpp:667
+#: part/part.cpp:655
 #, kde-format
 msgctxt "Previous page"
 msgid "Previous"
 msgstr "ئالدىنقى"
 
-#: part/part.cpp:668
+#: part/part.cpp:656
 #, kde-format
 msgid "Go back to the Previous Page"
 msgstr "ئالدىنقى بەتكە قايت"
 
-#: part/part.cpp:669
+#: part/part.cpp:657
 #, kde-format
 msgid "Moves to the previous page of the document"
 msgstr "پۈتۈكنىڭ ئالدىنقى بېتىگە يۆتكىلىدۇ"
 
-#: part/part.cpp:679
+#: part/part.cpp:664
 #, kde-format
 msgctxt "Next page"
 msgid "Next"
 msgstr "كېيىنكى"
 
-#: part/part.cpp:680
+#: part/part.cpp:665
 #, kde-format
 msgid "Advance to the Next Page"
 msgstr "كېيىنكى بەتكە يۆتكەل"
 
-#: part/part.cpp:681
+#: part/part.cpp:666
 #, kde-format
 msgid "Moves to the next page of the document"
 msgstr "پۈتۈكنىڭ كېيىنكى بېتىگە يۆتكىلىدۇ"
 
-#: part/part.cpp:692
+#: part/part.cpp:674
 #, kde-format
 msgid "Beginning of the document"
 msgstr "پۈتۈكنىڭ بېشى"
 
-#: part/part.cpp:693
+#: part/part.cpp:675
 #, kde-format
 msgid "Moves to the beginning of the document"
 msgstr "پۈتۈكنىڭ بېشىغا يۆتكىلىدۇ"
 
-#: part/part.cpp:697
+#: part/part.cpp:679
 #, kde-format
 msgid "End of the document"
 msgstr "پۈتۈكنىڭ ئاخىرى"
 
-#: part/part.cpp:698
+#: part/part.cpp:680
 #, kde-format
 msgid "Moves to the end of the document"
 msgstr "پۈتۈكنىڭ ئاخىرىغا يۆتكىلىدۇ"
 
-#: part/part.cpp:712
+#: part/part.cpp:694
 #, kde-format
 msgid "Rename the current bookmark"
 msgstr "نۆۋەتتىكى خەتكۈش ئاتىنى ئۆزگەرتىدۇ"
 
-#: part/part.cpp:716
+#: part/part.cpp:698
 #, kde-format
 msgid "Previous Bookmark"
 msgstr "ئالدىنقى خەتكۈش"
 
-#: part/part.cpp:718
+#: part/part.cpp:700
 #, kde-format
 msgid "Go to the previous bookmark"
 msgstr "ئالدىنقى خەتكۈشكە يۆتكىلىدۇ"
 
-#: part/part.cpp:722
+#: part/part.cpp:704
 #, kde-format
 msgid "Next Bookmark"
 msgstr "كېيىنكى خەتكۈش"
 
-#: part/part.cpp:724
+#: part/part.cpp:706
 #, kde-format
 msgid "Go to the next bookmark"
 msgstr "كېيىنكى خەتكۈشكە يۆتكىلىدۇ"
 
-#: part/part.cpp:754
+#: part/part.cpp:736
 #, kde-format
 msgid "Configure Okular…"
 msgstr "Okular سەپلە…"
 
-#: part/part.cpp:757
+#: part/part.cpp:739
 #, kde-format
 msgid "Configure Viewer…"
 msgstr "كۆرگۈچ سەپلە…"
 
-#: part/part.cpp:763
-#, kde-format
-msgid "Configure Viewer Backends…"
-msgstr "كۆرگۈچ ئارقا ئۇچ سەپلە…"
-
-#: part/part.cpp:765
-#, kde-format
-msgid "Configure Backends…"
-msgstr "ئارقا ئۇچ سەپلە…"
-
-#: part/part.cpp:801
+#: part/part.cpp:774
 #, kde-format
 msgid "About Backend"
 msgstr "ئاقا ئۇچ ھەققىدە"
 
-#: part/part.cpp:806
+#: part/part.cpp:779
 #, kde-format
 msgid "Reloa&d"
 msgstr "قايت يۈكلە(&D)"
 
-#: part/part.cpp:808
+#: part/part.cpp:781
 #, kde-format
 msgid "Reload the current document from disk."
 msgstr "نۆۋەتتىكى پۈتۈكنى دىسكىدىن قايتا يۈكلەيدۇ."
 
-#: part/part.cpp:814
+#: part/part.cpp:787
 #, kde-format
 msgid "Close &Find Bar"
 msgstr "ئىزدەش بالداقنى ياپ(&F)"
 
-#: part/part.cpp:819
+#: part/part.cpp:792
 #, kde-format
 msgid "Page Number"
 msgstr "بەت نومۇرى"
 
-#: part/part.cpp:823
+#: part/part.cpp:796
 #, kde-format
 msgctxt "@action"
 msgid "Configure Color Modes…"
 msgstr "رەڭ ھالىتىنى سەپلە…"
 
-#: part/part.cpp:862 part/part.cpp:3222
+#: part/part.cpp:835 part/part.cpp:3222
 #, kde-format
 msgid "Paste Annotation"
 msgstr ""
 
-#: part/part.cpp:880
+#: part/part.cpp:853
 #, kde-format
 msgid "Select All Text on Current Page"
 msgstr "نۆۋەتتىكى بەتتىكى ھەممە تېكىستنى تاللا"
 
-#: part/part.cpp:893
+#: part/part.cpp:866
 #, kde-format
 msgid "Show S&idebar"
 msgstr "يان بالداقنى كۆرسەت(&I)"
 
-#: part/part.cpp:902
+#: part/part.cpp:875
 #, kde-format
 msgid "Show &Page Bar"
 msgstr "بەت بالداقنى كۆرسەت(&P)"
 
-#: part/part.cpp:908
+#: part/part.cpp:881
 #, kde-format
 msgid "Show &Signatures Panel"
 msgstr "ئىمزا كۆزنەكچىنى كۆرسەت(&S)"
 
-#: part/part.cpp:919
+#: part/part.cpp:892
 #, kde-format
 msgid "&Embedded Files"
 msgstr "سىڭدۈرۈلگەن ھۆججەت(&E)"
 
-#: part/part.cpp:925
+#: part/part.cpp:898
 #, kde-format
 msgid "E&xport As"
 msgstr "چىقار(&X)"
 
-#: part/part.cpp:937
+#: part/part.cpp:910
 #, kde-format
 msgid "S&hare"
 msgstr "ھەمبەھىر(&H)"
 
-#: part/part.cpp:946
+#: part/part.cpp:919
 #, kde-format
 msgid "P&resentation"
 msgstr "كۆرسەتمە(&R)"
 
-#: part/part.cpp:953
+#: part/part.cpp:926
 #, kde-format
 msgid "Open Con&taining Folder"
 msgstr "ئىچىدىكى قىسقۇچنى ئاچ(&T)"
 
-#: part/part.cpp:967
+#: part/part.cpp:940
 #, kde-format
 msgid "&Import PostScript as PDF…"
 msgstr "PostScript نى PDF سۈپىتىدە ئاچ(&I)…"
 
-#: part/part.cpp:971
+#: part/part.cpp:944
 #, kde-format
 msgid "Switch Blackscreen Mode"
 msgstr "قارا ئېكران ھالىتىگە ئالماشتۇر"
 
-#: part/part.cpp:979
+#: part/part.cpp:952
 #, kde-format
 msgid "Erase Drawing"
 msgstr "سىزمىچىلىقنى ئۆچۈر"
 
-#: part/part.cpp:984
+#: part/part.cpp:957
 #, kde-format
 msgid "Configure Annotations…"
 msgstr "ئىزاھ سەپلە…"
 
-#: part/part.cpp:989
+#: part/part.cpp:962
 #, kde-format
 msgid "Play/Pause Presentation"
 msgstr "كۆرسەتمە كۆرسەت/ۋاقىتلىق توختات"
 
-#: part/part.cpp:1144
+#: part/part.cpp:1118
 #, kde-format
 msgid ""
 "You have just modified the open document, but this kind of document can not "
 "be saved.\n"
 "Any modification will be lost once Okular is closed."
 msgstr ""
-"بايىلا ئوچۇق پۈتۈكنى ئۆزگەرتتىڭىز ئەمما بۇنداق پۈتۈكنى ساقلىغىلى بولمايدۇ."
 
-#: part/part.cpp:1145
+#: part/part.cpp:1119
 #, kde-format
 msgid "Document can't be saved"
 msgstr "پۈتۈكنى ساقلىيالمايدۇ"
 
-#: part/part.cpp:1174
+#: part/part.cpp:1148
 #, kde-format
 msgid "Could not open '%1' (%2) "
 msgstr "«%1»(%2) ئاچالمايدۇ "
 
-#: part/part.cpp:1227
+#: part/part.cpp:1201
 #, kde-format
 msgid "The loading of %1 has been canceled."
 msgstr "بۇ %1 نى يۈكلەشتىن بىكار قىلىندى."
 
-#: part/part.cpp:1243
+#: part/part.cpp:1217
 #, kde-format
 msgid "Could not open %1. Reason: %2"
-msgstr "%1 نى ئاچالمايدۇ. سەۋەبى: %2"
+msgstr ""
 
-#: part/part.cpp:1271
-#, kde-format
-msgid "Configure Viewer Backends"
-msgstr "كۆرگۈچ ئارقا ئۇچ سەپلە"
-
-#: part/part.cpp:1273
-#, kde-format
-msgid "Configure Backends"
-msgstr "ئارقا ئۇچ سەپلە"
-
-#: part/part.cpp:1358
+#: part/part.cpp:1311
 #, kde-format
 msgid ""
 "The program \"ps2pdf\" was not found, so Okular can not import PS files "
@@ -4555,89 +4542,85 @@ msgstr ""
 "«ps2pdf» پىروگراممىسى تېپىلمىدى، شۇڭا Okular ئۇنى ئىشلىتىپ PS ھۆججەتنى "
 "ئەكىرەلمەيدۇ."
 
-#: part/part.cpp:1358
+#: part/part.cpp:1311
 #, kde-format
 msgid "ps2pdf not found"
 msgstr "ps2pdf تېپىلمىدى"
 
-#: part/part.cpp:1363
+#: part/part.cpp:1316
 #, kde-format
 msgid "PostScript files (%1)"
 msgstr "PostScript ھۆججەت (%1)"
 
-#: part/part.cpp:1379
+#: part/part.cpp:1331
 #, kde-format
 msgid "Importing PS file as PDF (this may take a while)…"
 msgstr "PS ھۆججەتنى PDF سۈپىتىدە ئەكىر (بۇنىڭ ئازراق ۋاقىت كېتىشى مۇمكىن)…"
 
-#: part/part.cpp:1511
+#: part/part.cpp:1463
 #, kde-format
-msgid "Please enter the password to read the document:"
-msgstr "پۈتۈك ئوقۇيدىغان ئىمنى كىرگۈزۈڭ:"
+msgctxt "%1 is filename of the file to open"
+msgid "Please enter the password to read the document: %1"
+msgstr ""
 
-#: part/part.cpp:1513
+#: part/part.cpp:1465
 #, kde-format
-msgid "Incorrect password. Try again:"
-msgstr "ئىم خاتا. قايتا سىناڭ:"
+msgctxt "%1 is filename of the file to open"
+msgid "Incorrect password. Try again: %1"
+msgstr "ئىم خاتا. Try again: %1"
 
-#: part/part.cpp:1524
+#: part/part.cpp:1476
 #, kde-format
 msgid "Document Password"
 msgstr "پۈتۈك ئىمى"
 
-#: part/part.cpp:1647
+#: part/part.cpp:1599
 #, kde-format
 msgid "This document has XFA forms, which are currently <b>unsupported</b>."
 msgstr "بۇ پۈتۈكتە XFA كۆزنەك بار، نۆۋەتتە <b>قوللىمايدۇ</b>."
 
-#: part/part.cpp:1654
+#: part/part.cpp:1606
 #, kde-format
 msgid ""
 "This document has forms. Click on the button to interact with them, or use "
 "View -> Show Forms."
 msgstr ""
-"بۇ پۈتۈكتە كۆزنەك بار. توپچىنى چېكىپ ياكى تىزىملىك بالداقتىن كۆرۈنۈش -› "
-"كۆزنەك كۆرسەت تاللانسا كۆزنەككە مەشغۇلات ئېلىپ بارغىلى بولىدۇ."
 
-#: part/part.cpp:1670
+#: part/part.cpp:1623
 #, kde-format
 msgid ""
 "All editing and interactive features for this document are disabled. Please "
 "save a copy and reopen to edit this document."
 msgstr ""
-"بۇ پۈتۈكنىڭ بارلىق تەھرىرلەش ۋە تەسىرلىشىش ئىقتىدارىنىڭ ھەممىسى چەكلەنگەن. "
-"بۇ پۈتۈكنى تەھرىرلەش ئۈچۈن ئۇنى يەنە بىر نۇسخا ساقلاپ ئاندىن قايتا ئېچىڭ."
 
-#: part/part.cpp:1758
+#: part/part.cpp:1742
 #, kde-format
 msgid ""
 "This document wants to be shown full screen.\n"
 "Leave normal mode and enter presentation mode?"
 msgstr ""
-"بۇ پۈتۈك پۈتۈن ئېكران ھالىتىدە كۆرسىتىشنى ئىلتىماس قىلدى.\n"
-"ئادەتتىكى ھالەتتىن ئايرىلىپ كۆرسەتمە ھالىتىگە كىرەمدۇ؟"
 
-#: part/part.cpp:1760
+#: part/part.cpp:1744
 #, kde-format
 msgid "Request to Change Viewing Mode"
 msgstr "كۆرۈنۈش ھالىتىنى ئۆزگەرتىش ئىلتىماسى"
 
-#: part/part.cpp:1761
+#: part/part.cpp:1745
 #, kde-format
 msgid "Enter Presentation Mode"
 msgstr "كۆرسەتمە ھالىتىگە كىرىدۇ"
 
-#: part/part.cpp:1762
+#: part/part.cpp:1746
 #, kde-format
 msgid "Deny Request"
 msgstr "ئىلتىماسنى رەت قىل"
 
-#: part/part.cpp:1852
+#: part/part.cpp:1836
 #, kde-format
 msgid "Could not open %1. %2"
-msgstr "%1 نى ئاچالمىدى. %2"
+msgstr ""
 
-#: part/part.cpp:1882
+#: part/part.cpp:1866
 #, kde-kuit-format
 msgctxt "@info"
 msgid ""
@@ -4646,27 +4629,23 @@ msgid ""
 "changes made in the other program.<nl/><nl/>Do you want to continue "
 "reloading the file?"
 msgstr ""
-"بۇ ھۆججەت <filename>%1</filename> نىڭ تېخى ساقلانمىغان ئۆزگەرتىشى بار ئەمما "
-"باشقا پىروگرامما ئۆزگەرتكەن. ئۇ قايتا يۈكلەنسە ساقلانمىغان ئۆزگەرتىشنى باشقا "
-"پىروگرامما ئۆزگەرتكەن نەشرى قاپلىۋېتىدۇ.<nl/><nl/>ھۆججەتنى قايتا يۈكلەشنى "
-"داۋاملاشتۇرامسىز؟"
 
-#: part/part.cpp:1886 part/part.cpp:1896
+#: part/part.cpp:1870 part/part.cpp:1880
 #, kde-format
 msgid "File Changed"
 msgstr "ھۆججەت ئۆزگەرتىلگەن"
 
-#: part/part.cpp:1887
+#: part/part.cpp:1871
 #, kde-format
 msgid "Continue Reloading"
 msgstr "قايتا يۈكلەشنى داۋاملاشتۇر"
 
-#: part/part.cpp:1888
+#: part/part.cpp:1872
 #, kde-format
 msgid "Abort Reloading"
 msgstr "قايتا يۈكلەشنى توختات"
 
-#: part/part.cpp:1892
+#: part/part.cpp:1876
 #, kde-kuit-format
 msgctxt "@info"
 msgid ""
@@ -4675,32 +4654,28 @@ msgid ""
 "changes made in the other program.<nl/><nl/>Do you want to continue closing "
 "the file?"
 msgstr ""
-"بۇ ھۆججەت <filename>%1</filename> نىڭ تېخى ساقلانمىغان ئۆزگەرتىشى بار ئەمما "
-"باشقا پىروگرامما ئۆزگەرتكەن. ئۇ قايتا تاقالسا ساقلانمىغان ئۆزگەرتىشنى باشقا "
-"پىروگرامما ئۆزگەرتكەن نەشرى قاپلىۋېتىدۇ.<nl/><nl/>ھۆججەتنى تاقاشنى "
-"داۋاملاشتۇرامسىز؟"
 
-#: part/part.cpp:1897
+#: part/part.cpp:1881
 #, kde-format
 msgid "Continue Closing"
 msgstr "تاقاشنى داۋاملاشتۇر"
 
-#: part/part.cpp:1898
+#: part/part.cpp:1882
 #, kde-format
 msgid "Abort Closing"
 msgstr "تاقاشنى توختات"
 
-#: part/part.cpp:1905
+#: part/part.cpp:1889
 #, kde-format
 msgid "Do you want to save your changes to \"%1\" or discard them?"
 msgstr "ئۆزگەرتىشلىرىڭىزنى «%1» غا ساقلامسىز ياكى تاشلىۋېتەمسىز؟"
 
-#: part/part.cpp:1905
+#: part/part.cpp:1889
 #, kde-format
 msgid "Close Document"
 msgstr "پۈتۈك ياپ"
 
-#: part/part.cpp:2037
+#: part/part.cpp:2021
 #, kde-format
 msgid ""
 "This link points to a close document action that does not work when using "
@@ -4709,7 +4684,7 @@ msgstr ""
 "بۇ ئۇلانما پۈتۈكنى يېپىش مەشغۇلاتىنى كۆرسەتكەن ئەمما ئۇ مەشغۇلات سىڭدۈرمە "
 "كۆرگۈچ ئىشلەتكەندە ئىشلىمەيدۇ."
 
-#: part/part.cpp:2043
+#: part/part.cpp:2027
 #, kde-format
 msgid ""
 "This link points to a quit application action that does not work when using "
@@ -4718,79 +4693,77 @@ msgstr ""
 "بۇ ئۇلانما پۈتۈكتىن چېكىنىش مەشغۇلاتىنى كۆرسەتكەن ئەمما ئۇ مەشغۇلات سىڭدۈرمە "
 "كۆرگۈچ ئىشلەتكەندە ئىشلىمەيدۇ."
 
-#: part/part.cpp:2135 part/part.cpp:2153
+#: part/part.cpp:2119 part/part.cpp:2141
 #, kde-format
 msgid "Reloading the document…"
 msgstr "پۈتۈكنى قايتا يۈكلەۋاتىدۇ…"
 
-#: part/part.cpp:2322 part/toc.cpp:38
+#: part/part.cpp:2310 part/toc.cpp:36
 #, kde-format
 msgid "Contents"
 msgstr "مەزمۇن"
 
-#: part/part.cpp:2351 part/signaturepanel.cpp:47
+#: part/part.cpp:2339 part/signaturepanel.cpp:45
 #, kde-format
 msgid "Signatures"
 msgstr "ئىمزا"
 
-#: part/part.cpp:2378
+#: part/part.cpp:2366
 #, kde-format
 msgid "Go to Page"
 msgstr "بەتكە يۆتكەل"
 
-#: part/part.cpp:2401
+#: part/part.cpp:2389
 #, kde-format
 msgid "&Page:"
 msgstr "بەت(&P):"
 
-#: part/part.cpp:2494
+#: part/part.cpp:2482
 #, kde-format
 msgid "Enter the new name of the bookmark:"
 msgstr "خەتكۈش ئاتى كىرگۈزۈلىدۇ:"
 
-#: part/part.cpp:2540
+#: part/part.cpp:2528
 #, kde-format
 msgid "Rename this Bookmark"
 msgstr "بۇ خەتكۈش ئاتىنى ئۆزگەرتىدۇ"
 
-#: part/part.cpp:2543
+#: part/part.cpp:2531
 #, kde-format
 msgid "Remove this Bookmark"
 msgstr "بۇ خەتكۈشنى چىقىرىۋېتىدۇ"
 
-#: part/part.cpp:2629 part/part.cpp:2630 part/part.cpp:3532
-#: part/signaturepartutils.cpp:261
+#: part/part.cpp:2617 part/part.cpp:2618 part/part.cpp:3534
+#: part/signaturepartutils.cpp:321
 #, kde-format
 msgctxt "File type name and pattern"
 msgid "%1 (%2)"
-msgstr "%1 (%2)"
+msgstr ""
 
-#: part/part.cpp:2637 part/revisionviewer.cpp:44
+#: part/part.cpp:2625 part/revisionviewer.cpp:44
 #, kde-format
 msgid "Save As"
 msgstr "باشقا ئاتتا ساقلا"
 
-#: part/part.cpp:2654
+#: part/part.cpp:2642
 #, kde-format
 msgid ""
 "You have chosen to save an Okular Archive without the file name ending with "
 "the '%1' extension. That is not allowed, do you want to choose a new name?"
 msgstr ""
-"سىز Okular ئارخىپىدىن بىرنى «%1» كېڭەيتىلگەن ئات بىلەن ئاخىرلاشمىغان پۈتۈككە "
-"ساقلاشنى تاللىدىڭىز. بۇنىڭغا يول قويۇلمايدۇ، يېڭى ئات تاللامسىز؟"
 
-#: part/part.cpp:2655
+#: part/part.cpp:2643
 #, kde-format
 msgid "Unsupported extension"
 msgstr "قوللىمايدىغان كېڭەيتىلمە"
 
-#: part/part.cpp:2656
+#: part/part.cpp:2644
 #, kde-format
 msgctxt "@action:button"
 msgid "Choose New Name"
 msgstr "يېڭى ئات تاللا"
 
-#: part/part.cpp:2699
+#: part/part.cpp:2687
 #, kde-kuit-format
 msgctxt "@info"
 msgid ""
@@ -4798,92 +4771,79 @@ msgid ""
 "you save now, any changes made in the other program will be lost. Are you "
 "sure you want to continue?"
 msgstr ""
-"بۇ <filename>%1</filename> ھۆججەتنى باشقا پىروگرامما ئۆزگەرتكەن. ئەگەر ھازىر "
-"ساقلىسىڭىز، باشقا پىروگراممىدا ئۆزگەرتىلگىنى يوقاپ كېتىدۇ. راستتىنلا "
-"داۋاملاشتۇرامسىز؟"
 
-#: part/part.cpp:2702 part/part.cpp:2721 part/part.cpp:2773
+#: part/part.cpp:2690 part/part.cpp:2709 part/part.cpp:2761
 #, kde-format
 msgid "Save - Warning"
 msgstr "ساقلاش - ئاگاھلاندۇرۇش"
 
-#: part/part.cpp:2704
+#: part/part.cpp:2692
 #, kde-format
 msgid "Save a Copy Elsewhere"
 msgstr "باشقا جايغا بىر نۇسخا ساقلا"
 
-#: part/part.cpp:2720
+#: part/part.cpp:2708
 #, kde-format
 msgid ""
 "The current document is protected with a password.<br />In order to save, "
 "the file needs to be reloaded. You will be asked for the password again and "
 "your undo/redo history will be lost.<br />Do you want to continue?"
 msgstr ""
-"نۆۋەتتىكى پۈتۈك ئىم بىلەن قوغدالغان.<br />ساقلاش ئۈچۈن ئۇنى قايتا يۈكلەش "
-"كېرەك. پىروگرامما ئىم كىرگۈزۈشنى تەلەپ قىلىدۇ ۋە يېنىۋال/قايتىلا تارىخ "
-"خاتىرىسى يوقىلىدۇ.<br />داۋاملاشتۇرامسىز؟"
 
-#: part/part.cpp:2747
+#: part/part.cpp:2735
 #, kde-format
 msgid "Could not open the temporary file for saving."
 msgstr "ساقلاش ئۈچۈن ۋاقىتلىق ھۆججەتنى ئاچالمىدى."
 
-#: part/part.cpp:2760
+#: part/part.cpp:2748
 #, kde-kuit-format
 msgctxt "@info"
 msgid ""
 "Could not overwrite <filename>%1</filename> because that file is read-only. "
 "Try saving to another location or changing that file's permissions."
 msgstr ""
-"<filename>%1</filename> نى قاپلىيالمايدۇ چۈنكى ئۇ ھۆججەتنى ئوقۇشقىلا بولىدۇ. "
-"باشقا ئورۇنغا ساقلاشنى سىناڭ ياكى ھۆججەتنىڭ ئىجازىتىنى ئۆزگەرتىڭ."
 
-#: part/part.cpp:2772
+#: part/part.cpp:2760
 #, kde-format
 msgid ""
 "After saving, the current document format requires the file to be reloaded. "
 "Your undo/redo history will be lost.<br />Do you want to continue?"
 msgstr ""
-"ساقلىغاندىن كېيىن، نۆۋەتتىكى پۈتۈكنىڭ پىچىمى ھۆججەتنى قايتا يەكلەشنى تەلەپ "
-"قىلىدۇ. يېنىۋال/قايتىلا تارىخ خاتىرىڭىز يوقىلىدۇ.<br />داۋاملاشتۇرامسىز؟"
 
-#: part/part.cpp:2787 part/part.cpp:2856 part/part.cpp:2877 part/part.cpp:3547
+#: part/part.cpp:2775 part/part.cpp:2844 part/part.cpp:2865 part/part.cpp:3549
 #, kde-format
 msgid "File could not be saved in '%1'. Try to save it to another location."
-msgstr "ھۆججەت «%1» غا ساقلانمىدى. ئۇنى باشقا ئورۇنغا ساقلاشنى سىناڭ."
+msgstr ""
 
-#: part/part.cpp:2800
+#: part/part.cpp:2788
 #, kde-format
 msgid "Filled form contents"
 msgstr "جەدۋەل مەزمۇنى تولدۇرۇلدى"
 
-#: part/part.cpp:2803
+#: part/part.cpp:2791
 #, kde-format
 msgid "User annotations"
 msgstr "ئىشلەتكۈچى ئىزاھى"
 
-#: part/part.cpp:2808
+#: part/part.cpp:2796
 #, kde-format
 msgid ""
 "You are about to save changes, but the current file format does not support "
 "saving the following elements. Please use the <i>Okular document archive</i> "
 "format to preserve them."
 msgstr ""
-"ئۆزگەرتىشنى ساقلىماقچى بولۇۋاتىسىز ئەمما نۆۋەتتىكى ھۆججەت پىچىمى تۆۋەندىكى "
-"ئېلېمېنتنى ساقلاشنى قوللىمايدۇ. ئۇلارنى ساقلاپ قېلىش ئۈچن <i>Okular پۈتۈك "
-"ئارخىپ</i> پىچىمىدا ساقلاڭ."
 
-#: part/part.cpp:2812 part/part.cpp:2834
+#: part/part.cpp:2800 part/part.cpp:2822
 #, kde-format
 msgid "Warning"
 msgstr "ئاگاھلاندۇرۇش"
 
-#: part/part.cpp:2813 part/part.cpp:2835
+#: part/part.cpp:2801 part/part.cpp:2823
 #, kde-format
 msgid "Save as Okular document archive…"
 msgstr "Okular پۈتۈك ئارخىپى سۈپىتىدە ساقلا…"
 
-#: part/part.cpp:2825
+#: part/part.cpp:2813
 #, kde-format
 msgid ""
 "You are about to save changes, but the current file format does not support "
@@ -4891,12 +4851,8 @@ msgid ""
 "format to preserve them. Click <i>Continue</i> to save the document and "
 "discard these elements."
 msgstr ""
-"ئۆزگەرتىشنى ساقلىماقچى بولۇۋاتىسىز ئەمما نۆۋەتتىكى ھۆججەت پىچىمى تۆۋەندىكى "
-"ئېلېمېنتنى ساقلاشنى قوللىمايدۇ. ئۇلارنى ساقلاپ قېلىش ئۈچن <i>Okular پۈتۈك "
-"ئارخىپ</i> پىچىمىدا ساقلاڭ. <i>داۋاملاشتۇر</i> چېكىلسە پۈتۈكنى ساقلاپ، ئۇ "
-"ئېلېمېنتلارنى تاشلىۋېتىدۇ."
 
-#: part/part.cpp:2828
+#: part/part.cpp:2816
 #, kde-format
 msgid ""
 "You are about to save changes, but the current file format does not support "
@@ -4904,44 +4860,36 @@ msgid ""
 "format to preserve them. Click <i>Continue</i> to save, but you will lose "
 "these elements as well as the undo/redo history."
 msgstr ""
-"ئۆزگەرتىشنى ساقلىماقچى بولۇۋاتىسىز ئەمما نۆۋەتتىكى ھۆججەت پىچىمى تۆۋەندىكى "
-"ئېلېمېنتنى ساقلاشنى قوللىمايدۇ. ئۇلارنى ساقلاپ قېلىش ئۈچن <i>Okular پۈتۈك "
-"ئارخىپ</i> پىچىمىدا ساقلاڭ. <i>داۋاملاشتۇر</i> چېكىلسە پۈتۈكنى ساقلايدۇ "
-"ئەمما ئۇ ئېلېمېنت شۇنداقلا يېنىۋال/قايتىلا تارىخ خاتىرىڭىز يوقىلىدۇ."
 
-#: part/part.cpp:2830
+#: part/part.cpp:2818
 #, kde-format
 msgid "Continue"
 msgstr "داۋاملاشتۇر"
 
-#: part/part.cpp:2830
+#: part/part.cpp:2818
 #, kde-format
 msgid "Continue losing changes"
 msgstr "داۋاملاشتۇر، ئۆزگەرتىشنى تاشلىۋەت"
 
-#: part/part.cpp:2858
+#: part/part.cpp:2846
 #, kde-format
 msgid "File could not be saved in '%1'. %2"
-msgstr "ھۆججەت «%1» غا ساقلانمىدى. %2"
+msgstr ""
 
-#: part/part.cpp:2897
+#: part/part.cpp:2885
 #, kde-format
 msgid ""
 "Okular cannot copy %1 to the specified location.\n"
 "\n"
 "The document does not exist anymore."
 msgstr ""
-"Okular بەلگىلەنگەن ئورۇنغا %1 نى كۆچۈرەلمىدى.\n"
-"\n"
-"پۈتۈك ئەمدى مەۋجۇت ئەمەس."
 
-#: part/part.cpp:2933
+#: part/part.cpp:2921
 #, kde-format
 msgid ""
 "File could not be saved in '%1'. Error: '%2'. Try to save it to another "
 "location."
 msgstr ""
-"ھۆججەت «%1» غا ساقلانمىدى. خاتالىق: «%2». ئۇنى باشقا ئورۇنغا ساقلاشنى سىناڭ."
 
 #: part/part.cpp:3192
 #, kde-format
@@ -4963,50 +4911,48 @@ msgstr "كىچىك سۈرەتنى بەت بىلەن قەدەمداشلا"
 msgid "Tools"
 msgstr "قورال"
 
-#: part/part.cpp:3427
+#: part/part.cpp:3429
 #, kde-format
 msgctxt "@action:inmenu menu that contains actions to control text to speach"
 msgid "Speak"
 msgstr "ئوقۇ"
 
-#: part/part.cpp:3585
+#: part/part.cpp:3587
 #, kde-format
 msgctxt "@title:window"
 msgid "Print"
 msgstr "باس"
 
-#: part/part.cpp:3648
+#: part/part.cpp:3650
 #, kde-format
 msgid "Printing this document is not allowed."
 msgstr "بۇ پۈتۈكنى بېسىشقا يول قويۇلمايدۇ."
 
-#: part/part.cpp:3661
+#: part/part.cpp:3663
 #, kde-format
 msgid ""
 "Could not print the document. Unknown error. Please report to bugs.kde.org"
 msgstr ""
-"پۈتۈكنى باسالمايدۇ. يوچۇن خاتالىق. bugs.kde.org غا كەمتۈك دوكلاتى يوللاڭ"
+"Could not print the document. نامەلۇم خاتالىق. Please report to bugs.kde.org"
 
-#: part/part.cpp:3663
+#: part/part.cpp:3665
 #, kde-format
 msgid ""
 "Could not print the document. Detailed error is \"%1\". Please report to "
 "bugs.kde.org"
 msgstr ""
-"پۈتۈكنى باسالمايدۇ. خاتالىق تەپسىلاتى «%1». bugs.kde.org غا كەمتۈك دوكلاتى "
-"يوللاڭ"
 
-#: part/part.cpp:3752
+#: part/part.cpp:3757
 #, kde-format
 msgid "Go to the place you were before"
 msgstr "ئالدىنقى ئورنىڭىزغا يۆتكىلىدۇ"
 
-#: part/part.cpp:3756
+#: part/part.cpp:3761
 #, kde-format
 msgid "Go to the place you were after"
 msgstr "كېيىنكى ئورنىڭىزغا يۆتكىلىدۇ"
 
-#: part/part.cpp:3781
+#: part/part.cpp:3786
 #, kde-format
 msgid ""
 "<qt><strong>File Error!</strong> Could not create temporary file "
@@ -5015,16 +4961,14 @@ msgstr ""
 "<qt><strong>ھۆججەت خاتالىقى!</strong>ۋاقىتلىق ھۆججەت <nobr><strong>%1</"
 "strong></nobr> نى قۇرالمايدۇ.</qt>"
 
-#: part/part.cpp:3793
+#: part/part.cpp:3798
 #, kde-format
 msgid ""
 "<qt><strong>File Error!</strong> Could not open the file <nobr><strong>%1</"
 "strong></nobr> for uncompression. The file will not be loaded.</qt>"
 msgstr ""
-"<qt><strong>ھۆججەت خاتالىقى!</strong>ھۆججەت <nobr><strong>%1</strong></nobr> "
-"نى قىسىشتىن يېشىپ ئاچالمايدۇ. بۇ ھۆججەت يۈكلەنمەيدۇ.</qt>"
 
-#: part/part.cpp:3797
+#: part/part.cpp:3802
 #, kde-format
 msgid ""
 "<qt>This error typically occurs if you do not have enough permissions to "
@@ -5032,51 +4976,42 @@ msgid ""
 "the file in the Dolphin file manager, then choose the 'Properties' option, "
 "and select 'Permissions' tab in the opened window.</qt>"
 msgstr ""
-"<qt>ئادەتتە بۇ خىل خاتالىق ھۆججەتنى ئوقۇش ئىجازىتىڭىز بولمىسا ئاندىن يۈز "
-"بېرىدۇ. ئەگەر Dolphin ھۆججەت باشقۇرغۇچتا شۇ ھۆججەتنى چاشقىنەكتە ئوڭ چېكىپ، "
-"«خاسلىق» تاللانمىسىدىكى «ئىجازەت» بەتكۈچنى تاللاپ ئېچىلغان كۆزنەكتە "
-"ھۆججەتنىڭ ئىگىدارلىق ۋە ئىجازىتىنى تەكشۈرەلەيسىز.</qt>"
 
-#: part/part.cpp:3819
+#: part/part.cpp:3824
 #, kde-format
 msgid ""
 "<qt><strong>File Error!</strong> Could not uncompress the file <nobr><strong>"
 "%1</strong></nobr>. The file will not be loaded.</qt>"
 msgstr ""
-"<qt><strong>ھۆججەت خاتالىقى!</strong>ھۆججەت <nobr><strong>%1</strong></nobr> "
-"نى قىسىشتىن يېشەلمەيدۇ. بۇ ھۆججەت يۈكلەنمەيدۇ.</qt>"
 
-#: part/part.cpp:3823
+#: part/part.cpp:3828
 #, kde-format
 msgid ""
 "<qt>This error typically occurs if the file is corrupt. If you want to be "
 "sure, try to decompress the file manually using command-line tools.</qt>"
 msgstr ""
-"<qt>ئادەتتە بۇ خىل خاتالىق ھۆججەت بۇزۇلغان بولسا يۈز بېرىدۇ. ئۇنىڭ بۇزۇلغان "
-"ياكى بۇزۇلمىغانلىقىنى جەزملەش ئۈچۈن ئۇ ھۆججەتنى بۇيرۇق قۇرى قورالىدا قولدا "
-"يېشىپ سىناپ بېقىڭ.</qt>"
 
-#: part/part.cpp:3849
+#: part/part.cpp:3854
 #, kde-format
 msgid "No Bookmarks"
 msgstr "خەتكۈش يوق"
 
-#: part/part.cpp:3920
+#: part/part.cpp:3925
 #, kde-format
 msgid "There was a problem sharing the document: %1"
 msgstr "پۈتۈكنى ھەمبەھىرلەشتە مەسىلە كۆرۈلگەن: %1"
 
-#: part/part.cpp:3920 part/part.cpp:3926
+#: part/part.cpp:3925 part/part.cpp:3931
 #, kde-format
 msgid "Share"
 msgstr "ھەمبەھىر"
 
-#: part/part.cpp:3924
+#: part/part.cpp:3929
 #, kde-format
 msgid "Document shared successfully"
 msgstr "پۈتۈك مۇۋەپپەقىيەتلىك ھەمبەھىرلەندى"
 
-#: part/part.cpp:3926
+#: part/part.cpp:3931
 #, kde-format
 msgid "You can find the shared document at: <a href=\"%1\">%1</a>"
 msgstr "ھەمبەھىرلەنگەن پۈتۈكنى تېپىش ئورنى: <a href=\"%1\">%1</a>"
@@ -5188,10 +5123,6 @@ msgid ""
 " %1 \n"
 "If you want to use the setting, start okular without the option --editor-cmd"
 msgstr ""
-"تەھرىرلىگۈچ بۇيرۇق قۇرى ئارقىلىق تەڭشەلگىنى\n"
-"%1\n"
-"ئەگەر تەڭشەكنى ئىشلەتمەكچى بولسىڭىز، okular نى ‪«--editor-cmd»‬ تاللانمىسىنى "
-"قوشماي قوزغىتىڭ"
 
 #: part/presentationsearchbar.cpp:77
 #, kde-format
@@ -5254,10 +5185,6 @@ msgid ""
 "key or click with the quit button that appears when placing the mouse in the "
 "top-right corner. Of course you can cycle windows (Alt+TAB by default)"
 msgstr ""
-"كۆرسەتمە ھالەتتىن چېكىنىشنىڭ ئىككى خىل ئۇسۇلى بار، سىز ESC كۇنۇپكىسىنى بېسىپ "
-"ياكى چاشقىنەكنى ئوڭ ئۈستى بۇلۇڭغا توغرىلىغاندا كۆرۈنىدىغان چېكىن توپچەنى "
-"چېكىپ چېكىنەلەيسىز. ئەلۋەتتە باشقا كۆزنەككىمۇ ئالمىشالايسىز (كۆڭۈلدىكى "
-"تېزلەتمە Alt+TAB)"
 
 #: part/presentationwidget.cpp:1718
 #, kde-format
@@ -5281,12 +5208,12 @@ msgstr "%1 خاسلىقى"
 #, kde-format
 msgctxt "mimetype information, example: \"PDF Document (application/pdf)\""
 msgid "%1 (%2)"
-msgstr "%1 (%2)"
+msgstr ""
 
 #: part/propertiesdialog.cpp:117
 #, kde-format
 msgid "%1:"
-msgstr "%1:"
+msgstr ""
 
 #: part/propertiesdialog.cpp:124
 #, kde-format
@@ -5333,13 +5260,13 @@ msgstr "تىپ 3"
 #: part/propertiesdialog.cpp:285
 #, kde-format
 msgid "TrueType"
-msgstr "TrueType"
+msgstr ""
 
 #: part/propertiesdialog.cpp:288
 #, kde-format
 msgctxt "OT means OpenType"
 msgid "TrueType (OT)"
-msgstr "TrueType (OT)"
+msgstr ""
 
 #: part/propertiesdialog.cpp:291
 #, kde-format
@@ -5360,18 +5287,18 @@ msgstr "CID تىپ 0C (OT)"
 #: part/propertiesdialog.cpp:300
 #, kde-format
 msgid "CID TrueType"
-msgstr "CID TrueType"
+msgstr ""
 
 #: part/propertiesdialog.cpp:303
 #, kde-format
 msgctxt "OT means OpenType"
 msgid "CID TrueType (OT)"
-msgstr "CID TrueType (OT)"
+msgstr ""
 
 #: part/propertiesdialog.cpp:306
 #, kde-format
 msgid "TeX PK"
-msgstr "TeX PK"
+msgstr ""
 
 #: part/propertiesdialog.cpp:309
 #, kde-format
@@ -5386,7 +5313,7 @@ msgstr "TeX خەت نۇسخا چۈشەندۈرۈشى"
 #: part/propertiesdialog.cpp:315
 #, kde-format
 msgid "TeX FreeType-handled"
-msgstr "TeX FreeType-handled"
+msgstr ""
 
 #: part/propertiesdialog.cpp:318
 #, kde-format
@@ -5429,7 +5356,7 @@ msgstr "%1 (ئالمىشىدىغىنى %2)"
 #, kde-format
 msgctxt "font name not available (empty)"
 msgid "[n/a]"
-msgstr "[n/a]"
+msgstr ""
 
 #: part/propertiesdialog.cpp:385
 #, kde-format
@@ -5440,11 +5367,6 @@ msgstr "يوچۇن خەت نۇسخا"
 #, kde-format
 msgid "Embedded: %1"
 msgstr "سىڭدۈرۈلگەن: %1"
-
-#: part/propertiesdialog.cpp:424
-#, kde-format
-msgid "Name"
-msgstr "ئاتى"
 
 #: part/propertiesdialog.cpp:427
 #, kde-format
@@ -5581,12 +5503,19 @@ msgid "Choose..."
 msgstr "تاللا…"
 
 #. i18n: ectx: property (text), widget (QLabel, recentLabel)
-#: part/selectcertificatedialog.ui:135
+#: part/selectcertificatedialog.ui:136
 #, kde-format
 msgid "Recent backgrounds:"
 msgstr "يېقىنقى تەگلىك:"
 
-#: part/side_reviews.cpp:66
+#. i18n: ectx: property (text), widget (QLabel, signatureTypeLabel)
+#: part/selectcertificatedialog.ui:152
+#, fuzzy, kde-format
+#| msgid "Signature Type: %1"
+msgid "Signature Type"
+msgstr "ئىمزا تۈرى: %1"
+
+#: part/side_reviews.cpp:64
 #, kde-format
 msgid ""
 "<div align=center><h3>No annotations</h3>To create new annotations press F6 "
@@ -5595,27 +5524,27 @@ msgstr ""
 "<div align=center><h3>ئىزاھ يوق</h3>ئەگەر يېڭى ئىزاھ قۇرۇشتا F6 نى بېسىپ "
 "ياكى تىزىملىكتىن <i>قورال - ئىزاھ</i> نى تاللاڭ.</div>"
 
-#: part/side_reviews.cpp:142
+#: part/side_reviews.cpp:140
 #, kde-format
 msgid "Group by Page"
 msgstr "بەت بويىچە گۇرۇپپىلا"
 
-#: part/side_reviews.cpp:147
+#: part/side_reviews.cpp:145
 #, kde-format
 msgid "Group by Author"
 msgstr "يازغۇچى بويىچە گۇرۇپپىلا"
 
-#: part/side_reviews.cpp:155
+#: part/side_reviews.cpp:153
 #, kde-format
 msgid "Show annotations for current page only"
 msgstr "نۆۋەتتىكى بەتتىكى ئىزاھنىلا كۆرسەت"
 
-#: part/side_reviews.cpp:165
+#: part/side_reviews.cpp:163
 #, kde-format
 msgid "Expand all elements"
 msgstr "ھەممە ئېلېمېنتنى ياي"
 
-#: part/side_reviews.cpp:167
+#: part/side_reviews.cpp:165
 #, kde-format
 msgid "Collapse all elements"
 msgstr "ھەممە ئېلېمېنتنى يىغ"
@@ -5625,54 +5554,96 @@ msgstr "ھەممە ئېلېمېنتنى يىغ"
 msgid "Properties"
 msgstr "خاسلىق"
 
-#: part/signaturepartutils.cpp:180
+#: part/signaturepartutils.cpp:57
+#, kde-format
+msgctxt ""
+"This string is describing a default entry that generally shouldn't be shown "
+"to the user. To a point where it would be a coding bug somewhere to have it"
+msgid "NONE"
+msgstr ""
+
+#: part/signaturepartutils.cpp:59
+#, kde-format
+msgctxt "Signature type"
+msgid "Adobe PKCS7 signature"
+msgstr ""
+
+#: part/signaturepartutils.cpp:61
+#, kde-format
+msgctxt "Signature type"
+msgid "Basic eIDAS signature"
+msgstr ""
+
+#: part/signaturepartutils.cpp:63
+#, kde-format
+msgctxt "Signature type"
+msgid "eIDAS signature with timestamp"
+msgstr ""
+
+#: part/signaturepartutils.cpp:65
+#, kde-format
+msgctxt "Signature type"
+msgid "eIDAS signature with timestamp for long term validation"
+msgstr ""
+
+#: part/signaturepartutils.cpp:67
+#, kde-format
+msgctxt "Signature type"
+msgid ""
+"eIDAS signature with timestamp for long term validation and support for re-"
+"validation"
+msgstr ""
+
+#: part/signaturepartutils.cpp:222
 #, kde-format
 msgctxt "file types in a file open dialog"
 msgid "Images (%1)"
 msgstr "سۈرەت (%1)"
 
-#: part/signaturepartutils.cpp:181
+#: part/signaturepartutils.cpp:223
 #, kde-format
 msgid "Select background image"
 msgstr "تەگلىك سۈرەت تاللىنىدۇ"
 
-#: part/signaturepartutils.cpp:186
+#: part/signaturepartutils.cpp:228
 #, kde-format
 msgid "Forget image"
 msgstr "سۈرەتنى ئۇنتۇ"
 
-#: part/signaturepartutils.cpp:187
+#: part/signaturepartutils.cpp:229
 #, kde-format
 msgid "Forget all images"
 msgstr "ھەممە سۈرەتنى ئۇنتۇ"
 
-#: part/signaturepartutils.cpp:229
+#: part/signaturepartutils.cpp:272
 #, kde-format
-msgid "Enter password (if any) to unlock certificate: %1"
-msgstr "گۇۋاھنامە قۇلۇپىنى ئېچىش ئۈچۈن ئىم (ئەگەر بولسا) كىرگۈزۈلىدۇ: %1"
+msgid "Enter password/pin (if any) to unlock certificate: %1"
+msgstr ""
 
-#: part/signaturepartutils.cpp:231
-#, kde-format
-msgid "Enter certificate password"
-msgstr "گۇۋاھنامە ئىم كىرگۈزۈلىدۇ"
-
-#: part/signaturepartutils.cpp:244
+#: part/signaturepartutils.cpp:297
 #, kde-format
 msgid "Enter document password"
 msgstr "پۈتۈك ئىم كىرگۈزۈلىدۇ"
 
-#: part/signaturepartutils.cpp:267
+#: part/signaturepartutils.cpp:331
 #, kde-format
 msgid "Save Signed File As"
 msgstr "ئىمزالىق ھۆججەتنى باشقا ئاتتا ساقلا"
 
-#: part/signaturepartutils.h:62
+#: part/signaturepartutils.cpp:333
+#, kde-format
+msgctxt "Error message"
+msgid ""
+"The original file cannot be overwritten. Please choose a different filename."
+msgstr ""
+
+#: part/signaturepartutils.h:63
 #, kde-format
 msgctxt ""
 "Used when suggesting a new name for a digitally signed file. %1 is the old "
 "file name and %2 its extension"
 msgid "%1_signed.%2"
-msgstr "%1_signed.%2"
+msgstr ""
 
 #: part/signaturepropertiesdialog.cpp:56
 #, kde-format
@@ -5744,37 +5715,37 @@ msgstr "لاياقەتلىك"
 #: part/signingcertificatelistmodel.cpp:105
 #, kde-format
 msgid "PGP"
-msgstr "PGP"
+msgstr ""
 
-#: part/thumbnaillist.cpp:1015
+#: part/thumbnaillist.cpp:1013
 #, kde-format
 msgid "Show bookmarked pages only"
 msgstr "خەتكۈچكە قوشۇلغان بەتنىلا كۆرسىتىدۇ"
 
-#: part/videowidget.cpp:143
+#: part/videowidget.cpp:179
 #, kde-format
 msgctxt "start the movie playback"
 msgid "Play"
 msgstr "ياڭرات"
 
-#: part/videowidget.cpp:146
+#: part/videowidget.cpp:182
 #, kde-format
 msgctxt "pause the movie playback"
 msgid "Pause"
 msgstr "ۋاقىتلىق توختا"
 
-#: part/videowidget.cpp:252
+#: part/videowidget.cpp:312
 #, kde-format
 msgctxt "stop the movie playback"
 msgid "Stop"
 msgstr "توختا"
 
-#: part/videowidget.cpp:501
+#: part/videowidget.cpp:561
 #, kde-format
 msgid "Videos not supported in this okular"
 msgstr "بۇ okular سىننى قوللىمايدۇ"
 
-#: part/videowidget.cpp:505
+#: part/videowidget.cpp:565
 #, kde-format
 msgid "Videos not supported in this Okular"
 msgstr "بۇ okular سىننى قوللىمايدۇ"
@@ -5812,7 +5783,7 @@ msgstr "كۆڭۈلدىكى سىزمىچىلىق قورالى #%1"
 #: part/widgetdrawingtools.cpp:139 part/widgetdrawingtools.cpp:183
 #, kde-format
 msgid "There's already a tool with that name. Using a default one"
-msgstr "بۇ ئاتنى باشقا قورال ئىشلەتكەن. كۆڭۈلدىكى ئاتنى ئىشلىتىدۇ"
+msgstr ""
 
 #: part/widgetdrawingtools.cpp:139 part/widgetdrawingtools.cpp:183
 #, kde-format
@@ -5862,7 +5833,7 @@ msgstr "سىرتقى تەھرىرلىگۈچ بۇيرۇقىنى تەڭشەيدۇ"
 #: shell/main.cpp:122
 #, kde-format
 msgid "Documents to open. Specify '-' to read from stdin."
-msgstr "ئاچىدىغان پۈتۈك. «-» ئۆلچەملىك كىرگۈزۈشنى ئوقۇشنى بىلدۈرىدۇ."
+msgstr "ئاچىدىغان پۈتۈك. Specify '-' to read from stdin."
 
 #: shell/okular_main.cpp:66 shell/okular_main.cpp:171
 #, kde-format
@@ -5871,9 +5842,6 @@ msgid ""
 "Please disable the tabs and try again. Please note, that unique is also not "
 "supported when setting the editor command at the commandline.\n"
 msgstr ""
-"ئىجرا قىلىنىۋاتقان okular ئەمەلىي مىسالىغا تەھرىرلىگۈچ بۇيرۇقى "
-"تەڭشىيەلمەيسىز. بەتكۈچنى چەكلەپ ئاندىن قايتا سىناڭ. ئەسكەرتىش، بۇيرۇق قۇرى "
-"ئارقىلىق تەھرىرلىگۈچ بۇيرۇقىنى تەڭشىگەندە، «unique» ئىشلىتىشنى قوللىمايدۇ.\n"
 
 #: shell/okular_main.cpp:192
 #, kde-format
@@ -5904,31 +5872,29 @@ msgstr "خاتالىق:‪ «--page»‬ تاللانمىسىنى ئىشلەتك
 msgid "Error: Can't open more than one document with the --find switch"
 msgstr "خاتالىق:‪ «--find»‬ تاللانمىسىنى ئىشلەتكەندە بىردىن كۆپ پۈتۈك ئاچالمايدۇ"
 
-#: shell/shell.cpp:207
+#: shell/shell.cpp:204
 #, kde-format
 msgid "Unable to find the Okular component: %1"
 msgstr "Okular بۆلىكىنى تاپالمىدى: %1"
 
-#: shell/shell.cpp:250
+#: shell/shell.cpp:247
 #, kde-format
 msgid "Sidebar"
 msgstr "يان قورال بالداق"
 
-#: shell/shell.cpp:286
+#: shell/shell.cpp:283
 #, kde-format
 msgid ""
 "There is already a unique Okular instance running. This instance won't be "
 "the unique one."
 msgstr ""
-"«--unique» تاللانمىسى بار Okular ئەمىلىي مىسالى ئىجرا قىلىنىۋاتىدۇ. بۇ "
-"ئەمەلىي مىسال بىردىنبىر بولالمايدۇ."
 
-#: shell/shell.cpp:315
+#: shell/shell.cpp:312
 #, kde-format
 msgid "Unable to find the Okular component."
 msgstr "Okular بۆلىكىنى تاپالمىدى."
 
-#: shell/shell.cpp:570
+#: shell/shell.cpp:567
 #, kde-format
 msgid ""
 "Click to open a file\n"
@@ -5937,7 +5903,7 @@ msgstr ""
 "چېكىلسە ھۆججەت ئاچىدۇ\n"
 "چېكىپ بېسىپ تۇرۇلسا يېقىنقى ھۆججەتنى ئاچىدۇ"
 
-#: shell/shell.cpp:571
+#: shell/shell.cpp:568
 #, kde-format
 msgid ""
 "<b>Click</b> to open a file or <b>Click and hold</b> to select a recent file"
@@ -5945,62 +5911,62 @@ msgstr ""
 "<b>چېكىلسە</b> ھۆججەت ئاچىدۇ ياكى <b>چېكىپ بېسىپ تۇرۇلسا</b> يېقىنقى "
 "ھۆججەتنى تاللايدۇ"
 
-#: shell/shell.cpp:584
+#: shell/shell.cpp:583
 #, kde-format
 msgid "Next Tab"
 msgstr "كېيىنكى بەتكۈچ"
 
-#: shell/shell.cpp:590
+#: shell/shell.cpp:589
 #, kde-format
 msgid "Previous Tab"
 msgstr "ئالدىنقى بەتكۈچ"
 
-#: shell/shell.cpp:598
+#: shell/shell.cpp:597
 #, kde-format
 msgid "Switch to Tab %1"
 msgstr "%1-بەتكۈچكە ئالماشتۇر"
 
-#: shell/shell.cpp:614
+#: shell/shell.cpp:613
 #, kde-format
 msgid "Undo close tab"
 msgstr "بەتكۈچ تاقاشتىن يېنىۋال"
 
-#: shell/shell.cpp:623
+#: shell/shell.cpp:622
 #, kde-format
 msgid "Lock Sidebar"
 msgstr "يان بالداقنى قۇلۇپلا"
 
-#: shell/shell.cpp:723
+#: shell/shell.cpp:722
 #, kde-format
 msgid "All files (*)"
 msgstr "ھەممە ھۆججەت(*)"
 
-#: shell/shell.cpp:724
+#: shell/shell.cpp:723
 #, kde-format
 msgid "All supported files (%1)"
 msgstr "قوللايدىغان ھەممە ھۆججەت(%1)"
 
-#: shell/shell.cpp:728
+#: shell/shell.cpp:727
 #, kde-format
 msgid "Open Document"
 msgstr "پۈتۈك ئاچ"
 
-#: shell/shell.cpp:842
+#: shell/shell.cpp:841
 #, kde-format
 msgid "Confirm Close"
 msgstr "يېپىشنى جەزملە"
 
-#: shell/shell.cpp:846
+#: shell/shell.cpp:845
 #, kde-format
 msgid "Close Tabs"
 msgstr "بەتكۈچنى ياپ"
 
-#: shell/shell.cpp:853
+#: shell/shell.cpp:852
 #, kde-format
 msgid "You are about to close %1 tabs. Are you sure you want to continue?"
-msgstr "سىز %1 بەتكۈچنى ياپماقچى. راستىنىلا داۋاملاشتۇرامسىز؟"
+msgstr ""
 
-#: shell/shell.cpp:855
+#: shell/shell.cpp:854
 #, kde-format
 msgid "Warn me when I attempt to close multiple tabs"
 msgstr "كۆپ بەتكۈچ ياپقاندا ئاگاھلاندۇر"
@@ -6059,6 +6025,21 @@ msgstr "ھەممىنى ئۇنتۇ"
 #, kde-format
 msgid "Hide welcome screen"
 msgstr "مەرھابا ئېكرانىنى يوشۇر"
+
+#~ msgid "Enter certificate password"
+#~ msgstr "گۇۋاھنامە ئىم كىرگۈزۈلىدۇ"
+
+#~ msgid "Configure Viewer Backends…"
+#~ msgstr "كۆرگۈچ ئارقا ئۇچ سەپلە…"
+
+#~ msgid "Configure Backends…"
+#~ msgstr "ئارقا ئۇچ سەپلە…"
+
+#~ msgid "Configure Viewer Backends"
+#~ msgstr "كۆرگۈچ ئارقا ئۇچ سەپلە"
+
+#~ msgid "Configure Backends"
+#~ msgstr "ئارقا ئۇچ سەپلە"
 
 #~| msgid "Strike Out"
 #~ msgid "Geometry with Comment"

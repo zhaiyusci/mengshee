@@ -8,6 +8,7 @@
 
 #include <KLocalizedString>
 
+#include <QRegularExpression>
 #include <QTextCursor>
 #include <QTextDocument>
 #include <QTextFrame>
@@ -68,7 +69,9 @@ QTextDocument *Converter::convert(const QString &fileName)
     extractLinks(doc->rootFrame(), internalLinks, documentAnchors);
 
     for (auto linkIt = internalLinks.constBegin(); linkIt != internalLinks.constEnd(); ++linkIt) {
-        auto anchorIt = documentAnchors.constFind(linkIt.key());
+        static QRegularExpression rx(QStringLiteral(",\\[\\d{1,5}\\]$"));
+        const QString key = linkIt.key().split(rx).first();
+        auto anchorIt = documentAnchors.constFind(key); // remove the internal link id
         if (anchorIt != documentAnchors.constEnd()) {
             const Okular::DocumentViewport viewport = calculateViewport(doc, anchorIt.value());
             Okular::GotoAction *action = new Okular::GotoAction(QString(), viewport);
@@ -167,6 +170,15 @@ void Converter::extractLinks(QTextFrame *parent, QHash<QString, QTextFragment> &
     }
 }
 
+static QString uncapitalize(QString text)
+{
+    // Make sure the first character is not upper-case
+    if (!text.isEmpty()) {
+        text[0] = text[0].toLower();
+    }
+    return text;
+}
+
 void Converter::extractLinks(const QTextBlock &parent, QHash<QString, QTextFragment> &internalLinks, QHash<QString, QTextBlock> &documentAnchors)
 {
     for (QTextBlock::iterator it = parent.begin(); !it.atEnd(); ++it) {
@@ -176,7 +188,15 @@ void Converter::extractLinks(const QTextBlock &parent, QHash<QString, QTextFragm
             if (textCharFormat.isAnchor()) {
                 const QString href = textCharFormat.anchorHref();
                 if (href.startsWith(QLatin1Char('#'))) { // It's an internal link, store it and we'll resolve it at the end
-                    internalLinks.insert(href.mid(1), textFragment);
+                    // some (all?) markdown flavors require all lowercase internal links.
+                    // we're nicer and only require not capitalized.
+                    QString linkName = uncapitalize(href.mid(1));
+                    if (internalLinks.contains(linkName)) {
+                        // We've already seen this internal link so we need to create a unique key
+                        // otherwise the QHash will replace the previous entry.
+                        linkName = QStringLiteral("%1,[%2]").arg(linkName, QString::number(m_id++));
+                    }
+                    internalLinks.insert(linkName, textFragment);
                 } else {
                     Okular::BrowseAction *action = new Okular::BrowseAction(QUrl(textCharFormat.anchorHref()));
                     Q_EMIT addAction(action, textFragment.position(), textFragment.position() + textFragment.length());
@@ -184,7 +204,8 @@ void Converter::extractLinks(const QTextBlock &parent, QHash<QString, QTextFragm
 
                 const QStringList anchorNames = textCharFormat.anchorNames();
                 for (const QString &anchorName : anchorNames) {
-                    documentAnchors.insert(anchorName, parent);
+                    // un-capitalize to help match against internal links that are also un-capitalized.
+                    documentAnchors.insert(uncapitalize(anchorName), parent);
                 }
             }
         }
@@ -265,3 +286,5 @@ void Converter::setImageSize(QTextImageFormat &format, const qreal specifiedWidt
     format.setWidth(width);
     format.setHeight(height);
 }
+
+#include "moc_converter.cpp"

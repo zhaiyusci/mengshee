@@ -614,7 +614,7 @@ public:
         }
 
         // return annotation
-        return QList<Okular::Annotation *>() << ann;
+        return {ann};
     }
 
 protected:
@@ -749,18 +749,14 @@ public:
         Okular::SignatureAnnotation *ann = new Okular::SignatureAnnotation();
         ann->setFlags(ann->flags() | Okular::Annotation::FixedRotation);
 
-        const QString certSubjectCommonName = m_signingInformation->certificate->subjectInfo(Okular::CertificateInfo::CommonName, Okular::CertificateInfo::EmptyString::TranslatedNotAvailable);
+        const QString nameToShow = m_signingInformation->certificate->subjectInfo(Okular::CertificateInfo::CommonNameOrEmail, Okular::CertificateInfo::EmptyString::TranslatedNotAvailable);
         const QString datetime = QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd hh:mm:ss t"));
-        const QString signatureText = i18n("Signed by: %1\n\nDate: %2", certSubjectCommonName, datetime);
+        const QString signatureText = i18n("Signed by: %1\n\nDate: %2", nameToShow, datetime);
 
         m_creationCompleted = false;
         clicked = false;
-        // safety check
-        if (!ann) {
-            return QList<Okular::Annotation *>();
-        }
 
-        ann->setLeftText(certSubjectCommonName);
+        ann->setLeftText(nameToShow);
         ann->setText(signatureText);
         ann->setImagePath(m_signingInformation->backgroundImagePath);
 
@@ -782,7 +778,7 @@ public:
         }
         ann->setBoundingRectangle(rect);
 
-        return QList<Okular::Annotation *>() << ann;
+        return {ann};
     }
 
     bool isAccepted() const
@@ -867,7 +863,7 @@ public:
     {
         Okular::NewSignatureData data;
         data.setCertNickname(m_signingInformation->certificate->nickName());
-        data.setCertSubjectCommonName(m_signingInformation->certificate->subjectInfo(Okular::CertificateInfo::CommonName, Okular::CertificateInfo::EmptyString::TranslatedNotAvailable));
+        data.setCertSubjectCommonName(m_signingInformation->certificate->subjectInfo(Okular::CertificateInfo::CommonNameOrEmail, Okular::CertificateInfo::EmptyString::TranslatedNotAvailable));
         data.setPassword(m_signingInformation->certificatePassword);
         data.setDocumentPassword(m_signingInformation->documentPassword);
         data.setPage(m_page->number());
@@ -1066,7 +1062,7 @@ public:
         }
         // return annotation
 
-        return QList<Okular::Annotation *>() << ann;
+        return {ann};
     }
 
 private:
@@ -1206,7 +1202,7 @@ public:
         }
 
         // return annotations
-        return QList<Okular::Annotation *>() << ann;
+        return {ann};
     }
 
     QCursor cursor() const override
@@ -1866,7 +1862,7 @@ QRect PageViewAnnotator::performRouteMouseOrTabletEvent(const AnnotatorEngine::E
                         break;
                     }
                     case Okular::FieldAlreadySigned: // We should not end up here
-                    case Okular::KeyMissing:         // unless the user modified the key store after opening the dialog, this should not happen
+                    case Okular::KeyMissing:
                     case Okular::InternalSigningError:
                         KMessageBox::detailedError(m_pageView, errorString(result.first, static_cast<int>(result.first)), result.second);
                         break;
@@ -2809,4 +2805,4 @@ void PageViewAnnotator::slotAdvancedSettings()
     selectLastTool();
 }
 
-/* kate: replace-tabs on; indent-width 4; */
+#include "moc_pageviewannotator.cpp"

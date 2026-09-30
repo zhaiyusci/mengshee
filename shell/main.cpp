@@ -266,15 +266,15 @@ static int runMengsheeApplication(int argc, char **argv)
     parser.setSingleDashWordOptionMode(QCommandLineParser::ParseAsLongOptions);
     aboutData.setupCommandLine(&parser);
 
-    parser.addOption(QCommandLineOption(QStringList() << QStringLiteral("p") << QStringLiteral("page"), i18n("Page of the document to be shown"), QStringLiteral("number")));
-    parser.addOption(QCommandLineOption(QStringList() << QStringLiteral("presentation"), i18n("Start the document in presentation mode")));
-    parser.addOption(QCommandLineOption(QStringList() << QStringLiteral("print"), i18n("Start with print dialog")));
-    parser.addOption(QCommandLineOption(QStringList() << QStringLiteral("print-and-exit"), i18n("Start with print dialog and exit after printing")));
-    parser.addOption(QCommandLineOption(QStringList() << QStringLiteral("unique"), i18n("\"Unique instance\" control")));
-    parser.addOption(QCommandLineOption(QStringList() << QStringLiteral("noraise"), i18n("Not raise window")));
-    parser.addOption(QCommandLineOption(QStringList() << QStringLiteral("find"), i18n("Find a string on the text"), QStringLiteral("string")));
-    parser.addOption(QCommandLineOption(QStringList() << QStringLiteral("editor-cmd"), i18n("Sets the external editor command"), QStringLiteral("string")));
-    QCommandLineOption newProcessOption(QStringList() << QStringLiteral("new-process"), i18n("Open documents in a separate process"));
+    parser.addOption(QCommandLineOption({QStringLiteral("p"), QStringLiteral("page")}, i18n("Page of the document to be shown"), QStringLiteral("number")));
+    parser.addOption(QCommandLineOption({QStringLiteral("presentation")}, i18n("Start the document in presentation mode")));
+    parser.addOption(QCommandLineOption({QStringLiteral("print")}, i18n("Start with print dialog")));
+    parser.addOption(QCommandLineOption({QStringLiteral("print-and-exit")}, i18n("Start with print dialog and exit after printing")));
+    parser.addOption(QCommandLineOption({QStringLiteral("unique")}, i18n("\"Unique instance\" control")));
+    parser.addOption(QCommandLineOption({QStringLiteral("noraise")}, i18n("Not raise window")));
+    parser.addOption(QCommandLineOption({QStringLiteral("find")}, i18n("Find a string on the text"), QStringLiteral("string")));
+    parser.addOption(QCommandLineOption({QStringLiteral("editor-cmd")}, i18n("Sets the external editor command"), QStringLiteral("string")));
+    QCommandLineOption newProcessOption({QStringLiteral("new-process")}, i18n("Open documents in a separate process"));
     newProcessOption.setFlags(QCommandLineOption::HiddenFromHelp);
     parser.addOption(newProcessOption);
     parser.addPositionalArgument(QStringLiteral("urls"), i18n("Documents to open. Specify '-' to read from stdin."));
@@ -318,4 +318,3 @@ int main(int argc, char **argv)
     return EXIT_FAILURE;
 }
 #include "main.moc"
-/* kate: replace-tabs on; indent-width 4; */

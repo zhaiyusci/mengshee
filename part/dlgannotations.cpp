@@ -352,3 +352,5 @@ void DlgAnnotations::refreshStemTeXStatus()
     }
     m_stemTeXStatusLabel->setText(text);
 }
+
+#include "moc_dlgannotations.cpp"

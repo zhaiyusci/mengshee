@@ -10,7 +10,6 @@
 
 #include <KActionCollection>
 #include <KLocalizedString>
-#include <kwidgetsaddons_version.h> // TODO KF6: Remove, this was needed for KActionMenu::setPopupMode().
 
 #include "gui/guiutils.h"
 #include "settings.h"
@@ -123,8 +122,8 @@ void ColorModeMenu::slotConfigChanged()
     }
 
     // Update color icons
-    m_aPaperColor->setIcon(GuiUtils::createColorIcon(QList<QColor>() << Okular::Settings::paperColor(), QIcon::fromTheme(QStringLiteral("paper-color"))));
-    m_aDarkLight->setIcon(GuiUtils::createColorIcon(QList<QColor>() << Okular::Settings::recolorForeground() << Okular::Settings::recolorBackground(), QIcon::fromTheme(QStringLiteral("color-mode-black-white"))));
+    m_aPaperColor->setIcon(GuiUtils::createColorIcon({Okular::Settings::paperColor()}, QIcon::fromTheme(QStringLiteral("paper-color"))));
+    m_aDarkLight->setIcon(GuiUtils::createColorIcon({Okular::Settings::recolorForeground(), Okular::Settings::recolorBackground()}, QIcon::fromTheme(QStringLiteral("color-mode-black-white"))));
 
     // Update toggle action
     m_aChangeColors->setChecked(Okular::SettingsCore::changeColors());
@@ -138,3 +137,5 @@ void ColorModeMenu::slotChanged()
         a->setEnabled(enabled);
     }
 }
+
+#include "moc_colormodemenu.cpp"

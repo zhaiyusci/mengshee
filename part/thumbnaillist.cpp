@@ -27,8 +27,6 @@
 #include <KLocalizedString>
 #include <KTitleWidget>
 
-#include <kwidgetsaddons_version.h>
-
 // local includes
 #include "core/area.h"
 #include "core/bookmarkmanager.h"
@@ -1324,6 +1322,5 @@ void ThumbnailController::setAdvancedModeEnabled(bool enabled)
     setVisible(enabled);
 }
 
+#include "moc_thumbnaillist.cpp"
 #include "thumbnaillist.moc"
-
-/* kate: replace-tabs on; indent-width 4; */

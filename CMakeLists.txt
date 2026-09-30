@@ -21,7 +21,7 @@ set(OKULAR_UI "" CACHE STRING "Which Okular user interface to build. Possible va
 set(FORCE_NOT_REQUIRED_DEPENDENCIES "" CACHE STRING "List (semicolon-separated) of dependencies that will be downgraded from REQUIRED to RECOMMENDED")
 
 find_package(ECM ${KF_REQUIRED_VERSION} CONFIG REQUIRED)
-set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${ECM_MODULE_PATH})
+set(CMAKE_MODULE_PATH ${ECM_MODULE_PATH})
 
 include(ECMInstallIcons)
 include(ECMSetupVersion)
@@ -154,6 +154,7 @@ find_package(KF6 ${KF_REQUIRED_VERSION} REQUIRED COMPONENTS
     Config
     ConfigWidgets
     CoreAddons
+    Crash
     I18n
     KIO
     ThreadWeaver
@@ -199,7 +200,7 @@ if (BUILD_DESKTOP)
         set(HAVE_DBUS 1)
     endif()
 
-    find_package(KF6 ${KF_REQUIRED_VERSION} REQUIRED COMPONENTS Parts ColorScheme Crash IconThemes TextWidgets WidgetsAddons)
+    find_package(KF6 ${KF_REQUIRED_VERSION} REQUIRED COMPONENTS Parts ColorScheme IconThemes TextWidgets WidgetsAddons)
 
     find_package(KF6Purpose)
     set_okular_optional_package_properties(KF6Purpose PROPERTIES
@@ -223,8 +224,8 @@ endif()
 
 if (BUILD_MOBILE)
     find_package(Qt6 ${QT_REQUIRED_VERSION} CONFIG REQUIRED COMPONENTS Qml Quick)
-    find_package(KF6Kirigami2)
-    set_package_properties(KF6Kirigami2 PROPERTIES
+    find_package(KF6Kirigami)
+    set_package_properties(KF6Kirigami PROPERTIES
         DESCRIPTION "A QtQuick based components set"
         PURPOSE "Required at runtime by the mobile app"
         TYPE RUNTIME
@@ -241,7 +242,7 @@ endif()
 
 if(NOT WIN32 AND NOT ANDROID AND NOT APPLE AND NOT HAIKU)
     if (Qt6Gui_VERSION VERSION_GREATER_EQUAL "6.10.0")
-        find_package(Qt6GuiPrivate ${REQUIRED_QT_VERSION} REQUIRED)
+        find_package(Qt6GuiPrivate ${QT_REQUIRED_VERSION} REQUIRED)
     else()
         find_package(Qt6Gui REQUIRED COMPONENTS Private)
     endif()
@@ -249,13 +250,15 @@ if(NOT WIN32 AND NOT ANDROID AND NOT APPLE AND NOT HAIKU)
 else()
     set(HAVE_X11 FALSE)
 endif()
-find_package(Phonon4Qt6 CONFIG)
-set_okular_optional_package_properties(Phonon4Qt6 PROPERTIES
-    PURPOSE "Required for documents with audio or video elements")
-if (Phonon4Qt6_FOUND)
-    set(HAVE_PHONON 1)
+
+find_package(Qt6MultimediaWidgets ${QT_REQUIRED_VERSION} CONFIG)
+set_okular_optional_package_properties(Qt6MultimediaWidgets PROPERTIES
+    PURPOSE "Required for documents with audio or video elements.")
+
+if (TARGET Qt6::MultimediaWidgets)
+    set(HAVE_MULTIMEDIA 1)
 else()
-    set(HAVE_PHONON 0)
+    set(HAVE_MULTIMEDIA 0)
 endif()
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_SOURCE_DIR}/cmake/modules)
@@ -360,7 +363,7 @@ else()
     add_definitions(-DHAVE_AUTOMATIC_SIGNATURE_FONT_SIZE=1)
 endif()
 
-include_directories(${CMAKE_CURRENT_SOURCE_DIR} ${PHONON_INCLUDES} core/synctex ${CMAKE_BINARY_DIR}/core)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR} core/synctex ${CMAKE_BINARY_DIR}/core)
 
 option(BUILD_COVERAGE "Build the project with gcov support" OFF)
 option(OKULAR_PDF_ONLY "Build only the PDF document generator" OFF)
@@ -533,8 +536,8 @@ PUBLIC  # these are included from the installed headers
     Qt6::PrintSupport
     Qt6::Widgets
 )
-if (Phonon4Qt6_FOUND)
-    target_link_libraries(okularcore PRIVATE Phonon::phonon4qt6)
+if (TARGET Qt6::MultimediaWidgets)
+    target_link_libraries(okularcore PRIVATE Qt6::MultimediaWidgets)
 endif()
 
 
@@ -545,7 +548,6 @@ if (TARGET Qt6::Qml)
     target_sources(okularcore PRIVATE
             core/script/executor_js.cpp
             core/script/js_app.cpp
-            core/script/js_console.cpp
             core/script/js_data.cpp
             core/script/js_display.cpp
             core/script/js_document.cpp
@@ -641,7 +643,6 @@ if(BUILD_DESKTOP)
     part/searchwidget.cpp
     part/sidebar.cpp
     part/side_reviews.cpp
-    part/snapshottaker.cpp
     part/thumbnaillist.cpp
     part/toc.cpp
     part/toggleactionmenu.cpp
@@ -696,8 +697,8 @@ endif()
 if (TARGET Qt6::Qml)
     target_link_libraries(okularpart Qt6::Qml)
 endif()
-if (Phonon4Qt6_FOUND)
-   target_link_libraries(okularpart Phonon::phonon4qt6)
+if (TARGET Qt6::MultimediaWidgets)
+    target_link_libraries(okularpart Qt6::MultimediaWidgets)
 endif()
 
 if(KF6Wallet_FOUND)
