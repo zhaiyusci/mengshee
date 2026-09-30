@@ -1,24 +1,24 @@
-# 本机固定开发版入口
+# Canonical local development runtime
 
-用户约定的 Mengshee 开发版入口为：
+The agreed Mengshee development entry point on this machine is:
 
 `C:\Users\jairy\Documents\okular\windows_build\dist\mengshee-pdf\app\bin\mengshee.exe`
 
-CMake 构建目录 `windows_build\build\mengshee-standalone` 和上述运行目录不同。仅构建成功，或在 build / 临时测试目录中验证，**不代表用户的开发版已经更新**。排查“开发版找不到入口”时，不要先假定用户打开错了版本。
+The CMake build directory, `windows_build\build\mengshee-standalone`, is separate from this runtime directory. A successful build or verification in the build or temporary test directory **does not mean the development runtime has been updated**. When investigating a missing development entry point, do not start by assuming that the user opened the wrong version.
 
-发布安装包后，用户也可能运行 `C:\Program Files\Mengshee\bin\mengshee.exe`。应核对当前进程路径；不得把开发目录同步当成已更新安装版，也不要关闭有未保存文档的进程。
+After installing a release, the user may instead be running `C:\Program Files\Mengshee\bin\mengshee.exe`. Check the actual process path. Synchronizing the development directory does not update the installed application, and processes with unsaved documents must not be closed.
 
-## 更新与验收
+## Deployment and acceptance checks
 
-- 确认目标程序已关闭，不强制终止用户进程。
-- 先备份，再同步相互匹配的应用程序、Core、Part 和 PDF 后端。功能有额外运行依赖时一并核对，不要盲目复制整个 SDK。
-- 当前核心路径为 `bin\Okular6Core.dll`、`bin\plugins\kf6\parts\okularpart.dll` 和 `bin\plugins\okular_generators\okularGenerator_poppler.dll`。
-- 核对部署文件与本次构建的哈希，并使用 **dist 自身的运行库/插件** 验证，不能用 SDK 的 PATH 掩盖部署缺失。
-- 此包的 Qt 平台插件在 `bin\platforms`，其他插件位于 `bin\plugins`。在包外运行测试程序时，插件搜索路径须同时包含 dist 的 `bin` 和 `bin\plugins`。
-- 修改工具栏入口时，要点击真实工具栏按钮验证，不能仅检查 QAction 存在或从菜单触发。
-- 回归范围跟随改动：字体 hotfix 只做字体渲染/缺字回退、实际 PDF 对比和包内冒烟，不跑无关的模式切换矩阵（用户明确要求）。下述完整模式矩阵用于工具栏/模式布局改动，不作为每个 hotfix 的固定步骤。
-- 修改 Poppler 渲染器（例如 `SplashOutputDev.cc`）后，要重建 SDK 并同步 `poppler.dll`、`poppler-qt6.dll`，不能只更新应用的 PDF 插件。
-- 从 2026.0.22.4 起还必须同步 `app\share\fonts` 的 14 个私有 Base14 字体及许可/清单。这些是核心运行资源，不属于可选 StemTeX；SDK、开发目录、stage 都通过 `windows-build/cmake/pdf-base14-fonts.cmake` 校验。字体机制与专项验证见 [PDF 字体说明](pdf-font-rendering.md)。
-- `external/poppler/utils/PdfPageSequenceEditor.cc` 作为应用内辅助库链接到 PDF 后端；修改它后须重建 `okularGenerator_poppler`，仅重建 SDK 的 `poppler.dll` 不会更新该代码。
+- Confirm that the target application is closed; do not forcibly terminate user processes.
+- Back up the existing files, then deploy matching application, Core, Part, and PDF backend binaries. Check any additional runtime dependencies required by the change rather than copying the entire SDK indiscriminately.
+- The current core paths are `bin\Okular6Core.dll`, `bin\plugins\kf6\parts\okularpart.dll`, and `bin\plugins\okular_generators\okularGenerator_poppler.dll`.
+- Compare deployed file hashes with the current build and validate using **the distribution's own libraries and plugins**. Do not let SDK entries in PATH conceal missing deployment dependencies.
+- This package stores Qt platform plugins in `bin\platforms` and other plugins in `bin\plugins`. When running test executables outside the package, include both the distribution's `bin` and `bin\plugins` directories in the plugin search path.
+- When changing toolbar entry points, test the actual toolbar buttons. Checking that a QAction exists or triggering the action through a menu is not sufficient.
+- Match regression scope to the change. Font hotfixes require focused font rendering/substitution tests, real-document comparisons, and packaged-runtime smoke tests—not unrelated mode-switch matrices, as explicitly requested by the user. The full mode matrix below applies to toolbar or mode-layout changes, not every hotfix.
+- After changing the Poppler renderer, such as `SplashOutputDev.cc`, rebuild the SDK and deploy both `poppler.dll` and `poppler-qt6.dll`. Updating only the application's PDF plugin is insufficient.
+- Starting with 2026.0.22.4, also deploy the 14 private Base14 fonts and their license/manifest files under `app\share\fonts`. These are mandatory core resources, not part of optional StemTeX. Validate the SDK, development runtime, and stage with `windows-build/cmake/pdf-base14-fonts.cmake`. See [PDF font rendering](pdf-font-rendering.md) for the font architecture and focused validation.
+- `external/poppler/utils/PdfPageSequenceEditor.cc` is linked into the PDF backend as an application-side helper library. Changes to it require rebuilding `okularGenerator_poppler`; rebuilding only the SDK's `poppler.dll` does not update this code.
 
-阅读区域编辑模式现名 **Reading Views**；其中的 Views 是页面内阅读区域，不等同于传统 **View / 视图** 显示菜单。对应模式工具组在第二行**右对齐**，使用**纯图标**按钮，不显示文字；绘制、排序、生成、应用的名称和说明放在悬停提示中，Apply 使用一个区域复制到多个区域的图标；批注工具留在左侧。验收需覆盖宽、窄窗口、所有模式切换、布局恢复及 XMLGUI 重建，检查实际最后一个按钮的位置，不能只检查工具栏占满整行。伸缩留白必须注册在 XMLGUI 中，重建结束后重新落实第二行及右侧顺序；不能依靠临时插入的控件。
+The reading-region editing mode is named **Reading Views**. Its views are regions within a page, not the traditional **View** display menu. Its mode-specific toolbar group is **right-aligned on the second row**, with **icon-only** buttons. Draw, Order, Generate, and Apply labels and descriptions belong in tooltips; Apply uses the icon showing one region copied to multiple regions. Annotation tools remain on the left. Acceptance checks must cover wide and narrow windows, all mode transitions, layout restoration, and XMLGUI reconstruction. Check the actual position of the final button, not merely whether the toolbar spans the row. Register the expanding spacer with XMLGUI and reapply the second-row placement and right-side ordering after reconstruction; do not rely on temporarily inserted widgets.
