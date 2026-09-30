@@ -34,6 +34,7 @@
 #include <QSizeGrip>
 #include <QSpinBox>
 #include <QSignalBlocker>
+#include <QScopedValueRollback>
 #include <limits>
 #include <QStyle>
 #include <QTextDocument>
@@ -113,7 +114,7 @@ private:
 };
 
 #if HAVE_QSCINTILLA
-void keepCaretVisible(QsciScintilla *editor)
+void disableCaretBlink(QsciScintilla *editor)
 {
     // Scintilla documents a zero caret period as "steady on".
     editor->SendScintilla(SCI_SETCARETPERIOD, 0);
@@ -138,7 +139,7 @@ QsciScintilla *createLatexSourceEditor(QWidget *parent, const QString &contents)
     editor->setCaretLineVisible(true);
     editor->setCaretLineBackgroundColor(QColor(245, 248, 255));
     editor->setCaretWidth(popupCaretWidth);
-    keepCaretVisible(editor);
+    disableCaretBlink(editor);
     editor->setAutoIndent(true);
     editor->setIndentationsUseTabs(false);
     editor->setIndentationWidth(2);
@@ -935,6 +936,10 @@ void AnnotWindow::commitWindowText()
     const QString contents = editorPlainText();
     const int cursorPos = editorCursorPosition();
     if (contents != m_annot->contents()) {
+        // QUndoStack::push() immediately calls redo(), which also emits the
+        // undo/redo notification. Do not restore our own editor while FocusOut
+        // is still being dispatched: that would re-enter focus handling.
+        QScopedValueRollback<bool> committing(m_committingWindowText, true);
         m_document->editPageAnnotationContents(m_page, m_annot, contents, cursorPos, m_prevCursorPos, m_prevAnchorPos);
     }
     m_prevCursorPos = cursorPos;
@@ -1036,7 +1041,7 @@ void AnnotWindow::renderLatex(bool render)
 
 void AnnotWindow::slotHandleContentsChangedByUndoRedo(Okular::Annotation *annot, const QString &contents, int cursorPos, int anchorPos)
 {
-    if (annot != m_annot) {
+    if (annot != m_annot || m_committingWindowText) {
         return;
     }
 

@@ -20,6 +20,13 @@
 #include <QFile>
 #include <QMetaObject>
 #include <QPointer>
+#include <QAbstractTextDocumentLayout>
+#include <QPageSize>
+#include <QPainter>
+#include <QPdfWriter>
+#include <QTextCursor>
+#include <QTextDocument>
+#include <QUuid>
 #include <QStandardPaths>
 #include <QTemporaryDir>
 #include <QToolTip>
@@ -154,6 +161,47 @@ QDir latexAppearanceSessionDir()
     QDir rootDir(sessionRoot->path());
     rootDir.mkpath(QStringLiteral("latex-notes"));
     return QDir(rootDir.filePath(QStringLiteral("latex-notes")));
+}
+
+// An error is ordinary appearance content, not separate UI state. Do not use
+// TeX to draw its own error: the backend may be unavailable or the source invalid.
+LatexNoteUtils::RenderResult renderErrorAppearance(const QString &message, double layoutWidthPoints, double fontSizePoints)
+{
+    LatexNoteUtils::RenderResult result;
+    result.errorMessage = message;
+    const QString fileName = latexAppearanceSessionDir().filePath(QStringLiteral("error-%1.pdf").arg(QUuid::createUuid().toString(QUuid::WithoutBraces)));
+    QPdfWriter writer(fileName);
+    writer.setResolution(72);
+
+    QTextDocument text;
+    text.documentLayout()->setPaintDevice(&writer);
+    QFont font;
+    font.setPointSizeF(std::isfinite(fontSizePoints) && fontSizePoints > 0.0 ? fontSizePoints : 10.0);
+    text.setDefaultFont(font);
+    text.setDocumentMargin(0);
+    text.setPlainText(message);
+    QTextCursor cursor(&text);
+    cursor.select(QTextCursor::Document);
+    QTextCharFormat format;
+    format.setForeground(QColor(200, 0, 0));
+    cursor.mergeCharFormat(format);
+    text.setTextWidth(std::isfinite(layoutWidthPoints) && layoutWidthPoints > 0.0 ? layoutWidthPoints : 240.0);
+
+    const QSizeF size = text.size();
+    writer.setPageSize(QPageSize(size, QPageSize::Point, QString(), QPageSize::ExactMatch));
+    writer.setPageMargins(QMarginsF(), QPageLayout::Point);
+    QPainter painter(&writer);
+    if (!painter.isActive()) {
+        return result;
+    }
+    text.drawContents(&painter);
+    if (!painter.end()) {
+        return result;
+    }
+    result.ok = true; // A usable error AP; the source has not compiled successfully.
+    result.pdfFileName = fileName;
+    result.pdfSizePoints = size;
+    return result;
 }
 
 QSizeF pageSizeInPoints(const Okular::Page *page)
@@ -511,8 +559,7 @@ RenderResult renderAppearancePdf(const QString &latexInput, const QColor &textCo
     if (errorCode != GuiUtils::LatexRenderer::NoError) {
         qCWarning(OkularUiDebug) << "LaTeX note PDF render failed; backend:" << renderer.lastBackendName() << "layout width:" << layoutWidthPoints << "font size:" << fontSizePoints << "error:" << errorCode
                                  << "message:" << latexErrorMessage(errorCode, latexOutput);
-        result.errorMessage = latexErrorMessage(errorCode, latexOutput);
-        return result;
+        return renderErrorAppearance(GuiUtils::LatexRenderer::compactErrorMessage(latexOutput), layoutWidthPoints, fontSizePoints);
     }
 
     const QFileInfo temporaryPdfInfo(temporaryPdfFile);

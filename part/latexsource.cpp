@@ -91,7 +91,9 @@ QString prepareSnippet(const QString &source, const QColor &textColor)
     // not update their current-colour state (e.g. \\color{.} or \\colorlet).
     // The bundled minimal profile has neither package, so fall back to the
     // driver's colour stack there. Remember that choice before reading source.
+    // Missing glyphs must fail visibly instead of producing a successful blank AP.
     const QString prefix = QStringLiteral("\\begingroup%\n"
+                                          "\\tracinglostchars=3\\relax%\n"
                                           "\\expandafter\\let\\csname mengshee@note@endcolor\\endcsname\\relax%\n"
                                           "\\ifdefined\\color%\n"
                                           "\\color[rgb]{%1,%2,%3}%\n"

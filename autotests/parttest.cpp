@@ -29,6 +29,19 @@
 #include <QRegularExpression>
 #include <QRadioButton>
 #include <atomic>
+#include <future>
+#include "../part/latexnoteutils.h"
+#if HAVE_QSCINTILLA
+#if defined(QT_NO_KEYWORDS)
+#define signals public
+#define slots
+#endif
+#include <Qsci/qsciscintilla.h>
+#if defined(QT_NO_KEYWORDS)
+#undef slots
+#undef signals
+#endif
+#endif
 #include <cmath>
 #include <QTableWidget>
 #include <QDialogButtonBox>
@@ -110,6 +123,8 @@ private Q_SLOTS:
     void testOcrTextLayerEditing();
     void testOcrTextLayout();
     void testOcrPdfGeometry();
+    void testLatexErrorAppearance_data();
+    void testLatexErrorAppearance();
     void testUnicodeFallbackPreservesSourceGlyph_data();
     void testUnicodeFallbackPreservesSourceGlyph();
     void testMissingGlyphToUnicodeInvariance();
@@ -243,6 +258,7 @@ private Q_SLOTS:
     void testeRectSelectionStartingOnLinks();
     void testCheckBoxReadOnly();
     void testCrashTextEditDestroy();
+    void testLatexPopupCaret();
     void testAnnotWindowAppearance();
     void testAnnotWindow();
     void testAnnotWindowInTextSelectionMode();
@@ -378,6 +394,55 @@ bool unicodeFallbackHasInk(const QImage &image)
     }
     return false;
 }
+}
+
+void PartTest::testLatexErrorAppearance_data()
+{
+    QTest::addColumn<QString>("source");
+    QTest::addColumn<QString>("diagnostic");
+    QTest::newRow("undefined-command") << QStringLiteral("$\\notacommand{x}$") << QStringLiteral("Undefined control sequence");
+    QTest::newRow("missing-text-glyph") << QStringLiteral("\\alpha") << QStringLiteral("Missing character");
+}
+
+void PartTest::testLatexErrorAppearance()
+{
+    QFETCH(QString, source);
+    QFETCH(QString, diagnostic);
+    if (qEnvironmentVariableIntValue("OKULAR_TEST_LATEX_ASYNC") != 1) {
+        QSKIP("Set OKULAR_TEST_LATEX_ASYNC=1 to use the installed StemTeX backend");
+    }
+    auto render = [](const QString &source) {
+        return std::async(std::launch::async, [source]() {
+            return LatexNoteUtils::renderAppearancePdf(source, Qt::black, 240.0, false, 12.0);
+        });
+    };
+    auto failedJob = render(source);
+    QTRY_VERIFY_WITH_TIMEOUT(failedJob.wait_for(std::chrono::milliseconds(0)) == std::future_status::ready, 120000);
+    const auto failed = failedJob.get();
+    QVERIFY2(failed.ok, qPrintable(failed.errorMessage));
+    QVERIFY2(failed.errorMessage.contains(diagnostic), qPrintable(failed.errorMessage));
+    auto errorPdf = Poppler::Document::load(failed.pdfFileName);
+    QVERIFY(errorPdf);
+    auto page = errorPdf->page(0);
+    QVERIFY(page);
+    QVERIFY(page->text(QRectF()).contains(diagnostic));
+    const QImage image = page->renderToImage(144, 144);
+    QVERIFY(!image.isNull());
+    int redPixels = 0;
+    for (int y = 0; y < image.height(); ++y) {
+        for (int x = 0; x < image.width(); ++x) {
+            const QColor color = image.pixelColor(x, y);
+            redPixels += color.red() > 100 && color.green() < 80 && color.blue() < 80;
+        }
+    }
+    QVERIFY(redPixels > 10);
+
+    auto correctedJob = render(QStringLiteral("$\\alpha$"));
+    QTRY_VERIFY_WITH_TIMEOUT(correctedJob.wait_for(std::chrono::milliseconds(0)) == std::future_status::ready, 120000);
+    const auto corrected = correctedJob.get();
+    QVERIFY2(corrected.ok && corrected.errorMessage.isEmpty(), qPrintable(corrected.errorMessage));
+    QVERIFY(corrected.pdfFileName != failed.pdfFileName);
+    QVERIFY(Poppler::Document::load(corrected.pdfFileName));
 }
 
 void PartTest::testUnicodeFallbackPreservesSourceGlyph_data()
@@ -8056,6 +8121,105 @@ void PartTest::testCrashTextEditDestroy()
 
     part.widget()->findChild<QTextEdit *>()->setText(QStringLiteral("HOLA"));
     part.actionCollection()->action(QStringLiteral("view_toggle_forms"))->trigger();
+}
+
+void PartTest::testLatexPopupCaret()
+{
+#if !HAVE_QSCINTILLA
+    QSKIP("QScintilla is not available");
+#endif
+    Okular::Part part(nullptr, {});
+    QVERIFY(openDocument(&part, QStringLiteral(KDESRCDIR "data/file1.pdf")));
+    part.widget()->resize(800, 600);
+    part.widget()->show();
+    QVERIFY(QTest::qWaitForWindowExposed(part.widget()));
+    auto *annotation = new Okular::StampAnnotation;
+    annotation->setBoundingRectangle(Okular::NormalizedRect(0.2, 0.2, 0.4, 0.3));
+    annotation->setContents(QStringLiteral("\\LaTeX{}"));
+    annotation->setOkularLatex(true);
+    part.m_document->addPageAnnotation(0, annotation);
+    QVERIFY(QMetaObject::invokeMethod(part.m_pageView, "openAnnotationWindow", Qt::DirectConnection, Q_ARG(Okular::Annotation *, annotation), Q_ARG(int, 0)));
+    auto *window = part.m_pageView->findChild<QFrame *>(QStringLiteral("AnnotWindow"));
+    QVERIFY(window);
+    QWidget *editor = nullptr;
+    for (QWidget *widget : window->findChildren<QWidget *>()) {
+        if (widget->inherits("QsciScintilla")) {
+            editor = widget;
+            break;
+        }
+    }
+    QVERIFY(editor);
+    editor->setFocus();
+    QTRY_VERIFY(editor->hasFocus());
+    QTest::keyClick(editor, Qt::Key_End);
+    // Two identical frames can both lack a caret. Require a dark vertical
+    // stroke at the insertion point, before and after keyboard movement.
+    auto visibleCaret = [&]() {
+        auto *area = qobject_cast<QAbstractScrollArea *>(editor);
+        if (!area) {
+            return false;
+        }
+        // Scintilla lays out and buffers a full viewport: render it first, then
+        // crop the pixels, rather than asking it to paint a caret-sized device.
+        const QPixmap frame = area->viewport()->grab();
+        QInputMethodQueryEvent query(Qt::ImCursorRectangle);
+        QApplication::sendEvent(editor, &query);
+        const QRect rect = query.value(Qt::ImCursorRectangle).toRect();
+        if (!rect.isValid() || !area->viewport()->rect().contains(rect)) {
+            return false;
+        }
+        const qreal scale = frame.devicePixelRatio();
+        const QImage pixels = frame.toImage().copy(QRect(rect.topLeft() * scale, rect.size() * scale));
+        for (int x = 0; x < pixels.width(); ++x) {
+            int dark = 0;
+            for (int y = 0; y < pixels.height(); ++y) {
+                dark += qGray(pixels.pixel(x, y)) < 80;
+            }
+            if (dark > pixels.height() / 2) {
+                return true;
+            }
+        }
+        return false;
+    };
+    QVERIFY(visibleCaret());
+    QTest::qWait(550);
+    QVERIFY(visibleCaret());
+    QTest::keyClicks(editor, QStringLiteral(" "));
+    QVERIFY(visibleCaret());
+    QTest::keyClick(editor, Qt::Key_Backspace);
+    QVERIFY(visibleCaret());
+#if HAVE_QSCINTILLA
+    auto *scintilla = qobject_cast<QsciScintilla *>(editor);
+    QVERIFY(scintilla);
+    QCOMPARE(scintilla->SendScintilla(QsciScintillaBase::SCI_GETCARETPERIOD), 0L);
+    QCOMPARE(scintilla->SendScintilla(QsciScintillaBase::SCI_GETCARETWIDTH), 3L);
+    QCOMPARE(scintilla->SendScintilla(QsciScintillaBase::SCI_GETCARETSTYLE), 1L);
+    QCOMPARE(scintilla->SendScintilla(QsciScintillaBase::SCI_GETFOCUS), 1L);
+
+    QLineEdit other(part.widget());
+    other.show();
+    QTest::keyClicks(editor, QStringLiteral(" "));
+    other.setFocus(); // Commits modified annotation contents during FocusOut.
+    QCOMPARE(editor->hasFocus(), bool(scintilla->SendScintilla(QsciScintillaBase::SCI_GETFOCUS)));
+    QVERIFY(other.hasFocus());
+    editor->setFocus();
+    QTRY_VERIFY(editor->hasFocus());
+    QCOMPARE(scintilla->SendScintilla(QsciScintillaBase::SCI_GETFOCUS), 1L);
+    QVERIFY(visibleCaret());
+    // Real undo/redo must still update the editor and restore its native caret.
+    other.setFocus();
+    QVERIFY(other.hasFocus());
+    part.m_document->undo();
+    QCOMPARE(scintilla->text(), QStringLiteral("\\LaTeX{}"));
+    QVERIFY(editor->hasFocus());
+    QCOMPARE(scintilla->SendScintilla(QsciScintillaBase::SCI_GETFOCUS), 1L);
+    QVERIFY(visibleCaret());
+    part.m_document->redo();
+    QCOMPARE(scintilla->text(), QStringLiteral("\\LaTeX{} "));
+    QCOMPARE(scintilla->SendScintilla(QsciScintillaBase::SCI_GETFOCUS), 1L);
+    QVERIFY(visibleCaret());
+#endif
+    window->close();
 }
 
 void PartTest::testAnnotWindow()

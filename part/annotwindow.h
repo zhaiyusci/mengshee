@@ -72,6 +72,7 @@ private:
     int m_page;
     int m_prevCursorPos;
     int m_prevAnchorPos;
+    bool m_committingWindowText = false;
     QString m_lastLatexNoteCompileSource;
     QWidget *m_numberedCalloutControls = nullptr;
     QSpinBox *m_numberedCalloutId = nullptr;

@@ -69,6 +69,11 @@ if(Poppler_Qt6_FOUND)
             TEST_NAME "parttest"
             LINK_LIBRARIES Qt6::Widgets Qt6::Test Qt6::Xml okularcore okularpart pdf_page_sequence_editor Poppler::Qt6
         )
+        if(HAVE_QSCINTILLA)
+            target_compile_definitions(parttest PRIVATE HAVE_QSCINTILLA=1 QSCINTILLA_DLL)
+            target_include_directories(parttest PRIVATE "${MENGSHEE_QSCINTILLA_INCLUDE_DIR}")
+            target_link_libraries(parttest "${MENGSHEE_QSCINTILLA_LIBRARY}")
+        endif()
     endif()
 
     ecm_add_test(visibilitytest.cpp

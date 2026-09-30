@@ -14,6 +14,7 @@ class QWidget;
 
 #include "core/area.h"
 #include "latexrenderer.h"
+#include "okularpart_export.h"
 
 namespace Okular
 {
@@ -27,7 +28,7 @@ class TextAnnotation;
 namespace LatexNoteUtils
 {
 struct RenderResult {
-    bool ok = false;
+    bool ok = false; // A usable AP, including an error AP when errorMessage is nonempty.
     QString pdfFileName;
     QSizeF pdfSizePoints;
     QString errorMessage;
@@ -59,7 +60,7 @@ QSizeF visualSizeForLatexTextAnnotation(const QSizeF &contentPdfSizePoints, doub
 
 RenderResult renderAppearancePdf(const QString &latexInput, const QColor &textColor, double layoutWidthPoints);
 RenderResult renderAppearancePdf(const QString &latexInput, const QColor &textColor, double layoutWidthPoints, bool callout);
-RenderResult renderAppearancePdf(const QString &latexInput, const QColor &textColor, double layoutWidthPoints, bool callout, double fontSizePoints);
+OKULARPART_EXPORT RenderResult renderAppearancePdf(const QString &latexInput, const QColor &textColor, double layoutWidthPoints, bool callout, double fontSizePoints);
 bool updateLatexTextAnnotationAppearance(QWidget *parent,
                                          Okular::Document *document,
                                          int pageNumber,
