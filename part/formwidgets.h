@@ -173,8 +173,10 @@ class PushButtonEdit : public QPushButton, public FormWidgetIface
     Q_OBJECT
 
 public:
-    explicit PushButtonEdit(Okular::FormFieldButton *button, PageView *pageView);
+    explicit PushButtonEdit(Okular::FormFieldButton *button, QWidget *parent);
 
+protected:
+    void paintEvent(QPaintEvent *event) override;
     DECLARE_ADDITIONAL_ACTIONS
 };
 

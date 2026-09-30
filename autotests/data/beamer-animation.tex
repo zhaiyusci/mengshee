@@ -1,0 +1,21 @@
+% SPDX-License-Identifier: GPL-2.0-or-later
+% Rebuild: pdflatex -no-shell-escape beamer-animation.tex (twice).
+% Two vector frames, manual controls, no external files or autoplay.
+\documentclass[aspectratio=169]{beamer}
+\usepackage{animate}
+\setbeamertemplate{navigation symbols}{}
+\begin{document}
+\begin{frame}{PDF button appearance and animation}
+\centering
+\begin{animateinline}[method=icon,controls,loop,poster=first]{2}
+\colorbox{red}{\parbox[c][2cm][c]{6cm}{\centering\color{white}\Huge Frame 0}}
+\newframe
+\colorbox{blue}{\parbox[c][2cm][c]{6cm}{\centering\color{white}\Huge Frame 1}}
+\end{animateinline}
+\end{frame}
+% A distinct second slide makes accidental control-click navigation observable.
+\begin{frame}{Static second slide}
+\centering
+Blank-page clicks should advance to this slide.
+\end{frame}
+\end{document}

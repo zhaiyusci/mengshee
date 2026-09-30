@@ -229,6 +229,8 @@ private Q_SLOTS:
     void testReadingViewModeAnnotations_data();
     void testReadingViewModeAnnotations();
     void testReadingViewModeFormReplicas();
+    void testAnimatedPushButtonAppearance();
+    void testPresentationAnimatedPushButtonAppearance();
     void testReadingViewTemplateApply();
     void testReadingViewTemplateRejectsUnsupported();
     void testUnifiedEditingModes();
@@ -6094,6 +6096,237 @@ void PartTest::testReadingViewModeAnnotations()
     QVERIFY(qAbs(restored.right - originalRectangle.right) < 1e-5);
     QVERIFY(qAbs(restored.bottom - originalRectangle.bottom) < 1e-5);
     part.m_document->setRotation(Okular::Rotation0);
+}
+
+void PartTest::testAnimatedPushButtonAppearance()
+{
+    Part part(nullptr, {});
+    QVERIFY(openDocument(&part, QStringLiteral(KDESRCDIR "data/beamer-animation.pdf")));
+    // The presentation regression may have saved a viewport on the second slide.
+    part.m_document->setViewportPage(0);
+    part.m_pageView->goToDisplayedPage(0);
+    part.widget()->resize(1000, 700);
+    part.widget()->show();
+    QVERIFY(QTest::qWaitForWindowExposed(part.widget()));
+    PageView *view = part.m_pageView;
+    static_cast<Okular::View *>(view)->setCapability(Okular::View::ZoomModality, int(PageView::ZoomFitPage));
+    const auto buttonNamed = [&](const QString &name) -> QPushButton * {
+        for (auto *field : part.m_document->page(0)->formFields()) {
+            if (field->fullyQualifiedName() != name) {
+                continue;
+            }
+            for (auto *button : view->findChildren<QPushButton *>()) {
+                const QVariant id = button->property("pdfFormFieldId");
+                if (id.isValid() && id.toInt() == field->id()) {
+                    return button;
+                }
+            }
+        }
+        return nullptr;
+    };
+    QPushButton *animation = buttonNamed(QStringLiteral("anm0"));
+    QPushButton *step = buttonNamed(QStringLiteral("0.StepRight"));
+    QPushButton *play = buttonNamed(QStringLiteral("0.PlayPauseRight"));
+    QVERIFY(animation && step && play);
+    QAction *forms = part.actionCollection()->action(QStringLiteral("view_toggle_forms"));
+    QVERIFY(forms && forms->isEnabled());
+    if (forms->isChecked()) {
+        forms->trigger();
+    }
+    const auto visibleFrame = [&]() {
+        const QPixmap pixmap = view->viewport()->grab();
+        const qreal scale = pixmap.devicePixelRatio();
+        const QRect area = animation->geometry().adjusted(8, 8, -8, -8);
+        if (area.isEmpty() || !view->viewport()->rect().contains(area)) {
+            return -1;
+        }
+        const QImage image = pixmap.toImage().copy(QRect(area.topLeft() * scale, area.size() * scale));
+        int red = 0, blue = 0;
+        for (int y = 0; y < image.height(); ++y) {
+            for (int x = 0; x < image.width(); ++x) {
+                const QRgb pixel = image.pixel(x, y);
+                red += qRed(pixel) > 180 && qGreen(pixel) < 80 && qBlue(pixel) < 80;
+                blue += qBlue(pixel) > 180 && qGreen(pixel) < 80 && qRed(pixel) < 80;
+            }
+        }
+        const int threshold = image.width() * image.height() / 2;
+        return red > threshold ? 0 : (blue > threshold ? 1 : -1);
+    };
+    QTRY_COMPARE(visibleFrame(), 0);
+    forms->trigger();
+    QTRY_VERIFY(animation->isVisible() && step->isVisible() && play->isVisible());
+    QTest::mouseMove(play, play->QWidget::rect().center());
+    QCOMPARE(play->cursor().shape(), Qt::PointingHandCursor);
+    QTest::mouseMove(animation, QPoint(animation->width() / 2, animation->height() / 2));
+    animation->setFocus();
+    animation->setDown(true);
+    // Even hovered/pressed input widgets must leave the PDF appearance visible.
+    QTRY_COMPARE(visibleFrame(), 0);
+    animation->setDown(false);
+    QTest::mouseClick(step, Qt::LeftButton);
+    QTRY_COMPARE(visibleFrame(), 1);
+    QTest::mouseClick(play, Qt::LeftButton);
+    QTRY_COMPARE(visibleFrame(), 0);
+    QTRY_COMPARE(visibleFrame(), 1);
+    QTest::mouseClick(play, Qt::LeftButton);
+}
+
+void PartTest::testPresentationAnimatedPushButtonAppearance()
+{
+    const bool showSummary = Settings::slidesShowSummary();
+    const bool showProgress = Settings::slidesShowProgress();
+    const bool advance = SettingsCore::slidesAdvance();
+    const auto transition = Settings::slidesTransition();
+    const auto cursor = Settings::slidesCursor();
+    const auto tapNavigation = Settings::slidesTapNavigation();
+    const auto restoreSettings = qScopeGuard([=] {
+        Settings::setSlidesShowSummary(showSummary);
+        Settings::setSlidesShowProgress(showProgress);
+        SettingsCore::setSlidesAdvance(advance);
+        Settings::setSlidesTransition(transition);
+        Settings::setSlidesCursor(cursor);
+        Settings::setSlidesTapNavigation(tapNavigation);
+    });
+    Settings::setSlidesShowSummary(false);
+    Settings::setSlidesShowProgress(false);
+    SettingsCore::setSlidesAdvance(false);
+    Settings::setSlidesTransition(Settings::EnumSlidesTransition::NoTransitions);
+    Settings::setSlidesCursor(Settings::EnumSlidesCursor::Visible);
+    Settings::setSlidesTapNavigation(Settings::EnumSlidesTapNavigation::Forward);
+
+    Part part(nullptr, {});
+    QVERIFY(openDocument(&part, QStringLiteral(KDESRCDIR "data/beamer-animation.pdf")));
+    QCOMPARE(part.m_document->pages(), 2u);
+    part.m_document->setViewportPage(0);
+    part.widget()->show();
+    part.slotShowPresentation();
+    PresentationWidget *presentation = part.m_presentationWidget;
+    QVERIFY(presentation);
+    TestingUtils::CloseDialogHelper closeDialogHelper(presentation, QDialogButtonBox::Ok);
+    // PresentationWidget creates/shows its window in a queued initialization.
+    QTRY_VERIFY(presentation->isVisible());
+    QVERIFY(QTest::qWaitForWindowExposed(presentation));
+    QTRY_COMPARE(part.m_document->currentPage(), 0u);
+
+    const auto fieldNamed = [&](const QString &name) -> FormField * {
+        for (auto *field : part.m_document->page(0)->formFields()) {
+            if (field->fullyQualifiedName() == name) {
+                return field;
+            }
+        }
+        return nullptr;
+    };
+    FormField *animation = fieldNamed(QStringLiteral("anm0"));
+    FormField *step = fieldNamed(QStringLiteral("0.StepRight"));
+    FormField *play = fieldNamed(QStringLiteral("0.PlayPauseRight"));
+    FormField *first = fieldNamed(QStringLiteral("0.EndLeft"));
+    QVERIFY(animation && step && play && first);
+
+    // Match PresentationFrame::recalcGeometry, including integer truncation and
+    // the centered letterbox offset. Field coordinates are relative to the page,
+    // not to the whole presentation window (nor to its device-pixel dimensions).
+    const auto pageGeometry = [&] {
+        const float pageRatio = part.m_document->page(0)->ratio();
+        const float screenRatio = float(presentation->height()) / presentation->width();
+        int width = presentation->width();
+        int height = presentation->height();
+        if (pageRatio > screenRatio) {
+            width = int(float(height) / pageRatio);
+        } else {
+            height = int(float(width) * pageRatio);
+        }
+        return QRect((presentation->width() - width) / 2, (presentation->height() - height) / 2, width, height);
+    };
+    const auto fieldGeometry = [&](FormField *field) {
+        const QRect page = pageGeometry();
+        return field->rect().geometry(page.width(), page.height()).translated(page.topLeft());
+    };
+    const auto visibleFrame = [&] {
+        const QPixmap pixmap = presentation->grab();
+        const qreal scale = pixmap.devicePixelRatio();
+        const QRect area = fieldGeometry(animation).adjusted(8, 8, -8, -8);
+        if (area.isEmpty() || !presentation->rect().contains(area)) {
+            return -1;
+        }
+        const QImage image = pixmap.toImage().copy(QRect(area.topLeft() * scale, area.size() * scale));
+        int red = 0, blue = 0;
+        for (int y = 0; y < image.height(); ++y) {
+            for (int x = 0; x < image.width(); ++x) {
+                const QRgb pixel = image.pixel(x, y);
+                red += qRed(pixel) > 180 && qGreen(pixel) < 80 && qBlue(pixel) < 80;
+                blue += qBlue(pixel) > 180 && qGreen(pixel) < 80 && qRed(pixel) < 80;
+            }
+        }
+        const int threshold = image.width() * image.height() / 2;
+        return red > threshold ? 0 : (blue > threshold ? 1 : -1);
+    };
+    QTRY_COMPARE(visibleFrame(), 0);
+    const QRect page = pageGeometry();
+    const QPoint blank = page.topLeft() + QPoint(page.width() * 9 / 10, page.height() * 3 / 4);
+    for (auto *field : part.m_document->page(0)->formFields()) {
+        QVERIFY(!fieldGeometry(field).contains(blank));
+    }
+
+    // QTest's QWidget overload does not route events through child hit testing.
+    // Deliver to the same child a real pointer event would reach (or to the
+    // presentation itself when there is no child, as in the broken version).
+    const auto targetAt = [&](const QPoint &point) -> QWidget * {
+        QWidget *child = presentation->childAt(point);
+        return child ? child : presentation;
+    };
+    const auto click = [&](const QPoint &point) {
+        QWidget *target = targetAt(point);
+        QTest::mouseClick(target, Qt::LeftButton, Qt::NoModifier, target->mapFrom(presentation, point));
+    };
+
+    // animate deliberately binds stepping to MouseDown (/AA /D), so pressing
+    // already changes the frame. Releasing outside must not activate again or
+    // fall through to slide navigation. Keep the pressed target for release,
+    // matching Qt's implicit mouse grab.
+    const QPoint stepPoint = fieldGeometry(step).center();
+    QWidget *pressed = targetAt(stepPoint);
+    // Use window-system event routing rather than moving the OS cursor, which
+    // may hit another application covering this test's presentation window.
+    QTest::mouseMove(presentation->windowHandle(), stepPoint);
+    QTRY_COMPARE(pressed->cursor().shape(), Qt::PointingHandCursor);
+    QTest::mouseMove(presentation->windowHandle(), blank);
+    QTRY_COMPARE(presentation->cursor().shape(), Qt::ArrowCursor);
+    QTest::mouseMove(presentation->windowHandle(), stepPoint);
+    QTRY_COMPARE(pressed->cursor().shape(), Qt::PointingHandCursor);
+    QTest::mousePress(pressed, Qt::LeftButton, Qt::NoModifier, pressed->mapFrom(presentation, stepPoint));
+    QTRY_COMPARE(visibleFrame(), 1);
+    QCOMPARE(part.m_document->currentPage(), 0u);
+    QTest::mouseMove(pressed, pressed->mapFrom(presentation, blank));
+    QTest::mouseRelease(pressed, Qt::LeftButton, Qt::NoModifier, pressed->mapFrom(presentation, blank));
+    QTest::qWait(650); // longer than the fixture's 500 ms animation interval
+    QCOMPARE(part.m_document->currentPage(), 0u);
+    QCOMPARE(visibleFrame(), 1);
+
+    click(fieldGeometry(first).center());
+    QTRY_COMPARE(visibleFrame(), 0);
+    QCOMPARE(part.m_document->currentPage(), 0u);
+
+    // Send real widget events, not processAction calls or PageView form clicks.
+    click(fieldGeometry(step).center());
+    QTRY_COMPARE(visibleFrame(), 1);
+    QCOMPARE(part.m_document->currentPage(), 0u);
+    click(fieldGeometry(play).center());
+    QTRY_COMPARE(visibleFrame(), 0);
+    QCOMPARE(part.m_document->currentPage(), 0u);
+    QTRY_COMPARE(visibleFrame(), 1);
+    QCOMPARE(part.m_document->currentPage(), 0u);
+    click(fieldGeometry(play).center());
+    const int pausedFrame = visibleFrame();
+    QVERIFY(pausedFrame >= 0);
+    QTest::qWait(650);
+    QCOMPARE(visibleFrame(), pausedFrame);
+    QCOMPARE(part.m_document->currentPage(), 0u);
+
+    // An ordinary blank-page click still uses the configured tap navigation.
+    click(blank);
+    QTRY_COMPARE(part.m_document->currentPage(), 1u);
+    presentation->close();
+    QTRY_VERIFY(!part.m_presentationWidget);
 }
 
 void PartTest::testReadingViewModeFormReplicas()

@@ -272,7 +272,7 @@ FormWidgetIface *FormWidgetFactory::createWidget(Okular::FormField *ff, PageView
         Okular::FormFieldButton *ffb = static_cast<Okular::FormFieldButton *>(ff);
         switch (ffb->buttonType()) {
         case Okular::FormFieldButton::Push:
-            widget = new PushButtonEdit(ffb, pageView);
+            widget = new PushButtonEdit(ffb, pageView->viewport());
             break;
         case Okular::FormFieldButton::CheckBox:
             widget = new CheckBoxEdit(ffb, pageView);
@@ -454,18 +454,30 @@ bool FormWidgetIface::shouldProcessFieldActions(bool onlyWhenUnfocused) const
     return !representative || representative == this;
 }
 
-PushButtonEdit::PushButtonEdit(Okular::FormFieldButton *button, PageView *pageView)
-    : QPushButton(pageView->viewport())
+PushButtonEdit::PushButtonEdit(Okular::FormFieldButton *button, QWidget *parent)
+    : QPushButton(parent)
     , FormWidgetIface(this, button)
 {
     setText(button->caption());
 
-    if (button->caption().isEmpty()) {
-        setFlat(true);
-    }
+    // The PDF renderer owns the button appearance, including animated icons.
+    // This widget supplies input without covering it with a native button face.
+    setAttribute(Qt::WA_NoSystemBackground);
 
     setVisible(button->isVisible());
-    setCursor(Qt::ArrowCursor);
+    setCursor(Qt::PointingHandCursor);
+}
+
+void PushButtonEdit::paintEvent(QPaintEvent *)
+{
+    if (hasFocus()) {
+        QStylePainter painter(this);
+        QStyleOptionFocusRect option;
+        option.initFrom(this);
+        option.rect = QWidget::rect().adjusted(2, 2, -2, -2);
+        option.backgroundColor = Qt::transparent;
+        painter.drawPrimitive(QStyle::PE_FrameFocusRect, option);
+    }
 }
 
 CheckBoxEdit::CheckBoxEdit(Okular::FormFieldButton *button, PageView *pageView)

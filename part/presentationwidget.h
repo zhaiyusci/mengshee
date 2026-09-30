@@ -26,6 +26,7 @@ class SmoothPathEngine;
 struct PresentationFrame;
 class PresentationSearchBar;
 class DrawingToolActions;
+class FormWidgetsController;
 
 namespace Okular
 {
@@ -104,6 +105,9 @@ private:
     // create actions that interact with this widget
     void setupActions();
     void setPlayPauseIcon();
+    void clearFormWidgets();
+    void setupFormWidgets();
+    void updateFormWidgets();
 
     // cache stuff
     int m_width;
@@ -134,6 +138,8 @@ private:
     // misc stuff
     QWidget *m_parentWidget;
     Okular::Document *m_document;
+    FormWidgetsController *m_formsController = nullptr;
+    QWidget *m_formLayer = nullptr;
     QList<PresentationFrame *> m_frames;
     int m_frameIndex;
     QStringList m_metaStrings;

@@ -6,6 +6,8 @@
 
 #include "presentationwidget.h"
 #include "config-okular.h"
+#include "formwidgets.h"
+#include <QSignalBlocker>
 
 // qt/kde includes
 #if HAVE_DBUS
@@ -266,6 +268,17 @@ PresentationWidget::PresentationWidget(QWidget *parent, Okular::Document *doc, D
     connect(m_document, &Okular::Document::processMovieAction, this, &PresentationWidget::slotProcessMovieAction);
     connect(m_document, &Okular::Document::processRenditionAction, this, &PresentationWidget::slotProcessRenditionAction);
 
+    m_formsController = new FormWidgetsController(m_document);
+    m_formsController->setParent(this);
+    connect(m_formsController, &FormWidgetsController::action, this, [this](Okular::Action *action) { m_document->processAction(action); });
+    connect(m_formsController, &FormWidgetsController::mouseAction, this, [this](Okular::Action *action, Okular::FormField *field, Okular::Document::MouseEventType type) {
+        if (action->actionType() == Okular::Action::Script) {
+            m_document->processFormMouseScriptAction(action, field, type);
+        } else {
+            m_document->processAction(action);
+        }
+    });
+
     // handle cursor appearance as specified in configuration
     if (Okular::Settings::slidesCursor() == Okular::Settings::EnumSlidesCursor::HiddenDelay) {
         KCursor::setAutoHideCursor(this, true);
@@ -290,6 +303,7 @@ PresentationWidget::PresentationWidget(QWidget *parent, Okular::Document *doc, D
 
 PresentationWidget::~PresentationWidget()
 {
+    clearFormWidgets();
     // allow power management saver again
     allowPowerManagement();
 
@@ -323,9 +337,13 @@ void PresentationWidget::notifySetup(const QList<Okular::Page *> &pageSet, int s
     // same document, nothing to change - here we assume the document sets up
     // us with the whole document set as first notifySetup()
     if (!(setupFlags & Okular::DocumentObserver::DocumentChanged)) {
+        if (setupFlags & Okular::DocumentObserver::UrlChanged) {
+            setupFormWidgets(); // A save may replace the backend's form objects.
+        }
         return;
     }
 
+    clearFormWidgets();
     // delete previous frames (if any (shouldn't be))
     qDeleteAll(m_frames);
     if (!m_frames.isEmpty()) {
@@ -379,6 +397,7 @@ void PresentationWidget::notifySetup(const QList<Okular::Page *> &pageSet, int s
     m_metaStrings += i18n("Click to begin");
 
     m_isSetup = true;
+    setupFormWidgets();
 }
 
 void PresentationWidget::notifyViewportChanged(bool /*smoothMove*/)
@@ -405,6 +424,7 @@ void PresentationWidget::notifyPageChanged(int pageNumber, int changedFlags)
 
 void PresentationWidget::notifyCurrentPageChanged(int previousPage, int currentPage)
 {
+    clearFormWidgets();
     if (previousPage != -1) {
         // stop video playback
         for (VideoWidget *vw : std::as_const(m_frames[previousPage]->videoWidgets)) {
@@ -484,6 +504,7 @@ void PresentationWidget::notifyCurrentPageChanged(int previousPage, int currentP
         for (VideoWidget *vw : std::as_const(m_frames[m_frameIndex]->videoWidgets)) {
             vw->pageEntered();
         }
+        setupFormWidgets();
     }
 }
 
@@ -496,6 +517,70 @@ bool PresentationWidget::canUnloadPixmap(int pageNumber) const
         // can unload all pixmaps except for the currently visible one, previous and next
         return qAbs(pageNumber - m_frameIndex) <= 1;
     }
+}
+
+void PresentationWidget::clearFormWidgets()
+{
+    if (!m_formLayer) {
+        return;
+    }
+    const QSignalBlocker blocker(m_formsController);
+    for (auto *button : m_formLayer->findChildren<PushButtonEdit *>()) {
+        disconnect(m_formsController, nullptr, button, nullptr);
+    }
+    m_formLayer->hide();
+    // A button action can change pages while its mouse event is still running.
+    m_formLayer->deleteLater();
+    m_formLayer = nullptr;
+}
+
+void PresentationWidget::setupFormWidgets()
+{
+    clearFormWidgets();
+    if (m_frameIndex < 0 || m_frameIndex >= m_frames.size()) {
+        return;
+    }
+    for (auto *field : m_document->page(m_frameIndex)->formFields()) {
+        if (field->type() != Okular::FormField::FormButton) {
+            continue;
+        }
+        auto *form = static_cast<Okular::FormFieldButton *>(field);
+        if (form->buttonType() != Okular::FormFieldButton::Push) {
+            continue;
+        }
+        if (!m_formLayer) {
+            m_formLayer = new QWidget(this);
+            // Keep existing media and toolbar widgets above the input layer.
+            m_formLayer->lower();
+            m_formLayer->setMouseTracking(true);
+        }
+        auto *button = new PushButtonEdit(form, m_formLayer);
+        button->setFormWidgetsController(m_formsController);
+        button->setCanBeFilled(!form->isReadOnly());
+        button->setVisibility(form->isVisible() && FormWidgetsController::shouldFormWidgetBeShown(form));
+        // Keep presentation keyboard navigation and cursor policies on the parent.
+        button->setFocusPolicy(Qt::NoFocus);
+        button->setMouseTracking(true);
+        button->unsetCursor();
+    }
+    updateFormWidgets();
+}
+
+void PresentationWidget::updateFormWidgets()
+{
+    if (!m_formLayer) {
+        return;
+    }
+    const bool visible = m_frameIndex >= 0 && m_frameIndex < m_frames.size() && !m_showSummaryView && !m_inBlackScreenMode;
+    if (visible) {
+        const QRect geometry = m_frames[m_frameIndex]->geometry;
+        m_formLayer->setGeometry(geometry);
+        for (auto *button : m_formLayer->findChildren<PushButtonEdit *>()) {
+            button->setGeometry(button->formField()->rect().geometry(geometry.width(), geometry.height()));
+        }
+    }
+    m_formLayer->setAttribute(Qt::WA_TransparentForMouseEvents, m_drawingEngine != nullptr);
+    m_formLayer->setVisible(visible);
 }
 
 void PresentationWidget::setupActions()
@@ -943,6 +1028,7 @@ void PresentationWidget::resizeEvent(QResizeEvent *re)
     }
 
     generatePage(true /* no transitions */);
+    updateFormWidgets();
     // END Content area
 }
 
@@ -1043,7 +1129,8 @@ void PresentationWidget::testCursorOnLink(QPointF point)
     const Okular::Action *link = getLink(point, nullptr);
     const Okular::Annotation *annotation = getAnnotation(point, nullptr);
 
-    const bool needsHandCursor = ((link != nullptr) || ((annotation != nullptr) && (annotation->subType() == Okular::Annotation::AMovie)) || ((annotation != nullptr) && (annotation->subType() == Okular::Annotation::ARichMedia)) ||
+    const auto *button = qobject_cast<PushButtonEdit *>(childAt(point.toPoint()));
+    const bool needsHandCursor = ((button && button->isEnabled()) || (link != nullptr) || ((annotation != nullptr) && (annotation->subType() == Okular::Annotation::AMovie)) || ((annotation != nullptr) && (annotation->subType() == Okular::Annotation::ARichMedia)) ||
                                   ((annotation != nullptr) && (annotation->subType() == Okular::Annotation::AScreen) && (GuiUtils::renditionMovieFromScreenAnnotation(static_cast<const Okular::ScreenAnnotation *>(annotation)) != nullptr)));
 
     // only react on changes (in/out from a link)
@@ -1647,6 +1734,7 @@ void PresentationWidget::slotChangeDrawingToolEngine(const QDomElement &element)
         setCursor(QCursor(QPixmap(QStringLiteral("pencil")), Qt::ArrowCursor));
         m_currentDrawingToolElement = element;
     }
+    updateFormWidgets();
 }
 
 void PresentationWidget::slotAddDrawingToolActions()
@@ -1697,7 +1785,7 @@ void PresentationWidget::chooseScreen(QAction *act)
 void PresentationWidget::toggleBlackScreenMode(bool)
 {
     m_inBlackScreenMode = !m_inBlackScreenMode;
-
+    updateFormWidgets();
     update();
 }
 
