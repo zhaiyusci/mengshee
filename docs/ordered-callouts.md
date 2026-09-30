@@ -1,78 +1,78 @@
-# Numbered Callout（编号引出标注）
+# Numbered Callout
 
-原名 Ordered Callout，基于 LaTeX Callout。先在主工具栏右侧选择 **Proofread（校对）** 模式，模式工具栏依次提供编号引出标注、编号格式、全文重新编号和导出 CSV。正文编辑、LaTeX 编译和三种 Callout 的引出线操作保持一致；旧工具标识和旧文件继续兼容。已有编号批注在其他模式下仍可编辑。内部 ID 直接放在批注 pop-up 顶部，不必进入属性页。
+Previously named Ordered Callout, this tool is based on LaTeX Callout. Select **Proofread** using the mode selector on the right of the main toolbar. The mode toolbar provides Numbered Callout, numbering format, document-wide renumbering, and CSV export. Body editing, LaTeX compilation, and leader-line interactions remain consistent across all three callout types. Legacy tool identifiers and files remain compatible. Existing numbered annotations can still be edited in other modes. The internal ID appears directly at the top of the annotation pop-up, without opening the properties dialog.
 
-## 内部 ID 与显示序号
+## Internal IDs and displayed numbers
 
-- 每条编号引出标注有独立的正整数 **内部 ID** 和 **序列计数**，范围均为 1–2147483647；显示标签由编号格式生成。
-- 新建和粘贴时，ID 使用全文已有最大 ID 加一；序列计数按当前编号范围（全文或当前页）取最大值加一。撤销、重做保留已分配的值。
-- 打开批注 pop-up 即可在顶部直接编辑内部 ID，回车、离焦或关闭时提交一次可撤销修改；旁边的当前显示标签只读。属性页保留兼容入口。修改 ID 不会自动重排，也不改变正文。
-- 在 Proofread 模式使用模式工具栏的“全文重新编号引出标注”（也在“工具 → 模式工具”菜单中），按 **物理页码升序，再按页内 ID 数值升序**，按当前编号格式重新计算计数和标签。ID 本身不变。
-- 同页相同 ID 保留 PDF 批注列表中的相对顺序。不同页的相同 ID 不冲突，页码始终优先。
-- 普通 Callout 和其他批注不参与。Read by Views 不改变排序所使用的物理页码，也不会重复编号同一条批注。
-- 重排是一次可撤销操作；如果任何需要改号的批注被锁定或不可编辑，整次操作不作修改。
-- 删除不会自动重排其他批注；需要消除空号时手动执行重排。删除当前最大 ID／序号后，新建可以复用相应值。
-- 旧 Ordered Callout 没有 ID 时，使用其已存显示序号作为初始 ID，加载时不改变显示编号。
+- Each numbered callout has a separate positive-integer **internal ID** and **sequence counter**, both in the range 1–2147483647. The numbering format generates the displayed label.
+- When creating or pasting a callout, its ID is one greater than the largest existing ID in the document. Its sequence counter is one greater than the largest counter in the current numbering scope: the document or the current page. Undo and redo preserve the assigned values.
+- Edit the internal ID directly at the top of the annotation pop-up. Pressing Enter, moving focus away, or closing the pop-up commits a single undoable change. The adjacent current display label is read-only. The properties dialog retains a compatibility entry point. Changing an ID does not automatically reorder annotations or change their body text.
+- In Proofread mode, use the mode toolbar's document-wide callout renumbering command, also available under Tools → Mode Tools. It sorts by **ascending physical page number, then ascending internal ID within each page**, and recalculates counters and labels using the current numbering format. Internal IDs do not change.
+- Annotations with identical IDs on the same page retain their relative order in the PDF annotation list. Identical IDs on different pages do not conflict: page order always takes precedence.
+- Ordinary callouts and other annotation types are excluded. Read by Views does not change the physical page numbers used for ordering or cause an annotation to be numbered more than once.
+- Reordering is a single undoable operation. If any annotation that needs renumbering is locked or otherwise uneditable, the entire operation makes no changes.
+- Deleting a callout does not automatically reorder the others. Run reordering manually to remove numbering gaps. After deleting the highest ID or sequence number, a new callout may reuse that value.
+- Legacy Ordered Callouts without an ID use their stored display number as the initial ID. Loading does not change their displayed numbering.
 
-## 按点击顺序编号
+## Numbering in click order
 
-在 **Proofread（校对）** 模式启用 **Click to Number（点击编号）**，按钮保持选中，指针变成手形。按目标顺序点击批注正文框或框外的编号标签，即可重新排序；不会进入拖动或弹出批注窗口。
+In **Proofread** mode, enable **Click to Number**. The button stays checked and the pointer becomes a hand. Click annotation body boxes or their external number labels in the desired order. These clicks reorder annotations rather than dragging them or opening their pop-ups.
 
-- 点击过的批注依次排为 1、2、3……；未点击的批注按原先相对顺序排在后面，避免重复序号。
-- 沿用当前“全文连续 / 每页重置”范围和标签格式；每页重置时，各物理页独立记录点击顺序。
-- 内部 ID、正文和几何位置不变。按批注对象身份识别，即使不同批注有相同内部 ID，也可以分别点击排序。重复点击同一对象不重复计数。
-- 每次实际改号是一个撤销步骤，受影响的锁定或只读批注会阻止该次修改，不会只改一半。
-- 再次点击工具按钮、Esc、右键或切换工具/模式即可退出；已经完成的编号保留。撤销/重做或切换活动视窗也会退出，下次启用从新的点击序列开始。
-- **Reading Views（阅读区域编辑）** 模式工具栏的 **Order（点击排序）** 用于 Views，规则相同，但始终按物理页分别编号。
+- Clicked annotations receive positions 1, 2, 3, and so on. Unclicked annotations follow in their existing relative order, avoiding duplicate sequence numbers.
+- The current document-wide or restart-per-page scope and label format are preserved. With per-page numbering, each physical page maintains its own click order.
+- Internal IDs, body text, and geometry remain unchanged. Annotations are identified by object identity, so annotations with identical internal IDs can be ordered independently. Clicking the same object repeatedly does not count it again.
+- Each click that actually changes numbering creates one undo step. Affected locked or read-only annotations block that change entirely; the operation is not applied partially.
+- Exit by clicking the tool button again, pressing Esc, right-clicking, or switching tools or modes. Completed numbering changes remain. Undo, redo, or switching the active view pane also exits the tool; the next activation starts a new click sequence.
+- The **Order** tool in the **Reading Views** toolbar applies the same interaction to views, but always numbers them separately on each physical page.
 
-原来的“全文重新编号”仍是另一个命令，按页码和内部 ID 自动排序；应用编号格式也会按该自动规则重新计算。需要自选顺序时，可先设置格式，再使用点击编号。
+The original document-wide renumbering command remains separate and orders annotations automatically by page and internal ID. Applying a numbering format also recalculates numbering using that automatic order. To choose a custom order, set the format first, then use Click to Number.
 
-## 编号格式
+## Numbering formats
 
-点击校对工具栏的编号格式按钮，在同一层对话框选择：
+Use the numbering-format button in the Proofread toolbar to choose a format in a single dialog:
 
-| 格式 | 示例 |
+| Format | Example |
 | --- | --- |
-| 全文连续 | 1、2、3…… |
-| 每页重置 | 每页从 1 开始 |
-| 页码＋页内序号 | 1-1、1-2、2-1…… |
-| 自定义 | `P{page}-{n}`、`({n})`、`第{page}页({n})` |
+| Continuous across the document | 1, 2, 3, … |
+| Restart on each page | Start at 1 on every page |
+| Page number plus per-page counter | 1-1, 1-2, 2-1, … |
+| Custom | `P{page}-{n}`, `({n})`, `Page {page} ({n})` |
 
-自定义格式中的 `{page}` 是从 1 开始的物理页码，`{n}` 是序列计数；可选择全文连续或每页重置。必须包含 `{n}`，只接受这两种占位符、最多 256 字符且不可换行。支持中文前后缀；系统缺少所需字形时会提示错误，不生成缺字框。
+In a custom pattern, `{page}` is the 1-based physical page number and `{n}` is the sequence counter. Choose continuous document-wide numbering or restart-per-page numbering. The pattern must contain `{n}`, accepts only these two placeholders, is limited to 256 characters, and cannot contain line breaks. Chinese prefixes and suffixes are supported. If the system lacks the required glyphs, an error is reported instead of generating missing-glyph boxes.
 
-应用格式会一次性更新全文标签和 AP，与编号设置一起成为一项撤销操作；不可修改的受影响批注会阻止整次修改。设置保存在 PDF 中，即使尚无编号批注也会保存；后续新建或粘贴使用同一设置。页面移动、插入或删除后，手动重排会按新的物理页码刷新标签。
+Applying a format updates labels and appearance streams (APs) throughout the document in a single undoable operation, including the numbering settings. Any affected annotation that cannot be modified blocks the entire operation. Settings are saved in the PDF even when no numbered annotations exist, and subsequent creation or paste operations use the same settings. After pages are moved, inserted, or deleted, manual renumbering refreshes labels using the new physical page numbers.
 
-## 导出 CSV 校对清单
+## Exporting a CSV proofreading checklist
 
-在 Proofread 模式点击 **将编号引出标注导出为 CSV**（也在“工具 → 模式工具”菜单中）。导出整个 PDF 的所有 Numbered Callout，而不是当前页、选中批注或 View 内的批注。
+In Proofread mode, use the numbered-callout CSV export command, also available under Tools → Mode Tools. It exports every Numbered Callout in the entire PDF, not just those on the current page, in the selection, or within a reading view.
 
-- 列为 `Page`（从 1 开始的物理页码）、`Internal ID`、`Number`（当前显示序号）、`LaTeX`（正文源码）。
-- `Number` 导出当前显示标签（不只是裸计数）；按物理页码、当前序列计数排序，相同计数保留原批注列表顺序，不自动执行重排。
-- 自定义标签单元格增加单引号文本前缀，避免 Excel 把 `1-1` 当成日期或丢掉前导零；PDF 内标签不变。
-- UTF-8 BOM 便于 Excel 识别中文；正文中的逗号、双引号和换行按 CSV 规则保存。
-- 为防 Excel 执行公式，以 `=`、`+`、`-`、`@` 开头（含前导空白）或以制表/换行开头的正文，在导出单元格中加单引号安全前缀。PDF 内的源码不变。
-- 锁定或只读批注也能导出；不要求修改权限或临时 LaTeX 外观文件，不改变批注、阅读模式及撤销历史。
-- 没有这类批注时生成只有列标题的 CSV。取消文件对话框不写文件；写入采用原子保存，禁止覆盖原 PDF。
+- Columns are `Page` (1-based physical page number), `Internal ID`, `Number` (current displayed label), and `LaTeX` (body source).
+- `Number` contains the current display label, not merely the numeric counter. Rows are sorted by physical page number and current sequence counter; equal counters retain their original annotation-list order. Export does not automatically renumber annotations.
+- Custom label cells receive a leading apostrophe to preserve them as text, preventing Excel from interpreting `1-1` as a date or dropping leading zeros. Labels in the PDF remain unchanged.
+- A UTF-8 BOM helps Excel recognize Chinese text. Commas, double quotes, and line breaks in the body are preserved using CSV quoting rules.
+- To prevent Excel formula execution, body cells starting with `=`, `+`, `-`, or `@` (including after leading whitespace), or starting with a tab or line break, receive a protective apostrophe prefix. Source text in the PDF is unchanged.
+- Locked or read-only annotations can also be exported. Export requires neither modification permission nor temporary LaTeX appearance files, and does not change annotations, reading mode, or undo history.
+- If no numbered callouts exist, export produces a CSV containing only column headers. Canceling the file dialog writes nothing. Saving is atomic, and overwriting the source PDF is prohibited.
 
-## PDF 外观
+## PDF appearances
 
-序号框位于正文框左上沿外侧，不挤压或遮住 LaTeX 正文：
+The number box sits outside the upper-left edge of the body box, without shrinking or obscuring the LaTeX body:
 
-- 小框填充及描边使用 Callout 的轮廓色。
-- 数字使用 Callout 的填充色；不擅自选择黑白或提高对比度。透明填充意味着数字也透明。
-- 编号框及完整标签写入同一 Stamp 批注的 `/AP /N`，不依赖界面叠画；ASCII 使用 PDF 标准字体 Helvetica-Bold，中文等 Unicode 标签使用字体回退后的矢量字形轮廓。保存后的 PDF 查看和打印无需安装原字体。
-- 颜色和显示序号变化都会更新 AP；保存重开、打印和扁平化导出均使用该外观。
+- The number box's fill and outline use the callout's outline color.
+- The label text uses the callout's fill color. The renderer does not substitute black or white or otherwise increase contrast. A transparent fill therefore makes the label text transparent as well.
+- The number box and complete label are written into `/AP /N` of the same Stamp annotation, not painted as a UI overlay. ASCII labels use the PDF standard font Helvetica-Bold; Unicode labels, including Chinese, use vector glyph outlines from font fallback. Viewing and printing the saved PDF do not require the original font to be installed.
+- Color and displayed-number changes update the AP. Saving and reopening, printing, and flattened export all use that appearance.
 
-正文框元数据保持原尺寸，PDF `/Rect` 和 AP `/BBox` 额外包含序号框。重建 AP 保留原始 LaTeX `Fm0`，不反复把旧编号框叠入正文；源临时 PDF 已删除时也可重排。
+Body-box metadata retains its original dimensions, while the PDF `/Rect` and AP `/BBox` also encompass the number box. Rebuilding the AP preserves the original LaTeX `Fm0` rather than repeatedly incorporating an old number box into the body. Renumbering remains possible after the temporary source PDF has been deleted.
 
-新 PDF 批注元数据保存 `type: "numbered-callout"`、正整数 `id`、正整数 `order`（序列计数）及字符串 `label`（显示标签）。PDF Catalog 的 `MengsheeNumberedCalloutNumbering` 保存 UTF-8 JSON：`version: 1`、`pattern`、`restartPerPage`。没有全局设置时沿用全文十进制编号；旧批注无 `label` 时显示其 `order`。读取兼容旧 `"ordered-callout"`；内部旧枚举和工具 action ID 保留为兼容标识。
+New PDF annotation metadata stores `type: "numbered-callout"`, a positive-integer `id`, a positive-integer `order` (sequence counter), and a string `label` (display label). The PDF Catalog entry `MengsheeNumberedCalloutNumbering` stores UTF-8 JSON containing `version: 1`, `pattern`, and `restartPerPage`. Without global settings, numbering defaults to document-wide decimal numbers. Legacy annotations without `label` display their `order`. Reading remains compatible with the old `"ordered-callout"` type; legacy internal enum values and tool action IDs are retained as compatibility identifiers.
 
-## 三种 Callout 的统一操作
+## Shared interactions across all three callout types
 
-普通 Callout、LaTeX Callout 和 Numbered Callout 使用相同手柄规则：
+Ordinary Callout, LaTeX Callout, and Numbered Callout use the same handle rules:
 
-- 第一端点（箭头尖端）可自由拖动。
-- 折点可拖动，靠近正文框的一段始终垂直于连接边。
-- 框连接点切换到对应边的中点，缓慢拖动也可跨边。
-- 移动或调整正文框时，尖端保持不动，折点和连接点随框重新对齐。
-- 手柄、移动和调整大小均支持完整几何撤销、重做；ID 和显示序号不变。
+- The first endpoint—the arrow tip—can be dragged freely.
+- The bend point can be dragged. The segment nearest the body box remains perpendicular to the edge it connects to.
+- The box connection point snaps to the midpoint of the corresponding edge. It can switch edges even during slow dragging.
+- Moving or resizing the body box leaves the arrow tip fixed while realigning the bend and connection points with the box.
+- Handle manipulation, moving, and resizing support full geometry undo and redo. Internal IDs and displayed numbers remain unchanged.

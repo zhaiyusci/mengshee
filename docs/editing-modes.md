@@ -1,32 +1,32 @@
-# 统一编辑模式
+# Unified editing modes
 
-上排主工具栏最右侧提供一个模式选择器；“视图”菜单也能选择。它取代原来的“高级模式”和独立的“编辑 View”开关。
+A mode selector is available at the far right of the top toolbar and in the View menu. It replaces the former Advanced Mode and separate Edit View toggles.
 
-| 模式 | 对应工具与编辑标记 |
+| Mode | Tools and editing indicators |
 | --- | --- |
-| 阅读 / 批注 | 默认状态；正常阅读、选择、批注 |
-| 交叉引用 | 命名目标、内部链接、目录编辑及添加目录条目 |
-| OCR | 识别文字、编辑已有 OCR 文字层 |
-| 页面编辑 | 插入、复制、删除、旋转、页面模板和缩略图中的页面操作 |
-| Reading Views（阅读区域编辑） | 纯图标工具：绘制阅读区域、自动生成区域、点击排序、应用到其他页；支持移动/缩放范围 |
-| Proofread（校对） | Numbered Callout（编号引出标注）、编号格式（全文／逐页／页码序号／自定义）、按页码及内部 ID 全文重排、CSV 校对清单导出 |
+| Read / Annotate | Default mode for reading, selection, and annotations |
+| Cross-References | Named destinations, internal links, and table-of-contents editing, including adding entries |
+| OCR | Text recognition and editing of existing OCR text layers |
+| Page Editing | Page insertion, duplication, deletion, rotation, templates, and page operations in the thumbnail panel |
+| Reading Views | Icon-only tools for drawing reading regions, generating regions automatically, ordering them by clicking, and applying them to other pages; regions can be moved and resized |
+| Proofread | Numbered Callout, numbering formats (document-wide, per-page, page-and-counter, or custom), document-wide reordering by page and internal ID, and CSV proofreading checklist export |
 
-**Reading Views** 是页面内的阅读区域，不是传统 **View（视图）** 菜单里的显示设置。选择该模式后，第二行右侧固定显示绘制、排序、生成和应用的**纯图标**工具组。Apply 图标表示从一个区域复制到多个区域。批注工具留在左侧，名称和说明只在悬停时显示，不必到 View 菜单寻找。
+**Reading Views** are reading regions within a page, not the display settings in the traditional **View** menu. Selecting this mode places an **icon-only** group for Draw, Order, Generate, and Apply on the right of the second toolbar row. The Apply icon depicts one region being copied to multiple regions. Annotation tools remain on the left. Tool names and descriptions appear in tooltips, so there is no need to look for these tools in the View menu.
 
-模式仅组织工具和编辑标记，不是文件格式或权限开关：
+Modes organize tools and editing indicators; they do not change the file format or grant permissions:
 
-- 普通批注工具在所有模式下保留，不增加批注限制。
-- 选择模式不会自动启动画框、放置目标或修改 OCR 文字等鼠标工具。仍需明确点击对应工具。
-- 离开交叉引用、OCR 或 View 编辑模式会取消其专用的未完成手势并收起编辑标记，不删除已提交的数据。已有编辑仍可撤销、重做。
-- Proofread 归集编号批注的创建与全文重排入口；已有编号批注在各模式仍可编辑，切换模式不会自动选择批注工具。
-- 原文档的修改权限和后端能力仍适用；选择模式不会绕过它们。
-- **按 View 阅读**仍是上排的独立显示开关，各模式均可使用，不因模式切换而改变。
-- 同一个文档的主框和辅助框共用编辑模式，新开的辅助框继承当前模式；各框仍独立选择原页或按 View 阅读。不同文档标签页各有自己的模式。
+- Standard annotation tools remain available in every mode, without additional annotation restrictions.
+- Selecting a mode does not automatically activate a mouse tool for drawing regions, placing destinations, or editing OCR text. Activate the corresponding tool explicitly.
+- Leaving Cross-References, OCR, or Reading Views cancels that mode's unfinished gestures and hides its editing indicators without deleting committed data. Existing edits remain available for undo and redo.
+- Proofread groups the commands for creating numbered annotations and reordering them throughout the document. Existing numbered annotations remain editable in other modes, and switching modes does not automatically select an annotation tool.
+- Document modification permissions and backend capabilities still apply; selecting a mode does not bypass them.
+- **Read by Views** remains a separate display toggle in the top toolbar. It is available in every mode and is not changed by switching modes.
+- The main and auxiliary panes of a document share its editing mode. Newly opened auxiliary panes inherit the current mode, while each pane independently chooses between original-page display and Read by Views. Different document tabs retain their own modes.
 
-## 实现边界
+## Implementation boundaries
 
-`part/editingmode.h` 的 `EditingMode` 定义六种状态；`Part` 的 `editing_mode_selector`（`KSelectAction`）负责选择与同步。PageView 的交叉引用、OCR 和 View 编辑状态分别驱动各自标记/交互，不通过一个笼统的高级模式互相启用。
+`EditingMode` in `part/editingmode.h` defines six states. The `Part` action `editing_mode_selector` (`KSelectAction`) handles selection and synchronization. PageView's Cross-References, OCR, and Reading Views states each control their own indicators and interactions rather than enabling one another through a generic advanced mode.
 
-旧的 `view_toggle_named_destinations` action 与 advanced API 仅作隐藏的交叉引用兼容别名，不再作为另一套模式入口。原 `advancedToolBar` 对象名保留以兼容布局，但显示标题为“模式工具”，只显示当前组。
+The legacy `view_toggle_named_destinations` action and advanced API remain hidden Cross-References compatibility aliases, not alternative mode entry points. The `advancedToolBar` object name is retained for layout compatibility, but its display title is Mode Tools and it shows only the current tool group.
 
-按钮和模式下拉框采用同一工具栏的共同自然高度，随字体、图标尺寸、样式和 DPI 调整；不更换原按钮文字或图标。
+Buttons and the mode selector share the toolbar's natural height, adapting to fonts, icon sizes, styles, and DPI without replacing the original button labels or icons.
