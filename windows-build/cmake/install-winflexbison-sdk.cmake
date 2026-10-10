@@ -44,19 +44,28 @@ file(MAKE_DIRECTORY "${_tools_dir}")
 file(ARCHIVE_EXTRACT INPUT "${_archive}" DESTINATION "${_tools_dir}")
 file(GLOB_RECURSE _win_flex "${_tools_dir}/win_flex.exe")
 file(GLOB_RECURSE _win_bison "${_tools_dir}/win_bison.exe")
-file(GLOB_RECURSE _data_dirs LIST_DIRECTORIES true "${_tools_dir}/data")
+# bison needs its own data directory (m4sugar, skeletons, xslt) at run time.
+# Take it from the extracted archive root instead of guessing among the
+# directories a recursive glob returns, and verify the result below.
+set(_tool_data "${_tools_dir}/data")
+if(NOT EXISTS "${_win_flex}" OR NOT EXISTS "${_win_bison}" OR NOT IS_DIRECTORY "${_tool_data}")
+    message(FATAL_ERROR "Downloaded winflexbison archive did not contain win_flex.exe, win_bison.exe, and a data directory.")
+endif()
 list(GET _win_flex 0 _win_flex_exe)
 list(GET _win_bison 0 _win_bison_exe)
-list(GET _data_dirs 0 _tool_data)
-if(NOT EXISTS "${_win_flex_exe}" OR NOT EXISTS "${_win_bison_exe}" OR NOT IS_DIRECTORY "${_tool_data}")
-    message(FATAL_ERROR "Downloaded winflexbison archive did not contain win_flex.exe, win_bison.exe, and data resources.")
-endif()
 file(COPY_FILE "${_win_flex_exe}" "${_bin_dir}/win_flex.exe")
 file(COPY_FILE "${_win_bison_exe}" "${_bin_dir}/win_bison.exe")
 file(COPY_FILE "${_win_flex_exe}" "${_bin_dir}/flex.exe")
 file(COPY_FILE "${_win_bison_exe}" "${_bin_dir}/bison.exe")
 file(MAKE_DIRECTORY "${_bin_dir}/data")
 file(COPY "${_tool_data}/" DESTINATION "${_bin_dir}/data")
+foreach(_required IN ITEMS "m4sugar/m4sugar.m4" "skeletons" "xslt")
+    if(NOT EXISTS "${_bin_dir}/data/${_required}")
+        message(FATAL_ERROR
+            "bison data is incomplete: ${_bin_dir}/data/${_required} is missing.\n"
+            "Modules that generate parsers (solid) fail without it.")
+    endif()
+endforeach()
 
 file(WRITE "${SDK_PREFIX}/mengshee-sdk-winflexbison.cmake"
 "set(MENGSHEE_WINFLEXBISON_VERSION \"${WINFLEXBISON_VERSION}\")

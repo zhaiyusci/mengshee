@@ -30,6 +30,12 @@ Build output lives outside the source checkout under the sibling
 - Qt for MSVC, for example `C:\Qt\6.11.1\msvc2022_64`.
 - Git.
 - Inno Setup 6, only when building the installer `.exe`.
+- Python 3, only for the workspace venv that `breeze-icons` needs for its 24x24
+  icon generation; the from-scratch driver creates the venv and installs `lxml`.
+- Git for Windows, MSYS2 or Cygwin when the StemTeX daemons are built from source,
+  because `texlive-xetex/build-standalone-msvc.sh` is a bash script.
+- A TeX Live installation (for example `C:\texlive\2026`) that supplies the
+  trimmed `texmf-dist` tree for the StemTeX stage.
 - Initialized third-party sources:
 
 ```powershell
@@ -74,6 +80,25 @@ If using a non-default Visual Studio path, pass it to CMake scripts:
 ```powershell
 -DVCVARS="C:/Program Files/Microsoft Visual Studio/18/Community/VC/Auxiliary/Build/vcvars64.bat"
 ```
+
+## From-Scratch Build Inside The Checkout
+
+The complete Windows runtime can be produced from a fresh clone with one CMake
+driver, which keeps its workspace inside the checkout:
+
+```powershell
+& "C:\Qt\Tools\CMake_64\bin\cmake.exe" `
+  -DQT_PREFIX=C:/Qt/6.11.1/msvc2022_64 `
+  -DVCVARS="C:/Program Files/Microsoft Visual Studio/18/Community/VC/Auxiliary/Build/vcvars64.bat" `
+  -P windows-build/cmake/build-windows-from-scratch.cmake
+```
+
+It bootstraps the SDK, builds the StemTeX stage, then runs the canonical
+Mengshee build/deploy/package step and smoke-tests the staged runtime. Every
+step is skipped when its result already exists, `-DFORCE=ON` redoes the selected
+steps and `-DSTEPS=<list>` runs a subset. Prerequisites, the resulting
+`windows_build\` layout and the known constraints are documented in
+[Windows build from scratch](../docs/windows-build-from-scratch.md).
 
 ## Canonical CMake Build
 
@@ -172,6 +197,22 @@ To write the installer into a temporary output directory:
 These scripts are internal steps. Use them only when debugging a specific part
 of the Windows pipeline.
 
+- `cmake\build-windows-from-scratch.cmake`
+  - Complete Windows build from a fresh clone: SDK bootstrap, StemTeX stage,
+    Mengshee build/deploy/package and the staged smoke test. Workspace defaults
+    to `<checkout>\windows_build`.
+- `cmake\bootstrap-windows-sdk.cmake`
+  - Bootstraps the whole SDK prefix in dependency order (Python venv with lxml,
+    ECM, gettext, winflexbison, zlib, freetype, libintl, the KF6 modules from
+    `manifests\kf6-modules.txt`, Poppler, Poppler data, Tesseract). Idempotent,
+    with `-DSTEPS=<list>` and `-DFORCE=ON`.
+- `cmake\build-stemtex-stage.cmake`
+  - Builds the XeTeX/xdvipdfmx/dvisvgm daemons and installs the versioned
+    StemTeX stage into `<workspace>\stemtex\StemTeX-<version>`.
+- `cmake\build-poppler-data-sdk.cmake`
+  - Installs the pinned Poppler CMap/CID data release into
+    `sdk\share\poppler`, which the staged runtime and `package-windows.cmake`
+    require.
 - `cmake\build-windows.cmake`
   - Canonical Windows driver for Mengshee configure/build/install, runtime
     deploy, stage refresh, and installer creation.
@@ -192,10 +233,15 @@ of the Windows pipeline.
   - CMake-based support library builders.
 - `cmake\install-gettext-native-sdk.cmake`,
   `cmake\install-winflexbison-sdk.cmake`
-  - CMake-based pinned binary tool installers.
+  - CMake-based pinned binary tool installers. The winflexbison installer also
+    places the bison data directory next to the tools and verifies it.
+- `manifests\kf6-modules.txt`
+  - The KF6 module list in dependency order, with the Windows configure flags
+    each module needs.
 - `smoke-test-mengshee-stage.ps1`
   - Starts staged `mengshee.exe` with a test PDF and verifies it loads modules
-    from the stage, not from another workspace tree.
+    from the stage, not from another workspace tree. It finds both the
+    sibling-workspace and in-checkout layouts.
 
 The legacy PowerShell build, deploy, and installer entry points have been
 removed. Use the CMake drivers above for all Windows builds and packages.
@@ -281,8 +327,23 @@ Test-Path "$stage\bin\data\icons\hicolor\256x256\apps\mengshee.png"
 
 ## SDK Bootstrap
 
+The whole SDK bootstraps with one CMake driver:
+
+```powershell
+& "C:\Qt\Tools\CMake_64\bin\cmake.exe" `
+  -DQT_PREFIX=C:/Qt/6.11.1/msvc2022_64 `
+  -DVCVARS="C:/Program Files/Microsoft Visual Studio/18/Community/VC/Auxiliary/Build/vcvars64.bat" `
+  -DWORKSPACE_ROOT=C:/path/to/checkout/windows_build `
+  -P windows-build/cmake/bootstrap-windows-sdk.cmake
+```
+
+It runs the steps below in order, skipping whatever is already installed, and
+builds every KF6 module listed in `manifests\kf6-modules.txt`. Use
+`-DSTEPS=<list>` for a subset and `-DFORCE=ON` to redo. The individual steps
+remain available for debugging:
+
 The standalone build uses a local SDK prefix for ECM, KF6 modules, zlib,
-freetype, libintl shim, helper tools, and custom Poppler.
+freetype, libintl shim, helper tools, custom Poppler, and Poppler data.
 
 Bootstrap ECM:
 

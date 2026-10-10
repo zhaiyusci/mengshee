@@ -1,0 +1,41 @@
+# KF6 modules the Windows SDK needs, in dependency order.
+#
+# One module per line: <module> [KEY=VALUE ...]
+#   GIT_URL  override the default https://invent.kde.org/frameworks/<module>.git
+#   GIT_REF  override the default v<KF6_VERSION>
+#   EXTRA    extra -D arguments, comma separated, passed to the module configure
+#
+# This list used to live only in an already-bootstrapped SDK
+# (sdk/<project>-sdk-modules.json); it is checked in so a fresh clone can
+# bootstrap the SDK without an existing one to copy from.
+kcoreaddons
+kconfig
+# KArchive would otherwise require PkgConfig and the optional compression and
+# crypto backends; the runtime gets those from Qt.
+karchive EXTRA=-DWITH_BZIP2=OFF,-DWITH_LIBLZMA=OFF,-DWITH_OPENSSL=OFF,-DWITH_LIBZSTD=OFF
+threadweaver
+kwidgetsaddons
+kcodecs
+kcompletion
+kwindowsystem
+ki18n
+kguiaddons
+kcolorscheme
+kconfigwidgets
+breeze-icons
+kiconthemes
+kitemviews
+kbookmarks
+kservice
+solid
+kcrash
+snoretoast GIT_URL=https://github.com/KDE/snoretoast.git GIT_REF=v0.8.0
+knotifications
+kjobwidgets
+kxmlgui
+kio
+sonnet
+# ktextwidgets requires Qt6TextToSpeech when built with speech support, and the
+# pinned Qt kit does not ship that module.
+ktextwidgets EXTRA=-DWITH_TEXT_TO_SPEECH=OFF
+kparts
