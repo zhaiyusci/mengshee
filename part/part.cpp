@@ -139,6 +139,7 @@
 #include "core/document_p.h"
 #include "core/form.h"
 #include "core/generator.h"
+#include "core/numberedcalloutgeometry_p.h"
 #include "core/page.h"
 #include "core/printoptionswidget.h"
 #include "documentworkspace.h"
@@ -1147,6 +1148,27 @@ void Part::setupViewerActions()
         }
     });
 
+    m_addNotePage = ac->addAction(QStringLiteral("annotation_add_note_page"));
+    m_addNotePage->setText(i18n("Add Note Page"));
+    m_addNotePage->setIconText(i18nc("Compact note-page toolbar button", "Note Page"));
+    m_addNotePage->setIcon(QIcon(QStringLiteral(":/mengshee/data/icons/annotation-note-page.svg")));
+    m_addNotePage->setToolTip(i18n("Click a position on the page to link it to a new blank note page appended to the document. The note page opens in an auxiliary frame."));
+    m_addNotePage->setCheckable(true);
+    m_addNotePage->setEnabled(false);
+    connect(m_addNotePage, &QAction::triggered, this, [this](bool checked) {
+        PageView *view = workspaceActivePageView();
+        if (view) {
+            if (checked) {
+                view->startNotePageCreation();
+            } else {
+                view->cancelNotePageCreation();
+            }
+        }
+        // Starting may be refused; reflect the tool rather than the request.
+        const QSignalBlocker blocker(m_addNotePage);
+        m_addNotePage->setChecked(view && view->isNotePageCreationActive());
+    });
+
     m_insertPage = ac->addAction(QStringLiteral("tools_insert_page"));
     m_insertPage->setText(i18n("Insert Page..."));
     m_insertPage->setIcon(QIcon::fromTheme(QStringLiteral("document-new")));
@@ -1485,6 +1507,19 @@ void Part::connectWorkspacePageView(PageView *view)
     connect(view, &PageView::createReadingViewRequested, this, &Part::addReadingView);
     connect(view, &PageView::changeReadingViewRectangleRequested, this, &Part::changeReadingViewRectangle);
     connect(view, &PageView::createNamedDestinationRequested, this, &Part::addNamedDestination);
+    connect(view, &PageView::notePageCreationCancelled, this, [this, view] {
+        if (m_addNotePage && workspaceActivePageView() == view) {
+            const QSignalBlocker blocker(m_addNotePage);
+            m_addNotePage->setChecked(view->isNotePageCreationActive());
+        }
+    });
+    connect(view, &PageView::notePageCreationChanged, this, [this, view](bool active) {
+        if (m_addNotePage && workspaceActivePageView() == view) {
+            const QSignalBlocker blocker(m_addNotePage);
+            m_addNotePage->setChecked(active);
+        }
+    });
+    connect(view, &PageView::createNotePageRequested, this, [this, view](int pageNumber, const Okular::NormalizedPoint &position) { addNotePage(view, pageNumber, position); });
     connect(view, &PageView::namedDestinationCreationCancelled, this, [this] {
         m_batchNamedDestinationCreationActive = false;
         m_batchNamedDestinationExistingViewports.clear();
@@ -4085,6 +4120,80 @@ private:
     bool m_firstRedo = true;
 };
 
+// One undo step for the whole "Add Note Page" operation: the appended blank
+// page, its named destination and the note link on the source page are created
+// and removed together, so undo never leaves a dangling link or destination.
+class LiveNotePageCommand : public QUndoCommand
+{
+public:
+    using Operation = std::function<bool(QString *)>;
+
+    LiveNotePageCommand(Part *part, int insertAfterPage, int sourcePage, quint64 editId, const QString &destinationName, const DocumentViewport &destination, Operation createLink, Operation deleteLink)
+        : QUndoCommand(i18nc("Undo action", "Add Note Page"))
+        , m_part(part)
+        , m_insertAfterPage(insertAfterPage)
+        , m_sourcePage(sourcePage)
+        , m_editId(editId)
+        , m_destinationName(destinationName)
+        , m_destination(destination)
+        , m_createLink(std::move(createLink))
+        , m_deleteLink(std::move(deleteLink))
+    {
+    }
+
+    void undo() override
+    {
+        QString errorText;
+        if (m_deleteLink && !m_deleteLink(&errorText)) {
+            qWarning() << "Note-page link removal failed:" << errorText;
+        }
+        if (m_part && !m_part->applyLiveNamedDestination(m_destinationName, std::nullopt, &errorText)) {
+            qWarning() << "Note-page destination removal failed:" << errorText;
+        }
+        if (m_part && !m_part->applyLiveNotePageAttachment(false, m_insertAfterPage, m_editId)) {
+            qWarning() << "Note-page page removal failed";
+        }
+        // Removing the page waits for the running renders and throws away the
+        // queued ones, so a refresh made while the link was removed would be
+        // discarded and the label would stay in the page image. Refresh the page
+        // that carried the label only now, once the whole undo step is applied.
+        if (m_part && m_part->m_document) {
+            m_part->m_document->refreshPixmaps(m_sourcePage);
+        }
+    }
+
+    void redo() override
+    {
+        // The initial edit is completed before the command is pushed.
+        if (m_firstRedo) {
+            m_firstRedo = false;
+            return;
+        }
+        QString errorText;
+        if (m_part && !m_part->applyLiveNotePageAttachment(true, m_insertAfterPage, m_editId)) {
+            qWarning() << "Note-page page re-insertion failed";
+            return;
+        }
+        if (m_part && !m_part->applyLiveNamedDestination(m_destinationName, m_destination, &errorText)) {
+            qWarning() << "Note-page destination re-creation failed:" << errorText;
+        }
+        if (m_createLink && !m_createLink(&errorText)) {
+            qWarning() << "Note-page link re-creation failed:" << errorText;
+        }
+    }
+
+private:
+    QPointer<Part> m_part;
+    int m_insertAfterPage = -1;
+    int m_sourcePage = -1;
+    quint64 m_editId = 0;
+    QString m_destinationName;
+    DocumentViewport m_destination;
+    Operation m_createLink;
+    Operation m_deleteLink;
+    bool m_firstRedo = true;
+};
+
 bool Part::saveAs(const QUrl &saveUrl, SaveAsFlags flags)
 {
     // TODO When we get different saving backends we need to query the backend
@@ -4644,6 +4753,21 @@ void Part::updatePageEditActions()
     if (m_createLink) {
         m_createLink->setVisible(showCrossReferenceActions);
         m_createLink->setEnabled(canEditLinks);
+    }
+    if (m_addNotePage) {
+        // The note-page tool lives on the always-visible annotation toolbar, so
+        // it is gated by capability rather than by the current editing mode.
+        const bool canAddNotePage = canEditPages && m_document->canEditPdfLinks() && m_document->canInsertBlankPage();
+        m_addNotePage->setEnabled(canAddNotePage);
+        if (!canAddNotePage) {
+            PageView *view = workspaceActivePageView();
+            if (view && view->isNotePageCreationActive()) {
+                view->cancelNotePageCreation();
+            }
+        }
+        const QSignalBlocker blocker(m_addNotePage);
+        PageView *view = workspaceActivePageView();
+        m_addNotePage->setChecked(view && view->isNotePageCreationActive());
     }
     if (m_insertPage) {
         m_insertPage->setVisible(showPageActions);
@@ -5337,8 +5461,9 @@ void Part::insertPageWithDialog(int pageNumber)
     }
 
     const int referencePage = qBound(0, pageNumber, pageCount - 1);
-    const Okular::Page *reference = m_document->page(referencePage);
-    const QSizeF defaultSize(reference ? reference->width() : 595.0, reference ? reference->height() : 842.0);
+    // The spins are labelled in PDF points, so they are seeded from the point
+    // size, not from Page::width()/height() (device pixels at the document DPI).
+    const QSizeF defaultSize = blankPageSizeForReference(referencePage);
 
     QDialog dialog(widget());
     dialog.setWindowTitle(i18n("Insert Page"));
@@ -5532,8 +5657,21 @@ void Part::insertBlankPageAfterPage(int pageNumber)
 {
     const int pageCount = static_cast<int>(m_document->pages());
     const int referencePage = pageCount > 0 ? qBound(0, pageNumber, pageCount - 1) : 0;
-    const Okular::Page *reference = pageCount > 0 ? m_document->page(referencePage) : nullptr;
-    insertBlankPage(pageNumber, QSizeF(reference ? reference->width() : 595.0, reference ? reference->height() : 842.0));
+    insertBlankPage(pageNumber, blankPageSizeForReference(referencePage));
+}
+
+// Page::width()/height() are device pixels at the document DPI, while the page
+// editor writes PDF points, so a new page has to be sized from the point size.
+// Passing the pixel size would make it dpi/72 times too large.
+QSizeF Part::blankPageSizeForReference(int referencePage) const
+{
+    if (referencePage >= 0 && referencePage < static_cast<int>(m_document->pages())) {
+        const QSizeF sizePt = m_document->pageSizeInPoints(referencePage);
+        if (sizePt.width() > 0.0 && sizePt.height() > 0.0) {
+            return sizePt;
+        }
+    }
+    return QSizeF(595.0, 842.0); // A4
 }
 
 void Part::duplicatePage(int pageNumber)
@@ -6442,6 +6580,194 @@ bool Part::addNamedDestinationWithName(int pageNumber, const Okular::NormalizedP
     return true;
 }
 
+namespace {
+// Converts a point from the displayed viewer orientation to the page's native
+// PDF origin and rotation. The page editor builds user-space coordinates from
+// native page geometry, so a position taken from the viewport must be
+// un-rotated first. This mirrors the conversion the named-destination tool
+// already applies before writing a canonical normalized position.
+Okular::NormalizedPoint displayToNativePagePoint(const Okular::Page *page, const Okular::NormalizedPoint &display)
+{
+    if (!page) {
+        return display;
+    }
+    switch (page->rotation()) {
+    case Okular::Rotation90:
+        return Okular::NormalizedPoint(display.y, 1.0 - display.x);
+    case Okular::Rotation180:
+        return Okular::NormalizedPoint(1.0 - display.x, 1.0 - display.y);
+    case Okular::Rotation270:
+        return Okular::NormalizedPoint(1.0 - display.y, display.x);
+    case Okular::Rotation0:
+        break;
+    }
+    return display;
+}
+}
+
+QString Part::nextNotePageDestinationName(int sourcePageNumberOneBased) const
+{
+    const QString prefix = QStringLiteral("mnote-%1-").arg(sourcePageNumberOneBased);
+    int highestSequence = 0;
+    const QVariantList existingDestinations = m_document->metaData(QStringLiteral("NamedViewports")).toList();
+    for (const QVariant &value : existingDestinations) {
+        const QString name = value.toMap().value(QStringLiteral("name")).toString();
+        if (!name.startsWith(prefix)) {
+            continue;
+        }
+        bool isNumber = false;
+        const int sequence = name.mid(prefix.size()).toInt(&isNumber);
+        if (isNumber && sequence > highestSequence) {
+            highestSequence = sequence;
+        }
+    }
+    return prefix + QString::number(highestSequence + 1);
+}
+
+void Part::addNotePage(PageView *sourceView, int pageNumber, const Okular::NormalizedPoint &displayPosition)
+{
+    if (!m_document->isOpened() || !url().isLocalFile() || isDocumentArchive) {
+        KMessageBox::information(widget(), i18n("Note pages can only be added to local PDF files."));
+        return;
+    }
+
+    const int pageCount = static_cast<int>(m_document->pages());
+    if (pageNumber < 0 || pageNumber >= pageCount) {
+        KMessageBox::information(widget(), i18n("The target page could not be found."));
+        return;
+    }
+    if (!m_document->canInsertBlankPage() || !m_document->canEditPdfLinks()) {
+        KMessageBox::information(widget(), i18n("This document does not support adding a note page."));
+        return;
+    }
+
+    const Okular::Page *sourcePage = m_document->page(pageNumber);
+    if (!sourcePage) {
+        KMessageBox::information(widget(), i18n("The target page could not be found."));
+        return;
+    }
+
+    // Okular page sizes are device pixels at the document DPI, while the page
+    // editor writes PDF points. pageSizeInPoints() is already in points, in
+    // canonical page axes; the native rotation is re-applied for the mark,
+    // which is positioned in the displayed page box.
+    const QSizeF canonicalSizePt = m_document->pageSizeInPoints(pageNumber);
+    if (canonicalSizePt.width() <= 0.0 || canonicalSizePt.height() <= 0.0) {
+        KMessageBox::information(widget(), i18n("The size of the note page could not be determined."));
+        return;
+    }
+    QSizeF displayedSizePt = canonicalSizePt;
+    if (static_cast<int>(sourcePage->rotation()) % 2) {
+        displayedSizePt.transpose();
+    }
+
+    const QString destinationName = nextNotePageDestinationName(pageNumber + 1);
+    // The visible numbering follows the destination's per-page sequence, so the
+    // link, the note page heading and the name all say the same thing.
+    const int noteNumber = destinationName.mid(destinationName.lastIndexOf(QLatin1Char('-')) + 1).toInt();
+    if (noteNumber <= 0) {
+        KMessageBox::information(widget(), i18n("The note page number could not be determined."));
+        return;
+    }
+    const QString markLabel = Okular::NumberedCalloutGeometry::NoteLabel::markText(noteNumber);
+    const QString pageHeading = Okular::NumberedCalloutGeometry::NoteLabel::pageHeading(noteNumber);
+    // The label is drawn horizontally in the page's own coordinate system, so on
+    // a rotated page its long axis runs along the other displayed axis. The box
+    // is transposed before normalizing so the text is never clipped; it then
+    // reads with the page, like every other piece of page content.
+    QSizeF labelBoxPt = Okular::NumberedCalloutGeometry::NoteLabel::markBoxSize(markLabel);
+    if (static_cast<int>(sourcePage->rotation()) % 2) {
+        labelBoxPt.transpose();
+    }
+
+    // The label is the link itself, so it is placed at the click and kept inside
+    // the page rather than clamped afterwards.
+    const double markWidthNorm = qBound(0.002, labelBoxPt.width() / displayedSizePt.width(), 1.0);
+    const double markHeightNorm = qBound(0.002, labelBoxPt.height() / displayedSizePt.height(), 1.0);
+    const double halfMarkWidth = markWidthNorm / 2.0;
+    const double halfMarkHeight = markHeightNorm / 2.0;
+    const double centerX = qBound(halfMarkWidth, displayPosition.x, 1.0 - halfMarkWidth);
+    const double centerY = qBound(halfMarkHeight, displayPosition.y, 1.0 - halfMarkHeight);
+    const Okular::NormalizedPoint displayFirst(centerX - halfMarkWidth, centerY - halfMarkHeight);
+    const Okular::NormalizedPoint displaySecond(centerX + halfMarkWidth, centerY + halfMarkHeight);
+    const Okular::NormalizedPoint nativeFirst = displayToNativePagePoint(sourcePage, displayFirst);
+    const Okular::NormalizedPoint nativeSecond = displayToNativePagePoint(sourcePage, displaySecond);
+    const QRectF linkRectangle = QRectF(QPointF(nativeFirst.x, nativeFirst.y), QPointF(nativeSecond.x, nativeSecond.y)).normalized();
+    if (linkRectangle.width() <= 0.0 || linkRectangle.height() <= 0.0 || linkRectangle.left() < 0.0 || linkRectangle.top() < 0.0 || linkRectangle.right() > 1.0 || linkRectangle.bottom() > 1.0) {
+        return;
+    }
+
+    if (documentHasTemplateNotes()) {
+        refreshTemplateNotes();
+    }
+
+    // 1. Append a blank page as large as the page the user clicked, headed with
+    //    the note it holds.
+    quint64 editId = 0;
+    QString errorText;
+    const int insertAfterPageNumber = pageCount - 1;
+    if (!m_document->insertBlankPage(insertAfterPageNumber, canonicalSizePt.width(), canonicalSizePt.height(), &editId, &errorText, pageHeading)) {
+        KMessageBox::information(widget(), errorText.isEmpty() ? i18n("Could not append the note page.") : i18n("Could not append the note page. %1", errorText));
+        return;
+    }
+
+    // The blank page was appended at the end, so it is the last page and the
+    // source page keeps its number.
+    const int notePageNumber = static_cast<int>(m_document->pages()) - 1;
+    DocumentViewport destination(notePageNumber);
+    destination.rePos.enabled = true;
+    destination.rePos.normalizedX = 0.0;
+    destination.rePos.normalizedY = 0.0;
+    destination.rePos.pos = DocumentViewport::TopLeft;
+
+    // 2. Name the new page.
+    if (!applyLiveNamedDestination(destinationName, destination, &errorText)) {
+        m_document->detachPage(insertAfterPageNumber + 1, editId, &errorText);
+        KMessageBox::information(widget(), i18n("Could not add the note page destination."));
+        return;
+    }
+
+    // 3. Label the clicked position with a link to the note page.
+    QPointer<Document> document = m_document;
+    const auto createLink = [document, pageNumber, linkRectangle, destinationName, markLabel](QString *linkError) {
+        const Okular::PdfLinkAppearance appearance {Okular::PdfLinkAppearance::NoteLabel, markLabel};
+        if (!document || !document->createInternalLink(pageNumber + 1, linkRectangle.left(), linkRectangle.top(), linkRectangle.right(), linkRectangle.bottom(), destinationName, 0, 0.0, 0.0, linkError, appearance)) {
+            return false;
+        }
+        // The label is drawn as part of the page image, so the view's cached copy
+        // of that page has to be replaced rather than merely repainted: adding a
+        // further note opens no auxiliary pane, so nothing else resizes this view.
+        document->refreshPixmaps(pageNumber);
+        return true;
+    };
+    const auto deleteLink = [document, pageNumber, linkRectangle](QString *linkError) {
+        if (!document || !document->deletePdfLink(pageNumber + 1, linkRectangle.left(), linkRectangle.top(), linkRectangle.right(), linkRectangle.bottom(), linkError)) {
+            return false;
+        }
+        return true;
+    };
+    if (!createLink(&errorText)) {
+        applyLiveNamedDestination(destinationName, std::nullopt, &errorText);
+        m_document->detachPage(insertAfterPageNumber + 1, editId, &errorText);
+        KMessageBox::information(widget(), i18n("Could not create the note link."));
+        return;
+    }
+
+    // One undo step restores the link, the destination and the blank page.
+    m_document->pushUndoCommand(new LiveNotePageCommand(this, insertAfterPageNumber, pageNumber, editId, destinationName, destination, createLink, deleteLink));
+
+    // 4. Open the new note page in an auxiliary frame so it can be written on
+    //    immediately, without leaving the reading position.
+    openAuxiliaryView(sourceView, destination, destinationName);
+
+    if (sourceView) {
+        sourceView->displayMessage(i18n("Added note page '%1'. Save the document to keep this change.", destinationName));
+    }
+    updateViewActions();
+    updatePageEditActions();
+    refreshTemplateNotes();
+}
+
 bool Part::applyLivePageAttachment(bool attach, int insertAfterPage, quint64 editId)
 {
     const QPointer<PageView> initiatingView = workspaceActivePageView();
@@ -6470,6 +6796,55 @@ bool Part::applyLivePageAttachment(bool attach, int insertAfterPage, quint64 edi
     updatePageEditActions();
     refreshTemplateNotes();
     setWindowTitleFromDocument();
+    return true;
+}
+
+bool Part::applyLiveNotePageAttachment(bool attach, int insertAfterPage, quint64 editId)
+{
+    // A note page appearing or disappearing must not move the reader, in any
+    // pane. The page-level helper follows the affected page, which is right for
+    // page editing and wrong here: the note page is appended at the end.
+    QList<PageView *> views;
+    if (m_documentWorkspace) {
+        if (PageView *mainView = m_documentWorkspace->mainView()) {
+            views.append(mainView);
+        }
+        views.append(m_documentWorkspace->auxiliaryViews());
+    } else if (m_pageView) {
+        views.append(m_pageView);
+    }
+    QList<QPair<PageView *, DocumentViewport>> positions;
+    positions.reserve(views.size());
+    for (PageView *view : std::as_const(views)) {
+        positions.append({view, view->documentViewport()});
+    }
+
+    if (!attach) {
+        // A frame that is still showing the page about to be removed would keep
+        // queueing pixmap work for it while it is being freed. Move those frames
+        // to a page that survives the removal first; the positions captured above
+        // are restored below for every frame that keeps a valid page.
+        const int lastPageAfterRemoval = static_cast<int>(m_document->pages()) - 2;
+        for (PageView *view : std::as_const(views)) {
+            if (view->documentViewport().pageNumber > lastPageAfterRemoval) {
+                view->goToDocumentViewport(DocumentViewport(qMax(0, lastPageAfterRemoval)), false, false);
+            }
+        }
+    }
+
+    if (!applyLivePageAttachment(attach, insertAfterPage, editId)) {
+        return false;
+    }
+
+    // Restoring is not navigation, so it does not touch the back/forward history.
+    // A frame showing the note page itself has no valid position left; it keeps
+    // the position the page-level helper chose.
+    const int pageCount = static_cast<int>(m_document->pages());
+    for (const auto &[view, viewport] : std::as_const(positions)) {
+        if (view && viewport.isValid() && viewport.pageNumber < pageCount) {
+            view->goToDocumentViewport(viewport, false, false);
+        }
+    }
     return true;
 }
 

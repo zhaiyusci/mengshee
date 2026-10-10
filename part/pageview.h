@@ -95,6 +95,11 @@ public:
     void startNamedDestinationCreation(bool continuous = false);
     void cancelNamedDestinationCreation();
     void startLinkCreation();
+    // Note-page placement: one click marks where the link to the newly
+    // appended note page is written.
+    OKULARPART_EXPORT void startNotePageCreation();
+    OKULARPART_EXPORT void cancelNotePageCreation();
+    OKULARPART_EXPORT bool isNotePageCreationActive() const;
     // Reading View rectangles are display-normalized here; Part converts the
     // temporary page rotation before writing canonical model coordinates.
     OKULARPART_EXPORT bool readingViewEditingEnabled() const;
@@ -276,6 +281,12 @@ Q_SIGNALS:
     void readingViewEditingChanged(bool enabled);
     /** Requests creating an internal or external link over a rectangle drawn in this view. */
     void createPdfLinkRequested(int sourcePageNumber, const QRectF &normalizedLinkRectangle);
+    /** Requests creating a note page link at a point selected in this view. */
+    void createNotePageRequested(int pageNumber, const Okular::NormalizedPoint &position);
+    /** Reports that note-page placement was cancelled with Esc, right-click, or another tool. */
+    void notePageCreationCancelled();
+    /** Reports whether note-page placement is armed, so the toolbar can follow it. */
+    void notePageCreationChanged(bool active);
     /** Requests moving or resizing a PDF link annotation in this view. */
     void changePdfLinkRectangleRequested(int sourcePageNumber, const QRectF &oldNormalizedRectangle, const QRectF &newNormalizedRectangle);
     /** Requests deleting the selected PDF link annotation. */

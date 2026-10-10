@@ -166,6 +166,9 @@ private Q_SLOTS:
     void testLivePdfLinkEditing();
     void testLivePdfLinksHaveNoVisibleBorder_data();
     void testLivePdfLinksHaveNoVisibleBorder();
+    void testAddNotePage();
+    void testInsertBlankPageMatchesReferenceSize();
+    void testNotePageUndoClearsStaleLabel();
     void testLiveLinkSurvivesNamedDestinationUpdate();
     void testEditPdfNamedDestinationAndLink();
     void testEditExternalPdfLink();
@@ -7417,6 +7420,410 @@ void PartTest::testLivePdfLinksHaveNoVisibleBorder()
     reopened.m_document->requestPixmaps({new PixmapRequest(reopened.m_pageView, 0, 300, 400, 1.0, 1, PixmapRequest::NoFeature)});
     verifyLink(reopened.m_document);
     reopened.closeUrl(false);
+}
+
+void PartTest::testAddNotePage()
+{
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const QString sourceFile = directory.filePath(QStringLiteral("note-page-source.pdf"));
+    const QString savedFile = directory.filePath(QStringLiteral("note-page-saved.pdf"));
+    QVERIFY(writeOrderedCalloutTestPdf(sourceFile, 2));
+
+    Part part(nullptr, {});
+    QVERIFY(openDocument(&part, sourceFile));
+    part.widget()->resize(1100, 800);
+    part.widget()->show();
+    if (qgetenv("KDECI_CANNOT_CREATE_WINDOWS") == "1") {
+        QSKIP("KDE CI can't create a window on this platform, skipping some gui tests");
+    }
+    QVERIFY(QTest::qWaitForWindowExposed(part.widget()));
+
+    PageView *view = part.m_pageView;
+    DocumentWorkspace *workspace = part.m_documentWorkspace;
+    QVERIFY(view);
+    QVERIFY(workspace);
+    QCOMPARE(part.m_document->pages(), 2u);
+    const double sourceWidth = part.m_document->page(0)->width();
+    const double sourceHeight = part.m_document->page(0)->height();
+    QString errorText;
+    const QImage before = part.m_document->renderToImage(0, 144, true, &errorText);
+    QVERIFY2(!before.isNull(), qPrintable(errorText));
+
+    QAction *addNotePage = part.actionCollection()->action(QStringLiteral("annotation_add_note_page"));
+    QVERIFY(addNotePage);
+    QVERIFY(addNotePage->isVisible());
+    QVERIFY(addNotePage->isEnabled());
+
+    // Arming and disarming the placement tool must not change the document.
+    addNotePage->trigger();
+    QVERIFY(addNotePage->isChecked());
+    QVERIFY(view->isNotePageCreationActive());
+    QCOMPARE(part.m_document->pages(), 2u);
+    addNotePage->trigger();
+    QVERIFY(!addNotePage->isChecked());
+    QVERIFY(!view->isNotePageCreationActive());
+    QCOMPARE(part.m_document->pages(), 2u);
+
+    part.m_document->setViewportPage(0);
+    QTRY_VERIFY(part.m_document->page(0)->hasPixmap(view));
+    // The placement tool follows the active frame, so make sure the main frame
+    // is the active one before arming it.
+    view->setFocus();
+    QTRY_COMPARE(workspace->activeView(), view);
+
+    // Pick a viewport point that is well inside page 0, so the mark is not
+    // clamped and the click cannot land on the following page. Opening an
+    // auxiliary frame resizes this view, so the point is re-derived for every
+    // click instead of being cached.
+    const auto pickNotePoint = [&](const QList<QPointF> &factors, QPoint *position, Okular::NormalizedPoint *point) {
+        const QRect viewportRect = view->viewport()->rect();
+        for (const QPointF factor : factors) {
+            const QPoint candidate(viewportRect.width() * factor.x(), viewportRect.height() * factor.y());
+            int page = -1;
+            Okular::NormalizedPoint mapped;
+            if (view->mapGlobalPosToPagePoint(view->viewport()->mapToGlobal(candidate), &page, &mapped) && page == 0 && mapped.x > 0.2 && mapped.x < 0.8 && mapped.y > 0.2 && mapped.y < 0.8) {
+                *position = candidate;
+                *point = mapped;
+                return true;
+            }
+        }
+        return false;
+    };
+    const QList<QPointF> firstFactors {QPointF(0.5, 0.3), QPointF(0.5, 0.5), QPointF(0.5, 0.2)};
+    const QList<QPointF> secondFactors {QPointF(0.5, 0.7), QPointF(0.6, 0.6), QPointF(0.4, 0.5)};
+    QPoint clickPosition;
+    Okular::NormalizedPoint clickedPoint;
+    bool foundPoint = false;
+    QTRY_VERIFY((foundPoint = pickNotePoint(firstFactors, &clickPosition, &clickedPoint)));
+    QVERIFY(foundPoint);
+
+
+    const auto linkNamed = [&part](const QString &name) -> const ObjectRect * {
+        if (!part.m_document->page(0)) {
+            return nullptr;
+        }
+        for (const ObjectRect *rect : part.m_document->page(0)->objectRects()) {
+            if (!rect || rect->objectType() != ObjectRect::Action || !rect->object()) {
+                continue;
+            }
+            const auto *action = static_cast<const Action *>(rect->object());
+            if (action->actionType() == Action::Goto && static_cast<const GotoAction *>(action)->destinationName() == name) {
+                return rect;
+            }
+        }
+        return nullptr;
+    };
+    const auto destinationValid = [&part](const QString &name) {
+        return DocumentViewport(part.m_document->metaData(QStringLiteral("NamedViewport"), name).toString()).isValid();
+    };
+    // The label's pale sheet is the only such colour on a white page, so scanning
+    // the frame that shows the link tells us whether the reader still sees it.
+    // This is a view-level check on purpose: the export path always re-renders,
+    // and would hide a stale page image.
+    const auto viewShowsNoteLabel = [view]() {
+        const QImage image = view->viewport()->grab().toImage();
+        for (int y = 0; y < image.height(); y += 2) {
+            for (int x = 0; x < image.width(); x += 2) {
+                const QColor pixel = image.pixelColor(x, y);
+                if (pixel.red() > 230 && pixel.green() > 215 && pixel.blue() < 210) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    };
+
+    addNotePage->trigger();
+    QVERIFY(view->isNotePageCreationActive());
+    QSignalSpy auxiliaryAdded(workspace, &DocumentWorkspace::auxiliaryViewAdded);
+    QTest::mouseClick(view->viewport(), Qt::LeftButton, Qt::NoModifier, clickPosition);
+    // 1. A blank page as large as the clicked page is appended at the end.
+    QTRY_COMPARE(part.m_document->pages(), 3u);
+    QCOMPARE(part.m_document->page(2)->width(), sourceWidth);
+    QCOMPARE(part.m_document->page(2)->height(), sourceHeight);
+
+    // 2. The new page carries the mnote destination.
+    const QString firstName = QStringLiteral("mnote-1-1");
+    QVERIFY(destinationValid(firstName));
+    const DocumentViewport firstDestination(part.m_document->metaData(QStringLiteral("NamedViewport"), firstName).toString());
+    QCOMPARE(firstDestination.pageNumber, 2);
+
+    // 3. The link keeps the clicked position and points at that destination.
+    const ObjectRect *firstLink = linkNamed(firstName);
+    QVERIFY(firstLink);
+    const QRectF firstLinkRect = firstLink->region().boundingRect();
+    QVERIFY(qAbs(firstLinkRect.center().x() - clickedPoint.x) < 0.02);
+    QVERIFY(qAbs(firstLinkRect.center().y() - clickedPoint.y) < 0.02);
+
+    // The link's label is a real appearance stream, so it is drawn in this
+    // session rather than only after reopening. A plain internal link paints
+    // nothing, so this also proves the appearance is what changed the page.
+    const QImage afterFirstNote = part.m_document->renderToImage(0, 144, true, &errorText);
+    QVERIFY2(!afterFirstNote.isNull(), qPrintable(errorText));
+    QVERIFY(afterFirstNote != before);
+
+    // The label is readable text in a pale box, not just any ink: render the
+    // link's own rectangle larger and require both the box fill and dark glyph
+    // pixels inside it.
+    const QImage labelRendering = part.m_document->renderToImage(0, 288, true, &errorText);
+    QVERIFY2(!labelRendering.isNull(), qPrintable(errorText));
+    const QRect labelRegion(QPoint(qRound(firstLinkRect.left() * labelRendering.width()), qRound(firstLinkRect.top() * labelRendering.height())),
+                            QPoint(qRound(firstLinkRect.right() * labelRendering.width()), qRound(firstLinkRect.bottom() * labelRendering.height())));
+    QVERIFY(labelRegion.isValid());
+    int boxPixels = 0;
+    int glyphPixels = 0;
+    for (int y = labelRegion.top(); y <= labelRegion.bottom(); ++y) {
+        for (int x = labelRegion.left(); x <= labelRegion.right(); ++x) {
+            const QColor pixel = labelRendering.pixelColor(x, y);
+            if (pixel.red() > 230 && pixel.green() > 215 && pixel.blue() < 210) {
+                ++boxPixels;
+            }
+            if (pixel.red() < 120 && pixel.green() < 120 && pixel.blue() < 120) {
+                ++glyphPixels;
+            }
+        }
+    }
+    QVERIFY2(boxPixels > 50, "the label box must be painted");
+    QVERIFY2(glyphPixels > 20, "the label text must be drawn");
+    // The same label has to reach the frame the reader is looking at, and adding
+    // it must not move that frame off the page the note belongs to.
+    QTRY_VERIFY(viewShowsNoteLabel());
+    QCOMPARE(view->documentViewport().pageNumber, 0);
+
+    // 4. The new page is opened in an auxiliary frame.
+    QTRY_COMPARE(workspace->auxiliaryViewCount(), 1);
+    QCOMPARE(auxiliaryAdded.count(), 1);
+    PageView *auxiliaryView = workspace->auxiliaryViews().constFirst();
+    QVERIFY(auxiliaryView);
+    QTRY_COMPARE(auxiliaryView->documentViewport().pageNumber, 2);
+
+    // The placement tool finishes after one click.
+    QVERIFY(!view->isNotePageCreationActive());
+    QVERIFY(!addNotePage->isChecked());
+
+    // A second note on the same source page increments the sequence. Opening
+    // the auxiliary frame made it active, so return to the main frame first.
+    view->setFocus();
+    QTRY_COMPARE(workspace->activeView(), view);
+    addNotePage->trigger();
+    QVERIFY(view->isNotePageCreationActive());
+    QPoint secondClickPosition;
+    Okular::NormalizedPoint secondClickedPoint;
+    bool foundSecondPoint = false;
+    QTRY_VERIFY((foundSecondPoint = pickNotePoint(secondFactors, &secondClickPosition, &secondClickedPoint)));
+    QVERIFY(foundSecondPoint);
+    QTest::mouseClick(view->viewport(), Qt::LeftButton, Qt::NoModifier, secondClickPosition);
+    QTRY_COMPARE(part.m_document->pages(), 4u);
+    const QString secondName = QStringLiteral("mnote-1-2");
+    QVERIFY(destinationValid(secondName));
+    QVERIFY(linkNamed(secondName));
+
+    // The whole operation is one undo step for each note. Attaching or
+    // detaching a page rebuilds the page objects, so the link objects are
+    // regenerated before they are inspected.
+    const auto regeneratePageZeroLinks = [&part] {
+        part.m_document->requestPixmaps({new PixmapRequest(part.m_pageView, 0, 300, 400, 1.0, 1, PixmapRequest::NoFeature)});
+    };
+    const auto pageZeroLinkCount = [&part]() {
+        int count = 0;
+        for (const ObjectRect *rect : part.m_document->page(0)->objectRects()) {
+            if (rect && rect->objectType() == ObjectRect::Action && rect->object()) {
+                ++count;
+            }
+        }
+        return count;
+    };
+    QVERIFY(part.m_document->canUndo());
+    // Undo is not navigation: make the reading frame the active one first, the
+    // way a reader pressing Ctrl+Z after clicking back into the page would.
+    view->setFocus();
+    QTRY_COMPARE(workspace->activeView(), view);
+    part.m_document->undo();
+    QCOMPARE(part.m_document->pages(), 3u);
+    QVERIFY(!destinationValid(secondName));
+    QTRY_VERIFY(linkNamed(firstName));
+    QVERIFY(!linkNamed(secondName));
+    QCOMPARE(view->documentViewport().pageNumber, 0);
+    part.m_document->redo();
+    QCOMPARE(part.m_document->pages(), 4u);
+    QVERIFY(destinationValid(secondName));
+    regeneratePageZeroLinks();
+    QTRY_VERIFY(linkNamed(secondName));
+    QTRY_VERIFY(linkNamed(firstName));
+    QCOMPARE(view->documentViewport().pageNumber, 0);
+
+    // Undoing both notes again restores the original rendering and leaves no
+    // dangling link or destination behind.
+    part.m_document->undo();
+    part.m_document->undo();
+    QCOMPARE(part.m_document->pages(), 2u);
+    QVERIFY(!destinationValid(firstName));
+    QVERIFY(!destinationValid(secondName));
+    regeneratePageZeroLinks();
+    QTRY_COMPARE(pageZeroLinkCount(), 0);
+    const QImage afterUndo = part.m_document->renderToImage(0, 144, true, &errorText);
+    QVERIFY2(!afterUndo.isNull(), qPrintable(errorText));
+    QCOMPARE(afterUndo, before);
+    // The link is gone, so the label must be gone from the page image the reader
+    // sees: repainting a stale copy would leave it on screen, and undo must not
+    // have moved the reading frame to the end of the document either.
+    QTRY_VERIFY(!viewShowsNoteLabel());
+    QCOMPARE(view->documentViewport().pageNumber, 0);
+
+    // Repeating the operation keeps the same name and survives save/reopen.
+    view->setFocus();
+    QTRY_COMPARE(workspace->activeView(), view);
+    addNotePage->trigger();
+    bool foundRepeatPoint = false;
+    QTRY_VERIFY((foundRepeatPoint = pickNotePoint(firstFactors, &clickPosition, &clickedPoint)));
+    QVERIFY(foundRepeatPoint);
+    QTest::mouseClick(view->viewport(), Qt::LeftButton, Qt::NoModifier, clickPosition);
+    QTRY_COMPARE(part.m_document->pages(), 3u);
+    QVERIFY(linkNamed(firstName));
+    QVERIFY2(part.m_document->saveChanges(savedFile, &errorText), qPrintable(errorText));
+    // The requested text really reaches the file. Both the link appearance and
+    // the note page heading are unfiltered streams, so the literals are visible
+    // in the saved bytes.
+    QFile savedBytesFile(savedFile);
+    QVERIFY(savedBytesFile.open(QIODevice::ReadOnly));
+    const QByteArray savedBytes = savedBytesFile.readAll();
+    savedBytesFile.close();
+    QVERIFY2(savedBytes.contains("(see note 1.) Tj"), "the link appearance must carry the note label");
+    QVERIFY2(savedBytes.contains("(note 1) Tj"), "the note page must start with its heading");
+    // The heading is page content, so it is visible without any annotation.
+    const QImage notePage = part.m_document->renderToImage(2, 144, true, &errorText);
+    QVERIFY2(!notePage.isNull(), qPrintable(errorText));
+    bool headingDrawn = false;
+    for (int y = 0; y < qMin(160, notePage.height()) && !headingDrawn; ++y) {
+        for (int x = 0; x < notePage.width(); ++x) {
+            if (notePage.pixelColor(x, y) != QColor(Qt::white)) {
+                headingDrawn = true;
+                break;
+            }
+        }
+    }
+    QVERIFY(headingDrawn);
+    // Appending and removing pages queues page relayouts. Let them run while
+    // the document is still alive instead of during close.
+    QApplication::processEvents();
+    part.closeUrl(false);
+
+    Part reopened(nullptr, {});
+    QVERIFY(openDocument(&reopened, savedFile));
+    QCOMPARE(reopened.m_document->pages(), 3u);
+    QCOMPARE(reopened.m_document->page(2)->width(), sourceWidth);
+    QCOMPARE(reopened.m_document->page(2)->height(), sourceHeight);
+    const DocumentViewport reopenedDestination(reopened.m_document->metaData(QStringLiteral("NamedViewport"), firstName).toString());
+    QVERIFY(reopenedDestination.isValid());
+    QCOMPARE(reopenedDestination.pageNumber, 2);
+    // Populate the reopened page's link objects without requiring an exposed GUI.
+    reopened.m_document->requestPixmaps({new PixmapRequest(reopened.m_pageView, 0, 300, 400, 1.0, 1, PixmapRequest::NoFeature)});
+    const QImage reopenedRendering = reopened.m_document->renderToImage(0, 144, true, &errorText);
+    QVERIFY2(!reopenedRendering.isNull(), qPrintable(errorText));
+    QVERIFY(reopenedRendering != before);
+    QApplication::processEvents();
+    reopened.closeUrl(false);
+}
+
+void PartTest::testInsertBlankPageMatchesReferenceSize()
+{
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const QString file = directory.filePath(QStringLiteral("blank-page-size.pdf"));
+    QVERIFY(writeOrderedCalloutTestPdf(file, 2));
+
+    Part part(nullptr, {});
+    QVERIFY(openDocument(&part, file));
+    const QSizeF referencePt = part.m_document->pageSizeInPoints(0);
+    QVERIFY(referencePt.isValid());
+    // Page::width()/height() are device pixels at the document DPI, so a page
+    // sized from them would be dpi/72 times too large.
+    QVERIFY(part.m_document->page(0)->width() > referencePt.width());
+
+    part.insertBlankPageAfterPage(0);
+    QCOMPARE(part.m_document->pages(), 3u);
+    const QSizeF insertedPt = part.m_document->pageSizeInPoints(1);
+    QVERIFY(insertedPt.isValid());
+    QVERIFY(qAbs(insertedPt.width() - referencePt.width()) < 0.5);
+    QVERIFY(qAbs(insertedPt.height() - referencePt.height()) < 0.5);
+    part.closeUrl(false);
+}
+
+void PartTest::testNotePageUndoClearsStaleLabel()
+{
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const QString file = directory.filePath(QStringLiteral("note-page-undo.pdf"));
+    QVERIFY(writeOrderedCalloutTestPdf(file, 2));
+
+    Part part(nullptr, {});
+    QVERIFY(openDocument(&part, file));
+    part.widget()->resize(1100, 800);
+    part.widget()->show();
+    if (qgetenv("KDECI_CANNOT_CREATE_WINDOWS") == "1") {
+        QSKIP("KDE CI can't create a window on this platform, skipping some gui tests");
+    }
+    QVERIFY(QTest::qWaitForWindowExposed(part.widget()));
+
+    PageView *view = part.m_pageView;
+    DocumentWorkspace *workspace = part.m_documentWorkspace;
+    QVERIFY(view);
+    QVERIFY(workspace);
+    part.m_document->setViewportPage(0);
+    QTRY_VERIFY(part.m_document->page(0)->hasPixmap(view));
+    view->setFocus();
+    QTRY_COMPARE(workspace->activeView(), view);
+
+    QPoint clickPosition;
+    bool foundPoint = false;
+    const QRect viewportRect = view->viewport()->rect();
+    for (const QPointF factor : {QPointF(0.5, 0.3), QPointF(0.5, 0.5), QPointF(0.5, 0.2)}) {
+        const QPoint candidate(viewportRect.width() * factor.x(), viewportRect.height() * factor.y());
+        int page = -1;
+        Okular::NormalizedPoint mapped;
+        if (view->mapGlobalPosToPagePoint(view->viewport()->mapToGlobal(candidate), &page, &mapped) && page == 0 && mapped.x > 0.2 && mapped.x < 0.8 && mapped.y > 0.2 && mapped.y < 0.8) {
+            clickPosition = candidate;
+            foundPoint = true;
+            break;
+        }
+    }
+    QVERIFY(foundPoint);
+
+    // The label's pale sheet is the only such colour on a white page.
+    const auto viewShowsNoteLabel = [view]() {
+        const QImage image = view->viewport()->grab().toImage();
+        for (int y = 0; y < image.height(); y += 2) {
+            for (int x = 0; x < image.width(); x += 2) {
+                const QColor pixel = image.pixelColor(x, y);
+                if (pixel.red() > 230 && pixel.green() > 215 && pixel.blue() < 210) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    };
+
+    QAction *addNotePage = part.actionCollection()->action(QStringLiteral("annotation_add_note_page"));
+    QVERIFY(addNotePage);
+    addNotePage->trigger();
+    QVERIFY(view->isNotePageCreationActive());
+    QTest::mouseClick(view->viewport(), Qt::LeftButton, Qt::NoModifier, clickPosition);
+    QCOMPARE(part.m_document->pages(), 3u);
+
+    // Opening the note page made the auxiliary frame active, which is where the
+    // reader is when they press Ctrl+Z. Undo immediately, without waiting for the
+    // page image the creation requested: a late result from that request must not
+    // repaint the label after the link is gone.
+    QTRY_VERIFY(workspace->activeView() != view);
+    part.m_document->undo();
+    QCOMPARE(part.m_document->pages(), 2u);
+    QTRY_VERIFY(!viewShowsNoteLabel());
+    // Undo is not navigation: the reading frame keeps its page.
+    QCOMPARE(view->documentViewport().pageNumber, 0);
+
+    QApplication::processEvents();
+    part.closeUrl(false);
 }
 
 void PartTest::testLiveLinkSurvivesNamedDestinationUpdate()

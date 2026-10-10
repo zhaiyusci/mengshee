@@ -183,8 +183,13 @@ public:
      */
     virtual bool canInsertBlankPage() const = 0;
 
-    /** Inserts a blank page in the open document without writing it. */
-    virtual bool insertBlankPageInDocument(int insertAfterPageNumber, double width, double height, Page **insertedPage, quint64 *editId, QString *errorText) = 0;
+    /**
+     * Inserts a blank page in the open document without writing it.
+     *
+     * @param heading Optional short ASCII line written at the top of the
+     *                inserted page as part of the same edit.
+     */
+    virtual bool insertBlankPageInDocument(int insertAfterPageNumber, double width, double height, Page **insertedPage, quint64 *editId, QString *errorText, const QString &heading = QString()) = 0;
 
     /**
      * Returns whether this generator can write a copy of the document with a
@@ -319,7 +324,8 @@ public:
                                     int destinationPageNumber,
                                     double destinationX,
                                     double destinationY,
-                                    QString *errorText) = 0;
+                                    QString *errorText,
+                                    PdfLinkAppearance appearance = {}) = 0;
 
     /** Changes one link in the open document to an external URL. */
     virtual bool editExternalLinkDestination(Page *sourcePage, double linkLeft, double linkTop, double linkRight, double linkBottom, const QString &url, QString *errorText) = 0;

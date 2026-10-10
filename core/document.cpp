@@ -1457,6 +1457,16 @@ void DocumentPrivate::sendGeneratorPixmapRequest()
             continue;
         }
 
+        // A PixmapRequest caches the Page it was queued for. If that page is no
+        // longer the one its page number refers to, the page was removed or
+        // replaced after the request was queued, and dispatching the request
+        // would touch a freed page.
+        if (r->pageNumber() < 0 || r->pageNumber() >= m_pagesVector.size() || m_pagesVector.at(r->pageNumber()) != r->page()) {
+            m_pixmapRequestsStack.pop_back();
+            delete r;
+            continue;
+        }
+
         QRect requestRect = r->isTile() ? r->normalizedRect().geometry(r->width(), r->height()) : QRect(0, 0, r->width(), r->height());
         TilesManager *tilesManager = r->d->tilesManager();
         const double normalizedArea = r->normalizedRect().width() * r->normalizedRect().height();
@@ -2626,6 +2636,23 @@ void DocumentPrivate::publishPageTopologyChange(Page *retiredPage)
                 undoReferencesValid = false;
             }
         }
+    }
+    // Waiting for the executing requests above runs an event loop, and a view
+    // can queue a new request for the page that is about to be retired while
+    // that loop runs. Such a request caches the retired Page, so drop it before
+    // the page is freed. This happens whenever a page is removed while a frame
+    // is showing it, such as undoing a note page.
+    {
+        m_pixmapRequestsMutex.lock();
+        for (auto it = m_pixmapRequestsStack.begin(); it != m_pixmapRequestsStack.end();) {
+            if (*it && (*it)->page() == retiredPage) {
+                delete *it;
+                it = m_pixmapRequestsStack.erase(it);
+            } else {
+                ++it;
+            }
+        }
+        m_pixmapRequestsMutex.unlock();
     }
     delete retiredPage;
     if (!undoReferencesValid) {
@@ -3942,13 +3969,19 @@ void Document::requestPixmaps(const QList<PixmapRequest *> &requests, PixmapRequ
     }
 
     // 1.B [PREPROCESS REQUESTS] tweak some values of the requests
+    // Requests for a page that no longer exists are collected out of 'requests'
+    // instead of being deleted in place: the list is walked again below, and a
+    // request that stayed in it after being deleted would be pushed on the stack
+    // as a freed object. A view can still ask for a page that a topology change
+    // removed, for instance a frame showing a page that is then detached.
+    QList<PixmapRequest *> validRequests;
+    validRequests.reserve(requests.size());
     for (PixmapRequest *request : requests) {
         // set the 'page field' (see PixmapRequest) and check if it is valid
         qCDebug(OkularCoreDebug).nospace() << "request observer=" << request->observer() << " " << request->width() << "x" << request->height() << "@" << request->pageNumber();
         if (d->m_pagesVector.value(request->pageNumber()) == nullptr) {
             // skip requests referencing an invalid page (must not happen)
             delete request;
-            request = nullptr;
             continue;
         }
 
@@ -3975,6 +4008,7 @@ void Document::requestPixmaps(const QList<PixmapRequest *> &requests, PixmapRequ
         if (!request->asynchronous()) {
             request->d->mPriority = 0;
         }
+        validRequests.append(request);
     }
 
     // 1.C [CANCEL REQUESTS] cancel those requests that are running and should be cancelled because of the new requests coming in
@@ -3982,7 +4016,7 @@ void Document::requestPixmaps(const QList<PixmapRequest *> &requests, PixmapRequ
         for (PixmapRequest *executingRequest : std::as_const(d->m_executingPixmapRequests)) {
             bool newRequestsContainExecutingRequestPage = false;
             bool requestCancelled = false;
-            for (PixmapRequest *newRequest : requests) {
+            for (PixmapRequest *newRequest : std::as_const(validRequests)) {
                 if (newRequest->pageNumber() == executingRequest->pageNumber() && requesterObserver == executingRequest->observer()) {
                     newRequestsContainExecutingRequestPage = true;
                 }
@@ -4004,7 +4038,7 @@ void Document::requestPixmaps(const QList<PixmapRequest *> &requests, PixmapRequ
     }
 
     // 2. [ADD TO STACK] add requests to stack
-    for (PixmapRequest *request : requests) {
+    for (PixmapRequest *request : std::as_const(validRequests)) {
         // add request to the 'stack' at the right place
         if (request->priority() == 0) {
             // add priority zero requests to the top of the stack
@@ -6409,7 +6443,7 @@ bool Document::canInsertBlankPage() const
     return pageInsertion && pageInsertion->canInsertBlankPage();
 }
 
-bool Document::insertBlankPage(int insertAfterPageNumber, double width, double height, quint64 *editId, QString *errorText)
+bool Document::insertBlankPage(int insertAfterPageNumber, double width, double height, quint64 *editId, QString *errorText, const QString &heading)
 {
     auto pageInsertion = dynamic_cast<PageInsertionInterface *>(d->m_generator);
     if (!pageInsertion || !editId || insertAfterPageNumber < -1 || insertAfterPageNumber >= d->m_pagesVector.size()) {
@@ -6417,7 +6451,7 @@ bool Document::insertBlankPage(int insertAfterPageNumber, double width, double h
     }
     d->clearAndWaitForRequests();
     Page *insertedPage = nullptr;
-    if (!pageInsertion->insertBlankPageInDocument(insertAfterPageNumber, width, height, &insertedPage, editId, errorText) || !insertedPage) {
+    if (!pageInsertion->insertBlankPageInDocument(insertAfterPageNumber, width, height, &insertedPage, editId, errorText, heading) || !insertedPage) {
         return false;
     }
     d->m_pagesVector.insert(insertAfterPageNumber + 1, insertedPage);
@@ -6897,7 +6931,8 @@ bool Document::createInternalLink(int sourcePageNumber,
                                   int destinationPageNumber,
                                   double destinationX,
                                   double destinationY,
-                                  QString *errorText)
+                                  QString *errorText,
+                                  PdfLinkAppearance appearance)
 {
     auto editor = dynamic_cast<PdfLinkEditingInterface *>(d->m_generator);
     Page *sourcePage = d->m_pagesVector.value(sourcePageNumber - 1, nullptr);
@@ -6907,7 +6942,7 @@ bool Document::createInternalLink(int sourcePageNumber,
         }
         return false;
     }
-    const bool changed = editor->createInternalLink(sourcePage, linkLeft, linkTop, linkRight, linkBottom, destinationName, destinationPageNumber, destinationX, destinationY, errorText);
+    const bool changed = editor->createInternalLink(sourcePage, linkLeft, linkTop, linkRight, linkBottom, destinationName, destinationPageNumber, destinationX, destinationY, errorText, appearance);
     if (changed) {
         d->notifyAnnotationChanges(sourcePageNumber - 1);
     }

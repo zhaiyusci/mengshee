@@ -135,6 +135,7 @@ class OKULARPART_EXPORT Part : public KParts::ReadWritePart, public Okular::Docu
     friend class LivePageMoveCommand;
     friend class LivePageAttachmentCommand;
     friend class LivePageRotationCommand;
+    friend class LiveNotePageCommand;
     friend class LiveNamedDestinationCommand;
     friend class LiveNamedDestinationRenameCommand;
 
@@ -346,6 +347,10 @@ private:
     bool applyPageEditBackingFile(const QString &fileName, int pageNumber, bool forcePageTopologyChanged = false, bool preserveViewport = false);
     bool applyLivePageMove(int sourcePage, int destinationPage);
     bool applyLivePageAttachment(bool attach, int insertAfterPage, quint64 editId);
+    // Attaches or detaches a note page without moving the reader. The page-level
+    // helper follows the affected page, which is right for page editing and
+    // wrong for a note the reader is looking at on an earlier page.
+    bool applyLiveNotePageAttachment(bool attach, int insertAfterPage, quint64 editId);
     bool applyLivePageRotation(int pageNumber, int rotationDegrees);
     bool applyLiveNamedDestination(const QString &name, const std::optional<DocumentViewport> &destination, QString *errorText = nullptr);
     bool canUsePageLevelEditing() const;
@@ -357,6 +362,9 @@ private:
     void insertPageWithDialog(int pageNumber);
     void insertPageFromTemplateWithDialog(int pageNumber);
     void insertBlankPage(int insertAfterPageNumber, const QSizeF &pageSize);
+    // Size of a blank page that should match the given 0-based page, in PDF
+    // points. Falls back to A4 when the page size is unavailable.
+    QSizeF blankPageSizeForReference(int referencePage) const;
     void insertPdfPage(int insertAfterPageNumber, const QString &insertedFileName, int pageToInsert);
     void insertBlankPageAfterPage(int pageNumber);
     void duplicatePage(int pageNumber);
@@ -374,6 +382,13 @@ private:
     bool commitReadingViewBatch(const QList<QPair<int, QList<Okular::ReadingView>>> &batch, const QString &undoText, QString *error);
     void addNamedDestination(int pageNumber, const Okular::NormalizedPoint &position);
     void startBatchNamedDestinationCreation();
+    // Appends a blank note page, registers its named destination, writes the
+    // note link at the clicked position and opens the new page in an
+    // auxiliary frame. sourceView is the frame the click came from.
+    void addNotePage(PageView *sourceView, int pageNumber, const Okular::NormalizedPoint &position);
+    // mnote-<source page>-<sequence>. The sequence is the next unused number
+    // for that source page, so names stay readable and stable.
+    QString nextNotePageDestinationName(int sourcePageNumberOneBased) const;
     bool addNamedDestinationWithName(int pageNumber, const Okular::NormalizedPoint &position, const QString &name, bool replaceExistingWithoutPrompt);
     void renameNamedDestination(const QString &oldName);
     void deleteNamedDestination(const QString &name);
@@ -562,6 +577,7 @@ private:
     QAction *m_addNamedDestination = nullptr;
     QAction *m_addNamedDestinationsFromTemplate = nullptr;
     QAction *m_createLink = nullptr;
+    QAction *m_addNotePage = nullptr;
     QAction *m_insertPage = nullptr;
     QAction *m_setPageTemplate = nullptr;
     QAction *m_insertPageFromTemplate = nullptr;

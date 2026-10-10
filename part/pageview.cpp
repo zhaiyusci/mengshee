@@ -436,6 +436,8 @@ public:
     bool creatingNamedDestination = false;
     bool creatingNamedDestinationsContinuously = false;
     bool namedDestinationPlacementPress = false;
+    bool creatingNotePage = false;
+    bool notePagePlacementPress = false;
     bool creatingInternalLink = false;
     bool internalLinkCreationDragging = false;
     int internalLinkCreationPage = -1;
@@ -1216,8 +1218,15 @@ void PageView::setCrossReferenceModeEnabled(bool enabled)
         d->selectedPdfLinkRect = QRectF();
         d->pdfLinkDragHandle = PdfLinkHandle::None;
         d->pdfLinkDragging = false;
+        const bool cancelledNotePageCreation = d->creatingNotePage;
+        d->creatingNotePage = false;
+        d->notePagePlacementPress = false;
         updateCursor();
         if (cancelledNamedDestinationCreation) Q_EMIT namedDestinationCreationCancelled();
+        if (cancelledNotePageCreation) {
+            Q_EMIT notePageCreationCancelled();
+            Q_EMIT notePageCreationChanged(false);
+        }
     }
     if (enabled && !d->namedDestinationsLoaded) loadNamedDestinations();
     viewport()->update();
@@ -1227,6 +1236,7 @@ void PageView::setCrossReferenceModeEnabled(bool enabled)
 void PageView::startNamedDestinationCreation(bool continuous)
 {
     cancelReadingViewCreation();
+    cancelNotePageCreation();
     if (!d->showNamedDestinations || !d->document->canEditPdfLinks()) {
         return;
     }
@@ -1257,9 +1267,52 @@ void PageView::cancelNamedDestinationCreation()
     Q_EMIT namedDestinationCreationCancelled();
 }
 
+void PageView::startNotePageCreation()
+{
+    cancelReadingViewCreation();
+    cancelNamedDestinationCreation();
+    if (!d->document->canEditPdfLinks() || !d->document->canInsertBlankPage()) {
+        return;
+    }
+    d->creatingInternalLink = false;
+    d->internalLinkCreationDragging = false;
+    d->internalLinkCreationPage = -1;
+    d->internalLinkCreationRect = QRect();
+    d->selectedPdfLinkPage = -1;
+    d->selectedPdfLinkOriginalRect = QRectF();
+    d->selectedPdfLinkRect = QRectF();
+    d->pdfLinkDragHandle = PdfLinkHandle::None;
+    d->pdfLinkDragging = false;
+    d->creatingNotePage = true;
+    d->notePagePlacementPress = false;
+    d->scroller->stop();
+    setCursor(Qt::CrossCursor);
+    displayMessage(i18n("Click where the note link should be placed. A blank note page is appended and opened in an auxiliary frame. Press Esc to cancel."));
+    Q_EMIT notePageCreationChanged(true);
+}
+
+void PageView::cancelNotePageCreation()
+{
+    if (!d->creatingNotePage) {
+        return;
+    }
+    d->creatingNotePage = false;
+    d->notePagePlacementPress = false;
+    viewport()->update();
+    updateCursor();
+    Q_EMIT notePageCreationCancelled();
+    Q_EMIT notePageCreationChanged(false);
+}
+
+bool PageView::isNotePageCreationActive() const
+{
+    return d->creatingNotePage;
+}
+
 void PageView::startLinkCreation()
 {
     cancelReadingViewCreation();
+    cancelNotePageCreation();
     if (!d->showNamedDestinations || !d->document->canEditPdfLinks()) {
         return;
     }
@@ -1422,6 +1475,7 @@ void PageView::startReadingViewCreation()
     }
     cancelReadingViewCreation();
     cancelNamedDestinationCreation();
+    cancelNotePageCreation();
     stopOcrTextEditing();
     d->creatingInternalLink = false;
     d->internalLinkCreationDragging = false;
@@ -1549,7 +1603,7 @@ bool PageView::readingViewMousePress(QMouseEvent *event)
     PageViewItem *item = pickItemOnPoint(point.x(), point.y());
     d->readingViewCreatingGesture = false;
     // Outside the drawing tool, preserve normal tool/annotation priority.
-    if (!d->creatingReadingView && (d->creatingNamedDestination || d->creatingInternalLink || (d->annotator && d->annotator->active()) || d->mouseAnnotation->isModified()
+    if (!d->creatingReadingView && (d->creatingNamedDestination || d->creatingNotePage || d->creatingInternalLink || (d->annotator && d->annotator->active()) || d->mouseAnnotation->isModified()
         || !namedDestinationsAtGlobalPos(event->globalPosition().toPoint()).isEmpty())) {
         return false;
     }
@@ -1661,7 +1715,7 @@ bool PageView::readingViewMouseMove(QMouseEvent *event)
         event->accept();
         return true;
     }
-    if (event->buttons() == Qt::NoButton && d->readingViewEditingEnabled && d->document->canEditReadingViews() && !d->creatingNamedDestination && !d->creatingInternalLink
+    if (event->buttons() == Qt::NoButton && d->readingViewEditingEnabled && d->document->canEditReadingViews() && !d->creatingNamedDestination && !d->creatingNotePage && !d->creatingInternalLink
         && !(d->annotator && d->annotator->active()) && namedDestinationsAtGlobalPos(event->globalPosition().toPoint()).isEmpty()) {
         int page = -1;
         const auto ids = readingViewsAtGlobalPos(event->globalPosition().toPoint(), &page);
@@ -2643,6 +2697,8 @@ void PageView::notifySetup(const QList<Okular::Page *> &pageSet, int setupFlags)
         d->namedDestinationsLoaded = false;
         d->creatingNamedDestination = false;
         d->namedDestinationPlacementPress = false;
+        d->creatingNotePage = false;
+        d->notePagePlacementPress = false;
         d->creatingInternalLink = false;
         d->internalLinkCreationDragging = false;
         d->internalLinkCreationPage = -1;
@@ -4028,6 +4084,17 @@ void PageView::keyPressEvent(QKeyEvent *e)
         return;
     }
 
+    if (e->key() == Qt::Key_Escape && d->creatingNotePage) {
+        d->creatingNotePage = false;
+        d->notePagePlacementPress = false;
+        viewport()->update();
+        updateCursor();
+        Q_EMIT notePageCreationCancelled();
+        Q_EMIT notePageCreationChanged(false);
+        e->accept();
+        return;
+    }
+
     if (e->key() == Qt::Key_Escape && d->creatingInternalLink) {
         d->creatingInternalLink = false;
         d->internalLinkCreationDragging = false;
@@ -4717,6 +4784,38 @@ void PageView::mousePressEvent(QMouseEvent *e)
         }
     }
 
+    if (d->creatingNotePage) {
+        if (e->button() == Qt::RightButton) {
+            d->creatingNotePage = false;
+            d->notePagePlacementPress = false;
+            viewport()->update();
+            updateCursor();
+            Q_EMIT notePageCreationCancelled();
+            Q_EMIT notePageCreationChanged(false);
+            e->accept();
+            return;
+        }
+        if (e->button() == Qt::LeftButton) {
+            PageViewItem *pageItem = pickItemOnPoint(eventPos.x(), eventPos.y());
+            if (pageItem) {
+                const int pageNumber = pageItem->pageNumber();
+                const Okular::NormalizedPoint position(pageItem->absToPageX(eventPos.x()), pageItem->absToPageY(eventPos.y()));
+                d->creatingNotePage = false;
+                // The complete click belongs to the placement tool. In
+                // particular, do not let mouseReleaseEvent activate a PDF link
+                // that happens to lie below the new note link.
+                d->notePagePlacementPress = true;
+                d->mousePressLinkObject = nullptr;
+                viewport()->update();
+                updateCursor();
+                e->accept();
+                Q_EMIT notePageCreationChanged(false);
+                Q_EMIT createNotePageRequested(pageNumber, position);
+                return;
+            }
+        }
+    }
+
     if (d->creatingInternalLink) {
         if (e->button() == Qt::RightButton) {
             d->creatingInternalLink = false;
@@ -5135,6 +5234,13 @@ void PageView::mouseReleaseEvent(QMouseEvent *e)
 
     if (leftButton && d->namedDestinationPlacementPress) {
         d->namedDestinationPlacementPress = false;
+        d->mousePressLinkObject = nullptr;
+        e->accept();
+        return;
+    }
+
+    if (leftButton && d->notePagePlacementPress) {
+        d->notePagePlacementPress = false;
         d->mousePressLinkObject = nullptr;
         e->accept();
         return;
@@ -7103,7 +7209,7 @@ void PageView::updateCursor(const QPoint p)
         setCursor(Qt::PointingHandCursor);
         return;
     }
-    if (d->creatingReadingView || d->creatingNamedDestination || d->creatingInternalLink) {
+    if (d->creatingReadingView || d->creatingNamedDestination || d->creatingNotePage || d->creatingInternalLink) {
         setCursor(Qt::CrossCursor);
         return;
     }

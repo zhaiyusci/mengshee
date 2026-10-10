@@ -200,6 +200,26 @@ private:
  * For a better understanding of hierarchies @see README.internals.png
  * @see DocumentObserver, Page
  */
+/**
+ * Visible appearance requested for a newly created link.
+ *
+ * A PDF link is normally invisible: it has no appearance stream and a
+ * zero-width border, so it is only discoverable through the pointing-hand
+ * cursor or an editor's link indicator. Requesting a label writes a
+ * self-contained `/AP` normal appearance stream, which readers that draw
+ * annotation appearances can display.
+ */
+struct PdfLinkAppearance {
+    enum Kind {
+        None,       ///< Invisible link: only the hotspot.
+        NoteLabel,  ///< A short text label, for a link that points at a note page.
+    };
+
+    Kind kind = None;
+    /** Visible text for @ref NoteLabel. ASCII 32..126, at most 128 characters. */
+    QString label;
+};
+
 class OKULARCORE_EXPORT Document : public QObject
 {
     Q_OBJECT
@@ -1074,8 +1094,13 @@ public:
      */
     bool canInsertBlankPage() const;
 
-    /** Inserts a blank page in the open document and returns its undo token. */
-    bool insertBlankPage(int insertAfterPageNumber, double width, double height, quint64 *editId, QString *errorText);
+    /**
+     * Inserts a blank page in the open document and returns its undo token.
+     *
+     * @param heading Optional short ASCII line written at the top of the new
+     *                page, as part of the same undo step.
+     */
+    bool insertBlankPage(int insertAfterPageNumber, double width, double height, quint64 *editId, QString *errorText, const QString &heading = QString());
 
     /**
      * Returns whether the current document backend can write a copy with a page
@@ -1185,7 +1210,11 @@ public:
                                      double destinationY,
                                      QString *errorText);
 
-    /** Adds one internal link to the open document. Page numbers are 1-based. */
+    /**
+     * Adds one internal link to the open document. Page numbers are 1-based.
+     *
+     * @param appearance Optional visible mark written into the link /AP.
+     */
     bool createInternalLink(int sourcePageNumber,
                             double linkLeft,
                             double linkTop,
@@ -1195,7 +1224,8 @@ public:
                             int destinationPageNumber,
                             double destinationX,
                             double destinationY,
-                            QString *errorText);
+                            QString *errorText,
+                            PdfLinkAppearance appearance = {});
 
     /** Changes one link in the open document to an external URL. */
     bool editExternalLinkDestination(int sourcePageNumber, double linkLeft, double linkTop, double linkRight, double linkBottom, const QString &url, QString *errorText);

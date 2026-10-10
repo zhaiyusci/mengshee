@@ -16,6 +16,8 @@
 #include <exception>
 #include <limits>
 #include <memory>
+#include <sstream>
+#include <string>
 #include <vector>
 
 #include "generator_pdf.h"
@@ -24,6 +26,17 @@
 
 #include "PdfPageSequenceEditor.h"
 #include "PdfAnnotationFlattener.h"
+#include "core/numberedcalloutgeometry_p.h"
+
+// Poppler Core, for the link appearance the page editor does not write itself.
+#include "Annot.h"
+#include "Array.h"
+#include "Dict.h"
+#include "GfxState.h"
+#include "Object.h"
+#include "Page.h"
+#include "Stream.h"
+#include "XRef.h"
 
 // qt/kde includes
 #include <QCheckBox>
@@ -3161,7 +3174,13 @@ static std::string pdfPagesFileName(const QString &fileName)
     return QFile::encodeName(QDir::toNativeSeparators(fileName)).toStdString();
 }
 
-bool PDFGenerator::insertBlankPageInDocument(int insertAfterPageNumber, double width, double height, Okular::Page **insertedPage, quint64 *editId, QString *errorText)
+namespace {
+// Defined with the other generated-content helpers further down, next to the
+// link label that shares its font handling.
+bool writePageHeading(PDFDoc *document, int nativePageNumber, const QString &heading, std::string *message);
+}
+
+bool PDFGenerator::insertBlankPageInDocument(int insertAfterPageNumber, double width, double height, Okular::Page **insertedPage, quint64 *editId, QString *errorText, const QString &heading)
 {
     if (!insertedPage || !editId) {
         return false;
@@ -3173,6 +3192,20 @@ bool PDFGenerator::insertBlankPageInDocument(int insertAfterPageNumber, double w
         return false;
     }
     resetPageTopologyCaches();
+    if (!heading.isEmpty()) {
+        // The heading is page content, not an annotation, so it is written as
+        // part of the same edit. A failure here must not leave a half-made page.
+        std::string headingMessage;
+        const int nativePageNumber = nativePageForLogicalPage(insertAfterPageNumber + 1) + 1;
+        if (!writePageHeading(document, nativePageNumber, heading, &headingMessage)) {
+            if (errorText) {
+                *errorText = QString::fromStdString(headingMessage);
+            }
+            runPdfPagesOperation([&] { return PdfPageSequenceEditor::detachPage(document, insertAfterPageNumber + 2, state); }, errorText);
+            resetPageTopologyCaches();
+            return false;
+        }
+    }
     *insertedPage = createPageModel(insertAfterPageNumber + 1);
     *editId = rememberLivePageState(state);
     return true;
@@ -3831,6 +3864,349 @@ bool PDFGenerator::editInternalLinkDestination(Okular::Page *sourcePage,
     return refreshPdfLinkObjects(sourcePage, nativeSourcePageNumber - 1, errorText);
 }
 
+namespace {
+
+// A link is identified by its rectangle. The page editor uses the same
+// tolerance when it edits or deletes a link, so a created link is matched the
+// same way here.
+constexpr double noteLinkMatchTolerance = 0.04;
+
+// Mirrors the link extractor's conversion: an annotation rectangle in user
+// space becomes fractions of the rotated crop box with a top-left origin, which
+// is the coordinate system link geometry is expressed in everywhere else.
+bool normalizedLinkRectangle(Page *page, const PDFRectangle &rect, std::array<double, 4> *result)
+{
+    if (!page || !result) {
+        return false;
+    }
+    GfxState state(72.0, 72.0, page->getCropBox(), page->getRotate(), true);
+    double firstX = 0.0;
+    double firstY = 0.0;
+    double secondX = 0.0;
+    double secondY = 0.0;
+    state.transform(rect.x1, rect.y1, &firstX, &firstY);
+    state.transform(rect.x2, rect.y2, &secondX, &secondY);
+
+    const bool swapped = page->getRotate() == 90 || page->getRotate() == 270;
+    const double width = swapped ? page->getCropHeight() : page->getCropWidth();
+    const double height = swapped ? page->getCropWidth() : page->getCropHeight();
+    if (width <= 0.0 || height <= 0.0) {
+        return false;
+    }
+
+    (*result)[0] = std::min(firstX, secondX) / width;
+    (*result)[1] = std::min(firstY, secondY) / height;
+    (*result)[2] = std::max(firstX, secondX) / width;
+    (*result)[3] = std::max(firstY, secondY) / height;
+    return true;
+}
+
+double rectangleDistance(const std::array<double, 4> &a, const std::array<double, 4> &b)
+{
+    double distance = 0.0;
+    for (std::size_t i = 0; i < a.size(); ++i) {
+        distance = std::max(distance, std::abs(a[i] - b[i]));
+    }
+    return distance;
+}
+
+// A memory stream that owns its buffer. Generated appearance and content
+// streams have to reach their destination unregistered: Annot::setNewAppearance()
+// registers the appearance itself, and XRef::addStreamObject() would register it
+// first and leave an unreferenced duplicate of the same bytes in the saved file.
+// Poppler's AutoFreeMemStream would fit, but it is not exported, so the buffer is
+// shared with every copy and substream instead. These bytes carry no filter, so
+// PDFDoc's filter-removal handling for internal streams stays out of the way.
+class GeneratedStream final : public MemStream
+{
+public:
+    using Storage = std::shared_ptr<const std::vector<char>>;
+
+    GeneratedStream(Storage bytes, Goffset start, Goffset count, Object &&dictionary)
+        : MemStream(bytes->data(), start, count, std::move(dictionary))
+        , m_storage(std::move(bytes))
+    {
+    }
+
+    std::unique_ptr<BaseStream> copy() override
+    {
+        return std::make_unique<GeneratedStream>(m_storage, getStart(), getLength(), dict.copy());
+    }
+
+    std::unique_ptr<Stream> makeSubStream(Goffset start, bool limited, Goffset count, Object &&dictionary) override
+    {
+        const Goffset end = getStart() + getLength();
+        start = std::clamp(start, getStart(), end);
+        const Goffset available = end - start;
+        count = limited ? std::clamp(count, Goffset(0), available) : available;
+        return std::make_unique<GeneratedStream>(m_storage, start, count, std::move(dictionary));
+    }
+
+    void moveStart(Goffset delta) override
+    {
+        MemStream::moveStart(std::clamp(delta, -getStart(), getLength()));
+    }
+
+private:
+    Storage m_storage;
+};
+
+// Wraps generated bytes in an unregistered stream object. Returns a null object
+// for empty content, which callers treat as a failure.
+Object generatedStream(std::string &&content, Object &&dictionary)
+{
+    if (content.empty()) {
+        return Object::null();
+    }
+    auto bytes = std::make_shared<const std::vector<char>>(content.begin(), content.end());
+    dictionary.dictSet("Length", Object(static_cast<int>(bytes->size())));
+    const Goffset length = static_cast<Goffset>(bytes->size());
+    return Object(std::make_unique<GeneratedStream>(std::move(bytes), 0, length, std::move(dictionary)));
+}
+
+// Escapes an ASCII label for a PDF literal string. Callers reject anything
+// outside 32..126, so the escapes below are the complete set.
+std::string escapedLiteral(const QString &text)
+{
+    std::string literal;
+    literal.reserve(text.size());
+    for (QChar c : text) {
+        const char character = static_cast<char>(c.unicode());
+        if (character == '\\' || character == '(' || character == ')') {
+            literal.push_back('\\');
+        }
+        literal.push_back(character);
+    }
+    return literal;
+}
+
+// Standard Base14 font, so the saved file embeds nothing and needs no font
+// program at viewing time.
+Ref addBase14Font(XRef *xref, const char *baseFont)
+{
+    auto *font = new Dict(xref);
+    font->set("Type", Object(objName, "Font"));
+    font->set("Subtype", Object(objName, "Type1"));
+    font->set("BaseFont", Object(objName, baseFont));
+    font->set("Encoding", Object(objName, "WinAnsiEncoding"));
+    return xref->addIndirectObject(Object(font));
+}
+
+// Shortest decimal form that still resolves well below any page coordinate.
+std::string number(double value)
+{
+    std::string text = std::to_string(value);
+    if (const std::size_t dot = text.find('.'); dot != std::string::npos && text.size() - dot > 6) {
+        text.resize(dot + 6);
+    }
+    return text;
+}
+
+// Builds the label appearance for a created link. The form bounding box is the
+// annotation rectangle itself, so the text is drawn at its natural size and
+// Gfx::drawAnnot maps it without scaling. The returned object is not registered
+// yet; Annot::setNewAppearance() adds it.
+Object makeLinkLabelStream(XRef *xref, const QString &label, double boxWidth, double boxHeight)
+{
+    const double fontSize = Okular::NumberedCalloutGeometry::NoteLabel::markFontSizePt;
+    const double padding = Okular::NumberedCalloutGeometry::NoteLabel::markPaddingPt;
+    // Helvetica's descent is 212/1000 em; the baseline sits on top of it.
+    const double baseline = padding + fontSize * 0.212;
+
+    std::ostringstream content;
+    content << "q\n";
+    // A pale note sheet behind the text, so the label reads as a mark and not as
+    // page content the author wrote.
+    content << "1 0.95 0.70 rg\n";
+    content << "0 0 " << number(boxWidth) << ' ' << number(boxHeight) << " re f\n";
+    content << "0.55 0.42 0.10 RG\n0.5 w\n";
+    content << "0.25 0.25 " << number(std::max(0.0, boxWidth - 0.5)) << ' ' << number(std::max(0.0, boxHeight - 0.5)) << " re S\n";
+    content << "BT\n";
+    content << "/F1 " << number(fontSize) << " Tf\n";
+    content << "0 g\n";
+    content << "1 0 0 1 " << number(padding) << ' ' << number(baseline) << " Tm\n";
+    content << '(' << escapedLiteral(label) << ") Tj\n";
+    content << "ET\nQ\n";
+
+    const Ref fontRef = addBase14Font(xref, "Helvetica-Bold");
+    auto *fonts = new Dict(xref);
+    fonts->set("F1", Object(fontRef));
+    auto *resources = new Dict(xref);
+    resources->set("Font", Object(fonts));
+
+    auto *dictionary = new Dict(xref);
+    dictionary->set("Type", Object(objName, "XObject"));
+    dictionary->set("Subtype", Object(objName, "Form"));
+    dictionary->set("FormType", Object(1));
+    auto *bbox = new Array(xref);
+    bbox->add(Object(0.0));
+    bbox->add(Object(0.0));
+    bbox->add(Object(std::max(1.0, boxWidth)));
+    bbox->add(Object(std::max(1.0, boxHeight)));
+    dictionary->set("BBox", Object(bbox));
+    dictionary->set("Resources", Object(resources));
+    return generatedStream(content.str(), Object(dictionary));
+}
+
+// Gives a link that was just created at the given normalized rectangle the
+// requested visible appearance. The page editor writes links without an
+// appearance, so the label policy lives here rather than in the backend fork.
+// Annot::setNewAppearance() writes the dictionary and refreshes the cached
+// appearance at once, so the label is drawn in the current session instead of
+// only after reopening the document.
+bool applyLinkAppearanceToCreatedLink(PDFDoc *document, int pageNumber, double linkLeft, double linkTop, double linkRight, double linkBottom, const Okular::PdfLinkAppearance &appearance, std::string *message)
+{
+    if (message) {
+        message->clear();
+    }
+    if (appearance.kind == Okular::PdfLinkAppearance::None) {
+        return true;
+    }
+    if (appearance.label.isEmpty() || appearance.label.size() > 128) {
+        if (message) {
+            *message = "The link appearance label is empty or too long.";
+        }
+        return false;
+    }
+    Page *page = document ? document->getPage(pageNumber) : nullptr;
+    if (!page) {
+        if (message) {
+            *message = "Could not read the link page.";
+        }
+        return false;
+    }
+
+    const std::array<double, 4> requested { linkLeft, linkTop, linkRight, linkBottom };
+    std::shared_ptr<Annot> selectedLink;
+    double selectedDistance = std::numeric_limits<double>::max();
+    for (const std::shared_ptr<Annot> &annotation : page->getAnnots()->getAnnots()) {
+        if (!annotation || annotation->getType() != Annot::typeLink) {
+            continue;
+        }
+        std::array<double, 4> candidate {};
+        if (!normalizedLinkRectangle(page, annotation->getRect(), &candidate)) {
+            continue;
+        }
+        const double distance = rectangleDistance(requested, candidate);
+        if (distance < selectedDistance) {
+            selectedDistance = distance;
+            selectedLink = annotation;
+        }
+    }
+    if (!selectedLink || selectedDistance > noteLinkMatchTolerance) {
+        if (message) {
+            *message = "Could not find the created link.";
+        }
+        return false;
+    }
+
+    // The label box is the annotation rectangle, so the appearance is 1:1 with
+    // the hotspot the caller chose.
+    const PDFRectangle &rect = selectedLink->getRect();
+    const double boxWidth = std::abs(rect.x2 - rect.x1);
+    const double boxHeight = std::abs(rect.y2 - rect.y1);
+    Object appearanceStream = makeLinkLabelStream(document->getXRef(), appearance.label, boxWidth, boxHeight);
+    if (appearanceStream.isNull()) {
+        if (message) {
+            *message = "Could not build the link appearance.";
+        }
+        return false;
+    }
+    selectedLink->setNewAppearance(std::move(appearanceStream));
+    return true;
+}
+
+// Writes one short ASCII line at the top of an existing page. This is page
+// content, not an annotation: it survives annotation removal, prints, and needs
+// no viewer support beyond the standard 14 fonts.
+bool writePageHeading(PDFDoc *document, int nativePageNumber, const QString &heading, std::string *message)
+{
+    if (heading.isEmpty()) {
+        return true;
+    }
+    if (document == nullptr) {
+        if (message) {
+            *message = "The PDF document is not open.";
+        }
+        return false;
+    }
+    Page *page = document->getPage(nativePageNumber);
+    if (!page) {
+        if (message) {
+            *message = "Could not read the note page.";
+        }
+        return false;
+    }
+    for (QChar c : heading) {
+        if (c.unicode() < 32 || c.unicode() > 126) {
+            if (message) {
+                *message = "The note page heading must be plain ASCII.";
+            }
+            return false;
+        }
+    }
+
+    const double fontSize = Okular::NumberedCalloutGeometry::NoteLabel::headingFontSizePt;
+    const double margin = Okular::NumberedCalloutGeometry::NoteLabel::headingMarginPt;
+    // Blank pages are created unrotated, so the crop box is the displayed box.
+    const PDFRectangle *cropBox = page->getCropBox();
+    const double top = cropBox ? cropBox->y2 : 0.0;
+    const double left = cropBox ? cropBox->x1 : 0.0;
+    const double baseline = top - margin - fontSize;
+
+    std::ostringstream content;
+    content << "q\nBT\n/F1 " << number(fontSize) << " Tf\n0 g\n";
+    content << "1 0 0 1 " << number(left + margin) << ' ' << number(baseline) << " Tm\n";
+    content << '(' << escapedLiteral(heading) << ") Tj\nET\nQ\n";
+
+    XRef *xref = document->getXRef();
+    const Ref fontRef = addBase14Font(xref, "Helvetica");
+    Object headingStream = generatedStream(content.str(), Object(new Dict(xref)));
+    if (headingStream.isNull() || !headingStream.isStream()) {
+        if (message) {
+            *message = "Could not build the note page heading.";
+        }
+        return false;
+    }
+    const Ref headingRef = xref->addIndirectObject(headingStream);
+
+    Object pageObject = page->getPageObj().copy();
+    if (!pageObject.isDict()) {
+        if (message) {
+            *message = "The note page is not a dictionary.";
+        }
+        return false;
+    }
+
+    auto *contents = new Array(xref);
+    const Object &oldContents = pageObject.dictLookupNF("Contents");
+    if (oldContents.isArray()) {
+        const Array *oldArray = oldContents.getArray();
+        for (int i = 0; i < oldArray->getLength(); ++i) {
+            contents->add(oldArray->getNF(i).copy());
+        }
+    } else if (!oldContents.isNull()) {
+        contents->add(oldContents.copy());
+    }
+    contents->add(Object(headingRef));
+    pageObject.dictSet("Contents", Object(contents));
+
+    std::unique_ptr<Dict> resources(page->getResourceDictCopy(xref));
+    if (!resources) {
+        resources = std::make_unique<Dict>(xref);
+    }
+    Object fontResources = resources->lookup("Font");
+    std::unique_ptr<Dict> fonts(fontResources.isDict() ? fontResources.getDict()->copy(xref) : new Dict(xref));
+    fonts->set("F1", Object(fontRef));
+    resources->set("Font", Object(fonts.release()));
+    pageObject.dictSet("Resources", Object(resources.release()));
+
+    xref->setModifiedObject(&pageObject, page->getRef());
+    return true;
+}
+
+}
+
 bool PDFGenerator::createInternalLink(Okular::Page *sourcePage,
                                       double linkLeft,
                                       double linkTop,
@@ -3840,7 +4216,8 @@ bool PDFGenerator::createInternalLink(Okular::Page *sourcePage,
                                       int destinationPageNumber,
                                       double destinationX,
                                       double destinationY,
-                                      QString *errorText)
+                                      QString *errorText,
+                                      Okular::PdfLinkAppearance appearance)
 {
     QMutexLocker locker(userMutex());
     PDFDoc *document = popplerCoreDocument(pdfdoc.get());
@@ -3854,6 +4231,17 @@ bool PDFGenerator::createInternalLink(Okular::Page *sourcePage,
             },
             errorText)) {
         return false;
+    }
+    if (appearance.kind != Okular::PdfLinkAppearance::None) {
+        // The page editor writes links without an appearance, so a visible label
+        // is added afterwards from here, using Poppler Core directly.
+        std::string labelMessage;
+        if (!applyLinkAppearanceToCreatedLink(document, nativeSourcePageNumber, linkLeft, linkTop, linkRight, linkBottom, appearance, &labelMessage)) {
+            if (errorText) {
+                *errorText = QString::fromStdString(labelMessage);
+            }
+            return false;
+        }
     }
     return refreshPdfLinkObjects(sourcePage, nativeSourcePageNumber - 1, errorText);
 }

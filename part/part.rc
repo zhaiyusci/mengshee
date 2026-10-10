@@ -196,6 +196,7 @@
   <Action name="annotation_add_latex_inline_note"/>
   <Action name="annotation_add_latex_callout"/>
   <Action name="annotation_add_template_note"/>
+  <Action name="annotation_add_note_page"/>
   <Separator/>
   <Action name="annotation_settings_width"/>
   <Action name="annotation_settings_color"/>

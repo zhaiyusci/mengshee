@@ -15,7 +15,7 @@ A mode selector is available at the far right of the top toolbar and in the View
 
 Modes organize tools and editing indicators; they do not change the file format or grant permissions:
 
-- Standard annotation tools remain available in every mode, without additional annotation restrictions.
+- Standard annotation tools remain available in every mode, without additional annotation restrictions. This includes **Add Note Page** on the annotation toolbar, which appends a blank page at the end of the document, heads it with the note it holds, labels the clicked position with a `see note N.` link, and opens the new page in an auxiliary frame. See [Note pages](note-pages.md).
 - Selecting a mode does not automatically activate a mouse tool for drawing regions, placing destinations, or editing OCR text. Activate the corresponding tool explicitly.
 - Leaving Cross-References, OCR, or Reading Views cancels that mode's unfinished gestures and hides its editing indicators without deleting committed data. Existing edits remain available for undo and redo.
 - Proofread groups the commands for creating numbered annotations and reordering them throughout the document. Existing numbered annotations remain editable in other modes, and switching modes does not automatically select an annotation tool.

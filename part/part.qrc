@@ -10,5 +10,6 @@
         <file>data/icons/reading-view-order.svg</file>
         <file>data/icons/reading-view-generate.svg</file>
         <file>data/icons/reading-view-apply.svg</file>
+        <file>data/icons/annotation-note-page.svg</file>
     </qresource>
 </RCC>

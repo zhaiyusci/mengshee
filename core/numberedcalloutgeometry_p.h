@@ -24,6 +24,60 @@ struct BadgeLabel {
     QPainterPath outline;
 };
 
+// Standard Helvetica-Bold WinAnsi advances, ASCII 32..126 (1/1000 em).
+inline constexpr int helveticaBoldAdvances[] = {
+    278,333,474,556,556,889,722,238,333,333,389,584,278,333,278,278,
+    556,556,556,556,556,556,556,556,556,556,333,333,584,584,584,611,
+    975,722,722,722,722,667,611,778,722,278,556,722,611,833,722,778,
+    667,778,722,667,611,722,667,944,667,667,611,333,278,333,584,556,
+    333,556,611,556,611,556,333,611,611,278,278,556,278,889,611,611,
+    611,611,389,556,333,611,556,778,556,556,500,389,280,389,584
+};
+static_assert(std::size(helveticaBoldAdvances) == 95);
+
+// Advance width of an ASCII label in the standard Helvetica-Bold face at an
+// arbitrary size, in PDF points. Every consumer that has to size a label before
+// its appearance exists shares this, so the box and the drawn text agree.
+// @p text must contain only characters 32..126.
+inline double asciiHelveticaBoldWidth(const QString &text, double fontSizePt)
+{
+    int advance = 0;
+    for (QChar c : text) advance += helveticaBoldAdvances[c.unicode() - 32];
+    return advance * fontSizePt / 1000.0;
+}
+
+// A short, self-describing "note" label. It is used both for the link that
+// points at a note page and for the heading written on the note page itself, so
+// the wording and the face live here instead of in either caller.
+namespace NoteLabel
+{
+inline constexpr double markFontSizePt = 7.0;
+inline constexpr double markPaddingPt = 2.5;
+inline constexpr double headingFontSizePt = 12.0;
+inline constexpr double headingMarginPt = 36.0;
+
+/** Visible text of the link that points at note @p number. */
+inline QString markText(int number)
+{
+    return QStringLiteral("see note %1.").arg(number);
+}
+
+/** Visible heading written at the top of note page @p number. */
+inline QString pageHeading(int number)
+{
+    return QStringLiteral("note %1").arg(number);
+}
+
+/**
+ * Size of the link's label box in PDF points. The mark is a link, so this is
+ * also the hotspot: keep it as small as the text allows.
+ */
+inline QSizeF markBoxSize(const QString &text)
+{
+    return QSizeF(asciiHelveticaBoldWidth(text, markFontSizePt) + 2.0 * markPaddingPt, markFontSizePt + 2.0 * markPaddingPt);
+}
+}
+
 inline BadgeLabel badgeLabel(int order, const QString &formatted)
 {
     BadgeLabel result;
@@ -33,19 +87,7 @@ inline BadgeLabel badgeLabel(int order, const QString &formatted)
         if (c.unicode() < 32 || c.unicode() > 126) result.ascii = false;
     }
     if (result.ascii) {
-        // Standard Helvetica-Bold WinAnsi advances, ASCII 32..126 (1/1000 em).
-        static constexpr int widths[] = {
-            278,333,474,556,556,889,722,238,333,333,389,584,278,333,278,278,
-            556,556,556,556,556,556,556,556,556,556,333,333,584,584,584,611,
-            975,722,722,722,722,667,611,778,722,278,556,722,611,833,722,778,
-            667,778,722,667,611,722,667,944,667,667,611,333,278,333,584,556,
-            333,556,611,556,611,556,333,611,611,278,278,556,278,889,611,611,
-            611,611,389,556,333,611,556,778,556,556,500,389,280,389,584
-        };
-        static_assert(std::size(widths) == 95);
-        int advance = 0;
-        for (QChar c : result.text) advance += widths[c.unicode() - 32];
-        result.width = advance * 9.0 / 1000.0;
+        result.width = asciiHelveticaBoldWidth(result.text, 9.0);
         return result;
     }
     // Shape Unicode with Qt's font fallback, then store actual glyph outlines

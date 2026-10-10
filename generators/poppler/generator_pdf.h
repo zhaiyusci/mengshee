@@ -111,7 +111,7 @@ public:
     bool save(const QString &fileName, SaveOptions options, QString *errorText) override;
     Okular::AnnotationProxy *annotationProxy() const override;
     bool canInsertBlankPage() const override;
-    bool insertBlankPageInDocument(int insertAfterPageNumber, double width, double height, Okular::Page **insertedPage, quint64 *editId, QString *errorText) override;
+    bool insertBlankPageInDocument(int insertAfterPageNumber, double width, double height, Okular::Page **insertedPage, quint64 *editId, QString *errorText, const QString &heading = QString()) override;
     bool canInsertPageFromPdf() const override;
     bool duplicatePageInDocument(int pageNumber, bool resolveDestinationConflicts, Okular::Page **insertedPage, quint64 *editId, QString *errorText) override;
     bool insertPdfPageInDocument(int insertAfterPageNumber,
@@ -169,7 +169,8 @@ public:
                             int destinationPageNumber,
                             double destinationX,
                             double destinationY,
-                            QString *errorText) override;
+                            QString *errorText,
+                            Okular::PdfLinkAppearance appearance = {}) override;
     bool editExternalLinkDestination(Okular::Page *sourcePage, double linkLeft, double linkTop, double linkRight, double linkBottom, const QString &url, QString *errorText) override;
     bool createExternalLink(Okular::Page *sourcePage, double linkLeft, double linkTop, double linkRight, double linkBottom, const QString &url, QString *errorText) override;
     bool editPdfLinkRectangle(Okular::Page *sourcePage,
