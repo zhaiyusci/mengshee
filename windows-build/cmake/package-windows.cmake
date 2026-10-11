@@ -4,6 +4,7 @@ get_filename_component(_script_dir "${CMAKE_CURRENT_LIST_FILE}" DIRECTORY)
 get_filename_component(_windows_build_dir "${_script_dir}/.." ABSOLUTE)
 get_filename_component(_default_source_root "${_windows_build_dir}/.." ABSOLUTE)
 get_filename_component(_default_workspace_root "${_default_source_root}/../windows_build" ABSOLUTE)
+include("${_script_dir}/run-tree-common.cmake")
 
 function(mengshee_default_path variable default_value)
     if(NOT DEFINED ${variable} OR "${${variable}}" STREQUAL "")
@@ -207,8 +208,18 @@ foreach(_required IN ITEMS
     mengshee_validate_file("${STAGE_ROOT}" "${_required}")
 endforeach()
 
+# The stage is the runtime a developer starts and the exact tree the installer
+# packages, so it has to run with the rights of a normal user. A build started
+# from a restricted session labels everything it creates as low integrity, and
+# Windows then starts the application with reduced rights, which breaks saving
+# (no writable %TEMP%) and the KIO worker launch. Restore the label here, before
+# anything is packaged, and refuse to hand out a tree that would misbehave.
+mengshee_prepare_run_tree("${STAGE_ROOT}")
+mengshee_prepare_run_tree("${STEMTEX_COMPONENT_STAGE_ROOT}")
+
 if(DEFINED SKIP_INSTALLER AND SKIP_INSTALLER)
     message(STATUS "Skipping installer build.")
+    message(STATUS "Mengshee developer runtime: ${STAGE_ROOT}/bin/mengshee.exe")
     return()
 endif()
 
@@ -237,3 +248,9 @@ execute_process(
 if(NOT _iscc_result EQUAL 0)
     message(FATAL_ERROR "Inno Setup failed with exit code ${_iscc_result}")
 endif()
+
+# The installer is an executable that is handed out, so it needs the same normal
+# label as the trees it was built from. Run without one, Setup.exe itself starts
+# at reduced integrity and fails immediately with "Setup was unable to create the
+# directory ...\Temp\is-XXXX.tmp. Error 5: Access denied".
+mengshee_prepare_run_tree("${OUTPUT_DIR}" "Mengshee-${VERSION}-Setup.exe")

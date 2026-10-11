@@ -40,6 +40,19 @@ if (!(Test-Path -LiteralPath $mengsheeExe)) {
     throw "Missing staged Mengshee executable: $mengsheeExe"
 }
 
+# A staged tree whose files carry a reduced integrity label starts with reduced
+# rights: it cannot write %TEMP% or %LOCALAPPDATA%, so saving fails and the KIO
+# worker cannot create its socket. That is invisible in a launch-only check, so
+# verify the label before starting the application.
+$makeRunnable = Join-Path $PSScriptRoot "make-runnable.ps1"
+if (Test-Path -LiteralPath $makeRunnable) {
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $makeRunnable -Root $StageRoot -Check
+    if ($LASTEXITCODE -ne 0) {
+        Write-Warning "The staged runtime cannot be started with normal user rights, so saving would fail for whoever runs it."
+        exit 4
+    }
+}
+
 Get-Process -Name mengshee -ErrorAction SilentlyContinue |
     Where-Object { $_.Path -like "$StageRoot*" } |
     Stop-Process -Force

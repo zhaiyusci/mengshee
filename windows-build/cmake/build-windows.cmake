@@ -5,6 +5,7 @@ get_filename_component(_windows_build_dir "${_script_dir}/.." ABSOLUTE)
 get_filename_component(_default_source_root "${_windows_build_dir}/.." ABSOLUTE)
 get_filename_component(_default_workspace_root "${_default_source_root}/../windows_build" ABSOLUTE)
 include("${_script_dir}/stemtex-common.cmake")
+include("${_script_dir}/run-tree-common.cmake")
 
 function(mengshee_default_path variable default_value)
     if(NOT DEFINED ${variable} OR "${${variable}}" STREQUAL "")
@@ -289,6 +290,11 @@ if(NOT DEFINED SKIP_DEPLOY OR NOT SKIP_DEPLOY)
     endif()
 endif()
 
+# The deployed tree is a runtime a developer starts directly, so it has to run
+# with the rights of a normal user, not with the label this session happens to
+# have. This runs after deployment because deployment adds the SDK and Qt files.
+mengshee_prepare_run_tree("${INSTALL_PREFIX}")
+
 if(NOT DEFINED SKIP_PACKAGE OR NOT SKIP_PACKAGE)
     set(_package_args
         "${CMAKE_PROGRAM}"
@@ -317,11 +323,23 @@ if(NOT DEFINED SKIP_PACKAGE OR NOT SKIP_PACKAGE)
     if(DEFINED FILE_VERSION AND NOT "${FILE_VERSION}" STREQUAL "")
         list(APPEND _package_args "-DFILE_VERSION=${FILE_VERSION}")
     endif()
+    # Definitions have to precede -P: everything after the script file is passed
+    # to the script as an argument, not as a cached definition.
+    if(DEFINED ALLOW_LOW_INTEGRITY AND ALLOW_LOW_INTEGRITY)
+        list(APPEND _package_args "-DALLOW_LOW_INTEGRITY=ON")
+    endif()
     list(APPEND _package_args -P "${_script_dir}/package-windows.cmake")
     execute_process(COMMAND ${_package_args} RESULT_VARIABLE _package_result)
     if(NOT _package_result EQUAL 0)
         message(FATAL_ERROR "Packaging failed with exit code ${_package_result}")
     endif()
+endif()
+
+set(_stage_root "${WORKSPACE_ROOT}/dist/mengshee-pdf/app")
+mengshee_report_run_trees()
+if(IS_DIRECTORY "${_stage_root}/bin")
+    message(STATUS "Developer runtime: ${_stage_root}/bin/mengshee.exe")
+    message(STATUS "Start that executable to try the build before it is packaged.")
 endif()
 
 message(STATUS "Mengshee Windows CMake driver complete.")

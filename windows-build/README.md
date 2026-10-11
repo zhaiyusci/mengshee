@@ -22,6 +22,11 @@ Build output lives outside the source checkout under the sibling
 - Package stage: `..\windows_build\dist\mengshee-pdf\app`
 - Package output: `..\windows_build\dist`
 
+The install dir and the package stage are both runnable: start
+`install\mengshee\bin\mengshee.exe` or `dist\mengshee-pdf\app\bin\mengshee.exe`
+to try a build before it is packaged. See
+[Running the build before packaging](#running-the-build-before-packaging).
+
 ## Requirements
 
 - Windows 10/11 x64.
@@ -155,6 +160,68 @@ Expected installer output:
 ```text
 ..\windows_build\dist\mengshee-<version>\Mengshee-<version>-Setup.exe
 ```
+
+## Running The Build Before Packaging
+
+The install tree and the package stage are complete runtimes, so a developer can
+start one and try a change before it is packaged:
+
+```text
+..\windows_build\install\mengshee\bin\mengshee.exe
+..\windows_build\dist\mengshee-pdf\app\bin\mengshee.exe     (the developer runtime)
+```
+
+Those trees have to run with the rights of a normal user. Windows starts a process
+at the lower of your integrity level and the executable's own label, and build
+output created inside a restricted (low integrity) session inherits a low label
+from that session. An application started from such a tree looks fine but runs
+with reduced rights: it cannot write `%TEMP%` or `%LOCALAPPDATA%`, so
+
+- saving fails with `Could not open the temporary file for saving.`, and
+- KIO fails with `Could not create socket for launching a KIO worker for protocol "file".`
+
+The build therefore restores the label itself. `mengshee_prepare_run_tree()`
+(`cmake\run-tree-common.cmake`) resets the installed tree after deployment and the
+stage before anything is packaged, reads the labels back, and **fails the build**
+when it cannot, naming the exact command:
+
+```powershell
+icacls "<tree>" /setintegritylevel "(OI)(CI)Medium" /T
+```
+
+Raising a label needs a normal (unelevated) session, so a build that itself runs
+restricted cannot repair what it produced. In that case either run that command
+once in a normal PowerShell and build again, or pass `-DALLOW_LOW_INTEGRITY=ON`
+to record a warning instead of an error and relabel the tree later. For a tree
+that already exists, use the script directly - it accepts `-Check` to report
+without changing anything:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File windows-build\scripts\make-runnable.ps1 -Root ..\windows_build\dist\mengshee-pdf\app
+powershell -ExecutionPolicy Bypass -File windows-build\scripts\make-runnable.ps1 -Root ..\windows_build\install\mengshee -Check
+```
+
+The staged smoke test checks the same thing before it launches the application, so
+a runtime that would misbehave for whoever starts it does not pass validation.
+Do not point `%TEMP%` at a build directory as a workaround: that only moves the
+saving staging file and leaves the KIO and per-user paths broken.
+
+The installer is checked too, against its own `Mengshee-<version>-Setup.exe` in
+`OUTPUT_DIR`. An installer that carries a reduced label cannot unpack itself and
+fails at once with `Setup was unable to create the directory
+"...\Temp\is-XXXX.tmp". Error 5: Access denied`.
+
+Publishing a release publishes that checked file and verifies the copy:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File windows-build\scripts\make-release.ps1 -Version 2026.0.23.1
+```
+
+It copies the installer into `output\releases\<version>\`, verifies (and, in a
+normal session, repairs) the label of the copy, and writes `SHA256SUMS.txt` beside
+it. A copy made inside a restricted session inherits a reduced label even when the
+source file was fine, which is why the published copy is checked rather than
+trusted.
 
 ## CMake Package Step
 
@@ -318,6 +385,14 @@ tree. Always run runtime deployment, or use the canonical
 deployed tree, use `windows-build\cmake\package-windows.cmake`.
 
 ## Validation
+
+Check that a built tree can be started with normal user rights (this is what the
+build and the smoke test do automatically):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\windows-build\scripts\make-runnable.ps1 `
+  -Root .\windows-build-workspace\dist\mengshee-pdf\app -Check
+```
 
 Run the staged smoke test:
 

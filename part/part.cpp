@@ -4056,6 +4056,11 @@ static bool applyLivePdfLinkTarget(Document *document, bool create, int sourcePa
                                                      errorText);
     }
     if (create) {
+        // A link that points at a note page carries that note's label, so
+        // recreating one (undoing its deletion, or pointing a new link at a note
+        // page) gives it the same visible appearance the note tool writes.
+        const QString noteLabel = Okular::NumberedCalloutGeometry::NoteLabel::markTextForDestination(target.destinationName);
+        const Okular::PdfLinkAppearance appearance = noteLabel.isEmpty() ? Okular::PdfLinkAppearance() : Okular::PdfLinkAppearance {Okular::PdfLinkAppearance::NoteLabel, noteLabel};
         return document->createInternalLink(sourcePageNumber,
                                             rectangle.left(),
                                             rectangle.top(),
@@ -4065,7 +4070,8 @@ static bool applyLivePdfLinkTarget(Document *document, bool create, int sourcePa
                                             target.destinationPageNumber,
                                             target.destinationX,
                                             target.destinationY,
-                                            errorText);
+                                            errorText,
+                                            appearance);
     }
     return document->editInternalLinkDestination(sourcePageNumber,
                                                  rectangle.left(),
@@ -6607,7 +6613,7 @@ Okular::NormalizedPoint displayToNativePagePoint(const Okular::Page *page, const
 
 QString Part::nextNotePageDestinationName(int sourcePageNumberOneBased) const
 {
-    const QString prefix = QStringLiteral("mnote-%1-").arg(sourcePageNumberOneBased);
+    const QString prefix = Okular::NumberedCalloutGeometry::NoteLabel::destinationPrefix(sourcePageNumberOneBased);
     int highestSequence = 0;
     const QVariantList existingDestinations = m_document->metaData(QStringLiteral("NamedViewports")).toList();
     for (const QVariant &value : existingDestinations) {
@@ -6663,8 +6669,10 @@ void Part::addNotePage(PageView *sourceView, int pageNumber, const Okular::Norma
 
     const QString destinationName = nextNotePageDestinationName(pageNumber + 1);
     // The visible numbering follows the destination's per-page sequence, so the
-    // link, the note page heading and the name all say the same thing.
-    const int noteNumber = destinationName.mid(destinationName.lastIndexOf(QLatin1Char('-')) + 1).toInt();
+    // link, the note page heading and the name all say the same thing. The name
+    // is read back with the same parser that labels an existing note link, so
+    // the two can never disagree.
+    const int noteNumber = Okular::NumberedCalloutGeometry::NoteLabel::noteNumberForDestination(destinationName);
     if (noteNumber <= 0) {
         KMessageBox::information(widget(), i18n("The note page number could not be determined."));
         return;
@@ -7078,6 +7086,40 @@ void Part::createPdfLink(int sourcePageNumber, const QRectF &normalizedLinkRecta
     configurePdfLink(sourcePageNumber, normalizedLinkRectangle, QString(), Okular::DocumentViewport(), QUrl(), true);
 }
 
+namespace {
+// A link's visible label is its annotation appearance, and the backend drops
+// that appearance whenever the link's rectangle changes. The destination a link
+// points at is what survives such an edit, so a note link is recognised by its
+// destination name and asks for its label again from there.
+Okular::PdfLinkAppearance noteLinkAppearanceAtRectangle(const Okular::Document *document, int pageNumber, const QRectF &normalizedRectangle)
+{
+    const Okular::Page *page = document ? document->page(pageNumber) : nullptr;
+    if (!page) {
+        return {};
+    }
+    // The rectangle a drag starts from is an object rect's own bounding box, but
+    // the page objects may have been regenerated since, so compare with the
+    // tolerance the view uses for object rects.
+    const auto sameRectangle = [](const QRectF &first, const QRectF &second) {
+        return qAbs(first.left() - second.left()) < 0.005 && qAbs(first.top() - second.top()) < 0.005 && qAbs(first.right() - second.right()) < 0.005 && qAbs(first.bottom() - second.bottom()) < 0.005;
+    };
+    for (const Okular::ObjectRect *rect : page->objectRects()) {
+        if (!rect || rect->objectType() != Okular::ObjectRect::Action || !rect->object() || !sameRectangle(rect->region().boundingRect(), normalizedRectangle)) {
+            continue;
+        }
+        const auto *action = static_cast<const Okular::Action *>(rect->object());
+        if (action->actionType() != Okular::Action::Goto) {
+            continue;
+        }
+        const QString label = Okular::NumberedCalloutGeometry::NoteLabel::markTextForDestination(static_cast<const Okular::GotoAction *>(action)->destinationName());
+        if (!label.isEmpty()) {
+            return Okular::PdfLinkAppearance {Okular::PdfLinkAppearance::NoteLabel, label};
+        }
+    }
+    return {};
+}
+}
+
 void Part::changePdfLinkRectangle(int sourcePageNumber, const QRectF &oldNormalizedRectangle, const QRectF &newNormalizedRectangle)
 {
     if (m_editingMode != EditingMode::CrossReferences || !m_document->canEditPdfLinks() || sourcePageNumber < 0 || sourcePageNumber >= static_cast<int>(m_document->pages()) || !oldNormalizedRectangle.isValid() || !newNormalizedRectangle.isValid()) {
@@ -7087,9 +7129,18 @@ void Part::changePdfLinkRectangle(int sourcePageNumber, const QRectF &oldNormali
 
     QPointer<Document> document = m_document;
     const int pageNumberOneBased = sourcePageNumber + 1;
-    const auto changeRectangle = [document, pageNumberOneBased](const QRectF &from, const QRectF &to, QString *errorText) {
-        return document
-            && document->editPdfLinkRectangle(pageNumberOneBased, from.left(), from.top(), from.right(), from.bottom(), to.left(), to.top(), to.right(), to.bottom(), errorText);
+    // The destination of the moved link does not change, so the label it carries
+    // is derived once and reused by the undo and redo steps as well.
+    const Okular::PdfLinkAppearance appearance = noteLinkAppearanceAtRectangle(document, sourcePageNumber, oldNormalizedRectangle);
+    const auto changeRectangle = [document, pageNumberOneBased, sourcePageNumber, appearance](const QRectF &from, const QRectF &to, QString *errorText) {
+        if (!document || !document->editPdfLinkRectangle(pageNumberOneBased, from.left(), from.top(), from.right(), from.bottom(), to.left(), to.top(), to.right(), to.bottom(), errorText, appearance)) {
+            return false;
+        }
+        // The label is drawn as part of the page image, so the view's cached copy
+        // of that page has to be replaced rather than repainted, exactly as when
+        // the note link is created.
+        document->refreshPixmaps(sourcePageNumber);
+        return true;
     };
     QString errorText;
     const bool edited = changeRectangle(oldNormalizedRectangle, newNormalizedRectangle, &errorText);

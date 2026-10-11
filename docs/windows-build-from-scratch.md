@@ -25,6 +25,13 @@ Everything lands inside the checkout by default:
 `windows-build-workspace/` is ignored by git, and `smoke-test-mengshee-stage.ps1` finds
 both this layout and the older sibling-workspace layout.
 
+Both runnable trees — `install\mengshee` and `dist\mengshee-pdf\app` — are given
+the integrity label of an ordinary process by the build itself, because an
+application started from a tree that carries a lower label cannot write `%TEMP%`
+and fails to save. A build that cannot restore the label fails with the command
+that does; see
+[Running the build before packaging](../windows-build/README.md#running-the-build-before-packaging).
+
 ## Get the sources
 
 ```powershell
@@ -81,6 +88,7 @@ Useful switches:
 | `-DJOBS=<n>` | parallel build jobs |
 | `-DSKIP_INSTALLER=ON` | build and stage the runtime without Inno Setup |
 | `-DSKIP_SMOKE=ON` | skip the staged smoke test |
+| `-DALLOW_LOW_INTEGRITY=ON` | do not fail when the built trees keep a reduced integrity label; the trees must then be relabelled with `windows-build/scripts/make-runnable.ps1` before they can run normally (see [Running the build before packaging](../windows-build/README.md#running-the-build-before-packaging)) |
 | `-DSMOKE_PDF=<file>` | PDF used by the smoke test (default `autotests/data/file2.pdf`) |
 | `-DPYTHON_EXECUTABLE=<python.exe>` | base interpreter for the workspace venv |
 | `-DVS_INSTALL_DIR=<dir>` | Visual Studio location when `vswhere` cannot report it |
@@ -140,10 +148,13 @@ re-running the driver is how you pick up a source change after the first build.
    administrator rights once. Warm-up files that an already used runtime carries
    under `gui/profiles` are never packaged.
 7. **app** – `build-windows.cmake`: configure, build and install Mengshee,
-   deploy the runtime from SDK/Qt/StemTeX/Mengshee data, stage
-   `dist/mengshee-pdf/app`, and build the installer.
-8. **smoke** – launches the staged `mengshee.exe` with a test PDF and checks the
-   modules it loaded come from the staged tree.
+   deploy the runtime from SDK/Qt/StemTeX/Mengshee data, give the installed tree
+   and the stage the integrity label of an ordinary process (they are the trees a
+   developer starts, and one built from a restricted session could not save),
+   stage `dist/mengshee-pdf/app`, and build the installer.
+8. **smoke** – checks that the staged tree can be started with normal user rights,
+   then launches the staged `mengshee.exe` with a test PDF and checks the modules
+   it loaded come from the staged tree.
 
 Rough timings from the machine this was written on (compile time dominates, and
 the first run also downloads everything):

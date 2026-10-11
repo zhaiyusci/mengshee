@@ -7704,6 +7704,141 @@ void PartTest::testAddNotePage()
         }
     }
     QVERIFY(headingDrawn);
+    // 5. Moving the note link carries its label along. The label is the link's
+    //    own appearance, and the backend drops an annotation's appearance when
+    //    its rectangle changes, so the appearance has to be rebuilt for the
+    //    rectangle the link moved to, and the page image that carries it has to
+    //    be replaced rather than repainted.
+    const ObjectRect *noteLink = linkNamed(firstName);
+    QVERIFY(noteLink);
+    const QRectF originalLinkRect = noteLink->region().boundingRect();
+    const QRectF movedLinkRect = originalLinkRect.translated(0.06, -0.05);
+    QVERIFY(movedLinkRect.left() >= 0.0 && movedLinkRect.top() >= 0.0 && movedLinkRect.right() <= 1.0 && movedLinkRect.bottom() <= 1.0);
+
+    // Box and glyph pixels of a label inside a normalized page rectangle.
+    const auto labelInkInImage = [](const QImage &rendering, const QRectF &normalizedRectangle) {
+        QPair<int, int> ink {-1, -1};
+        if (rendering.isNull()) {
+            return ink;
+        }
+        const int left = qBound(0, qRound(normalizedRectangle.left() * rendering.width()), rendering.width() - 1);
+        const int right = qBound(0, qRound(normalizedRectangle.right() * rendering.width()), rendering.width() - 1);
+        const int top = qBound(0, qRound(normalizedRectangle.top() * rendering.height()), rendering.height() - 1);
+        const int bottom = qBound(0, qRound(normalizedRectangle.bottom() * rendering.height()), rendering.height() - 1);
+        ink = {0, 0};
+        for (int y = top; y <= bottom; ++y) {
+            for (int x = left; x <= right; ++x) {
+                const QColor pixel = rendering.pixelColor(x, y);
+                if (pixel.red() > 230 && pixel.green() > 215 && pixel.blue() < 210) {
+                    ++ink.first;
+                }
+                if (pixel.red() < 120 && pixel.green() < 120 && pixel.blue() < 120) {
+                    ++ink.second;
+                }
+            }
+        }
+        return ink;
+    };
+    const auto labelInkIn = [&part, &errorText, &labelInkInImage](const QRectF &normalizedRectangle) {
+        return labelInkInImage(part.m_document->renderToImage(0, 288, true, &errorText), normalizedRectangle);
+    };
+    // The pale sheet is also the only such colour in the reading frame, so its
+    // centre in the viewport says whether the frame the reader is looking at was
+    // replaced instead of left showing the page image it had before the move.
+    // The link rectangle the cross-reference mode draws over the label tints it,
+    // so the sheet is recognised by staying pale and yellow rather than by one
+    // exact colour.
+    const auto viewLabelCenter = [view](QPointF *center) {
+        const QImage image = view->viewport()->grab().toImage();
+        double sumX = 0.0;
+        double sumY = 0.0;
+        int count = 0;
+        for (int y = 0; y < image.height(); ++y) {
+            for (int x = 0; x < image.width(); ++x) {
+                const QColor pixel = image.pixelColor(x, y);
+                if (pixel.red() > 190 && pixel.green() > 195 && pixel.blue() < 215 && pixel.green() > pixel.blue() + 15 && pixel.red() > pixel.blue() + 5) {
+                    sumX += x;
+                    sumY += y;
+                    ++count;
+                }
+            }
+        }
+        if (count == 0) {
+            return false;
+        }
+        *center = QPointF(sumX / count, sumY / count);
+        return true;
+    };
+
+    QTRY_VERIFY(viewShowsNoteLabel());
+    // Links are movable in Cross-References mode. The mode is entered once and
+    // kept, so the two viewport measurements below see the same layout and the
+    // label can only move because its page image was replaced.
+    part.setEditingMode(EditingMode::CrossReferences);
+    QPointF labelCenterBefore;
+    QTRY_VERIFY(viewLabelCenter(&labelCenterBefore));
+    {
+        // A refused move reports itself through a message box; a regression must
+        // not leave that box waiting in the test.
+        TestingUtils::CloseDialogHelper closeDialogHelper(&part, QDialogButtonBox::Ok);
+        part.changePdfLinkRectangle(0, originalLinkRect, movedLinkRect);
+    }
+    const ObjectRect *movedLink = linkNamed(firstName);
+    QVERIFY(movedLink);
+    const QRectF currentLinkRect = movedLink->region().boundingRect();
+    QVERIFY(qAbs(currentLinkRect.center().x() - movedLinkRect.center().x()) < 0.02);
+    QVERIFY(qAbs(currentLinkRect.center().y() - movedLinkRect.center().y()) < 0.02);
+    const QPair<int, int> inkAtNewPlace = labelInkIn(movedLinkRect);
+    QVERIFY2(inkAtNewPlace.first > 50, "the moved link must keep its label box");
+    QVERIFY2(inkAtNewPlace.second > 20, "the moved link must keep its label text");
+    QVERIFY2(labelInkIn(originalLinkRect).first < 10, "the label must not stay where the link was");
+    // The label moved in the direction the link was dragged, so the frame the
+    // reader is looking at was refreshed rather than left with the old image.
+    QPointF labelCenterAfter;
+    QTRY_VERIFY(viewLabelCenter(&labelCenterAfter) && labelCenterAfter.x() > labelCenterBefore.x() + 3.0 && labelCenterAfter.y() < labelCenterBefore.y() - 2.0);
+
+    // Undo and redo move the label with the link as well.
+    part.m_document->undo();
+    const ObjectRect *restoredLink = linkNamed(firstName);
+    QVERIFY(restoredLink);
+    QVERIFY(qAbs(restoredLink->region().boundingRect().center().x() - originalLinkRect.center().x()) < 0.02);
+    const QPair<int, int> inkAtOldPlace = labelInkIn(originalLinkRect);
+    QVERIFY2(inkAtOldPlace.first > 50 && inkAtOldPlace.second > 20, "undo must bring the label back with the link");
+    part.m_document->redo();
+    const ObjectRect *redoneLink = linkNamed(firstName);
+    QVERIFY(redoneLink);
+    QVERIFY(qAbs(redoneLink->region().boundingRect().center().x() - movedLinkRect.center().x()) < 0.02);
+    const QPair<int, int> inkAfterRedo = labelInkIn(movedLinkRect);
+    QVERIFY2(inkAfterRedo.first > 50 && inkAfterRedo.second > 20, "redo must move the label with the link");
+
+    // The label has to be an appearance of the moved link in the saved file, not
+    // an unreferenced stream: drawing it again after reopening can only come
+    // from the link's own /AP.
+    const QString movedSavedFile = directory.filePath(QStringLiteral("note-page-moved.pdf"));
+    QVERIFY2(part.m_document->saveChanges(movedSavedFile, &errorText), qPrintable(errorText));
+    Part movedReopened(nullptr, {});
+    QVERIFY(openDocument(&movedReopened, movedSavedFile));
+    const QImage movedReopenedRendering = movedReopened.m_document->renderToImage(0, 288, true, &errorText);
+    QVERIFY2(!movedReopenedRendering.isNull(), qPrintable(errorText));
+    const QPair<int, int> inkAfterReopen = labelInkInImage(movedReopenedRendering, movedLinkRect);
+    QVERIFY2(inkAfterReopen.first > 50, "the reopened document must draw the label at the new rectangle");
+    QVERIFY2(inkAfterReopen.second > 20, "the reopened document must draw the label text");
+    QVERIFY2(labelInkInImage(movedReopenedRendering, originalLinkRect).first < 10, "the reopened label must not be at the old rectangle");
+    bool reopenedLinkMoved = false;
+    for (const ObjectRect *rect : movedReopened.m_document->page(0)->objectRects()) {
+        if (!rect || rect->objectType() != ObjectRect::Action || !rect->object()) {
+            continue;
+        }
+        const auto *movedAction = static_cast<const Action *>(rect->object());
+        if (movedAction->actionType() != Action::Goto || static_cast<const GotoAction *>(movedAction)->destinationName() != firstName) {
+            continue;
+        }
+        reopenedLinkMoved = qAbs(rect->region().boundingRect().center().x() - movedLinkRect.center().x()) < 0.02;
+    }
+    QVERIFY(reopenedLinkMoved);
+    QApplication::processEvents();
+    movedReopened.closeUrl(false);
+
     // Appending and removing pages queues page relayouts. Let them run while
     // the document is still alive instead of during close.
     QApplication::processEvents();

@@ -6992,7 +6992,8 @@ bool Document::editPdfLinkRectangle(int sourcePageNumber,
                                     double newLinkTop,
                                     double newLinkRight,
                                     double newLinkBottom,
-                                    QString *errorText)
+                                    QString *errorText,
+                                    PdfLinkAppearance appearance)
 {
     auto editor = dynamic_cast<PdfLinkEditingInterface *>(d->m_generator);
     Page *sourcePage = d->m_pagesVector.value(sourcePageNumber - 1, nullptr);
@@ -7002,7 +7003,7 @@ bool Document::editPdfLinkRectangle(int sourcePageNumber,
         }
         return false;
     }
-    const bool changed = editor->editPdfLinkRectangle(sourcePage, oldLinkLeft, oldLinkTop, oldLinkRight, oldLinkBottom, newLinkLeft, newLinkTop, newLinkRight, newLinkBottom, errorText);
+    const bool changed = editor->editPdfLinkRectangle(sourcePage, oldLinkLeft, oldLinkTop, oldLinkRight, oldLinkBottom, newLinkLeft, newLinkTop, newLinkRight, newLinkBottom, errorText, appearance);
     if (changed) {
         d->notifyAnnotationChanges(sourcePageNumber - 1);
     }

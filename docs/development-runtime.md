@@ -8,6 +8,25 @@ The CMake build directory, `windows_build\build\mengshee-standalone`, is separat
 
 After installing a release, the user may instead be running `C:\Program Files\Mengshee\bin\mengshee.exe`. Check the actual process path. Synchronizing the development directory does not update the installed application, and processes with unsaved documents must not be closed.
 
+## The development runtime must run with normal rights
+
+The staged runtime — and the installed tree it is mirrored from — is meant to be started by a developer, so it must run at the integrity level of an ordinary process. Windows starts a process at the **lower** of the user's integrity level and the **executable's own label**, and build output created inside a restricted (low integrity) session inherits a low label from that session. An application started from such a tree looks healthy but runs with reduced rights:
+
+- saving fails with **"could not open the temporary file for saving"**, because `part/part.cpp` needs a staging file in `%TEMP%`;
+- KIO reports **"could not create socket for launching a KIO worker for protocol file"**, because its worker launch and runtime directory cannot be created;
+- per-user files are redirected to `AppData\LocalLow` instead of `AppData\Local`.
+
+This is a property of the tree, not of the application, so it must be fixed on the tree. The Windows pipeline does that itself now: `mengshee_prepare_run_tree()` (in `windows-build/cmake/run-tree-common.cmake`) resets the label of the installed tree and of the stage to Medium, reads the labels back, and **fails the build** when it cannot — naming the exact command. `windows-build/scripts/make-runnable.ps1` does the same for an existing tree, so a tree that was built before the check existed, or built with `-DALLOW_LOW_INTEGRITY=ON`, can be repaired without a rebuild:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File windows-build\scripts\make-runnable.ps1 -Root <tree>
+powershell -ExecutionPolicy Bypass -File windows-build\scripts\make-runnable.ps1 -Root <tree> -Check   # report only
+```
+
+Raising a label needs a normal (unelevated) session, so a build or shell that is itself restricted cannot repair the tree it produced; that is why the pipeline fails instead of shipping it. The staged smoke test checks the label too, so a runtime that would misbehave for whoever starts it does not pass validation. The installer is checked the same way, against its own `Setup.exe`: without a normal label it cannot unpack itself into `%TEMP%` and stops with `Setup was unable to create the directory "...\Temp\is-XXXX.tmp". Error 5: Access denied`, and a copy of it made inside a restricted session inherits the reduced label even when the source file was fine.
+
+Do not work around this by pointing `%TEMP%` at a build directory: that only moves the staging file, leaves the KIO and per-user paths broken, and hides the real cause.
+
 ## Deployment and acceptance checks
 
 - Confirm that the target application is closed; do not forcibly terminate user processes.

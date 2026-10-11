@@ -9,6 +9,7 @@
 #include <QPainterPath>
 #include <QSizeF>
 #include <QString>
+#include <QStringList>
 #include <QTextLayout>
 #include <QTransform>
 #include <algorithm>
@@ -60,6 +61,50 @@ inline constexpr double headingMarginPt = 36.0;
 inline QString markText(int number)
 {
     return QStringLiteral("see note %1.").arg(number);
+}
+
+/** Destination-name prefix of the notes attached to @p sourcePageOneBased. */
+inline QString destinationPrefix(int sourcePageOneBased)
+{
+    return QStringLiteral("mnote-%1-").arg(sourcePageOneBased);
+}
+
+/**
+ * Note number carried by a note destination name, or 0 when
+ * @p destinationName is not one. The destination is the durable identity of a
+ * note link: its appearance is dropped whenever the link itself is edited, so
+ * anything that has to restore the label reads it back from here.
+ */
+inline int noteNumberForDestination(const QString &destinationName)
+{
+    const QStringList parts = destinationName.split(QLatin1Char('-'));
+    if (parts.size() != 3 || parts.at(0) != QLatin1String("mnote")) {
+        return 0;
+    }
+    const auto positiveNumber = [](const QString &text) {
+        if (text.isEmpty()) {
+            return 0;
+        }
+        for (QChar c : text) {
+            if (c < QLatin1Char('0') || c > QLatin1Char('9')) {
+                return 0;
+            }
+        }
+        return text.toInt();
+    };
+    // The page part has to be a real page number too, so a name that only looks
+    // like a note name is not labelled as one.
+    if (positiveNumber(parts.at(1)) <= 0) {
+        return 0;
+    }
+    return positiveNumber(parts.at(2));
+}
+
+/** Visible text of a link that points at @p destinationName, or an empty string when that is not a note destination. */
+inline QString markTextForDestination(const QString &destinationName)
+{
+    const int number = noteNumberForDestination(destinationName);
+    return number > 0 ? markText(number) : QString();
 }
 
 /** Visible heading written at the top of note page @p number. */

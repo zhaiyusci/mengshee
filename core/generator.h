@@ -333,7 +333,11 @@ public:
     /** Adds one external URL link to the open document. */
     virtual bool createExternalLink(Page *sourcePage, double linkLeft, double linkTop, double linkRight, double linkBottom, const QString &url, QString *errorText) = 0;
 
-    /** Moves or resizes one link in the open document. */
+    /**
+     * Moves or resizes one link in the open document. @p appearance is the
+     * visible appearance the moved link must keep, because the backend drops an
+     * annotation's appearance when its rectangle changes.
+     */
     virtual bool editPdfLinkRectangle(Page *sourcePage,
                                       double oldLinkLeft,
                                       double oldLinkTop,
@@ -343,7 +347,8 @@ public:
                                       double newLinkTop,
                                       double newLinkRight,
                                       double newLinkBottom,
-                                      QString *errorText) = 0;
+                                      QString *errorText,
+                                      PdfLinkAppearance appearance = {}) = 0;
 
     /** Removes one link from the open document. */
     virtual bool deletePdfLink(Page *sourcePage, double linkLeft, double linkTop, double linkRight, double linkBottom, QString *errorText) = 0;

@@ -44,6 +44,13 @@ so the box a caller reserves and the text the generator draws cannot drift
 apart. Numbering is per source page, matching the destination name; two notes on
 different pages can therefore both be "note 1".
 
+That header also reads a note back out of a destination name
+(`NoteLabel::markTextForDestination()`), because the name is the only part of a
+note link that survives an edit to the link itself. Creating a note and
+recognising an existing one therefore use the same prefix and the same numbering:
+`destinationPrefix()` builds the name the note tool writes, and the parser
+accepts nothing but `mnote-<page>-<sequence>` with both numbers positive.
+
 The text is plain ASCII and is not translated: it is written into the document,
 where it has to stay stable and where a viewer needs no font beyond the standard
 14. A non-ASCII label is rejected instead of being written as unreadable bytes.
@@ -92,6 +99,33 @@ XObject to the file.
 The zero-width border is unchanged, so the label does not depend on a viewer
 that renders link borders. Readers that do not draw link appearances still get a
 working hotspot.
+
+## Moving a note link
+
+A note link is an ordinary link, so **Cross-References** mode can move, resize
+or delete it. Moving it keeps the label: the label is the link's own appearance,
+and changing an annotation rectangle drops that appearance — the backend calls
+`Annot::invalidateAppearance()`, which removes `/AP` and `/AS` from the
+annotation and frees the form it referenced, because a generic appearance is
+sized for the rectangle it was built for. The label is Mengshee's policy, so it
+is requested again for the rectangle the link moved to, and only the bytes of
+the label are rebuilt: the link, its destination and its action are untouched.
+
+The label is not remembered anywhere at edit time. The destination name is read
+back from the link (`NoteLabel::markTextForDestination()`), so a link that points
+at a note page is labelled the same way whether it was just created, moved,
+undone, redone or recreated after its deletion, and a link that points anywhere
+else is left alone. `Document::editPdfLinkRectangle()` therefore carries the same
+`PdfLinkAppearance` parameter as `createInternalLink()`, and the generator
+rebuilds the appearance for the new rectangle exactly as it does for a new link.
+
+A freed appearance and its replacement reuse one cross-reference entry, so moving
+a link back and forth does not accumulate form objects in the file.
+
+Because the label is drawn as part of the page image, the page whose link moved
+is refreshed as the last thing the edit does, including in its undo and redo
+steps. Repainting alone would keep showing the image rendered before the move,
+with the label at the old position, until something else replaced it.
 
 ## The page heading
 
@@ -155,5 +189,11 @@ click, the appended page size in points, `mnote-<page>-<n>` naming and sequence,
 the link's destination and rectangle, the label and heading literals in the
 saved file, the heading actually being drawn on the new page, the auxiliary
 frame opening on the new page, single-step undo and redo, and save/reopen
-persistence. `testInsertBlankPageMatchesReferenceSize` covers the point-size
+persistence. It then moves the note link in cross-reference mode and requires the
+label to follow: the box and text are drawn inside the new rectangle and nowhere
+in the old one, the frame showing the link shows the label at its new position,
+undo and redo carry the label with the link, and the reopened saved file draws
+the label at the new rectangle and nowhere else, which can only come from the
+moved link's own `/AP`.
+`testInsertBlankPageMatchesReferenceSize` covers the point-size
 fix for the ordinary blank page insertion.

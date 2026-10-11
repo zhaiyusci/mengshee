@@ -4048,13 +4048,15 @@ Object makeLinkLabelStream(XRef *xref, const QString &label, double boxWidth, do
     return generatedStream(content.str(), Object(dictionary));
 }
 
-// Gives a link that was just created at the given normalized rectangle the
-// requested visible appearance. The page editor writes links without an
-// appearance, so the label policy lives here rather than in the backend fork.
+// Gives the link at the given normalized rectangle the requested visible
+// appearance. The page editor writes links without an appearance, and it drops
+// an existing appearance when a link's rectangle changes, so the label policy
+// lives here rather than in the backend fork: a caller that wants a labelled
+// link asks for it again for the rectangle the link now occupies.
 // Annot::setNewAppearance() writes the dictionary and refreshes the cached
 // appearance at once, so the label is drawn in the current session instead of
 // only after reopening the document.
-bool applyLinkAppearanceToCreatedLink(PDFDoc *document, int pageNumber, double linkLeft, double linkTop, double linkRight, double linkBottom, const Okular::PdfLinkAppearance &appearance, std::string *message)
+bool applyLinkAppearanceToLink(PDFDoc *document, int pageNumber, double linkLeft, double linkTop, double linkRight, double linkBottom, const Okular::PdfLinkAppearance &appearance, std::string *message)
 {
     if (message) {
         message->clear();
@@ -4095,7 +4097,7 @@ bool applyLinkAppearanceToCreatedLink(PDFDoc *document, int pageNumber, double l
     }
     if (!selectedLink || selectedDistance > noteLinkMatchTolerance) {
         if (message) {
-            *message = "Could not find the created link.";
+            *message = "Could not find the link.";
         }
         return false;
     }
@@ -4236,7 +4238,7 @@ bool PDFGenerator::createInternalLink(Okular::Page *sourcePage,
         // The page editor writes links without an appearance, so a visible label
         // is added afterwards from here, using Poppler Core directly.
         std::string labelMessage;
-        if (!applyLinkAppearanceToCreatedLink(document, nativeSourcePageNumber, linkLeft, linkTop, linkRight, linkBottom, appearance, &labelMessage)) {
+        if (!applyLinkAppearanceToLink(document, nativeSourcePageNumber, linkLeft, linkTop, linkRight, linkBottom, appearance, &labelMessage)) {
             if (errorText) {
                 *errorText = QString::fromStdString(labelMessage);
             }
@@ -4279,7 +4281,8 @@ bool PDFGenerator::editPdfLinkRectangle(Okular::Page *sourcePage,
                                         double newLinkTop,
                                         double newLinkRight,
                                         double newLinkBottom,
-                                        QString *errorText)
+                                        QString *errorText,
+                                        Okular::PdfLinkAppearance appearance)
 {
     QMutexLocker locker(userMutex());
     PDFDoc *document = popplerCoreDocument(pdfdoc.get());
@@ -4291,6 +4294,18 @@ bool PDFGenerator::editPdfLinkRectangle(Okular::Page *sourcePage,
             },
             errorText)) {
         return false;
+    }
+    if (appearance.kind != Okular::PdfLinkAppearance::None) {
+        // Changing a rectangle invalidates the annotation's appearance, which is
+        // sized for the rectangle it was built for; the label policy lives here,
+        // so a moved link gets its label rebuilt for the rectangle it now has.
+        std::string labelMessage;
+        if (!applyLinkAppearanceToLink(document, nativeSourcePageNumber, newLinkLeft, newLinkTop, newLinkRight, newLinkBottom, appearance, &labelMessage)) {
+            if (errorText) {
+                *errorText = QString::fromStdString(labelMessage);
+            }
+            return false;
+        }
     }
     return refreshPdfLinkObjects(sourcePage, nativeSourcePageNumber - 1, errorText);
 }

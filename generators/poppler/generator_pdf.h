@@ -182,7 +182,8 @@ public:
                               double newLinkTop,
                               double newLinkRight,
                               double newLinkBottom,
-                              QString *errorText) override;
+                              QString *errorText,
+                              Okular::PdfLinkAppearance appearance = {}) override;
     bool deletePdfLink(Okular::Page *sourcePage, double linkLeft, double linkTop, double linkRight, double linkBottom, QString *errorText) override;
     bool canPerformEnglishOcr() const override;
     bool readOcrTextLayer(int pageNumber, QList<Okular::OcrTextWord> *words, QString *errorText) override;
