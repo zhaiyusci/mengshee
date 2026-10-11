@@ -234,6 +234,27 @@ it. A copy made inside a restricted session inherits a reduced label even when t
 source file was fine, which is why the published copy is checked rather than
 trusted.
 
+## Run The Build From A Normal Session
+
+`windows-build\build-mengshee.cmd` is the canonical driver with the paths resolved,
+so a build is one action instead of a command line to paste:
+
+```powershell
+.\windows-build\build-mengshee.cmd                              # build, deploy, package
+.\windows-build\build-mengshee.cmd -DSKIP_INSTALLER=ON -DSKIP_SMOKE=ON
+.\windows-build\build-mengshee.cmd -DSTEPS=app
+```
+
+It passes its arguments through to `build-windows.cmake` and needs no elevation.
+Run it from a normal session. **Ninja cannot run inside a session that confines
+the process tree**: it creates its children's standard handles itself, and such a
+session refuses that, so `ninja` stalls forever on the first command it starts —
+even a one-line `cmd /c echo` — while `ninja -n`, which starts nothing, still
+works. Nothing about this build is at fault and nothing in the repository can
+change it: the same build runs normally outside such a session, and inside one it
+has to be escalated. That is why a build is started here by whoever has a normal
+session, instead of being driven from a confined shell.
+
 ## CMake Package Step
 
 After `..\windows_build\install\mengshee` has been built and deployed, the

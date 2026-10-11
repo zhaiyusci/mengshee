@@ -40,6 +40,10 @@ icacls <checkout>\output /setintegritylevel "(OI)(CI)Medium" /T
 
 The explicit label on those two directories stops the inheritance, so everything created inside them afterwards — build output, staged runtimes, published installers — gets the label of a normal process without anyone having to relabel it. `windows-build/scripts/make-runnable.ps1 -Root <tree> -Check` reports the state of any tree, and the build checks its own output either way.
 
+### Build from a normal session
+
+`windows-build\build-mengshee.cmd` runs the canonical driver with the paths already resolved, so updating the development runtime is one action. It must be started from a normal session: Ninja creates its children's standard handles itself, and a session that confines the process tree refuses that, so `ninja` stalls forever on the first command it starts — even `cmd /c echo` — while `ninja -n`, which starts nothing, still works. A build inside such a session has to be escalated; nothing in the repository can change that, and the same build runs normally outside it.
+
 ## Deployment and acceptance checks
 
 - Confirm that the target application is closed; do not forcibly terminate user processes.
