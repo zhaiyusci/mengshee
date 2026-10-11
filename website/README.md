@@ -1,7 +1,8 @@
 # Mengshee promotional website
 
 A standalone English-language product page organized around the five research
-workflows in the main project README. No build step, framework, JavaScript,
+workflows in the main project README, followed by a feature band for the
+note-page workflow introduced in 2026.0.23. No build step, framework, JavaScript,
 external fonts, analytics, or CDN is required.
 
 ## Preview
@@ -17,6 +18,12 @@ panes, LaTeX source editing, numbered proofreading notes, reading by Views, and
 the annotated document displayed in Sumatra PDF and Adobe Acrobat.
 They retain their original pixels and proportions; each links to its full-size
 image. No placeholders or fabricated application interfaces remain.
+
+The **Note pages** band is deliberately text-only: it quotes Fermat's margin and
+describes what **Add Note Page** does, without an invented interface. A genuine
+screenshot of a `see note 1.` mark next to its appended note page, in the normal
+layout, is welcome; it would take the place of the band's closing paragraph, the
+same way the other figures are placed.
 
 See [SCREENSHOTS.md](SCREENSHOTS.md) for provenance and placement.
 Screenshots use bounded display widths to keep the page compact; every image
