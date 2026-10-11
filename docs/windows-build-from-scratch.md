@@ -25,6 +25,21 @@ Everything lands inside the checkout by default:
 `windows-build-workspace/` is ignored by git, and `smoke-test-mengshee-stage.ps1` finds
 both this layout and the older sibling-workspace layout.
 
+## Get the sources
+
+```powershell
+git clone https://github.com/zhaiyusci/mengshee.git C:\path\to\mengshee
+cd C:\path\to\mengshee
+git submodule update --init --recursive external/poppler external/stemtex
+```
+
+Both submodules are build inputs: `external/poppler` provides the pinned Poppler
+fork (and `utils/PdfPageSequenceEditor.cc`, which is compiled into the PDF
+generator), `external/stemtex` provides the XeTeX engine sources and the
+renderer/GUI project. `external/pdf-base14-fonts` is a vendored tree in this
+repository, so it needs no submodule step. The pinned commits are the ones the
+runtime deployment expects; do not update the submodules independently.
+
 ## Prerequisites (not in the repository)
 
 | Requirement | Notes |
@@ -47,6 +62,12 @@ both this layout and the older sibling-workspace layout.
   -P windows-build/cmake/build-windows-from-scratch.cmake
 ```
 
+With a single Qt installation under `C:/Qt/*/msvc2022_64` and the default Visual
+Studio path, the bare command works without arguments; the driver resolves both
+itself. Run it from the repository root. The driver prints what it does and
+`[skip]` for everything already present; add `2>&1 | Tee-Object .\build.log` to
+keep a log of the whole run.
+
 Useful switches:
 
 | Switch | Effect |
@@ -57,8 +78,10 @@ Useful switches:
 | `-DJOBS=<n>` | parallel build jobs |
 | `-DSKIP_INSTALLER=ON` | build and stage the runtime without Inno Setup |
 | `-DSKIP_SMOKE=ON` | skip the staged smoke test |
+| `-DSMOKE_PDF=<file>` | PDF used by the smoke test (default `autotests/data/file2.pdf`) |
 | `-DPYTHON_EXECUTABLE=<python.exe>` | base interpreter for the workspace venv |
 | `-DVS_INSTALL_DIR=<dir>` | Visual Studio location when `vswhere` cannot report it |
+| `-DMENGSHEE_BASH=<bash.exe>` | bash used by the XeTeX engine scripts |
 
 Individual steps, for debugging one part of the pipeline:
 
@@ -110,6 +133,35 @@ re-running the driver is how you pick up a source change after the first build.
    `dist/mengshee-pdf/app`, and build the installer.
 8. **smoke** – launches the staged `mengshee.exe` with a test PDF and checks the
    modules it loaded come from the staged tree.
+
+Rough timings from the machine this was written on (compile time dominates, and
+the first run also downloads everything):
+
+| Part | Time |
+| --- | --- |
+| `python`, `ecm`, `gettext`, `winflexbison`, `zlib`, `freetype`, `libintl` | under a minute each |
+| 27 KF6 modules | ~24 minutes in total (`breeze-icons` alone takes ~2.5 minutes) |
+| `poppler`, `poppler-data`, `tesseract` | ~1.5 minutes, seconds, ~2 minutes |
+| StemTeX engine, dvisvgm daemon, stage | ~1.5 minutes, ~1.5 minutes, under a minute |
+| `app` | the first run compiles the whole application (tens of minutes); ~3 minutes incrementally, including deploy and packaging |
+
+Expect roughly 40-90 minutes for a complete first build.
+
+## Run the result
+
+```powershell
+& <checkout>\windows-build-workspace\dist\mengshee-pdf\app\bin\mengshee.exe
+```
+
+That tree is self-contained; the installer from `dist\installer` is only needed
+to install elsewhere. The staged smoke test verifies it without a manual launch:
+
+```powershell
+powershell.exe -ExecutionPolicy Bypass -NoProfile `
+  -File windows-build\scripts\smoke-test-mengshee-stage.ps1 `
+  -StageRoot <checkout>\windows-build-workspace\dist\mengshee-pdf\app `
+  -PdfPath autotests\data\file2.pdf
+```
 
 ## KF6 module manifest
 
