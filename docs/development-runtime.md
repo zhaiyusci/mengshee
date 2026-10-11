@@ -27,6 +27,19 @@ Raising a label needs a normal (unelevated) session, so a build or shell that is
 
 Do not work around this by pointing `%TEMP%` at a build directory: that only moves the staging file, leaves the KIO and per-user paths broken, and hides the real cause.
 
+### Keep the build workspace out of a low-labelled tree
+
+The label is inherited like a permission, from the **directory**, not from the process that writes a file. A build workspace that lives inside a directory carrying a reduced label therefore produces reduced-label output for everyone: even a build started from a perfectly normal session creates executables that start with reduced rights, and the same happens to anything copied there, including a released installer. That is the situation to avoid, because it makes every run from that tree fail again.
+
+The Windows workspace and the release directory are therefore labelled like the rest of the user's folders:
+
+```powershell
+icacls <checkout>\windows-build-workspace /setintegritylevel "(OI)(CI)Medium" /T
+icacls <checkout>\output /setintegritylevel "(OI)(CI)Medium" /T
+```
+
+The explicit label on those two directories stops the inheritance, so everything created inside them afterwards — build output, staged runtimes, published installers — gets the label of a normal process without anyone having to relabel it. `windows-build/scripts/make-runnable.ps1 -Root <tree> -Check` reports the state of any tree, and the build checks its own output either way.
+
 ## Deployment and acceptance checks
 
 - Confirm that the target application is closed; do not forcibly terminate user processes.

@@ -189,6 +189,17 @@ when it cannot, naming the exact command:
 icacls "<tree>" /setintegritylevel "(OI)(CI)Medium" /T
 ```
 
+The label is inherited from the **directory**, so a workspace that sits inside a
+reduced-label tree produces reduced-label output even when the build itself runs
+normally, and so does anything copied into it — including a published installer.
+Keep the workspace and `output\releases` labelled like the rest of the user's
+folders, and the check above becomes a no-op:
+
+```powershell
+icacls windows-build-workspace /setintegritylevel "(OI)(CI)Medium" /T
+icacls output /setintegritylevel "(OI)(CI)Medium" /T
+```
+
 Raising a label needs a normal (unelevated) session, so a build that itself runs
 restricted cannot repair what it produced. In that case either run that command
 once in a normal PowerShell and build again, or pass `-DALLOW_LOW_INTEGRITY=ON`
