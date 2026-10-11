@@ -2158,11 +2158,6 @@ msgstr "形状填充："
 msgid "Type:"
 msgstr "类型："
 
-#: part/annotationwidgets.cpp:656 part/pageviewannotator.cpp:1496
-#, kde-format
-msgid "Strike out"
-msgstr "删除线"
-
 #: part/annotationwidgets.cpp:745
 #, kde-format
 msgid "File attachment symbol:"
@@ -5503,11 +5498,6 @@ msgstr "无法查看修订版本。"
 msgid "Enter at least 3 letters to filter pages"
 msgstr "请输入至少 3 个字母的过滤条件"
 
-#: part/searchwidget.cpp:49
-#, kde-format
-msgid "Case Sensitive"
-msgstr "区分大小写"
-
 #: part/searchwidget.cpp:51
 #, kde-format
 msgid "Match Phrase"
@@ -5664,19 +5654,19 @@ msgstr "Adobe PKCS7 SHA1"
 #, kde-format
 msgctxt "Signature type"
 msgid "Basic eIDAS signature"
-msgstr ""
+msgstr "基本 eIDAS 签名"
 
 #: part/signaturepartutils.cpp:63
 #, kde-format
 msgctxt "Signature type"
 msgid "eIDAS signature with timestamp"
-msgstr ""
+msgstr "带时间戳的 eIDAS 签名"
 
 #: part/signaturepartutils.cpp:65
 #, kde-format
 msgctxt "Signature type"
 msgid "eIDAS signature with timestamp for long term validation"
-msgstr ""
+msgstr "支持长期验证的带时间戳 eIDAS 签名"
 
 #: part/signaturepartutils.cpp:67
 #, kde-format
@@ -5835,11 +5825,6 @@ msgstr "停止"
 #: part/videowidget.cpp:561
 #, kde-format
 msgid "Videos not supported in this okular"
-msgstr "此版本的 Okular 不支持视频"
-
-#: part/videowidget.cpp:565
-#, kde-format
-msgid "Videos not supported in this Okular"
 msgstr "此版本的 Okular 不支持视频"
 
 #: part/widgetconfigurationtoolsbase.cpp:28
@@ -6023,11 +6008,6 @@ msgstr "撤销关闭标签页"
 #, kde-format
 msgid "Lock Sidebar"
 msgstr "锁定侧边栏"
-
-#: shell/shell.cpp:722
-#, kde-format
-msgid "All files (*)"
-msgstr "所有文件 (*)"
 
 #: shell/shell.cpp:723
 #, kde-format
@@ -7093,14 +7073,6 @@ msgstr "横向"
 #: part/mengsheeprintdialog.cpp
 msgid "Print"
 msgstr "打印"
-
-#: part/mengsheeprintdialog.cpp
-msgid "Previous page"
-msgstr "上一页"
-
-#: part/mengsheeprintdialog.cpp
-msgid "Next page"
-msgstr "下一页"
 
 #: part/mengsheeprintdialog.cpp
 #, kde-format
@@ -8269,3 +8241,911 @@ msgstr "无法确认输出文件与源 PDF 是否为不同文件。"
 #: core/document.cpp
 msgid "The flattened PDF must be saved to a different file. Your editable source will not be overwritten."
 msgstr "扁平化 PDF 必须另存到其他文件，不会覆盖可编辑的源文档。"
+
+#: part/part.cpp
+msgid "Add Note Page"
+msgstr "添加批注页"
+
+#: part/part.cpp
+msgctxt "Undo action"
+msgid "Add Note Page"
+msgstr "添加批注页"
+
+#: part/part.cpp
+msgctxt "Compact note-page toolbar button"
+msgid "Note Page"
+msgstr "批注页"
+
+#: part/part.cpp
+msgid "Note pages can only be added to local PDF files."
+msgstr "只能在本地 PDF 文件中添加批注页。"
+
+#: part/part.cpp
+msgid "The target page could not be found."
+msgstr "找不到目标页面。"
+
+#: part/part.cpp
+msgid "This document does not support adding a note page."
+msgstr "此文档不支持添加批注页。"
+
+#: part/part.cpp
+msgid "The size of the note page could not be determined."
+msgstr "无法确定批注页的大小。"
+
+#: part/part.cpp
+msgid "The note page number could not be determined."
+msgstr "无法确定批注页的编号。"
+
+#: part/part.cpp
+msgid "Could not append the note page."
+msgstr "无法追加批注页。"
+
+#: part/part.cpp
+msgid "Could not append the note page. %1"
+msgstr "无法追加批注页。%1"
+
+#: part/part.cpp
+msgid "Could not add the note page destination."
+msgstr "无法添加批注页的命名目标。"
+
+#: part/part.cpp
+msgid "Could not create the note link."
+msgstr "无法创建批注链接。"
+
+#: part/part.cpp
+msgid "Added note page '%1'. Save the document to keep this change."
+msgstr "已添加批注页“%1”。保存文档以保留此更改。"
+
+#: part/part.cpp
+msgid "Click a position on the page to link it to a new blank note page appended to the document. The note page opens in an auxiliary frame."
+msgstr "在页面上单击一个位置，将其链接到文档末尾新增的空白批注页。批注页将在辅助窗格中打开。"
+
+#: part/pageview.cpp
+msgid "Click where the note link should be placed. A blank note page is appended and opened in an auxiliary frame. Press Esc to cancel."
+msgstr "在要放置批注链接的位置单击。将追加一个空白批注页并在辅助窗格中打开。按 Esc 取消。"
+#: 
+msgid "Open a document before reordering Numbered Callouts."
+msgstr "重新排序编号标注框前请先打开文档。"
+
+#: 
+msgid "The Numbered Callout page is not valid."
+msgstr "该编号标注框所在页面无效。"
+
+#: 
+msgid "Numbered Callouts cannot be edited in this document."
+msgstr "此文档中的编号标注框无法编辑。"
+
+#: 
+msgid "Finish editing the annotation before reordering Numbered Callouts."
+msgstr "请先结束批注编辑，再重新排序编号标注框。"
+
+#: 
+msgid "Each Numbered Callout may appear only once in the clicked sequence."
+msgstr "每个编号标注框在点击序列中只能出现一次。"
+
+#: 
+msgid "A selected annotation is not a Numbered Callout."
+msgstr "选中的批注不是编号标注框。"
+
+#: 
+msgid "Cannot reorder a locked or read-only Numbered Callout."
+msgstr "无法重新排序已锁定或只读的编号标注框。"
+
+#: 
+msgid "Reorder Numbered Callouts"
+msgstr "重新排序编号标注框"
+
+#: 
+msgid "View definitions are unavailable for this page."
+msgstr "此页面的视图定义不可用。"
+
+#: 
+msgid "View definitions cannot be edited on this page."
+msgstr "无法在此页面编辑视图定义。"
+
+#: 
+msgid "Template Note"
+msgstr "模板批注"
+
+#: 
+msgctxt "@info:tooltip"
+msgid "Annotation text color (No annotation selected)"
+msgstr "批注文字颜色（未选中批注）"
+
+#: 
+msgctxt "@info:tooltip"
+msgid "Annotation text color (Current annotation has no text color)"
+msgstr "批注文字颜色（当前批注没有文字颜色）"
+
+#: 
+msgctxt "@action:intoolbar Current annotation config option"
+msgid "Text Color"
+msgstr "文字颜色"
+
+#: 
+msgctxt "@title:window file chooser"
+msgid "Select Image Note"
+msgstr "选择图片批注"
+
+#: 
+msgctxt "@title:window"
+msgid "Select annotation font"
+msgstr "选择批注字体"
+
+#: 
+msgid "PDF font:"
+msgstr "PDF 字体："
+
+#: 
+msgid "PDF font size:"
+msgstr "PDF 字号："
+
+#: 
+msgctxt "@action:intoolbar Annotation tool"
+msgid "Add Image Note…"
+msgstr "添加图片批注…"
+
+#: 
+msgctxt "@info:tooltip"
+msgid "Add an image as a movable annotation"
+msgstr "添加可移动的图片批注"
+
+#: 
+msgctxt "@info:tooltip"
+msgid "Add a movable LaTeX annotation"
+msgstr "添加可移动的 LaTeX 批注"
+
+#: 
+msgctxt "@info:tooltip"
+msgid "Add a LaTeX annotation with an inline-note background and border"
+msgstr "添加带内联批注背景和边框的 LaTeX 批注"
+
+#: 
+msgctxt "@info:tooltip"
+msgid "Add a stamp-based LaTeX callout note"
+msgstr "添加基于印章的 LaTeX 标注框批注"
+
+#: 
+msgctxt "@action:intoolbar Annotation tool"
+msgid "Add Template Note"
+msgstr "添加模板批注"
+
+#: 
+msgctxt "@info:tooltip"
+msgid "Add a template annotation such as an auto-updating page number"
+msgstr "添加模板批注，例如自动更新的页码"
+
+#: 
+msgctxt "@action:inmenu"
+msgid "Edit Template..."
+msgstr "编辑模板..."
+
+#: 
+msgctxt "@title:window"
+msgid "Edit Template Note"
+msgstr "编辑模板批注"
+
+#: 
+msgctxt "@label:textbox"
+msgid "Reference:"
+msgstr "引用："
+
+#: 
+msgctxt "@info"
+msgid "The template cannot be empty."
+msgstr "模板不能为空。"
+
+#: 
+msgctxt "@info"
+msgid "The template could not be evaluated: %1"
+msgstr "无法求值模板：%1"
+
+#: 
+msgid "Border &color:"
+msgstr "边框颜色(&C)："
+
+#: 
+msgctxt "@info Config dialog, annotations page, StemTeX engine status"
+msgid "latest request queued"
+msgstr "已排队最新请求"
+
+#: 
+msgctxt "@info Config dialog, annotations page, StemTeX engine status"
+msgid "XeTeX typesetting"
+msgstr "XeTeX 排版中"
+
+#: 
+msgctxt "@info Config dialog, annotations page, StemTeX engine status"
+msgid "xdvipdfmx converting PDF"
+msgstr "xdvipdfmx 转换 PDF 中"
+
+#: 
+msgctxt "@info Config dialog, annotations page, StemTeX engine status"
+msgid "worker rebuilding"
+msgstr "工作进程重建中"
+
+#: 
+msgctxt "@info Config dialog, annotations page, StemTeX engine status"
+msgid "renderer stopping"
+msgstr "渲染器停止中"
+
+#: 
+msgctxt "@info Config dialog, annotations page, StemTeX engine status"
+msgid "idle"
+msgstr "空闲"
+
+#: 
+msgctxt "@label Config dialog, annotations page, heading line for LaTeX note settings"
+msgid "<h3>LaTeX Notes</h3>"
+msgstr "<h3>LaTeX 批注</h3>"
+
+#: 
+msgctxt "@action:button Config dialog, annotations page"
+msgid "Create..."
+msgstr "创建..."
+
+#: 
+msgctxt "@action:button Config dialog, annotations page"
+msgid "Open Folder"
+msgstr "打开文件夹"
+
+#: 
+msgctxt "@info:tooltip Config dialog, annotations page"
+msgid "Create a user profile under %1"
+msgstr "在 %1 下创建用户配置"
+
+#: 
+msgctxt "@info:tooltip Config dialog, annotations page"
+msgid "Open the Mengshee user profile directory: %1"
+msgstr "打开 Mengshee 用户配置目录：%1"
+
+#: 
+msgctxt "@label:listbox Config dialog, annotations page"
+msgid "StemTeX profile:"
+msgstr "StemTeX 配置："
+
+#: 
+msgctxt "@info:placeholder Config dialog, annotations page"
+msgid "Leave empty to use bundled StemTeX TeX tree"
+msgstr "留空则使用随附的 StemTeX TeX 树"
+
+#: 
+msgctxt "@info:tooltip Config dialog, annotations page"
+msgid "Directory containing texmf-dist. Empty uses %1."
+msgstr "包含 texmf-dist 的目录。留空则使用 %1。"
+
+#: 
+msgctxt "@action:button Config dialog, annotations page"
+msgid "Browse..."
+msgstr "浏览..."
+
+#: 
+msgid "Browse..."
+msgstr "浏览..."
+
+#: 
+msgctxt "@title:window Config dialog, annotations page"
+msgid "Select TeXLive package/font tree"
+msgstr "选择 TeXLive 宏包/字体树"
+
+#: 
+msgctxt "@label:textbox Config dialog, annotations page"
+msgid "StemTeX TeX tree:"
+msgstr "StemTeX TeX 树："
+
+#: 
+msgctxt "@label Config dialog, annotations page"
+msgid "StemTeX status:"
+msgstr "StemTeX 状态："
+
+#: 
+msgctxt "@item:inlistbox Config dialog, annotations page"
+msgid "Auto (recommended bundled profile)"
+msgstr "自动（推荐使用随附配置）"
+
+#: 
+msgctxt "@item:inlistbox Config dialog, annotations page"
+msgid "%1 (user)"
+msgstr "%1（用户）"
+
+#: 
+msgctxt "@item:inlistbox Config dialog, annotations page"
+msgid "%1 (bundled)"
+msgstr "%1（随附）"
+
+#: 
+msgctxt "@item:inlistbox Config dialog, annotations page"
+msgid "Missing: %1"
+msgstr "缺失：%1"
+
+#: 
+msgctxt "@info:tooltip Config dialog, annotations page"
+msgid "No bundled or Mengshee user StemTeX profiles were found."
+msgstr "未找到随附的或 Mengshee 用户 StemTeX 配置。"
+
+#: 
+msgctxt "@title:window"
+msgid "StemTeX Profile Creator"
+msgstr "StemTeX 配置创建器"
+
+#: 
+msgid "StemTeX Profile Creator was not found: %1"
+msgstr "未找到 StemTeX 配置创建器：%1"
+
+#: 
+msgid "Could not create the Mengshee profile directory: %1"
+msgstr "无法创建 Mengshee 配置目录：%1"
+
+#: 
+msgid "Could not start StemTeX Profile Creator: %1"
+msgstr "无法启动 StemTeX 配置创建器：%1"
+
+#: 
+msgid "StemTeX Profile Creator exited unexpectedly."
+msgstr "StemTeX 配置创建器意外退出。"
+
+#: 
+msgctxt "@info Config dialog, annotations page, StemTeX engine status"
+msgid ", running job %1"
+msgstr "，正在运行作业 %1"
+
+#: 
+msgctxt "@info Config dialog, annotations page, StemTeX engine status"
+msgid ", pending job %1"
+msgstr "，作业 %1 等待中"
+
+#: 
+msgctxt "@info Config dialog, annotations page, StemTeX engine status"
+msgid "starting"
+msgstr "正在启动"
+
+#: 
+msgctxt "@info Config dialog, annotations page, StemTeX engine status"
+msgid "ready"
+msgstr "就绪"
+
+#: 
+msgctxt "@title:tab"
+msgid "Untitled View"
+msgstr "未命名视图"
+
+#: 
+msgctxt "@info:tooltip"
+msgid "Make the current auxiliary tab the main view"
+msgstr "将当前辅助标签页设为主视图"
+
+#: 
+msgctxt "@action:button"
+msgid "Make Main View"
+msgstr "设为主视图"
+
+#: 
+msgctxt "@action:inmenu"
+msgid "Make Main View"
+msgstr "设为主视图"
+
+#: 
+msgctxt "@action:inmenu"
+msgid "Close Auxiliary View"
+msgstr "关闭辅助视图"
+
+#: 
+msgctxt "@title:frame"
+msgid "Main — %1"
+msgstr "主视图 — %1"
+
+#: 
+msgid "StemTeX renderer is not initialized."
+msgstr "StemTeX 渲染器尚未初始化。"
+
+#: 
+msgid "StemTeX rendering failed: %1"
+msgstr "StemTeX 渲染失败：%1"
+
+#: 
+msgid "StemTeX rendering failed: stale async job result."
+msgstr "StemTeX 渲染失败：异步作业结果已过期。"
+
+#: 
+msgid "StemTeX returned code %1. The rendered PDF is still shown."
+msgstr "StemTeX 返回代码 %1。仍显示已渲染的 PDF。"
+
+#: 
+msgid "StemTeX renderer is still starting."
+msgstr "StemTeX 渲染器仍在启动。"
+
+#: 
+msgid "StemTeX profile path is empty."
+msgstr "StemTeX 配置路径为空。"
+
+#: 
+msgid "StemTeX profile is not valid: %1"
+msgstr "StemTeX 配置无效：%1"
+
+#: 
+msgid "StemTeX profile metadata is not valid JSON: %1"
+msgstr "StemTeX 配置元数据不是有效的 JSON：%1"
+
+#: 
+msgid "StemTeX profile directories were not found: %1"
+msgstr "未找到 StemTeX 配置目录：%1"
+
+#: 
+msgid "No valid bundled or user StemTeX profile was found."
+msgstr "未找到有效的随附或用户 StemTeX 配置。"
+
+#: 
+msgid "StemTeX renderer DLL was not found: %1"
+msgstr "未找到 StemTeX 渲染器 DLL：%1"
+
+#: 
+msgid "StemTeX runtime is incomplete: missing %1 under %2"
+msgstr "StemTeX 运行时不完整：%2 下缺少 %1"
+
+#: 
+msgid "StemTeX renderer configuration is invalid: %1"
+msgstr "StemTeX 渲染器配置无效：%1"
+
+#: 
+msgid "StemTeX renderer failed to start: %1"
+msgstr "StemTeX 渲染器启动失败：%1"
+
+#: 
+msgid "StemTeX renderer status is unavailable."
+msgstr "StemTeX 渲染器状态不可用。"
+
+#: 
+msgid "StemTeX renderer is only available on Windows."
+msgstr "StemTeX 渲染器仅在 Windows 上可用。"
+
+#: 
+msgid "StemTeX renderer is not available."
+msgstr "StemTeX 渲染器不可用。"
+
+#: 
+msgid "StemTeX rendering is only available on Windows."
+msgstr "StemTeX 渲染仅在 Windows 上可用。"
+
+#: 
+msgctxt "Annotation tool"
+msgid "Annotation tool is not available"
+msgstr "批注工具不可用"
+
+#: 
+msgid "LaTeX rendering failed. The previous appearance is still shown."
+msgstr "LaTeX 渲染失败。仍显示之前的外观。"
+
+#: 
+msgctxt "@title:frame"
+msgid "Document"
+msgstr "文档"
+
+#: 
+msgid "Reading Views"
+msgstr "阅读视图"
+
+#: 
+msgid "Apply Reading Views to Other Pages..."
+msgstr "将阅读视图应用到其他页面..."
+
+#: 
+msgctxt "Compact reading-region toolbar button"
+msgid "Apply"
+msgstr "应用"
+
+#: 
+msgctxt "@action:button"
+msgid "Apply"
+msgstr "应用"
+
+#: 
+msgid "Apply the current page's Reading Views to other pages"
+msgstr "将当前页面的阅读视图应用到其他页面"
+
+#: 
+msgid "Auto-generate Reading Views..."
+msgstr "自动生成阅读视图..."
+
+#: 
+msgctxt "Compact reading-region toolbar button"
+msgid "Generate"
+msgstr "生成"
+
+#: 
+msgctxt "@action:button"
+msgid "Generate"
+msgstr "生成"
+
+#: 
+msgid "Detect page regions locally and create editable Views"
+msgstr "在本地检测页面区域并创建可编辑视图"
+
+#: 
+msgid "Click to Number"
+msgstr "点击编号"
+
+#: 
+msgid "Draw Reading View"
+msgstr "绘制阅读视图"
+
+#: 
+msgctxt "Compact reading-region toolbar button"
+msgid "Draw"
+msgstr "绘制"
+
+#: 
+msgctxt "Undo action"
+msgid "Move Page"
+msgstr "移动页面"
+
+#: 
+msgid "Could not reorder pages."
+msgstr "无法重新排序页面。"
+
+#: 
+msgid "Could not reorder pages. %1"
+msgstr "无法重新排序页面。%1"
+
+#: 
+msgctxt "Compact reading-region toolbar button"
+msgid "Order"
+msgstr "排序"
+
+#: 
+msgid "Select Page Template PDF"
+msgstr "选择页面模板 PDF"
+
+#: 
+msgid "Page template PDF set to %1."
+msgstr "页面模板 PDF 已设为 %1。"
+
+#: 
+msgid "Pages can only be inserted into local PDF files."
+msgstr "只能向本地 PDF 文件插入页面。"
+
+#: 
+msgid "Insert Page"
+msgstr "插入页面"
+
+#: 
+msgid "Before First Page"
+msgstr "首页之前"
+
+#: 
+msgid "After Current Page"
+msgstr "当前页之后"
+
+#: 
+msgid "After Page:"
+msgstr "在第几页之后："
+
+#: 
+msgid "Position:"
+msgstr "位置："
+
+#: 
+msgid "Blank Page"
+msgstr "空白页"
+
+#: 
+msgid "Page From PDF"
+msgstr "来自 PDF 的页面"
+
+#: 
+msgid "Source:"
+msgstr "来源："
+
+#: 
+msgid "Blank size:"
+msgstr "空白尺寸："
+
+#: 
+msgid "PDF file:"
+msgstr "PDF 文件："
+
+#: 
+msgid "PDF page:"
+msgstr "PDF 页码："
+
+#: 
+msgid "Select PDF Page Source"
+msgstr "选择 PDF 页面来源"
+
+#: 
+msgid "Select a PDF file to import a page from."
+msgstr "选择一个 PDF 文件以从中导入页面。"
+
+#: 
+msgid "Insert Page From Template"
+msgstr "从模板插入页面"
+
+#: 
+msgid "Template PDF:"
+msgstr "模板 PDF："
+
+#: 
+msgid "Template page:"
+msgstr "模板页："
+
+#: 
+msgid "Choose Another Template..."
+msgstr "选择其他模板..."
+
+#: 
+msgid "Pages can only be duplicated in local PDF files."
+msgstr "只能在本地 PDF 文件中复制页面。"
+
+#: 
+msgid "Could not duplicate the page."
+msgstr "无法复制页面。"
+
+#: 
+msgid "Could not duplicate the page. %1"
+msgstr "无法复制页面。%1"
+
+#: 
+msgctxt "Undo action"
+msgid "Duplicate Page"
+msgstr "复制页面"
+
+#: 
+msgid "Duplicated page %1. Save the document to keep this change."
+msgstr "已复制第 %1 页。保存文档以保留此更改。"
+
+#: 
+msgctxt "Undo action"
+msgid "Number View by Clicking"
+msgstr "通过点击为视图编号"
+
+#: 
+msgid "Could not reorder the Views. No click was added to the sequence."
+msgstr "无法重新排序视图。序列中没有添加任何点击。"
+
+#: 
+msgid "Could not reorder the Numbered Callouts."
+msgstr "无法重新排序编号标注框。"
+
+#: 
+msgid "Invalid page selection for Views."
+msgstr "视图的页面选择无效。"
+
+#: 
+msgid "Could not identify the pages containing the generated Views."
+msgstr "无法确定包含已生成视图的页面。"
+
+#: 
+msgid "Auto-generate Reading Views"
+msgstr "自动生成阅读视图"
+
+#: 
+msgctxt "Undo action"
+msgid "Auto-generate Reading Views"
+msgstr "自动生成阅读视图"
+
+#: 
+msgid "Skip pages that already have Views"
+msgstr "跳过已有视图的页面"
+
+#: 
+msgid "All selected pages already have Views. No changes were made."
+msgstr "所选页面都已有视图，未做任何更改。"
+
+#: 
+msgid "Could not prepare the current document for View detection. %1"
+msgstr "无法为视图检测准备当前文档。%1"
+
+#: 
+msgid "Preparing View detection..."
+msgstr "正在准备视图检测..."
+
+#: 
+msgid "Detecting Views on page %1..."
+msgstr "正在检测第 %1 页的视图..."
+
+#: 
+msgid "Could not detect Views."
+msgstr "无法检测视图。"
+
+#: 
+msgid "The document changed during detection. No Views were applied."
+msgstr "检测期间文档发生了更改，未应用任何视图。"
+
+#: 
+msgid "The Views changed during detection. No generated Views were applied."
+msgstr "检测期间视图发生了更改，未应用生成的视图。"
+
+#: 
+msgid "No page regions were detected. No changes were made."
+msgstr "未检测到页面区域，未做任何更改。"
+
+#: 
+msgid "Could not apply the generated Views."
+msgstr "无法应用生成的视图。"
+
+#: 
+msgid "Could not add the named destination. %1"
+msgstr "无法添加命名目标。%1"
+
+#: 
+msgid "Could not rename the named destination. %1"
+msgstr "无法重命名命名目标。%1"
+
+#: 
+msgid "Could not delete the named destination. %1"
+msgstr "无法删除命名目标。%1"
+
+#: 
+msgid "Could not move the named destination. %1"
+msgstr "无法移动命名目标。%1"
+
+#: 
+msgid "Could not resize the link. %1"
+msgstr "无法调整链接大小。%1"
+
+#: 
+msgid "Could not delete the link. %1"
+msgstr "无法删除链接。%1"
+
+#: 
+msgid "Blank pages can only be inserted into local PDF files."
+msgstr "只能向本地 PDF 文件插入空白页。"
+
+#: 
+msgid "Could not insert a blank page."
+msgstr "无法插入空白页。"
+
+#: 
+msgid "Could not insert a blank page. %1"
+msgstr "无法插入空白页。%1"
+
+#: 
+msgctxt "Undo action"
+msgid "Insert Blank Page"
+msgstr "插入空白页"
+
+#: 
+msgid "The PDF file to import from could not be found."
+msgstr "找不到要从中导入的 PDF 文件。"
+
+#: 
+msgid "Could not insert the PDF page."
+msgstr "无法插入 PDF 页面。"
+
+#: 
+msgid "Could not insert the PDF page. %1"
+msgstr "无法插入 PDF 页面。%1"
+
+#: 
+msgctxt "Undo action"
+msgid "Insert PDF Page"
+msgstr "插入 PDF 页面"
+
+#: 
+msgid "Pages can only be deleted from local PDF files."
+msgstr "只能从本地 PDF 文件中删除页面。"
+
+#: 
+msgid "The only page in the document cannot be deleted."
+msgstr "无法删除文档中唯一的页面。"
+
+#: 
+msgid "Could not delete the current page."
+msgstr "无法删除当前页面。"
+
+#: 
+msgid "Could not delete the current page. %1"
+msgstr "无法删除当前页面。%1"
+
+#: 
+msgctxt "Undo action"
+msgid "Delete Page"
+msgstr "删除页面"
+
+#: 
+msgid "Deleted page %1. Save the document to keep this change."
+msgstr "已删除第 %1 页。保存文档以保留此更改。"
+
+#: 
+msgid "Pages can only be reordered in local PDF files."
+msgstr "只能在本地 PDF 文件中重新排序页面。"
+
+#: 
+msgid "Moved page %1 to position %2. Save the document to keep this change."
+msgstr "已将第 %1 页移动到位置 %2。保存文档以保留此更改。"
+
+#: 
+msgid "Unable to find the %1 component: %2"
+msgstr "找不到 %1 组件：%2"
+
+#: 
+msgid "Unable to find the %1 component."
+msgstr "找不到 %1 组件。"
+
+#: 
+msgid "Blank page insertion is not available in the current viewer."
+msgstr "当前查看器不支持插入空白页。"
+
+#: 
+msgid "Page insertion is not available in the current viewer."
+msgstr "当前查看器不支持插入页面。"
+
+#: 
+msgid "Page deletion is not available in the current viewer."
+msgstr "当前查看器不支持删除页面。"
+
+#: 
+msgid "Welcome to %1"
+msgstr "欢迎使用 %1"
+
+#: 
+msgid "A PDF-centered document viewer and annotation tool based on Okular"
+msgstr "基于 Okular 的以 PDF 为中心的文档查看与批注工具"
+
+#: 
+msgid "%1 maintainer and PDF annotation changes"
+msgstr "%1（维护者与 PDF 批注改动）"
+
+#: part/part.cpp
+msgid "View numbered %1. Next number on this page: %2. Esc finishes numbering."
+msgstr "视图已编号 %1。此页的下一个编号：%2。按 Esc 结束编号。"
+
+#: part/dlgcertificate.cpp
+msgid "Unsupported signature type for current certificate"
+msgstr "当前证书不支持该签名类型"
+
+#: part/annotationwidgets.cpp:656 part/pageviewannotator.cpp:1496
+#, kde-format
+msgid "Strike out"
+msgstr "删除线"
+
+#: part/searchwidget.cpp:49
+#, kde-format
+msgid "Case Sensitive"
+msgstr "区分大小写"
+
+#: part/videowidget.cpp:565
+#, kde-format
+msgid "Videos not supported in this Okular"
+msgstr "此版本的 Okular 不支持视频"
+
+#: shell/shell.cpp:722
+#, kde-format
+msgid "All files (*)"
+msgstr "所有文件 (*)"
+
+#: part/mengsheeprintdialog.cpp
+msgid "Previous page"
+msgstr "上一页"
+
+#: part/mengsheeprintdialog.cpp
+msgid "Next page"
+msgstr "下一页"
+
+#: part/annotationactionhandler.cpp:1090
+msgctxt "@action:intoolbar Annotation tool"
+msgid "Add LaTeX Note"
+msgstr "添加 LaTeX 批注"
+
+#: part/annotationactionhandler.cpp:1094
+msgctxt "@action:intoolbar Annotation tool"
+msgid "Add LaTeX Inline Note"
+msgstr "添加 LaTeX 内联批注"
+
+#: part/annotationactionhandler.cpp:1098
+msgctxt "@action:intoolbar Annotation tool"
+msgid "Add LaTeX Callout"
+msgstr "添加 LaTeX 标注框"
+
+#: part/annotationpopup.cpp:639
+msgctxt "@label:textbox"
+msgid "Template:"
+msgstr "模板："
+
+#: part/pageview.cpp:158
+msgctxt "@title Auxiliary document frame fallback title"
+msgid "Page %1"
+msgstr "第 %1 页"
+
+#: part/part.cpp:5501 part/part.cpp:5506
+msgid " pt"
+msgstr " 磅"
