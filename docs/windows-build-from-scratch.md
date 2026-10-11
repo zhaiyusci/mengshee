@@ -7,7 +7,7 @@ from a fresh clone, with CMake as the only driver. The single entry point is
 Everything lands inside the checkout by default:
 
 ```text
-<checkout>\windows_build\
+<checkout>\windows-build-workspace\
   downloads\                     pinned archives (gettext, winflexbison, poppler-data)
   sources\                       KF6 module checkouts
   tools\pyvenv\                  Python venv with lxml for breeze-icons
@@ -22,7 +22,7 @@ Everything lands inside the checkout by default:
   dist\installer\                Mengshee-<version>-Setup.exe
 ```
 
-`windows_build/` is ignored by git, and `smoke-test-mengshee-stage.ps1` finds
+`windows-build-workspace/` is ignored by git, and `smoke-test-mengshee-stage.ps1` finds
 both this layout and the older sibling-workspace layout.
 
 ## Prerequisites (not in the repository)
@@ -65,17 +65,17 @@ Individual steps, for debugging one part of the pipeline:
 ```powershell
 # SDK only (skips everything already present)
 & "C:\Qt\Tools\CMake_64\bin\cmake.exe" `
-  -DWORKSPACE_ROOT=C:/path/to/checkout/windows_build `
+  -DWORKSPACE_ROOT=C:/path/to/checkout/windows-build-workspace `
   -P windows-build/cmake/bootstrap-windows-sdk.cmake
 
 # StemTeX stage only
 & "C:\Qt\Tools\CMake_64\bin\cmake.exe" `
-  -DWORKSPACE_ROOT=C:/path/to/checkout/windows_build `
+  -DWORKSPACE_ROOT=C:/path/to/checkout/windows-build-workspace `
   -P windows-build/cmake/build-stemtex-stage.cmake
 
 # Poppler CMap/CID data only, redoing it
 & "C:\Qt\Tools\CMake_64\bin\cmake.exe" `
-  -DWORKSPACE_ROOT=C:/path/to/checkout/windows_build `
+  -DWORKSPACE_ROOT=C:/path/to/checkout/windows-build-workspace `
   -DSTEPS=poppler-data -DFORCE=ON `
   -P windows-build/cmake/bootstrap-windows-sdk.cmake
 ```
@@ -85,7 +85,7 @@ re-running the driver is how you pick up a source change after the first build.
 
 ## What each step does
 
-1. **python** – creates `windows_build/tools/pyvenv` and installs `lxml`. KF6's
+1. **python** – creates `windows-build-workspace/tools/pyvenv` and installs `lxml`. KF6's
    `breeze-icons` generates its 24x24 icon set with `tools/generate-24px-versions.py`,
    which imports `lxml`; the icons are compiled into `KF6BreezeIcons.dll`.
    `-DWITH_ICON_GENERATION=OFF` would avoid Python, at the cost of the 24x24
@@ -104,7 +104,7 @@ re-running the driver is how you pick up a source change after the first build.
    run time.
 6. **stemtex** – builds the XeTeX/xdvipdfmx/dvisvgm daemons from
    `external/stemtex/texlive-xetex` with bash + MSVC, then configures, builds and
-   installs the StemTeX project into `windows_build/stemtex/StemTeX-<version>`.
+   installs the StemTeX project into `windows-build-workspace/stemtex/StemTeX-<version>`.
 7. **app** – `build-windows.cmake`: configure, build and install Mengshee,
    deploy the runtime from SDK/Qt/StemTeX/Mengshee data, stage
    `dist/mengshee-pdf/app`, and build the installer.
@@ -140,7 +140,7 @@ configure.
   `vcvars64.bat` through `vswhere`. When `vswhere` does not report the installed
   instance (`state.json` without `isComplete`/`isLaunchable`, as with some
   Visual Studio 18 installs), `build-stemtex-stage.cmake` derives the
-  installation path from `state.json` and writes `windows_build/tools/vswhere.sh`
+  installation path from `state.json` and writes `windows-build-workspace/tools/vswhere.sh`
   and `vswhere.cmd` shims that the engine scripts are pointed at. `-DVS_INSTALL_DIR`
   overrides the detection. The durable fix belongs in StemTeX: accept an explicit
   `VCVARS` instead of only asking `vswhere`.

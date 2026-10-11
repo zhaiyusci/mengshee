@@ -18,7 +18,8 @@ CMakeLists.txt.user*
 build-dir
 .DS_Store
 
-# Windows build workspace: a sibling of the checkout in the older layout, and
-# inside the checkout when build-windows-from-scratch.cmake uses its default
-# WORKSPACE_ROOT.
+# Windows build workspace. It sits inside the checkout when
+# build-windows-from-scratch.cmake uses its default WORKSPACE_ROOT, and next to
+# the checkout (as windows_build) in the older layout.
+/windows-build-workspace/
 /windows_build/

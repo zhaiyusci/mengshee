@@ -8,18 +8,20 @@ cmake_minimum_required(VERSION 3.20)
 #   smoke    windows-build/scripts/smoke-test-mengshee-stage.ps1
 #
 # Unlike the older single-purpose drivers, the workspace defaults to
-# <SOURCE_ROOT>/windows_build so a checkout keeps its builds inside itself:
+# <SOURCE_ROOT>/windows-build-workspace so a checkout keeps its builds inside
+# itself. The name is deliberately different from windows-build/, which holds
+# the build scripts themselves:
 #
-#   windows_build/sdk                            SDK prefix
-#   windows_build/sources, build, downloads      sources, build trees, caches
-#   windows_build/stemtex/StemTeX-<version>      StemTeX stage
-#   windows_build/install/mengshee               installed application tree
-#   windows_build/dist/mengshee-pdf/app          staged runtime
-#   windows_build/dist/installer                 installer output
+#   windows-build-workspace/sdk                            SDK prefix
+#   windows-build-workspace/sources, build, downloads      sources, build trees, caches
+#   windows-build-workspace/stemtex/StemTeX-<version>      StemTeX stage
+#   windows-build-workspace/install/mengshee               installed application tree
+#   windows-build-workspace/dist/mengshee-pdf/app          staged runtime
+#   windows-build-workspace/dist/installer                 installer output
 #
 # Pass -DWORKSPACE_ROOT=<dir> to keep the workspace somewhere else (the older
-# sibling layout still works), -DSTEPS=<list> to run a subset and -DFORCE=ON to
-# redo the selected steps from scratch.
+# sibling layout, for example ..\windows_build, still works), -DSTEPS=<list> to
+# run a subset and -DFORCE=ON to redo the selected steps from scratch.
 #
 # Example:
 #   & "C:\Qt\Tools\CMake_64\bin\cmake.exe" `
@@ -33,7 +35,7 @@ get_filename_component(_default_source_root "${_windows_build_dir}/.." ABSOLUTE)
 include("${_script_dir}/kf6-sdk-common.cmake")
 
 mengshee_default_path(SOURCE_ROOT "${_default_source_root}")
-mengshee_default_path(WORKSPACE_ROOT "${SOURCE_ROOT}/windows_build")
+mengshee_default_path(WORKSPACE_ROOT "${SOURCE_ROOT}/windows-build-workspace")
 mengshee_default_path(SDK_PREFIX "${WORKSPACE_ROOT}/sdk")
 mengshee_default_path(INSTALL_PREFIX "${WORKSPACE_ROOT}/install/mengshee")
 mengshee_default_path(BUILD_DIR "${WORKSPACE_ROOT}/build/mengshee-standalone")

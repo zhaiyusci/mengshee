@@ -8,11 +8,12 @@ param(
 $ErrorActionPreference = "Stop"
 
 $repoRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot "..\.."))
-# The workspace is either a sibling of the checkout (older layout) or inside it
-# (the default of windows-build/cmake/build-windows-from-scratch.cmake). Use
-# whichever one holds a staged runtime; -StageRoot overrides both.
+# The workspace is either a sibling of the checkout (the older layout, named
+# windows_build) or inside it (windows-build-workspace, the default of
+# windows-build/cmake/build-windows-from-scratch.cmake). Use whichever one holds
+# a staged runtime; -StageRoot overrides both.
 $siblingWorkspace = Join-Path (Split-Path -Parent $repoRoot) "windows_build"
-$inTreeWorkspace = Join-Path $repoRoot "windows_build"
+$inTreeWorkspace = Join-Path $repoRoot "windows-build-workspace"
 $windowsBuildRoot = $siblingWorkspace
 foreach ($candidate in @($siblingWorkspace, $inTreeWorkspace)) {
     if (Test-Path -LiteralPath (Join-Path $candidate "dist\mengshee-pdf\app\bin\mengshee.exe")) {

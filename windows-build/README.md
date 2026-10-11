@@ -97,7 +97,7 @@ It bootstraps the SDK, builds the StemTeX stage, then runs the canonical
 Mengshee build/deploy/package step and smoke-tests the staged runtime. Every
 step is skipped when its result already exists, `-DFORCE=ON` redoes the selected
 steps and `-DSTEPS=<list>` runs a subset. Prerequisites, the resulting
-`windows_build\` layout and the known constraints are documented in
+`windows-build-workspace\` layout and the known constraints are documented in
 [Windows build from scratch](../docs/windows-build-from-scratch.md).
 
 ## Canonical CMake Build

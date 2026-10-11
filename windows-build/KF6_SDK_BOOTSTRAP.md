@@ -10,7 +10,7 @@ skips whatever is already installed:
 & "C:\Qt\Tools\CMake_64\bin\cmake.exe" `
   -DQT_PREFIX=C:/Qt/6.11.1/msvc2022_64 `
   -DVCVARS="C:/Program Files/Microsoft Visual Studio/18/Community/VC/Auxiliary/Build/vcvars64.bat" `
-  -DWORKSPACE_ROOT=C:/path/to/checkout/windows_build `
+  -DWORKSPACE_ROOT=C:/path/to/checkout/windows-build-workspace `
   -P windows-build/cmake/bootstrap-windows-sdk.cmake
 ```
 
@@ -19,7 +19,7 @@ selects a subset (`-DSTEPS=poppler-data` for a single step) and `-DFORCE=ON`
 redoes the selected steps. The module list, its dependency order and the
 per-module configure flags live in `manifests/kf6-modules.txt`; the driver builds
 exactly that list, so a fresh SDK no longer has to be copied from an existing
-one. The `python` step creates `windows_build/tools/pyvenv` with `lxml`, which
+one. The `python` step creates `windows-build-workspace/tools/pyvenv` with `lxml`, which
 `breeze-icons` needs for its 24x24 icon generation. See
 [Windows build from scratch](../../docs/windows-build-from-scratch.md) for the
 prerequisites and the resulting layout.
