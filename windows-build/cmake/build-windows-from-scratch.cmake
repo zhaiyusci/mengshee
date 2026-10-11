@@ -3,9 +3,13 @@ cmake_minimum_required(VERSION 3.20)
 # Complete Windows build from a fresh checkout, driven by CMake only:
 #
 #   sdk      windows-build/cmake/bootstrap-windows-sdk.cmake
-#   stemtex  windows-build/cmake/build-stemtex-stage.cmake
+#   stemtex  windows-build/cmake/prepare-stemtex-runtime.cmake
 #   app      windows-build/cmake/build-windows.cmake (build, deploy, package)
 #   smoke    windows-build/scripts/smoke-test-mengshee-stage.ps1
+#
+# StemTeX is not built here: the pinned StemTeX release installer provides the
+# runtime and the pinned StemTeX tag provides the QScintilla files the LaTeX note
+# editor compiles against.
 #
 # Unlike the older single-purpose drivers, the workspace defaults to
 # <SOURCE_ROOT>/windows-build-workspace so a checkout keeps its builds inside
@@ -88,7 +92,7 @@ set(_common_args
     "-DCMAKE_EXE=${CMAKE_PROGRAM}"
     "-DNINJA=${NINJA_PROGRAM}"
 )
-foreach(_passthrough IN ITEMS PYTHON_EXECUTABLE KF6_VERSION BUILD_TYPE STEMTEX_JOBS STEMTEX_TEXLIVE_ROOT VS_INSTALL_DIR MENGSHEE_BASH)
+foreach(_passthrough IN ITEMS PYTHON_EXECUTABLE KF6_VERSION BUILD_TYPE VS_INSTALL_DIR STEMTEX_VERSION STEMTEX_INSTALLER STEMTEX_INSTALLER_SHA256 STEMTEX_STAGE_ROOT STEMTEX_REPO STEMTEX_QSCINTILLA_REF STEMTEX_SETUP_TYPE)
     if(DEFINED ${_passthrough} AND NOT "${${_passthrough}}" STREQUAL "")
         list(APPEND _common_args "-D${_passthrough}=${${_passthrough}}")
     endif()
@@ -118,7 +122,7 @@ endif()
 
 mengshee_want_step(_want stemtex)
 if(_want)
-    mengshee_run_driver(build-stemtex-stage.cmake)
+    mengshee_run_driver(prepare-stemtex-runtime.cmake)
 endif()
 
 mengshee_want_step(_want app)
@@ -129,11 +133,11 @@ if(_want)
         "-DSTAGE_ROOT=${STAGE_ROOT}"
         "-DOUTPUT_DIR=${OUTPUT_DIR}"
     )
-    if(DEFINED STEMTEX_ROOT AND NOT "${STEMTEX_ROOT}" STREQUAL "")
-        list(APPEND _app_args "-DSTEMTEX_ROOT=${STEMTEX_ROOT}")
-    endif()
     if(DEFINED STEMTEX_STAGE_ROOT AND NOT "${STEMTEX_STAGE_ROOT}" STREQUAL "")
         list(APPEND _app_args "-DSTEMTEX_STAGE_ROOT=${STEMTEX_STAGE_ROOT}")
+    endif()
+    if(DEFINED STEMTEX_VERSION AND NOT "${STEMTEX_VERSION}" STREQUAL "")
+        list(APPEND _app_args "-DSTEMTEX_VERSION=${STEMTEX_VERSION}")
     endif()
     if(DEFINED SKIP_INSTALLER AND SKIP_INSTALLER)
         list(APPEND _app_args "-DSKIP_INSTALLER=ON")

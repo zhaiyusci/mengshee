@@ -30,15 +30,18 @@ both this layout and the older sibling-workspace layout.
 ```powershell
 git clone https://github.com/zhaiyusci/mengshee.git C:\path\to\mengshee
 cd C:\path\to\mengshee
-git submodule update --init --recursive external/poppler external/stemtex
+git submodule update --init --recursive external/poppler
 ```
 
-Both submodules are build inputs: `external/poppler` provides the pinned Poppler
-fork (and `utils/PdfPageSequenceEditor.cc`, which is compiled into the PDF
-generator), `external/stemtex` provides the XeTeX engine sources and the
-renderer/GUI project. `external/pdf-base14-fonts` is a vendored tree in this
-repository, so it needs no submodule step. The pinned commits are the ones the
-runtime deployment expects; do not update the submodules independently.
+`external/poppler` is a build input: the pinned Poppler fork, including
+`utils/PdfPageSequenceEditor.cc`, which is compiled into the PDF generator.
+`external/pdf-base14-fonts` is a vendored tree in this repository, so it needs no
+submodule step. The pinned commit is the one the runtime deployment expects; do
+not update the submodule independently.
+
+StemTeX is deliberately **not** a submodule. LaTeX notes are rendered by the
+StemTeX runtime, and this build consumes the StemTeX project's own release
+artifacts instead of building it (see the `stemtex` step below).
 
 ## Prerequisites (not in the repository)
 
@@ -47,11 +50,11 @@ runtime deployment expects; do not update the submodules independently.
 | Visual Studio with the x64 C++ toolchain | `VCVARS` defaults to the Visual Studio 18 Community path; override with `-DVCVARS=...` |
 | Qt for MSVC | e.g. `C:/Qt/6.11.1/msvc2022_64`; `Qt6TextToSpeech` is optional and not used |
 | CMake 3.20+ and Ninja | the Qt Tools copies are used by default |
-| Git for Windows, MSYS2 or Cygwin | the XeTeX engine scripts are bash scripts; `-DMENGSHEE_BASH=<bash.exe>` if not in a default location |
+| Git | the pinned QScintilla files are fetched with a sparse checkout |
 | Python 3 | only to create the workspace venv and install `lxml`; `-DPYTHON_EXECUTABLE=<python.exe>` to choose it |
-| TeX Live 2026 | `C:/texlive/2026/texmf-dist` supplies the trimmed TeX tree; `-DSTEMTEX_TEXLIVE_ROOT=<root>` |
 | Inno Setup 6 | only for the installer; `-DSKIP_INSTALLER=ON` to stop after staging |
-| Network access | pinned downloads: extra-cmake-modules, KF6 modules, gettext, winflexbison, poppler-data, tesseract sources |
+| Network access | pinned downloads: extra-cmake-modules, KF6 modules, gettext, winflexbison, poppler-data, tesseract sources, the StemTeX release installer |
+| Administrator rights, once | the StemTeX setup is `PrivilegesRequired=admin`; run the build once from an elevated shell, or supply a StemTeX runtime that is already installed (`-DSTEMTEX_STAGE_ROOT=`) |
 
 ## Build
 
@@ -81,7 +84,9 @@ Useful switches:
 | `-DSMOKE_PDF=<file>` | PDF used by the smoke test (default `autotests/data/file2.pdf`) |
 | `-DPYTHON_EXECUTABLE=<python.exe>` | base interpreter for the workspace venv |
 | `-DVS_INSTALL_DIR=<dir>` | Visual Studio location when `vswhere` cannot report it |
-| `-DMENGSHEE_BASH=<bash.exe>` | bash used by the XeTeX engine scripts |
+| `-DSTEMTEX_VERSION=<version>` | StemTeX release to install (default `0.14.0`) |
+| `-DSTEMTEX_STAGE_ROOT=<dir>` | use an already installed StemTeX runtime instead of installing one |
+| `-DSTEMTEX_INSTALLER=<exe>` | use a local `StemTeX-<version>-Setup.exe` instead of downloading it |
 
 Individual steps, for debugging one part of the pipeline:
 
@@ -125,9 +130,14 @@ re-running the driver is how you pick up a source change after the first build.
    `share/poppler/cMap/Adobe-GB1/UniGB-UTF16-H` and
    `share/poppler/cidToUnicode/Adobe-GB1`, and CJK/encoded PDFs need the data at
    run time.
-6. **stemtex** – builds the XeTeX/xdvipdfmx/dvisvgm daemons from
-   `external/stemtex/texlive-xetex` with bash + MSVC, then configures, builds and
-   installs the StemTeX project into `windows-build-workspace/stemtex/StemTeX-<version>`.
+6. **stemtex** – does not build StemTeX. It installs the pinned StemTeX release
+   (`StemTeX-<version>-Setup.exe`, SHA-256 checked) silently into
+   `windows-build-workspace/stemtex/StemTeX-<version>`, which brings the daemon
+   runtime, the renderer GUI and profile, and the bundled TeX tree; and it sparse
+   checks out the matching QScintilla headers and import library from the same
+   StemTeX tag into `windows-build-workspace/stemtex/qscintilla/third_party`,
+   which the LaTeX note editor compiles against. Replacing either half with an
+   installed runtime (`-DSTEMTEX_STAGE_ROOT=`) skips the installer.
 7. **app** – `build-windows.cmake`: configure, build and install Mengshee,
    deploy the runtime from SDK/Qt/StemTeX/Mengshee data, stage
    `dist/mengshee-pdf/app`, and build the installer.
@@ -142,10 +152,10 @@ the first run also downloads everything):
 | `python`, `ecm`, `gettext`, `winflexbison`, `zlib`, `freetype`, `libintl` | under a minute each |
 | 27 KF6 modules | ~24 minutes in total (`breeze-icons` alone takes ~2.5 minutes) |
 | `poppler`, `poppler-data`, `tesseract` | ~1.5 minutes, seconds, ~2 minutes |
-| StemTeX engine, dvisvgm daemon, stage | ~1.5 minutes, ~1.5 minutes, under a minute |
+| `stemtex` | about a minute (29 MB installer download plus the QScintilla checkout) |
 | `app` | the first run compiles the whole application (tens of minutes); ~3 minutes incrementally, including deploy and packaging |
 
-Expect roughly 40-90 minutes for a complete first build.
+Expect roughly 45-90 minutes for a complete first build.
 
 ## Run the result
 
@@ -188,20 +198,19 @@ configure.
 
 ## Known constraints
 
-- **Visual Studio discovery**: the StemTeX engine scripts look up
-  `vcvars64.bat` through `vswhere`. When `vswhere` does not report the installed
-  instance (`state.json` without `isComplete`/`isLaunchable`, as with some
-  Visual Studio 18 installs), `build-stemtex-stage.cmake` derives the
-  installation path from `state.json` and writes `windows-build-workspace/tools/vswhere.sh`
-  and `vswhere.cmd` shims that the engine scripts are pointed at. `-DVS_INSTALL_DIR`
-  overrides the detection. The durable fix belongs in StemTeX: accept an explicit
-  `VCVARS` instead of only asking `vswhere`.
-- **Prebuilt TeX format**: the pinned StemTeX revision has no
-  `scripts/stage-stemtex.sh`, so the daemon side tree with a prebuilt
-  `xelatexdaemon.fmt` is not assembled. The renderer generates the format in the
-  user cache on first use; the StemTeX install reports this.
-- **Optional TeX tree**: the bundled, trimmed `texmf-dist` comes from
-  `C:/texlive/2026`; without a TeX Live installation the install step fails, so
-  keep a TeX Live tree available or pass `-DSTEMTEX_TEXLIVE_ROOT`.
+- **StemTeX installer needs administrator rights.** The published setup is
+  `PrivilegesRequired=admin`, so `prepare-stemtex-runtime.cmake` refuses to run
+  it from a non-elevated process and names the alternatives: run the build once
+  from an elevated PowerShell, install StemTeX yourself and pass
+  `-DSTEMTEX_STAGE_ROOT=<installed directory>`, or produce a stage from a StemTeX
+  build tree with `cmake --install <stemtex build> --prefix <stage>`. Everything
+  else in the build runs unelevated.
+- **StemTeX version pin.** The runtime version is pinned in
+  `windows-build/cmake/stemtex-common.cmake` (`mengshee_resolve_stemtex_version`),
+  and the QScintilla files are taken from the same tag, so the headers, the
+  import library and the shipped DLL always match. The runtime deployment
+  rejects a stage whose `runtime/VERSION` differs.
+- **Optional TeX tree**: the bundled, trimmed `texmf-dist` is part of the StemTeX
+  installer, so no TeX Live installation is needed any more.
 - The installer step fails without Inno Setup 6; use `-DSKIP_INSTALLER=ON` for a
   runtime-only result.

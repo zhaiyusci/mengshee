@@ -23,3 +23,7 @@ build-dir
 # the checkout (as windows_build) in the older layout.
 /windows-build-workspace/
 /windows_build/
+
+# StemTeX used to be a submodule; it is a prebuilt runtime now and a leftover
+# checkout of the old submodule should not show up as untracked.
+/external/stemtex/

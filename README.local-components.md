@@ -4,7 +4,6 @@ This fork pins local component sources as git submodules:
 
 - `external/poppler`: the pinned, locally maintained Poppler fork used for
   annotation behavior and the generic PDF page-sequence editor.
-- `external/stemtex`: the StemTeX renderer source used for bundled LaTeX note rendering.
 
 Initialize it after cloning:
 
@@ -24,16 +23,15 @@ checks are documented in `docs/local-poppler-fork.md`. In particular, the
 Poppler library, generated private headers, and page-editor sources used by one
 Mengshee build must come from compatible submodule revisions.
 
-LaTeX note rendering uses the StemTeX renderer. Mengshee consumes StemTeX as
-runtime artifacts copied during Windows deployment; the submodule provides the
-default source tree. Before packaging, StemTeX must have staged runtime outputs
-under that tree, or a different staged StemTeX checkout can be selected with
-`STEMTEX_ROOT` or `MENGSHEE_STEMTEX_SOURCE_ROOT`.
-
-Direct Mengshee CMake configuration defaults `MENGSHEE_STEMTEX_ROOT` to
-`external/stemtex` and uses its `third_party` QScintilla build when available.
-`MENGSHEE_QSCINTILLA_ROOT` can still be passed explicitly to override that
-default.
+LaTeX note rendering uses the StemTeX renderer, which is **not** a submodule:
+Mengshee consumes StemTeX as a prebuilt runtime. On Windows,
+`windows-build/cmake/prepare-stemtex-runtime.cmake` installs the pinned StemTeX
+release (runtime, GUI and the bundled TeX tree) and fetches the matching
+QScintilla headers and import library from the same StemTeX tag; see
+[Windows build from scratch](docs/windows-build-from-scratch.md). A runtime that
+is installed elsewhere is selected with `STEMTEX_STAGE_ROOT`, and
+`MENGSHEE_QSCINTILLA_ROOT` overrides the QScintilla location when Mengshee's
+CMake is configured directly.
 
 The detailed Linux local build and install workflow is documented in
 `README.local-linux-build.md`.

@@ -140,8 +140,9 @@ git submodule update --init --recursive
 ```
 
 `external/poppler` is used for vector stamp appearances and LaTeX note
-metadata. `external/stemtex` provides the StemTeX source/staging tree used by
-the Windows deployment scripts for bundled LaTeX note rendering.
+metadata. StemTeX is not a submodule any more: the Windows deployment scripts
+consume a prebuilt StemTeX runtime (see `docs/windows-build-from-scratch.md`),
+and a Linux build picks up whatever StemTeX runtime it is pointed at.
 
 ## WSL and openSUSE notes
 

@@ -3,7 +3,6 @@ param(
     [string] $WslDistro = "openSUSE-Tumbleweed",
     [string] $QtPrefix = "",
     [string] $SdkPrefix = "",
-    [string] $StemTeXRoot = "",
     [string] $StemTeXStageRoot = "",
     [string] $WindowsBuildRoot = "",
     [string] $WindowsVersion = "",
@@ -98,8 +97,7 @@ function Resolve-CMakeCommand {
 Write-Host "Mengshee local package build"
 Write-Host "  Repo:               $repoRoot"
 Write-Host "  Windows build root: $WindowsBuildRoot"
-Write-Host "  StemTeX source:     $StemTeXRoot"
-Write-Host "  StemTeX stage:      $StemTeXStageRoot"
+Write-Host "  StemTeX runtime:    $(if ($StemTeXStageRoot) { $StemTeXStageRoot } else { 'pinned release, installed by the build' })"
 Write-Host "  Linux AppImage dir: $linuxAppImageDir"
 Write-Host "  Package output:     $PackageOutputRoot"
 Write-Host "  WSL distro:         $WslDistro"
@@ -127,10 +125,10 @@ if (!$SkipWindows) {
     if ($SdkPrefix) {
         $commonWindowsArgs += "-DSDK_PREFIX=$SdkPrefix"
     }
-    if ($StemTeXRoot) {
-        $commonWindowsArgs += "-DSTEMTEX_ROOT=$([System.IO.Path]::GetFullPath($StemTeXRoot))"
-    }
     if ($StemTeXStageRoot) {
+        # StemTeX is a prebuilt runtime now: the stage (or the version that
+        # resolves <workspace>\stemtex\StemTeX-<version>) is all the build needs.
+        # See windows-build/cmake/prepare-stemtex-runtime.cmake.
         $commonWindowsArgs += "-DSTEMTEX_STAGE_ROOT=$([System.IO.Path]::GetFullPath($StemTeXStageRoot))"
     }
 

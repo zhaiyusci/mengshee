@@ -32,36 +32,38 @@ Build output lives outside the source checkout under the sibling
 - Inno Setup 6, only when building the installer `.exe`.
 - Python 3, only for the workspace venv that `breeze-icons` needs for its 24x24
   icon generation; the from-scratch driver creates the venv and installs `lxml`.
-- Git for Windows, MSYS2 or Cygwin when the StemTeX daemons are built from source,
-  because `texlive-xetex/build-standalone-msvc.sh` is a bash script.
-- A TeX Live installation (for example `C:\texlive\2026`) that supplies the
-  trimmed `texmf-dist` tree for the StemTeX stage.
+- Administrator rights once, for the StemTeX release installer
+  (`PrivilegesRequired=admin`); a StemTeX runtime that is already installed can
+  be passed instead with `-DSTEMTEX_STAGE_ROOT=`.
 - Initialized third-party sources:
 
 ```powershell
-git submodule update --init --recursive external/poppler external/stemtex
+git submodule update --init --recursive external/poppler
 ```
 
-StemTeX source is looked up in this order: an explicit `STEMTEX_ROOT`, the
-`MENGSHEE_STEMTEX_SOURCE_ROOT` environment variable, `external/stemtex`, and
-then the sibling StemTeX development checkout.
+StemTeX is not a submodule. LaTeX notes are rendered by the StemTeX runtime, and
+this build consumes the StemTeX project's own release artifacts:
+`windows-build\cmake\prepare-stemtex-runtime.cmake` installs the pinned
+`StemTeX-<version>-Setup.exe` (runtime, GUI, bundled TeX tree) into
+`WORKSPACE_ROOT\stemtex\StemTeX-<version>` and sparse-checks-out the matching
+QScintilla headers and import library from the same StemTeX tag into
+`WORKSPACE_ROOT\stemtex\qscintilla\third_party`. The version is pinned once in
+`windows-build\cmake\stemtex-common.cmake`.
 
-The submodule pins the required StemTeX version. Runtime deployment accepts only
-the canonical CMake `staging` layout and requires its `runtime\VERSION` to match
-the selected source tree. Old `dist\stemtex-installer` and daemon-static trees
-are not package inputs.
+Runtime deployment accepts only that installed stage: it requires
+`runtime\VERSION` to match the pin, and the old `dist\stemtex-installer` and
+daemon-static trees are not package inputs. `-DSTEMTEX_STAGE_ROOT=<dir>` reuses a
+runtime installed elsewhere, `-DSTEMTEX_INSTALLER=<exe>` uses a local setup, and
+`-DSTEMTEX_VERSION=<version>` moves the pin.
 
-When `STEMTEX_STAGE_ROOT` is omitted, the Windows release pipeline uses only the
-versioned stage at `WORKSPACE_ROOT\stemtex\StemTeX-<version>`. It never falls
-back to a source checkout's development `staging` directory.
-
-For release work, install StemTeX into a fresh, version-specific directory and
-pass both paths to the Mengshee driver:
+For release work, install the matching StemTeX into a fresh, version-specific
+directory and pass it to the Mengshee driver. Either run the published setup once
+elevated, or produce a stage from a StemTeX build tree:
 
 ```powershell
 $stemtexRoot = "C:\Users\jairy\Documents\xetex\stemtex"
 $stemtexVersion = (Get-Content "$stemtexRoot\VERSION").Trim()
-$stemtexStage = "C:\Users\jairy\Documents\okular\windows_build\stemtex\StemTeX-$stemtexVersion"
+$stemtexStage = "C:\Users\jairy\Documents\okular\windows-build-workspace\stemtex\StemTeX-$stemtexVersion"
 
 if (Test-Path $stemtexStage) {
   throw "StemTeX stage already exists: $stemtexStage"
@@ -72,7 +74,7 @@ if (Test-Path $stemtexStage) {
 ```
 
 Build and smoke-test StemTeX first using its own
-`docs\BUILDING_AND_PACKAGING.md`. A release stage containing generated profile
+`docs\BUILDING_AND_PACKAGING.md`. A stage containing generated profile
 `.xdv`, `.aux`, `.log`, or `.pdf` files is rejected.
 
 If using a non-default Visual Studio path, pass it to CMake scripts:
@@ -93,7 +95,7 @@ driver, which keeps its workspace inside the checkout:
   -P windows-build/cmake/build-windows-from-scratch.cmake
 ```
 
-It bootstraps the SDK, builds the StemTeX stage, then runs the canonical
+It bootstraps the SDK, prepares the StemTeX runtime, then runs the canonical
 Mengshee build/deploy/package step and smoke-tests the staged runtime. Every
 step is skipped when its result already exists, `-DFORCE=ON` redoes the selected
 steps and `-DSTEPS=<list>` runs a subset. Prerequisites, the resulting
@@ -108,8 +110,7 @@ Use the CMake driver for normal Windows builds:
 & "C:\Qt\Tools\CMake_64\bin\cmake.exe" `
   -DQT_PREFIX=C:/Qt/6.11.1/msvc2022_64 `
   -DVCVARS="C:/Program Files/Microsoft Visual Studio/18/Community/VC/Auxiliary/Build/vcvars64.bat" `
-  -DWORKSPACE_ROOT=C:/Users/jairy/Documents/okular/windows_build `
-  "-DSTEMTEX_ROOT=$stemtexRoot" `
+  -DWORKSPACE_ROOT=C:/path/to/checkout/windows-build-workspace `
   "-DSTEMTEX_STAGE_ROOT=$stemtexStage" `
   -P windows-build/cmake/build-windows.cmake
 ```
@@ -198,17 +199,21 @@ These scripts are internal steps. Use them only when debugging a specific part
 of the Windows pipeline.
 
 - `cmake\build-windows-from-scratch.cmake`
-  - Complete Windows build from a fresh clone: SDK bootstrap, StemTeX stage,
-    Mengshee build/deploy/package and the staged smoke test. Workspace defaults
-    to `<checkout>\windows_build`.
+  - Complete Windows build from a fresh clone: SDK bootstrap, StemTeX runtime
+    preparation, Mengshee build/deploy/package and the staged smoke test.
+    Workspace defaults to `<checkout>\windows-build-workspace`.
 - `cmake\bootstrap-windows-sdk.cmake`
   - Bootstraps the whole SDK prefix in dependency order (Python venv with lxml,
     ECM, gettext, winflexbison, zlib, freetype, libintl, the KF6 modules from
     `manifests\kf6-modules.txt`, Poppler, Poppler data, Tesseract). Idempotent,
     with `-DSTEPS=<list>` and `-DFORCE=ON`.
-- `cmake\build-stemtex-stage.cmake`
-  - Builds the XeTeX/xdvipdfmx/dvisvgm daemons and installs the versioned
-    StemTeX stage into `<workspace>\stemtex\StemTeX-<version>`.
+- `cmake\prepare-stemtex-runtime.cmake`
+  - Installs the pinned StemTeX release (runtime, GUI, bundled TeX tree) into
+    `<workspace>\stemtex\StemTeX-<version>` and fetches the matching QScintilla
+    headers and import library from the same StemTeX tag. Nothing of StemTeX is
+    compiled here.
+- `cmake\stemtex-common.cmake`
+  - Single place that pins the StemTeX version and resolves/validates its stage.
 - `cmake\build-poppler-data-sdk.cmake`
   - Installs the pinned Poppler CMap/CID data release into
     `sdk\share\poppler`, which the staged runtime and `package-windows.cmake`

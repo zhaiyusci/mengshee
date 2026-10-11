@@ -107,23 +107,23 @@ ecm_setup_version(${PROJECT_VERSION}
 
 find_package(Qt6 ${QT_REQUIRED_VERSION} CONFIG REQUIRED COMPONENTS Core Test Widgets PrintSupport Svg Xml Concurrent)
 
-set(MENGSHEE_STEMTEX_ROOT
-    "${CMAKE_CURRENT_SOURCE_DIR}/external/stemtex"
-    CACHE PATH "Root of the StemTeX source/staging tree")
 set(MENGSHEE_QSCINTILLA_ROOT
     ""
-    CACHE PATH "Root of the bundled QScintilla build used by StemTeX; empty uses MENGSHEE_STEMTEX_ROOT/third_party when available")
-set(_mengshee_stemtex_root "")
+    CACHE PATH "Root of the QScintilla build used by the LaTeX note editor, containing qscintilla-src/ and qscintilla-build/release/; empty searches the windows-build workspace")
 set(_mengshee_qscintilla_root "")
 set(_mengshee_qscintilla_root_explicit FALSE)
-if(MENGSHEE_STEMTEX_ROOT)
-    get_filename_component(_mengshee_stemtex_root "${MENGSHEE_STEMTEX_ROOT}" ABSOLUTE)
-endif()
 if(MENGSHEE_QSCINTILLA_ROOT)
     set(_mengshee_qscintilla_root "${MENGSHEE_QSCINTILLA_ROOT}")
     set(_mengshee_qscintilla_root_explicit TRUE)
-elseif(_mengshee_stemtex_root AND IS_DIRECTORY "${_mengshee_stemtex_root}/third_party")
-    set(_mengshee_qscintilla_root "${_mengshee_stemtex_root}/third_party")
+else()
+    # windows-build/cmake/prepare-stemtex-runtime.cmake materializes these files
+    # from the pinned StemTeX tag; StemTeX itself is a prebuilt runtime now.
+    get_filename_component(_mengshee_workspace_qscintilla
+        "${CMAKE_CURRENT_SOURCE_DIR}/windows-build-workspace/stemtex/qscintilla/third_party" ABSOLUTE)
+    if(IS_DIRECTORY "${_mengshee_workspace_qscintilla}")
+        set(_mengshee_qscintilla_root "${_mengshee_workspace_qscintilla}")
+    endif()
+    unset(_mengshee_workspace_qscintilla)
 endif()
 if(_mengshee_qscintilla_root)
     get_filename_component(_mengshee_qscintilla_root "${_mengshee_qscintilla_root}" ABSOLUTE)
@@ -138,12 +138,12 @@ if(_mengshee_qscintilla_root)
         message(FATAL_ERROR "MENGSHEE_QSCINTILLA_ROOT is set but QScintilla headers/library/runtime were not found under ${_mengshee_qscintilla_root}")
     else()
         set(HAVE_QSCINTILLA 0)
-        message(STATUS "StemTeX QScintilla build was not found under ${_mengshee_qscintilla_root}; QScintilla support is disabled")
+        message(STATUS "QScintilla was not found under ${_mengshee_qscintilla_root}; QScintilla support is disabled")
     endif()
 else()
     set(HAVE_QSCINTILLA 0)
+    message(STATUS "QScintilla was not found; run windows-build/cmake/prepare-stemtex-runtime.cmake or pass -DMENGSHEE_QSCINTILLA_ROOT=<path>")
 endif()
-unset(_mengshee_stemtex_root)
 unset(_mengshee_qscintilla_root)
 unset(_mengshee_qscintilla_root_explicit)
 
