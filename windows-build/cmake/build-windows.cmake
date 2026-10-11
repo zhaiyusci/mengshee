@@ -184,7 +184,12 @@ else()
     )
 endif()
 mengshee_find_qscintilla_root(QSCINTILLA_ROOT_RESOLVED)
-mengshee_resolve_stemtex_version(STEMTEX_VERSION)
+mengshee_resolve_stemtex_runtime(STEMTEX_STAGE_ROOT_RESOLVED STEMTEX_VERSION_RESOLVED "${WORKSPACE_ROOT}")
+if(NOT STEMTEX_STAGE_ROOT_RESOLVED)
+    message(FATAL_ERROR
+        "No StemTeX runtime found. Run windows-build/cmake/prepare-stemtex-runtime.cmake first\n"
+        "(it uses an installed StemTeX in place) or pass -DSTEMTEX_STAGE_ROOT=<directory>.")
+endif()
 mengshee_find_msgfmt(MSGFMT "${SDK_PREFIX}")
 
 foreach(_required IN ITEMS
@@ -271,11 +276,11 @@ if(NOT DEFINED SKIP_DEPLOY OR NOT SKIP_DEPLOY)
         "-DQT_PREFIX=${QT_PREFIX}"
         "-DQSCINTILLA_ROOT=${QSCINTILLA_ROOT_RESOLVED}"
     )
-    if(DEFINED STEMTEX_STAGE_ROOT AND NOT "${STEMTEX_STAGE_ROOT}" STREQUAL "")
-        list(APPEND _deploy_args "-DSTEMTEX_STAGE_ROOT=${STEMTEX_STAGE_ROOT}")
+    if(DEFINED STEMTEX_STAGE_ROOT_RESOLVED AND NOT "${STEMTEX_STAGE_ROOT_RESOLVED}" STREQUAL "")
+        list(APPEND _deploy_args "-DSTEMTEX_STAGE_ROOT=${STEMTEX_STAGE_ROOT_RESOLVED}")
     endif()
-    if(DEFINED STEMTEX_VERSION AND NOT "${STEMTEX_VERSION}" STREQUAL "")
-        list(APPEND _deploy_args "-DSTEMTEX_VERSION=${STEMTEX_VERSION}")
+    if(DEFINED STEMTEX_VERSION_RESOLVED AND NOT "${STEMTEX_VERSION_RESOLVED}" STREQUAL "")
+        list(APPEND _deploy_args "-DSTEMTEX_VERSION=${STEMTEX_VERSION_RESOLVED}")
     endif()
     list(APPEND _deploy_args -P "${_script_dir}/deploy-runtime.cmake")
     execute_process(COMMAND ${_deploy_args} RESULT_VARIABLE _deploy_result)

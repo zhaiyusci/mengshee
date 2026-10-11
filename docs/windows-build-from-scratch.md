@@ -53,8 +53,8 @@ artifacts instead of building it (see the `stemtex` step below).
 | Git | the pinned QScintilla files are fetched with a sparse checkout |
 | Python 3 | only to create the workspace venv and install `lxml`; `-DPYTHON_EXECUTABLE=<python.exe>` to choose it |
 | Inno Setup 6 | only for the installer; `-DSKIP_INSTALLER=ON` to stop after staging |
-| Network access | pinned downloads: extra-cmake-modules, KF6 modules, gettext, winflexbison, poppler-data, tesseract sources, the StemTeX release installer |
-| Administrator rights, once | the StemTeX setup is `PrivilegesRequired=admin`; run the build once from an elevated shell, or supply a StemTeX runtime that is already installed (`-DSTEMTEX_STAGE_ROOT=`) |
+| Network access | pinned downloads: extra-cmake-modules, KF6 modules, gettext, winflexbison, poppler-data, tesseract sources, the QScintilla files |
+| StemTeX installed (optional) | the build uses an installed StemTeX runtime in place; without one it installs the pinned release, which needs administrator rights once |
 
 ## Build
 
@@ -84,9 +84,9 @@ Useful switches:
 | `-DSMOKE_PDF=<file>` | PDF used by the smoke test (default `autotests/data/file2.pdf`) |
 | `-DPYTHON_EXECUTABLE=<python.exe>` | base interpreter for the workspace venv |
 | `-DVS_INSTALL_DIR=<dir>` | Visual Studio location when `vswhere` cannot report it |
-| `-DSTEMTEX_VERSION=<version>` | StemTeX release to install (default `0.14.0`) |
-| `-DSTEMTEX_STAGE_ROOT=<dir>` | use an already installed StemTeX runtime instead of installing one |
-| `-DSTEMTEX_INSTALLER=<exe>` | use a local `StemTeX-<version>-Setup.exe` instead of downloading it |
+| `-DSTEMTEX_VERSION=<version>` | require a specific StemTeX release; a matching runtime is used, otherwise it is downloaded and installed |
+| `-DSTEMTEX_STAGE_ROOT=<dir>` | use a StemTeX runtime from that directory instead of resolving one |
+| `-DSTEMTEX_INSTALLER=<exe>` | install from a local `StemTeX-<version>-Setup.exe` instead of downloading it |
 
 Individual steps, for debugging one part of the pipeline:
 
@@ -130,14 +130,15 @@ re-running the driver is how you pick up a source change after the first build.
    `share/poppler/cMap/Adobe-GB1/UniGB-UTF16-H` and
    `share/poppler/cidToUnicode/Adobe-GB1`, and CJK/encoded PDFs need the data at
    run time.
-6. **stemtex** – does not build StemTeX. It installs the pinned StemTeX release
-   (`StemTeX-<version>-Setup.exe`, SHA-256 checked) silently into
-   `windows-build-workspace/stemtex/StemTeX-<version>`, which brings the daemon
-   runtime, the renderer GUI and profile, and the bundled TeX tree; and it sparse
-   checks out the matching QScintilla headers and import library from the same
-   StemTeX tag into `windows-build-workspace/stemtex/qscintilla/third_party`,
-   which the LaTeX note editor compiles against. Replacing either half with an
-   installed runtime (`-DSTEMTEX_STAGE_ROOT=`) skips the installer.
+6. **stemtex** – does not build StemTeX. It uses an installed StemTeX runtime in
+   place (its `runtime/VERSION` decides the QScintilla pin), and sparse checks out
+   the matching QScintilla headers and import library from the same StemTeX tag
+   into `windows-build-workspace/stemtex/qscintilla/third_party`, which the LaTeX
+   note editor compiles against. Only when no StemTeX runtime can be found does it
+   download the pinned `StemTeX-<version>-Setup.exe` (SHA-256 checked) and install
+   it into `windows-build-workspace/stemtex/StemTeX-<version>`; that path needs
+   administrator rights once. Warm-up files that an already used runtime carries
+   under `gui/profiles` are never packaged.
 7. **app** – `build-windows.cmake`: configure, build and install Mengshee,
    deploy the runtime from SDK/Qt/StemTeX/Mengshee data, stage
    `dist/mengshee-pdf/app`, and build the installer.
@@ -152,7 +153,7 @@ the first run also downloads everything):
 | `python`, `ecm`, `gettext`, `winflexbison`, `zlib`, `freetype`, `libintl` | under a minute each |
 | 27 KF6 modules | ~24 minutes in total (`breeze-icons` alone takes ~2.5 minutes) |
 | `poppler`, `poppler-data`, `tesseract` | ~1.5 minutes, seconds, ~2 minutes |
-| `stemtex` | about a minute (29 MB installer download plus the QScintilla checkout) |
+| `stemtex` | seconds when StemTeX is already installed (plus the QScintilla checkout); about a minute plus a 29 MB download when the runtime has to be installed |
 | `app` | the first run compiles the whole application (tens of minutes); ~3 minutes incrementally, including deploy and packaging |
 
 Expect roughly 45-90 minutes for a complete first build.
@@ -198,19 +199,24 @@ configure.
 
 ## Known constraints
 
-- **StemTeX installer needs administrator rights.** The published setup is
-  `PrivilegesRequired=admin`, so `prepare-stemtex-runtime.cmake` refuses to run
-  it from a non-elevated process and names the alternatives: run the build once
-  from an elevated PowerShell, install StemTeX yourself and pass
-  `-DSTEMTEX_STAGE_ROOT=<installed directory>`, or produce a stage from a StemTeX
-  build tree with `cmake --install <stemtex build> --prefix <stage>`. Everything
-  else in the build runs unelevated.
-- **StemTeX version pin.** The runtime version is pinned in
-  `windows-build/cmake/stemtex-common.cmake` (`mengshee_resolve_stemtex_version`),
-  and the QScintilla files are taken from the same tag, so the headers, the
-  import library and the shipped DLL always match. The runtime deployment
-  rejects a stage whose `runtime/VERSION` differs.
-- **Optional TeX tree**: the bundled, trimmed `texmf-dist` is part of the StemTeX
-  installer, so no TeX Live installation is needed any more.
+- **Where the StemTeX runtime comes from.** It is resolved in this order: an
+  explicit `-DSTEMTEX_STAGE_ROOT`, a StemTeX installation (its registered
+  `InstallLocation`, then `C:\StemTeX`, `C:\Program Files\StemTeX`,
+  `%LOCALAPPDATA%\Programs\StemTeX`), a runtime prepared inside the workspace,
+  and finally the pinned release, which is downloaded and installed (that one
+  path needs administrator rights, and the driver says so instead of failing on a
+  UAC error). A runtime is used in place: it is neither rebuilt nor copied into
+  the workspace.
+- **QScintilla follows the runtime.** The headers and import library are fetched
+  from the StemTeX tag matching the resolved runtime version, and the fetch is
+  repeated when the runtime version changes, so headers, import library and the
+  shipped DLL always agree. `-DSTEMTEX_QSCINTILLA_REF=` overrides the tag.
+- **Warm-up output is not packaged.** A StemTeX runtime that has been used
+  contains profile warm-up files (`*.xdv`, `*.aux`, `*.log`, `*.pdf`,
+  `*.synctex.gz`) under `gui/profiles`; they are skipped while staging, because
+  the renderer regenerates them keyed to the runtime and the selected TeX tree.
+- **No TeX Live and no bash.** The bundled, trimmed `texmf-dist` is part of the
+  StemTeX release, so neither a TeX Live installation nor a bash environment is
+  needed for the build.
 - The installer step fails without Inno Setup 6; use `-DSKIP_INSTALLER=ON` for a
   runtime-only result.

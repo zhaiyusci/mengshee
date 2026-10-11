@@ -25,11 +25,11 @@ Mengshee build must come from compatible submodule revisions.
 
 LaTeX note rendering uses the StemTeX renderer, which is **not** a submodule:
 Mengshee consumes StemTeX as a prebuilt runtime. On Windows,
-`windows-build/cmake/prepare-stemtex-runtime.cmake` installs the pinned StemTeX
-release (runtime, GUI and the bundled TeX tree) and fetches the matching
-QScintilla headers and import library from the same StemTeX tag; see
-[Windows build from scratch](docs/windows-build-from-scratch.md). A runtime that
-is installed elsewhere is selected with `STEMTEX_STAGE_ROOT`, and
+`windows-build/cmake/prepare-stemtex-runtime.cmake` uses an installed StemTeX in
+place (or installs the pinned release when there is none) and fetches the
+QScintilla headers and import library matching that runtime from the same StemTeX
+tag; see [Windows build from scratch](docs/windows-build-from-scratch.md).
+`STEMTEX_STAGE_ROOT` selects a runtime explicitly, and
 `MENGSHEE_QSCINTILLA_ROOT` overrides the QScintilla location when Mengshee's
 CMake is configured directly.
 

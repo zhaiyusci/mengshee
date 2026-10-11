@@ -65,34 +65,21 @@ function(mengshee_find_qscintilla_root out_var)
     message(FATAL_ERROR "Cannot find the QScintilla runtime. Pass -DQSCINTILLA_ROOT=<path>.")
 endfunction()
 
-# Resolves the StemTeX runtime stage. It comes from the StemTeX release
-# installer (windows-build/cmake/prepare-stemtex-runtime.cmake) rather than from
-# a source tree, so only the stage and its version are needed here.
+# Resolves the StemTeX runtime. StemTeX is prebuilt and used where it is
+# installed (see stemtex-common.cmake); only the stage and its version are needed
+# here. build-windows.cmake passes both explicitly.
 function(mengshee_resolve_stemtex_stage out_var)
-    mengshee_resolve_stemtex_version(_version)
-    mengshee_resolve_stemtex_stage_dir(_stage "${WORKSPACE_ROOT}" "${_version}")
-    mengshee_validate_stemtex_stage("${_stage}" "${_version}")
+    mengshee_resolve_stemtex_runtime(_stage _version "${WORKSPACE_ROOT}")
+    if(NOT _stage)
+        message(FATAL_ERROR
+            "No StemTeX runtime found. Run windows-build/cmake/prepare-stemtex-runtime.cmake first\n"
+            "(it uses an installed StemTeX in place) or pass -DSTEMTEX_STAGE_ROOT=<directory>.")
+    endif()
+    mengshee_validate_stemtex_runtime("${_stage}")
 
-    # Everything the runtime and the packaging step copy out of the stage.
-    foreach(_required IN ITEMS
-        "runtime/VERSION"
-        "runtime/bin/sdk/stemtex-renderer.dll"
-        "runtime/bin/sdk/stemtex-profile.dll"
-        "runtime/bin/windows/stemtex-worker-host.exe"
-        "runtime/bin/windows/xetexdaemon.exe"
-        "runtime/bin/windows/xdvipdfmxdaemon.exe"
-        "runtime/bin/windows/dvipdfmxdaemon.dll"
-        "runtime/bin/windows/dvisvgmdaemon.exe"
-        "runtime/bin/windows/dvisvgmdaemon.dll"
-        "gui/stemtex-profile-creator.exe"
-        "gui/profiles/unicodemath/preamble.tex"
-        "gui/profiles/unicodemath/warmup.tex"
-    )
-        if(NOT EXISTS "${_stage}/${_required}")
-            message(FATAL_ERROR "StemTeX stage is incomplete: missing ${_required} under ${_stage}.")
-        endif()
-    endforeach()
-
+    # A runtime that has been used already contains warm-up output under
+    # gui/profiles. It is not packaged: the renderer regenerates it, keyed to the
+    # runtime and the selected TeX tree. The copy below filters it out.
     file(GLOB_RECURSE _generated_profile_files
         "${_stage}/gui/profiles/*.aux"
         "${_stage}/gui/profiles/*.log"
@@ -101,7 +88,8 @@ function(mengshee_resolve_stemtex_stage out_var)
         "${_stage}/gui/profiles/*.synctex.gz"
     )
     if(_generated_profile_files)
-        message(FATAL_ERROR "StemTeX stage contains generated profile output and is not valid release input: ${_generated_profile_files}")
+        list(LENGTH _generated_profile_files _generated_count)
+        message(STATUS "The StemTeX runtime carries ${_generated_count} warm-up file(s); they are excluded from the package")
     endif()
 
     set(${out_var} "${_stage}" PARENT_SCOPE)
@@ -412,6 +400,18 @@ mengshee_remove_inside("${INSTALL_PREFIX}/StemTeX/runtime" "${INSTALL_PREFIX}")
 mengshee_remove_inside("${INSTALL_PREFIX}/StemTeX/gui/profiles" "${INSTALL_PREFIX}")
 mengshee_copy_tree_contents("${STEMTEX_RUNTIME_SOURCE}" "${INSTALL_PREFIX}/StemTeX/runtime")
 mengshee_copy_tree_contents("${STEMTEX_BASIC_PROFILE_SOURCE}" "${INSTALL_PREFIX}/StemTeX/gui/profiles/unicodemath")
+# Drop warm-up output that came along with an already used StemTeX runtime: the
+# renderer regenerates it in the user cache, keyed to the runtime and TeX tree.
+file(GLOB_RECURSE _copied_profile_output
+    "${INSTALL_PREFIX}/StemTeX/gui/profiles/*.aux"
+    "${INSTALL_PREFIX}/StemTeX/gui/profiles/*.log"
+    "${INSTALL_PREFIX}/StemTeX/gui/profiles/*.pdf"
+    "${INSTALL_PREFIX}/StemTeX/gui/profiles/*.xdv"
+    "${INSTALL_PREFIX}/StemTeX/gui/profiles/*.synctex.gz"
+)
+if(_copied_profile_output)
+    file(REMOVE ${_copied_profile_output})
+endif()
 mengshee_copy_file("${STEMTEX_STAGE_ROOT_RESOLVED}/gui/stemtex-profile-creator.exe" "${_bin_dir}/stemtex-profile-creator.exe")
 mengshee_remove_inside("${INSTALL_PREFIX}/bin/data/icons/breeze" "${INSTALL_PREFIX}")
 mengshee_remove_inside("${INSTALL_PREFIX}/bin/data/icons/breeze-dark" "${INSTALL_PREFIX}")
