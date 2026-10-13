@@ -5181,30 +5181,44 @@ void PageView::mousePressEvent(QMouseEvent *e)
     }
 
     if (e->button() == Qt::LeftButton && e->modifiers() == Qt::NoModifier && d->pageSizeHandlesEnabled) {
+        // The handle is matched before the page area: it reaches half of itself outside
+        // the page, so a press from just outside the border must grab it too.
+        PageViewItem *handleItem = nullptr;
+        PdfLinkHandle handle = PdfLinkHandle::None;
+        for (const PageViewItem *item : std::as_const(d->visibleItems)) {
+            const QRectF pageRect = pageSizePageRect(item);
+            const int index = pageSizeHandleIndexAt(pageRect, eventPos);
+            if (index >= 0) {
+                handleItem = const_cast<PageViewItem *>(item);
+                handle = pageSizeHandleKinds[static_cast<size_t>(index)];
+                break;
+            }
+        }
+        if (handleItem && handle != PdfLinkHandle::None) {
+            const QRectF pageRect = pageSizePageRect(handleItem);
+            if (d->pageSizeSelectedPage != handleItem->pageNumber()) {
+                d->pageSizeSelectedPage = handleItem->pageNumber();
+            }
+            d->pageSizeDragging = true;
+            d->pageSizeDragHandle = handle;
+            d->pageSizeDragPage = handleItem->pageNumber();
+            d->pageSizeHoverPage = handleItem->pageNumber();
+            d->pageSizeHoverHandle = handle;
+            d->pageSizeDragStartRect = pageRect;
+            d->pageSizePreviewRect = d->pageSizeDragStartRect;
+            d->pageSizeDragStartSize = d->document->pageSizeInPoints(handleItem->pageNumber());
+            d->scroller->stop();
+            d->dragScrollTimer.stop();
+            updatePageSizeCursor();
+            viewport()->update();
+            e->accept();
+            return;
+        }
+        // Pressing a page makes it the one whose handles stay on screen.
         PageViewItem *pageItem = pickItemOnPoint(eventPos.x(), eventPos.y());
-        if (pageItem) {
-            // Pressing a page makes it the one whose handles stay on screen.
-            if (d->pageSizeSelectedPage != pageItem->pageNumber()) {
-                d->pageSizeSelectedPage = pageItem->pageNumber();
-                viewport()->update();
-            }
-            const QRectF pageRect = pageSizePageRect(pageItem);
-            const PdfLinkHandle handle = pageSizeHandleAt(pageRect, eventPos);
-            if (handle != PdfLinkHandle::None) {
-                d->pageSizeDragging = true;
-                d->pageSizeDragHandle = handle;
-                d->pageSizeDragPage = pageItem->pageNumber();
-                d->pageSizeHoverPage = pageItem->pageNumber();
-                d->pageSizeDragStartRect = pageRect;
-                d->pageSizePreviewRect = d->pageSizeDragStartRect;
-                d->pageSizeDragStartSize = d->document->pageSizeInPoints(pageItem->pageNumber());
-                d->scroller->stop();
-                d->dragScrollTimer.stop();
-                viewport()->update();
-                setCursor(pdfLinkCursor(handle));
-                e->accept();
-                return;
-            }
+        if (pageItem && d->pageSizeSelectedPage != pageItem->pageNumber()) {
+            d->pageSizeSelectedPage = pageItem->pageNumber();
+            viewport()->update();
         }
     }
 
@@ -7602,15 +7616,28 @@ void PageView::updatePageSizeHover(const QPointF &contentPoint)
     }
     int page = -1;
     PdfLinkHandle handle = PdfLinkHandle::None;
+    // Handles first, and without requiring the pointer to be inside the page: a handle
+    // sits on a border and reaches half of itself outside it, so the pointer can be
+    // just outside the page and still on the handle.
     for (const PageViewItem *item : std::as_const(d->visibleItems)) {
-        // The same rectangle the handles are painted in decides the hover.
         const QRectF pageRect = pageSizePageRect(item);
-        if (!pageRect.contains(contentPoint)) {
+        const int index = pageSizeHandleIndexAt(pageRect, contentPoint);
+        if (index < 0) {
             continue;
         }
         page = item->pageNumber();
-        handle = pageSizeHandleAt(pageRect, contentPoint);
+        handle = pageSizeHandleKinds[static_cast<size_t>(index)];
         break;
+    }
+    if (page < 0) {
+        // No handle under the pointer: the handles are still shown for the page it is
+        // over, so they are there to aim at.
+        for (const PageViewItem *item : std::as_const(d->visibleItems)) {
+            if (pageSizePageRect(item).contains(contentPoint)) {
+                page = item->pageNumber();
+                break;
+            }
+        }
     }
     if (page == d->pageSizeHoverPage && handle == d->pageSizeHoverHandle) {
         return;
