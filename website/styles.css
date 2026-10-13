@@ -9,3 +9,13 @@
 @media(max-width:900px){.wrap{width:calc(100% - 40px)}.site-header{min-height:84px;gap:14px}.site-header nav{display:none}.brand{font-size:20px}.brand-mark{width:33px;height:33px;font-size:23px}.button-small{font-size:12px;padding:9px 12px;gap:12px}.hero{padding-top:40px}.hero-grid{grid-template-columns:1fr;gap:26px;margin-bottom:35px}h1{font-size:clamp(44px,10vw,66px);letter-spacing:-2px}.eyebrow{font-size:9px;letter-spacing:1.2px}.hero-copy{font-size:17px}.hero-slot{min-height:310px;aspect-ratio:auto}.hero-slot h2{font-size:37px}.slot-detail{font-size:9px}.hero-figure{margin-bottom:42px}figcaption{flex-direction:column;gap:4px}.approach{padding:43px 0}.approach-grid{grid-template-columns:1fr;gap:22px}.approach h2{font-size:36px}.approach p{font-size:15px}.features{padding-top:48px}.section-heading{align-items:start;flex-direction:column;padding-bottom:32px}.section-heading h2{font-size:42px}.section-heading>p br{display:none}.feature,.feature.reverse{grid-template-columns:1fr;gap:30px;padding:44px 0}.feature.reverse .feature-copy{order:0}.feature h3,.sharing h3{font-size:37px}.screenshot-slot{aspect-ratio:4/3;min-height:290px}.screenshot-slot h4{font-size:31px}.sharing{grid-template-columns:1fr;gap:32px;padding:48px 0}.closing{padding:36px 24px 42px}.closing h2{font-size:46px}.actions{gap:19px}.closing .actions{align-items:start;flex-direction:column}footer{grid-template-columns:1fr;gap:26px;padding-top:40px}.footer-links{flex-direction:row;flex-wrap:wrap;padding:0;gap:20px}.legal{line-height:1.7}.details{font-size:12px}}
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
 @media print{.site-header nav,.button,.skip{display:none}.wrap{width:100%}.feature,.sharing,.approach-grid{break-inside:avoid}.screenshot-slot{min-height:200px}.approach{background:white;color:var(--ink)}.approach p{color:var(--ink)}body{background:white}a{text-decoration:underline}}
+/* 05 / Make room: the two answers are a pair, so they are an option row rather than two
+   paragraphs, and the page scan is given the width it needs. */
+.text-feature .feature-copy>.room-options{grid-column:2;grid-row:4;margin-top:25px;border-top:1px solid var(--line)}
+.room-options>div{position:relative;padding:22px 0 22px 47px;border-bottom:1px solid var(--line)}
+.room-options>div>span{position:absolute;left:0;font-size:24px;color:var(--accent)}
+.room-options h4{font:23px var(--serif);margin-bottom:8px}
+.room-options p{font-size:13px;color:var(--muted)}
+#note-pages figure{max-width:900px}
+#note-pages .details{grid-column:2;grid-row:5}
+@media(max-width:900px){.room-options>div{padding-left:34px}}
