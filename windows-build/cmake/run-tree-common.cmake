@@ -48,17 +48,22 @@ function(mengshee_prepare_run_tree tree)
 
     if(NOT _mengshee_run_tree_result EQUAL 0)
         set(_mengshee_run_tree_fix "icacls \"${tree}/${_mengshee_probe}\" /setintegritylevel Medium")
+        # Relay what the check actually found instead of guessing: a missing file
+        # and a reduced-integrity label are both reported as "not runnable" here,
+        # and only the second one is fixed by the icacls command below.
+        if("${_mengshee_run_tree_report}" STREQUAL "")
+            set(_mengshee_run_tree_report "the check reported no reason")
+        endif()
         if(DEFINED ALLOW_LOW_INTEGRITY AND ALLOW_LOW_INTEGRITY)
             message(WARNING
-                "${tree}/${_mengshee_probe} keeps a reduced integrity label, so it cannot run normally on this machine. "
-                "Run this once in a normal (unelevated) PowerShell, then use it again:\n  ${_mengshee_run_tree_fix}")
+                "${tree}/${_mengshee_probe} is not runnable with normal rights: ${_mengshee_run_tree_report}\n"
+                "When the cause is its mandatory integrity label, run this once in a normal (unelevated) PowerShell:\n  ${_mengshee_run_tree_fix}")
         else()
             message(FATAL_ERROR
-                "${tree}/${_mengshee_probe} would start with reduced rights, so it is not handed out: a runtime started that way cannot save "
-                "(no writable %TEMP%) and an installer started that way cannot unpack its own files. "
-                "The files were created by a session with a lower integrity level, and raising the label needs a normal session. "
-                "Run this once in a normal (unelevated) PowerShell and build again:\n  ${_mengshee_run_tree_fix}\n"
-                "Pass -DALLOW_LOW_INTEGRITY=ON to build anyway and relabel later.")
+                "${tree}/${_mengshee_probe} is not runnable with normal rights: ${_mengshee_run_tree_report}\n"
+                "A runtime that starts with reduced rights cannot save (no writable %TEMP%), and an installer that starts that way cannot unpack its own files.\n"
+                "When the cause is its mandatory integrity label, run this once in a normal (unelevated) PowerShell and build again:\n  ${_mengshee_run_tree_fix}\n"
+                "Pass -DALLOW_LOW_INTEGRITY=ON to build anyway and repair that later.")
         endif()
     else()
         set_property(GLOBAL APPEND PROPERTY MENGSHEE_RUN_TREES "${tree}/${_mengshee_probe}")

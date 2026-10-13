@@ -215,7 +215,9 @@ endforeach()
 # (no writable %TEMP%) and the KIO worker launch. Restore the label here, before
 # anything is packaged, and refuse to hand out a tree that would misbehave.
 mengshee_prepare_run_tree("${STAGE_ROOT}")
-mengshee_prepare_run_tree("${STEMTEX_COMPONENT_STAGE_ROOT}")
+# The optional StemTeX component is a TeX runtime, not an application, so the file
+# that decides whether it can be used normally is its TeX configuration.
+mengshee_prepare_run_tree("${STEMTEX_COMPONENT_STAGE_ROOT}" "StemTeX/runtime/texmf-dist/web2c/texmf.cnf")
 
 if(DEFINED SKIP_INSTALLER AND SKIP_INSTALLER)
     message(STATUS "Skipping installer build.")
