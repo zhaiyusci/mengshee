@@ -338,6 +338,14 @@ static QRectF readingViewLabelRect(const PageViewItem *item, const QRectF &rect,
 static const std::array<PdfLinkHandle, 8> pageSizeHandleKinds {PdfLinkHandle::TopLeft,  PdfLinkHandle::Top,    PdfLinkHandle::TopRight, PdfLinkHandle::Right,
                                                               PdfLinkHandle::BottomRight, PdfLinkHandle::Bottom, PdfLinkHandle::BottomLeft, PdfLinkHandle::Left};
 
+// The page's own rectangle, taken from the same function the link handles use for a
+// normalized rectangle (0,0 to 1,1 is the whole page). The page handles then live in
+// exactly the space that already places the link handles correctly.
+static QRectF pageSizePageRect(const PageViewItem *item)
+{
+    return pdfLinkContentRect(item, QRectF(0.0, 0.0, 1.0, 1.0));
+}
+
 static QPointF pageSizeHandleCenter(const QRectF &pageRect, PdfLinkHandle handle)
 {
     switch (handle) {
@@ -3985,9 +3993,8 @@ void PageView::drawPageSizeHandles(const QRect &contentsRect, QPainter *p)
     if (!handleItem) {
         return;
     }
-    // Handles belong to the page as it is displayed: the same rectangle the page is
-    // drawn into, so they sit exactly on its visible edges.
-    const QRectF pageRect = handleItem->croppedGeometry();
+    // The page's own rectangle, the same one the link handles are placed in.
+    const QRectF pageRect = pageSizePageRect(handleItem);
     if (!pageRect.adjusted(-pdfLinkHandleSize, -pdfLinkHandleSize, pdfLinkHandleSize, pdfLinkHandleSize).intersects(contentsRect)) {
         return;
     }
@@ -5178,13 +5185,14 @@ void PageView::mousePressEvent(QMouseEvent *e)
                 d->pageSizeSelectedPage = pageItem->pageNumber();
                 viewport()->update();
             }
-            const PdfLinkHandle handle = pageSizeHandleAt(QRectF(pageItem->croppedGeometry()), eventPos);
+            const QRectF pageRect = pageSizePageRect(pageItem);
+            const PdfLinkHandle handle = pageSizeHandleAt(pageRect, eventPos);
             if (handle != PdfLinkHandle::None) {
                 d->pageSizeDragging = true;
                 d->pageSizeDragHandle = handle;
                 d->pageSizeDragPage = pageItem->pageNumber();
                 d->pageSizeHoverPage = pageItem->pageNumber();
-                d->pageSizeDragStartRect = QRectF(pageItem->croppedGeometry());
+                d->pageSizeDragStartRect = pageRect;
                 d->pageSizePreviewRect = d->pageSizeDragStartRect;
                 d->pageSizeDragStartSize = d->document->pageSizeInPoints(pageItem->pageNumber());
                 d->scroller->stop();
@@ -7592,8 +7600,8 @@ void PageView::updatePageSizeHover(const QPointF &contentPoint)
     int page = -1;
     PdfLinkHandle handle = PdfLinkHandle::None;
     for (const PageViewItem *item : std::as_const(d->visibleItems)) {
-        // The rectangle the page is displayed in decides where the handles are.
-        const QRectF pageRect = item->croppedGeometry();
+        // The same rectangle the handles are painted in decides the hover.
+        const QRectF pageRect = pageSizePageRect(item);
         if (!pageRect.contains(contentPoint)) {
             continue;
         }
@@ -7606,9 +7614,9 @@ void PageView::updatePageSizeHover(const QPointF &contentPoint)
     }
     d->pageSizeHoverPage = page;
     d->pageSizeHoverHandle = handle;
-    if (handle != PdfLinkHandle::None) {
-        setCursor(pdfLinkCursor(handle));
-    }
+    // The cursor is deliberately not set here: this runs early in the mouse move,
+    // and the later cursor logic would overwrite it. updateCursor() sets it in the
+    // same place the link handles do, where nothing runs after it.
     viewport()->update();
 }
 
@@ -7657,6 +7665,8 @@ void PageView::updateCursor(const QPoint p)
         if (d->pageSizeHandlesEnabled) {
             updatePageSizeHover(QPointF(p));
             if (d->pageSizeHoverHandle != PdfLinkHandle::None) {
+                // Set here, last in the chain, exactly as the link handles do.
+                setCursor(pdfLinkCursor(d->pageSizeHoverHandle));
                 return;
             }
         } else if (d->pageSizeHoverPage >= 0 || d->pageSizeHoverHandle != PdfLinkHandle::None) {
