@@ -340,14 +340,23 @@ static QPointF pageSizeHandleCenter(const QRectF &pageRect, PdfLinkHandle handle
 
 static PdfLinkHandle pageSizeHandleAt(const QRectF &pageRect, const QPointF &point)
 {
-    const PdfLinkHandle handle = pdfLinkHandleAt(pageRect, point);
+    // The nearest handle wins: with eight of them around a page, a fixed order would
+    // let a border steal a corner when the pointer is closer to the corner.
+    PdfLinkHandle best = PdfLinkHandle::None;
+    double bestDistance = 1e9;
     for (const PdfLinkHandle candidate : pageSizeHandleKinds) {
-        if (handle == candidate) {
-            return handle;
+        const QPointF center = pageSizeHandleCenter(pageRect, candidate);
+        // The drawn square is pdfLinkHandleRect, widened by the cosmetic pen.
+        if (!pdfLinkHandleRect(center).adjusted(-1.0, -1.0, 1.0, 1.0).contains(point)) {
+            continue;
+        }
+        const double distance = QLineF(center, point).length();
+        if (distance < bestDistance) {
+            bestDistance = distance;
+            best = candidate;
         }
     }
-    // Move means the pointer is inside the page, where nothing is dragged.
-    return PdfLinkHandle::None;
+    return best;
 }
 
 // Turning a page in its display axes swaps width and height; applying the same
@@ -3924,8 +3933,9 @@ void PageView::drawPageSizeHandles(const QRect &contentsRect, QPainter *p)
     if (handlePage < 0) {
         const QPointF pointer = contentAreaPoint(viewport()->mapFromGlobal(QCursor::pos()));
         for (const PageViewItem *item : std::as_const(d->visibleItems)) {
-            // croppedGeometry() is a QRect, so widen it before testing a float point.
-            if (QRectF(item->croppedGeometry()).contains(pointer)) {
+            // The page's own rectangle, not the trimmed one, decides which page the
+            // handles belong to.
+            if (QRectF(item->uncroppedGeometry()).contains(pointer)) {
                 handlePage = item->pageNumber();
                 break;
             }
@@ -3947,7 +3957,10 @@ void PageView::drawPageSizeHandles(const QRect &contentsRect, QPainter *p)
     if (!handleItem) {
         return;
     }
-    const QRectF pageRect = handleItem->croppedGeometry();
+    // The handles belong to the page's own rectangle, which trimming margins does
+    // not change: they stay on the paper's edges and the drag is measured against
+    // the whole page.
+    const QRectF pageRect = handleItem->uncroppedGeometry();
     if (!pageRect.adjusted(-pdfLinkHandleSize, -pdfLinkHandleSize, pdfLinkHandleSize, pdfLinkHandleSize).intersects(contentsRect)) {
         return;
     }
@@ -5131,13 +5144,13 @@ void PageView::mousePressEvent(QMouseEvent *e)
                 d->pageSizeSelectedPage = pageItem->pageNumber();
                 viewport()->update();
             }
-            const PdfLinkHandle handle = pageSizeHandleAt(pageItem->croppedGeometry(), eventPos);
+            const PdfLinkHandle handle = pageSizeHandleAt(QRectF(pageItem->uncroppedGeometry()), eventPos);
             if (handle != PdfLinkHandle::None) {
                 d->pageSizeDragging = true;
                 d->pageSizeDragHandle = handle;
                 d->pageSizeDragPage = pageItem->pageNumber();
                 d->pageSizeHoverPage = pageItem->pageNumber();
-                d->pageSizeDragStartRect = pageItem->croppedGeometry();
+                d->pageSizeDragStartRect = QRectF(pageItem->uncroppedGeometry());
                 d->pageSizePreviewRect = d->pageSizeDragStartRect;
                 d->pageSizeDragStartSize = d->document->pageSizeInPoints(pageItem->pageNumber());
                 d->scroller->stop();
@@ -7586,7 +7599,7 @@ void PageView::updateCursor(const QPoint p)
                 d->pageSizeHoverPage = pageItem->pageNumber();
                 viewport()->update();
             }
-            const PdfLinkHandle pageHandle = pageSizeHandleAt(pageItem->croppedGeometry(), p);
+            const PdfLinkHandle pageHandle = pageSizeHandleAt(QRectF(pageItem->uncroppedGeometry()), p);
             if (pageHandle != PdfLinkHandle::None) {
                 setCursor(pdfLinkCursor(pageHandle));
                 return;
