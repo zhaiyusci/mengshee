@@ -3964,15 +3964,7 @@ void PageView::drawPageSizeHandles(const QRect &contentsRect, QPainter *p)
     p->setPen(QColor::fromHsvF(0, 0, 1.0));
     p->setBrush(QColor::fromHsvF(0.11, 0.9, 0.85, 0.95));
     for (const PdfLinkHandle handle : pageSizeHandleKinds) {
-        const QRectF handleRect = pdfLinkHandleRect(pageSizeHandleCenter(pageRect, handle));
-        // The handle the pointer is on is drawn as the one that will be dragged.
-        const bool hovered = handle == d->pageSizeHoverHandle && handlePage == d->pageSizeHoverPage;
-        if (hovered) {
-            p->setBrush(Qt::white);
-            p->drawRect(handleRect.adjusted(-1.0, -1.0, 1.0, 1.0));
-            p->setBrush(QColor::fromHsvF(0.11, 0.9, 0.85, 0.95));
-        }
-        p->drawRect(handleRect);
+        p->drawRect(pdfLinkHandleRect(pageSizeHandleCenter(pageRect, handle)));
     }
     if (d->pageSizeDragging && d->pageSizePreviewRect.isValid()) {
         QPen previewPen(QColor::fromHsvF(0.11, 1.0, 0.6, 0.9), 2.0, Qt::DashLine);
