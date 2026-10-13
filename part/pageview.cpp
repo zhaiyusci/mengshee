@@ -509,6 +509,7 @@ public:
     PdfLinkHandle pageSizeDragHandle = PdfLinkHandle::None;
     int pageSizeDragPage = -1;
     int pageSizeHoverPage = -1;
+    PdfLinkHandle pageSizeHoverHandle = PdfLinkHandle::None;
     // The page whose handles stay visible after a drag, so they can be used again
     // without hunting for the border first.
     int pageSizeSelectedPage = -1;
@@ -1277,6 +1278,7 @@ void PageView::setPageEditModeEnabled(bool enabled)
         d->pageSizeDragHandle = PdfLinkHandle::None;
         d->pageSizeDragPage = -1;
         d->pageSizeHoverPage = -1;
+        d->pageSizeHoverHandle = PdfLinkHandle::None;
         d->pageSizeSelectedPage = -1;
         d->pageSizeDragStartRect = QRectF();
         d->pageSizePreviewRect = QRectF();
@@ -3926,21 +3928,9 @@ void PageView::drawPageSizeHandles(const QRect &contentsRect, QPainter *p)
         return;
     }
     // While a drag runs the handles stay on the page being resized; otherwise they
-    // are on the page under the pointer, and when the pointer is elsewhere they
-    // stay on the page that was last resized so it can be resized again straight
-    // away.
-    int handlePage = d->pageSizeDragging ? d->pageSizeDragPage : -1;
-    if (handlePage < 0) {
-        const QPointF pointer = contentAreaPoint(viewport()->mapFromGlobal(QCursor::pos()));
-        for (const PageViewItem *item : std::as_const(d->visibleItems)) {
-            // The page's own rectangle, not the trimmed one, decides which page the
-            // handles belong to.
-            if (QRectF(item->uncroppedGeometry()).contains(pointer)) {
-                handlePage = item->pageNumber();
-                break;
-            }
-        }
-    }
+    // are on the page the pointer is over, and when it is over none they stay on the
+    // page that was last pressed so it can be resized again straight away.
+    int handlePage = d->pageSizeDragging ? d->pageSizeDragPage : d->pageSizeHoverPage;
     if (handlePage < 0) {
         handlePage = d->pageSizeSelectedPage;
     }
@@ -3974,7 +3964,15 @@ void PageView::drawPageSizeHandles(const QRect &contentsRect, QPainter *p)
     p->setPen(QColor::fromHsvF(0, 0, 1.0));
     p->setBrush(QColor::fromHsvF(0.11, 0.9, 0.85, 0.95));
     for (const PdfLinkHandle handle : pageSizeHandleKinds) {
-        p->drawRect(pdfLinkHandleRect(pageSizeHandleCenter(pageRect, handle)));
+        const QRectF handleRect = pdfLinkHandleRect(pageSizeHandleCenter(pageRect, handle));
+        // The handle the pointer is on is drawn as the one that will be dragged.
+        const bool hovered = handle == d->pageSizeHoverHandle && handlePage == d->pageSizeHoverPage;
+        if (hovered) {
+            p->setBrush(Qt::white);
+            p->drawRect(handleRect.adjusted(-1.0, -1.0, 1.0, 1.0));
+            p->setBrush(QColor::fromHsvF(0.11, 0.9, 0.85, 0.95));
+        }
+        p->drawRect(handleRect);
     }
     if (d->pageSizeDragging && d->pageSizePreviewRect.isValid()) {
         QPen previewPen(QColor::fromHsvF(0.11, 1.0, 0.6, 0.9), 2.0, Qt::DashLine);
@@ -4518,6 +4516,11 @@ void PageView::mouseMoveEvent(QMouseEvent *e)
         updateCursor();
         e->accept();
         return;
+    }
+    // Follow the pointer for the page resize handles: hover state and cursor come
+    // from the events themselves, never from asking where the cursor is.
+    if (d->pageSizeHandlesEnabled) {
+        updatePageSizeHover(QPointF(contentAreaPoint(e->pos())));
     }
     if (isOcrTextEditing()) {
         const QPoint pos = contentAreaPoint(e->pos());
@@ -7550,6 +7553,35 @@ void PageView::updateCursor()
     updateCursor(p);
 }
 
+void PageView::updatePageSizeHover(const QPointF &contentPoint)
+{
+    if (!d->pageSizeHandlesEnabled || d->pageSizeDragging) {
+        return;
+    }
+    int page = -1;
+    PdfLinkHandle handle = PdfLinkHandle::None;
+    for (const PageViewItem *item : std::as_const(d->visibleItems)) {
+        // The page's own rectangle, not the trimmed one, decides where the handles
+        // are, so they sit on the paper's edges.
+        const QRectF pageRect = item->uncroppedGeometry();
+        if (!pageRect.contains(contentPoint)) {
+            continue;
+        }
+        page = item->pageNumber();
+        handle = pageSizeHandleAt(pageRect, contentPoint);
+        break;
+    }
+    if (page == d->pageSizeHoverPage && handle == d->pageSizeHoverHandle) {
+        return;
+    }
+    d->pageSizeHoverPage = page;
+    d->pageSizeHoverHandle = handle;
+    if (handle != PdfLinkHandle::None) {
+        setCursor(pdfLinkCursor(handle));
+    }
+    viewport()->update();
+}
+
 void PageView::updateCursor(const QPoint p)
 {
     if (d->clickNumberingTarget != ClickNumberingTarget::None) {
@@ -7593,19 +7625,13 @@ void PageView::updateCursor(const QPoint p)
         }
 
         if (d->pageSizeHandlesEnabled) {
-            // The handles themselves are drawn for the page under the pointer, so
-            // repaint when that page changes and show the border's cursor.
-            if (d->pageSizeHoverPage != pageItem->pageNumber()) {
-                d->pageSizeHoverPage = pageItem->pageNumber();
-                viewport()->update();
-            }
-            const PdfLinkHandle pageHandle = pageSizeHandleAt(QRectF(pageItem->uncroppedGeometry()), p);
-            if (pageHandle != PdfLinkHandle::None) {
-                setCursor(pdfLinkCursor(pageHandle));
+            updatePageSizeHover(QPointF(p));
+            if (d->pageSizeHoverHandle != PdfLinkHandle::None) {
                 return;
             }
-        } else if (d->pageSizeHoverPage >= 0) {
+        } else if (d->pageSizeHoverPage >= 0 || d->pageSizeHoverHandle != PdfLinkHandle::None) {
             d->pageSizeHoverPage = -1;
+            d->pageSizeHoverHandle = PdfLinkHandle::None;
             viewport()->update();
         }
 

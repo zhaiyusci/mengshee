@@ -362,6 +362,9 @@ private:
     // or for the page being resized while a drag runs. Unlike the link handles this
     // is independent of the cross-reference overlays.
     void drawPageSizeHandles(const QRect &contentsRect, QPainter *p);
+    // Follows the pointer for those handles. Called from the mouse events, so the
+    // hover state and the cursor never depend on asking where the cursor is.
+    void updatePageSizeHover(const QPointF &contentPoint);
     void drawNamedDestinations(const QRect &contentsRect, QPainter *p);
     void drawInternalLinkCreation(const QRect &contentsRect, QPainter *p);
     void loadNamedDestinations();
