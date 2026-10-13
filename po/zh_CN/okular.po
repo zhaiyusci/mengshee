@@ -7254,8 +7254,8 @@ msgstr "旋转页面"
 
 #: part/part.cpp
 #, kde-format
-msgid "Rotated page %1. Save the document to keep this change."
-msgstr "已旋转第 %1 页。请保存文档以保留此更改。"
+msgid "Rotated page %1."
+msgstr "已旋转第 %1 页。请"
 
 #: part/part.cpp
 msgid "Rotate This Page"
@@ -7552,8 +7552,8 @@ msgid "Could not add the named destination."
 msgstr "无法添加具名目标。"
 
 #, kde-format
-msgid "Added named destination '%1'. Save the document to keep this change."
-msgstr "已添加具名目标“%1”。请保存文档以保留此更改。"
+msgid "Added named destination '%1'."
+msgstr "已添加具名目标“%1”。请"
 
 msgid "This named destination cannot be edited."
 msgstr "无法编辑此具名目标。"
@@ -7576,8 +7576,8 @@ msgid "Could not rename the named destination."
 msgstr "无法重命名具名目标。"
 
 #, kde-format
-msgid "Renamed named destination '%1' to '%2'. Save the document to keep this change."
-msgstr "已将具名目标“%1”重命名为“%2”。请保存文档以保留此更改。"
+msgid "Renamed named destination '%1' to '%2'."
+msgstr "已将具名目标“%1”重命名为“%2”。请"
 
 #, kde-format
 msgid "Delete the named destination '%1'? Existing links that refer to this name will be kept, but they will no longer resolve unless another destination with this name is added later."
@@ -7594,8 +7594,8 @@ msgid "Could not delete the named destination."
 msgstr "无法删除具名目标。"
 
 #, kde-format
-msgid "Deleted named destination '%1'. Existing references were left unchanged. Save the document to keep this change."
-msgstr "已删除具名目标“%1”。现有引用保持不变。请保存文档以保留此更改。"
+msgid "Deleted named destination '%1'. Existing references were left unchanged."
+msgstr "已删除具名目标“%1”。现有引用保持不变。请"
 
 msgid "This named destination cannot be moved here."
 msgstr "无法将此具名目标移动到这里。"
@@ -7608,8 +7608,8 @@ msgid "Could not move the named destination."
 msgstr "无法移动具名目标。"
 
 #, kde-format
-msgid "Moved named destination '%1'. Save the document to keep this change."
-msgstr "已移动具名目标“%1”。请保存文档以保留此更改。"
+msgid "Moved named destination '%1'."
+msgstr "已移动具名目标“%1”。请"
 
 msgid "This link cannot be resized."
 msgstr "无法调整此链接的大小。"
@@ -7621,8 +7621,8 @@ msgstr "调整链接大小"
 msgid "Could not resize the link."
 msgstr "无法调整链接大小。"
 
-msgid "Updated the link area. Save the document to keep this change."
-msgstr "已更新链接区域。请保存文档以保留此更改。"
+msgid "Updated the link area."
+msgstr "已更新链接区域。请"
 
 msgid "This link cannot be deleted."
 msgstr "无法删除此链接。"
@@ -7637,8 +7637,8 @@ msgstr "删除链接"
 msgid "Could not delete the link."
 msgstr "无法删除链接。"
 
-msgid "Deleted the link. Save the document to keep this change."
-msgstr "已删除链接。请保存文档以保留此更改。"
+msgid "Deleted the link."
+msgstr "已删除链接。请"
 
 msgid "An internal link cannot be created here."
 msgstr "无法在此处创建内部链接。"
@@ -7719,25 +7719,25 @@ msgstr "无法创建链接。"
 msgid "Could not edit the link destination."
 msgstr "无法编辑链接目标。"
 
-msgid "Created the internal link. Save the document to keep this change."
-msgstr "已创建内部链接。请保存文档以保留此更改。"
+msgid "Created the internal link."
+msgstr "已创建内部链接。请"
 
 #, kde-format
-msgid "Created a link to named destination '%1'. Save the document to keep this change."
-msgstr "已创建指向具名目标“%1”的链接。请保存文档以保留此更改。"
+msgid "Created a link to named destination '%1'."
+msgstr "已创建指向具名目标“%1”的链接。请"
 
-msgid "Updated the internal link. Save the document to keep this change."
-msgstr "已更新内部链接。请保存文档以保留此更改。"
+msgid "Updated the internal link."
+msgstr "已更新内部链接。请"
 
-msgid "Created the external link. Save the document to keep this change."
-msgstr "已创建外部链接。请保存文档以保留此更改。"
+msgid "Created the external link."
+msgstr "已创建外部链接。请"
 
-msgid "Updated the external link. Save the document to keep this change."
-msgstr "已更新外部链接。请保存文档以保留此更改。"
+msgid "Updated the external link."
+msgstr "已更新外部链接。请"
 
 #, kde-format
-msgid "Linked to named destination '%1'. Save the document to keep this change."
-msgstr "已链接到具名目标“%1”。请保存文档以保留此更改。"
+msgid "Linked to named destination '%1'."
+msgstr "已链接到具名目标“%1”。请"
 
 #, kde-format
 msgid "Named Destination: %1"
@@ -7981,9 +7981,9 @@ msgid "Recognize Text"
 msgstr "识别文字"
 
 #, kde-format
-msgid "Recognized English text on %1 page (%2 words). Save the document to keep this change."
-msgid_plural "Recognized English text on %1 pages (%2 words). Save the document to keep this change."
-msgstr[0] "已在 %1 页上识别出英文文字（%2 个单词）。请保存文档以保留此更改。"
+msgid "Recognized English text on %1 page (%2 words)."
+msgid_plural "Recognized English text on %1 pages (%2 words)."
+msgstr[0] "已在 %1 页上识别出英文文字（%2 个单词）。请"
 
 #: part/part.cpp
 msgctxt "@action:inmenu"
@@ -8293,8 +8293,8 @@ msgid "Could not create the note link."
 msgstr "无法创建批注链接。"
 
 #: part/part.cpp
-msgid "Added note page '%1'. Save the document to keep this change."
-msgstr "已添加批注页“%1”。保存文档以保留此更改。"
+msgid "Added note page '%1'."
+msgstr "已添加批注页“%1”。"
 
 #: part/part.cpp
 msgid "Click a position on the page to link it to a new blank note page appended to the document. The note page opens in an auxiliary frame."
@@ -8889,8 +8889,8 @@ msgid "Duplicate Page"
 msgstr "复制页面"
 
 #: 
-msgid "Duplicated page %1. Save the document to keep this change."
-msgstr "已复制第 %1 页。保存文档以保留此更改。"
+msgid "Duplicated page %1."
+msgstr "已复制第 %1 页。"
 
 #: 
 msgctxt "Undo action"
@@ -9042,16 +9042,16 @@ msgid "Delete Page"
 msgstr "删除页面"
 
 #: 
-msgid "Deleted page %1. Save the document to keep this change."
-msgstr "已删除第 %1 页。保存文档以保留此更改。"
+msgid "Deleted page %1."
+msgstr "已删除第 %1 页。"
 
 #: 
 msgid "Pages can only be reordered in local PDF files."
 msgstr "只能在本地 PDF 文件中重新排序页面。"
 
 #: 
-msgid "Moved page %1 to position %2. Save the document to keep this change."
-msgstr "已将第 %1 页移动到位置 %2。保存文档以保留此更改。"
+msgid "Moved page %1 to position %2."
+msgstr "已将第 %1 页移动到位置 %2。"
 
 #: 
 msgid "Unable to find the %1 component: %2"
@@ -9149,3 +9149,58 @@ msgstr "第 %1 页"
 #: part/part.cpp:5501 part/part.cpp:5506
 msgid " pt"
 msgstr " 磅"
+#: 
+msgid "Page Size…"
+msgstr "页面尺寸…"
+
+#: 
+msgctxt "Undo action"
+msgid "Change Page Size"
+msgstr "修改页面尺寸"
+
+#: 
+msgid "The page size is not valid."
+msgstr "页面尺寸无效。"
+
+#: 
+msgid "The size of the page could not be determined."
+msgstr "无法确定页面尺寸。"
+
+#: 
+msgid "A page size can only be changed in local PDF files."
+msgstr "只能在本地 PDF 文件中修改页面尺寸。"
+
+#: 
+msgid "Could not change the page size."
+msgstr "无法修改页面尺寸。"
+
+#: 
+msgid "Could not change the page size. %1"
+msgstr "无法修改页面尺寸。%1"
+
+#: 
+msgid "Changed the size of page %1."
+msgstr "已修改第 %1 页的尺寸。"
+
+#: 
+msgid "Page size:"
+msgstr "页面尺寸："
+
+#: 
+msgid ""
+"This is the page's unrotated width and height. The page keeps its lower-left "
+"corner, so existing content stays where it is and the new room appears to "
+"the right and above it; a smaller size only hides what falls outside the "
+"page, and enlarging it again brings that back."
+msgstr ""
+"这是页面未旋转时的宽与高。页面保留下/左角不变，因此已有内容位置不动，新增空间出现在"
+"其右侧与上方；尺寸改小只是隐藏落在可见框之外的内容，再放大即可恢复。"
+
+#: 
+msgid ""
+"The page keeps its lower-left corner, so existing content stays where it is "
+"and the new room appears to the right and above it; a smaller size only "
+"hides what falls outside the page, and enlarging it again brings that back."
+msgstr ""
+"页面保留下/左角不变，因此已有内容位置不动，新增空间出现在其右侧与上方；"
+"尺寸改小只是隐藏落在可见框之外的内容，再放大即可恢复。"

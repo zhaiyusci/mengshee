@@ -5205,8 +5205,8 @@ void Part::slotRecognizeEnglishText()
                                                             true);
     m_document->pushUndoCommand(command.release());
     if (PageView *view = workspaceActivePageView()) {
-        view->displayMessage(i18np("Recognized English text on %1 page (%2 words). Save the document to keep this change.",
-                                   "Recognized English text on %1 pages (%2 words). Save the document to keep this change.",
+        view->displayMessage(i18np("Recognized English text on %1 page (%2 words).",
+                                   "Recognized English text on %1 pages (%2 words).",
                                    ocrResult.recognizedPages,
                                    ocrResult.recognizedWords));
     }
@@ -5787,7 +5787,7 @@ void Part::duplicatePage(int pageNumber)
     refreshTemplateNotes();
 
     if (m_pageView) {
-        m_pageView->displayMessage(i18n("Duplicated page %1. Save the document to keep this change.", pageNumber + 1));
+        m_pageView->displayMessage(i18n("Duplicated page %1.", pageNumber + 1));
     }
 }
 
@@ -6650,7 +6650,7 @@ bool Part::addNamedDestinationWithName(int pageNumber, const Okular::NormalizedP
         showDestinations->setChecked(true);
     }
     if (PageView *view = workspaceActivePageView()) {
-        view->displayMessage(i18n("Added named destination '%1'. Save the document to keep this change.", name));
+        view->displayMessage(i18n("Added named destination '%1'.", name));
     }
     return true;
 }
@@ -6838,7 +6838,7 @@ void Part::addNotePage(PageView *sourceView, int pageNumber, const Okular::Norma
     openAuxiliaryView(sourceView, destination, destinationName);
 
     if (sourceView) {
-        sourceView->displayMessage(i18n("Added note page '%1'. Save the document to keep this change.", destinationName));
+        sourceView->displayMessage(i18n("Added note page '%1'.", destinationName));
     }
     updateViewActions();
     updatePageEditActions();
@@ -7072,7 +7072,7 @@ void Part::renameNamedDestination(const QString &oldName)
     if (applyLiveNamedDestinationRename(oldName, newName, &errorText)) {
         m_document->pushUndoCommand(new LiveNamedDestinationRenameCommand(this, oldName, newName, replacedDestination));
         if (PageView *view = workspaceActivePageView()) {
-            view->displayMessage(i18n("Renamed named destination '%1' to '%2'. Save the document to keep this change.", oldName, newName));
+            view->displayMessage(i18n("Renamed named destination '%1' to '%2'.", oldName, newName));
         }
     } else {
         KMessageBox::information(widget(), errorText.isEmpty() ? i18n("Could not rename the named destination.") : i18n("Could not rename the named destination. %1", errorText));
@@ -7113,7 +7113,7 @@ void Part::deleteNamedDestination(const QString &name)
     if (previousDestination && applyLiveNamedDestination(name, std::nullopt, &errorText)) {
         m_document->pushUndoCommand(new LiveNamedDestinationCommand(this, i18nc("Undo action", "Delete Named Destination"), name, previousDestination, std::nullopt));
         if (PageView *view = workspaceActivePageView()) {
-            view->displayMessage(i18n("Deleted named destination '%1'. Existing references were left unchanged. Save the document to keep this change.", name));
+            view->displayMessage(i18n("Deleted named destination '%1'. Existing references were left unchanged.", name));
         }
     } else {
         KMessageBox::information(widget(), errorText.isEmpty() ? i18n("Could not delete the named destination.") : i18n("Could not delete the named destination. %1", errorText));
@@ -7161,7 +7161,7 @@ void Part::moveNamedDestination(const QString &name, int pageNumber, const Okula
     if (applyLiveNamedDestination(name, destination, &errorText)) {
         m_document->pushUndoCommand(new LiveNamedDestinationCommand(this, i18nc("Undo action", "Move Named Destination"), name, previousDestination, destination));
         if (PageView *view = workspaceActivePageView()) {
-            view->displayMessage(i18n("Moved named destination '%1'. Save the document to keep this change.", name));
+            view->displayMessage(i18n("Moved named destination '%1'.", name));
         }
     } else {
         KMessageBox::information(widget(), errorText.isEmpty() ? i18n("Could not move the named destination.") : i18n("Could not move the named destination. %1", errorText));
@@ -7241,7 +7241,7 @@ void Part::changePdfLinkRectangle(int sourcePageNumber, const QRectF &oldNormali
         const auto redo = [changeRectangle, oldNormalizedRectangle, newNormalizedRectangle](QString *operationError) { return changeRectangle(oldNormalizedRectangle, newNormalizedRectangle, operationError); };
         m_document->pushUndoCommand(new LivePdfLinkCommand(i18nc("Undo action", "Resize Link"), undo, redo));
         if (PageView *view = workspaceActivePageView()) {
-            view->displayMessage(i18n("Updated the link area. Save the document to keep this change."));
+            view->displayMessage(i18n("Updated the link area."));
         }
     } else {
         KMessageBox::information(widget(), errorText.isEmpty() ? i18n("Could not resize the link.") : i18n("Could not resize the link. %1", errorText));
@@ -7290,7 +7290,7 @@ void Part::deletePdfLink(int sourcePageNumber,
     if (edited) {
         m_document->pushUndoCommand(new LivePdfLinkCommand(i18nc("Undo action", "Delete Link"), restore, remove));
         if (PageView *view = workspaceActivePageView()) {
-            view->displayMessage(i18n("Deleted the link. Save the document to keep this change."));
+            view->displayMessage(i18n("Deleted the link."));
         }
     } else {
         KMessageBox::information(widget(), errorText.isEmpty() ? i18n("Could not delete the link.") : i18n("Could not delete the link. %1", errorText));
@@ -7534,12 +7534,12 @@ void Part::configurePdfLink(int sourcePageNumber, const QRectF &normalizedLinkRe
         m_document->pushUndoCommand(new LivePdfLinkCommand(creating ? i18nc("Undo action", "Create Link") : i18nc("Undo action", "Edit Link Destination"), std::move(undoOperation), applyNewTarget));
         if (PageView *view = workspaceActivePageView()) {
             if (externalTarget) {
-                view->displayMessage(creating ? i18n("Created the external link. Save the document to keep this change.") : i18n("Updated the external link. Save the document to keep this change."));
+                view->displayMessage(creating ? i18n("Created the external link.") : i18n("Updated the external link."));
             } else if (creating) {
-                view->displayMessage(destinationName.isEmpty() ? i18n("Created the internal link. Save the document to keep this change.")
-                                                               : i18n("Created a link to named destination '%1'. Save the document to keep this change.", destinationName));
+                view->displayMessage(destinationName.isEmpty() ? i18n("Created the internal link.")
+                                                               : i18n("Created a link to named destination '%1'.", destinationName));
             } else {
-                view->displayMessage(destinationName.isEmpty() ? i18n("Updated the internal link. Save the document to keep this change.") : i18n("Linked to named destination '%1'. Save the document to keep this change.", destinationName));
+                view->displayMessage(destinationName.isEmpty() ? i18n("Updated the internal link.") : i18n("Linked to named destination '%1'.", destinationName));
             }
         }
     } else {
@@ -7596,8 +7596,8 @@ void Part::insertBlankPage(int insertAfterPageNumber, const QSizeF &pageSize)
     refreshTemplateNotes();
 
     if (m_pageView) {
-        m_pageView->displayMessage(insertAfterPageNumber < 0 ? i18n("Inserted a blank page before the first page. Save the document to keep this change.")
-                                                             : i18n("Inserted a blank page after page %1. Save the document to keep this change.", insertAfterPageNumber + 1));
+        m_pageView->displayMessage(insertAfterPageNumber < 0 ? i18n("Inserted a blank page before the first page.")
+                                                             : i18n("Inserted a blank page after page %1.", insertAfterPageNumber + 1));
     }
 }
 
@@ -7645,8 +7645,8 @@ void Part::insertPdfPage(int insertAfterPageNumber, const QString &insertedFileN
     refreshTemplateNotes();
 
     if (m_pageView) {
-        m_pageView->displayMessage(insertAfterPageNumber < 0 ? i18n("Inserted a PDF page before the first page. Save the document to keep this change.")
-                                                             : i18n("Inserted a PDF page after page %1. Save the document to keep this change.", insertAfterPageNumber + 1));
+        m_pageView->displayMessage(insertAfterPageNumber < 0 ? i18n("Inserted a PDF page before the first page.")
+                                                             : i18n("Inserted a PDF page after page %1.", insertAfterPageNumber + 1));
     }
 }
 
@@ -7693,7 +7693,7 @@ void Part::deletePage(int pageNumber)
     refreshTemplateNotes();
 
     if (m_pageView) {
-        m_pageView->displayMessage(i18n("Deleted page %1. Save the document to keep this change.", pageNumber + 1));
+        m_pageView->displayMessage(i18n("Deleted page %1.", pageNumber + 1));
     }
 }
 
@@ -7741,7 +7741,7 @@ void Part::setPageRotation(int pageNumber, int rotationDegrees)
     refreshTemplateNotes();
 
     if (m_pageView) {
-        m_pageView->displayMessage(i18n("Rotated page %1. Save the document to keep this change.", pageNumber + 1));
+        m_pageView->displayMessage(i18n("Rotated page %1.", pageNumber + 1));
     }
 }
 
@@ -7793,7 +7793,7 @@ void Part::changePageBox(int pageNumber, double x1Delta, double y1Delta, double 
     updatePageEditActions();
 
     if (PageView *view = workspaceActivePageView()) {
-        view->displayMessage(i18n("Changed the size of page %1. Save the document to keep this change.", pageNumber + 1));
+        view->displayMessage(i18n("Changed the size of page %1.", pageNumber + 1));
     }
 }
 
@@ -7901,7 +7901,7 @@ void Part::movePageTo(int sourcePage, int destinationPage)
     m_document->pushUndoCommand(command.release());
 
     if (m_pageView) {
-        m_pageView->displayMessage(i18n("Moved page %1 to position %2. Save the document to keep this change.", sourcePage + 1, destinationPage + 1));
+        m_pageView->displayMessage(i18n("Moved page %1 to position %2.", sourcePage + 1, destinationPage + 1));
     }
 }
 
