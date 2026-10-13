@@ -5,25 +5,30 @@ Page Editing mode can change the visible size of any page, including the pages
 
 ## Dragging a border
 
-The page under the pointer shows handles on its **right border**, its **top
-border** and its **top-right corner**. Drag one, and a dashed preview follows the
-pointer; release, and the page takes that size.
+The page under the pointer shows handles on its four borders and its four corners.
+Drag one, and a dashed preview follows the pointer; release, and the page takes
+that shape.
 
-- Only the right and the top border move. The page keeps its lower-left corner, so
-  everything already on it stays exactly where it was and the new room appears to
-  the right of and above the content.
+- A handle moves the borders it belongs to and leaves the opposite ones where they
+  are: the page's content keeps its coordinates, so it does not move relative to
+  the borders that stay. Dragging the left border, for instance, moves that border
+  and pins the right one, whether that means the page grows or shrinks.
 - Dragging inwards makes the page smaller, which only hides what falls outside the
   visible box; enlarging it again brings that back.
-- One drag is one undo step, and the size reaches the file when the document is
-  saved.
+- One drag is one undo step, and the new shape reaches the file when the document
+  is saved.
 - The handles belong to Page Editing mode and follow the page you point at, so
   reading, annotating and the other editing modes are unaffected.
 
 **Page Size…** in the page context menu — and the same button in the page-edit
-toolbar — performs the same operation with exact numbers instead of a drag. Its
-values are the page's **unrotated** width and height in PDF points, like the
-blank-page size in the page insertion dialog, so they keep their meaning when the
-page is rotated.
+toolbar — performs the same operation with exact numbers instead of a drag. It
+keeps the lower-left corner, and its values are the page's **unrotated** width and
+height in PDF points, like the blank-page size in the page insertion dialog, so
+they keep their meaning when the page is rotated.
+
+Sizes stay between 1 and 20000 points per side. A drag that would leave that range
+stops at the limit instead of being rejected, and a rotation is taken into account:
+the borders you drag are the ones you see, whichever way the page is turned.
 
 ## What the user sees grows
 
@@ -39,8 +44,8 @@ Changing only the media box would therefore be invisible on a page that carries 
 crop box, and changing only the crop box would be invalid when the crop box leaves
 the media box. The operation writes both boxes onto the page itself:
 
-- the crop box keeps its lower-left corner and takes the requested width and
-  height,
+- the crop box moves the edges the gesture moved, by the amounts the gesture asked
+  for, and leaves the other edges alone,
 - the media box keeps its own extent and grows when the new crop box would leave
   it, because the format requires the crop box to stay inside the media box,
 - both are written as the page's own entries, which override a box the page tree
@@ -52,9 +57,9 @@ all behave the same way.
 
 ## Existing content does not move
 
-The lower-left corner of the visible box is kept, so page coordinates are
-unchanged: content stays where it is and the new room appears to the right of and
-above it, which is where a reader goes looking for it.
+Only the box that decides what is visible changes, so page coordinates are
+unchanged and content keeps its position: it does not move relative to the borders
+that stay put, so a page can be grown in any direction.
 
 A **smaller** size is allowed and only hides what falls outside the visible box.
 Nothing is deleted — the content stream, the annotations, and the rest of the file

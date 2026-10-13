@@ -287,11 +287,12 @@ public:
     virtual bool canSetPageSize() const = 0;
 
     /**
-     * Changes a page's visible size, in PDF points and in the page's unrotated
-     * axes, and returns its replacement model page. The page's lower-left corner
-     * is kept, so existing content stays where it is.
+     * Moves each edge of a page's visible box by its own amount, in PDF points in
+     * the page's unrotated axes, and returns its replacement model page. A zero
+     * delta pins that edge, so any corner or edge can be the anchor. The page's
+     * content keeps its coordinates; only what is visible changes.
      */
-    virtual bool setPageSizeInDocument(Page *page, int pageNumber, double width, double height, Page **replacementPage, QString *errorText) = 0;
+    virtual bool adjustPageBoxInDocument(Page *page, int pageNumber, double x1Delta, double y1Delta, double x2Delta, double y2Delta, Page **replacementPage, QString *errorText) = 0;
 };
 
 /**

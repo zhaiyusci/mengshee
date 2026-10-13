@@ -88,18 +88,32 @@ public:
     OKULARPART_EXPORT void setCrossReferenceModeEnabled(bool enabled);
     OKULARPART_EXPORT void setOcrModeEnabled(bool enabled);
     /**
-     * Page Editing mode shows resize handles on a page's right and top border.
-     * Dragging one changes the page's visible size. The lower-left corner stays
-     * put, so only those two borders can move.
+     * Page Editing mode shows resize handles on every border and corner of the
+     * page under the pointer. Dragging one moves that border (or those two
+     * borders); the opposite ones stay put, so the content does not move relative
+     * to them.
      */
     OKULARPART_EXPORT void setPageEditModeEnabled(bool enabled);
+    /** Per-edge moves of a page box, in PDF points in the page's unrotated axes. */
+    struct PageBoxDeltas {
+        double x1 = 0.0;
+        double y1 = 0.0;
+        double x2 = 0.0;
+        double y2 = 0.0;
+        bool isZero() const
+        {
+            return x1 == 0.0 && y1 == 0.0 && x2 == 0.0 && y2 == 0.0;
+        }
+    };
     /**
-     * Size a page takes when a border is dragged to \a draggedViewSize, in PDF
-     * points in the page's unrotated axes, given the size and the view rectangle
-     * the drag started from. The result stays within the limits the page editor
-     * accepts (1 to 20000 points).
+     * Turns a border drag into moves of the page box's four edges. The arguments
+     * are the distances the display's left, top, right and bottom border travelled
+     * outward, in PDF points; a negative value means that border moved inward. The
+     * result is in the page's own unrotated axes, so a rotated page behaves the
+     * same way, and it is limited to the sizes the page editor accepts (1 to 20000
+     * points per side), which keeps a drag from being rejected mid-gesture.
      */
-    static QSizeF pageSizeForBorderDrag(const QSizeF &sizeInPoints, const QSizeF &viewSizeAtStart, const QSizeF &draggedViewSize, int rotationDegrees);
+    static PageBoxDeltas pageBoxDeltasForBorderDrag(const QSizeF &sizeInPoints, double leftDelta, double topDelta, double rightDelta, double bottomDelta, int rotationDegrees);
     OKULARPART_EXPORT bool ocrModeEnabled() const;
     OKULARPART_EXPORT bool namedDestinationsVisible() const;
     void refreshNamedDestinations();
@@ -302,8 +316,8 @@ Q_SIGNALS:
     void notePageCreationChanged(bool active);
     /** Requests moving or resizing a PDF link annotation in this view. */
     void changePdfLinkRectangleRequested(int sourcePageNumber, const QRectF &oldNormalizedRectangle, const QRectF &newNormalizedRectangle);
-    /** Requests a new visible size for a page, in PDF points, after a border drag. */
-    void changePageSizeRequested(int pageNumber, const QSizeF &sizeInPoints);
+    /** Requests per-edge moves of a page box, in PDF points, after a border drag. */
+    void changePageBoxRequested(int pageNumber, double x1Delta, double y1Delta, double x2Delta, double y2Delta);
     /** Requests deleting the selected PDF link annotation. */
     void deletePdfLinkRequested(int sourcePageNumber,
                                 const QRectF &normalizedLinkRectangle,

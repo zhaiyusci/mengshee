@@ -3360,19 +3360,36 @@ void PartTest::testChangePageSize()
     QVERIFY(openDocument(&croppedReopened, croppedSaved));
     QCOMPARE(croppedReopened.m_document->pageSizeInPoints(0), widerCrop);
 
-    // A border drag scales the page in the axes the reader sees and returns points
-    // in the page's own unrotated axes. Only the dragged sides move, because the
-    // lower-left corner is what stays put.
-    QVERIFY(PageView::pageSizeForBorderDrag(QSizeF(400, 500), QSizeF(200, 250), QSizeF(300, 250), 0) == QSizeF(600, 500));
-    QVERIFY(PageView::pageSizeForBorderDrag(QSizeF(400, 500), QSizeF(200, 250), QSizeF(200, 500), 0) == QSizeF(400, 1000));
-    // A quarter turn reads width and height the other way round, so dragging the
-    // right border of a rotated page grows its unrotated height, and the bottom
-    // border grows its width.
-    QVERIFY(PageView::pageSizeForBorderDrag(QSizeF(400, 500), QSizeF(250, 200), QSizeF(500, 200), 90) == QSizeF(400, 1000));
-    QVERIFY(PageView::pageSizeForBorderDrag(QSizeF(400, 500), QSizeF(250, 200), QSizeF(250, 400), 270) == QSizeF(800, 500));
-    // The page editor's own limits hold whatever the drag does.
-    QVERIFY(PageView::pageSizeForBorderDrag(QSizeF(400, 500), QSizeF(200, 250), QSizeF(0.2, 250), 0) == QSizeF(1, 500));
-    QVERIFY(PageView::pageSizeForBorderDrag(QSizeF(400, 500), QSizeF(200, 250), QSizeF(20000, 250), 0) == QSizeF(20000, 500));
+    // A border drag moves the borders the handle belongs to and leaves the others
+    // where they are, so any corner or edge can be the anchor. The result is in the
+    // page's own unrotated axes; positive means the border moved outward.
+    const auto deltas = [](double left, double top, double right, double bottom, int rotation) {
+        return PageView::pageBoxDeltasForBorderDrag(QSizeF(400, 500), left, top, right, bottom, rotation);
+    };
+    const auto isDelta = [](const PageView::PageBoxDeltas &d, double x1, double y1, double x2, double y2) {
+        return qAbs(d.x1 - x1) < 0.01 && qAbs(d.y1 - y1) < 0.01 && qAbs(d.x2 - x2) < 0.01 && qAbs(d.y2 - y2) < 0.01;
+    };
+    QVERIFY(isDelta(deltas(100, 0, 0, 0, 0), -100, 0, 0, 0)); // left border out
+    QVERIFY(isDelta(deltas(0, 50, 0, 0, 0), 0, 0, 0, 50)); // top border out
+    QVERIFY(isDelta(deltas(0, 0, 100, 0, 0), 0, 0, 100, 0)); // right border out
+    QVERIFY(isDelta(deltas(0, 0, 0, 50, 0), 0, -50, 0, 0)); // bottom border out
+    QVERIFY(isDelta(deltas(-150, 0, 0, 0, 0), 150, 0, 0, 0)); // left border in
+    // A quarter turn reads the display's horizontal axis as the page's vertical one.
+    QVERIFY(isDelta(deltas(100, 50, 0, 0, 90), 0, -100, 0, 0));
+    QVERIFY(isDelta(deltas(0, 50, 0, 0, 90), -50, 0, 0, 0));
+    QVERIFY(isDelta(deltas(0, 0, 100, 0, 90), 0, 0, 0, 100));
+    QVERIFY(isDelta(deltas(0, 0, 0, 50, 90), 0, 0, 50, 0));
+    // Half a turn puts the other edge of each axis on the display's left and top.
+    QVERIFY(isDelta(deltas(100, 50, 0, 0, 180), 0, -50, 100, 0));
+    QVERIFY(isDelta(deltas(0, 0, 100, 50, 180), -100, 0, 0, 50));
+    // Three quarters turn the other way.
+    QVERIFY(isDelta(deltas(100, 0, 0, 50, 270), -50, 0, 0, 100));
+    QVERIFY(isDelta(deltas(0, 50, 100, 0, 270), 0, -100, 50, 0));
+    // The limits the page editor accepts hold, and they hold by scaling both
+    // borders of the axis, so the opposite border still does not move.
+    QVERIFY(isDelta(deltas(30000, 0, 0, 0, 0), -19600, 0, 0, 0));
+    QVERIFY(isDelta(deltas(399.5, 0, 0, 0, 0), 399, 0, 0, 0));
+    QVERIFY(deltas(0, 0, 0, 0, 0).isZero());
 }
 
 void PartTest::testLatexNoteOnRotatedPage()

@@ -3482,14 +3482,14 @@ bool PDFGenerator::canSetPageSize() const
     return true;
 }
 
-bool PDFGenerator::setPageSizeInDocument(Okular::Page *page, int pageNumber, double width, double height, Okular::Page **replacementPage, QString *errorText)
+bool PDFGenerator::adjustPageBoxInDocument(Okular::Page *page, int pageNumber, double x1Delta, double y1Delta, double x2Delta, double y2Delta, Okular::Page **replacementPage, QString *errorText)
 {
     if (!replacementPage) {
         return false;
     }
     QMutexLocker locker(userMutex());
     PDFDoc *document = popplerCoreDocument(pdfdoc.get());
-    if (!runPdfPagesOperation([&] { return PdfPageSequenceEditor::setPageSize(document, pageNumber + 1, width, height); }, errorText)) {
+    if (!runPdfPagesOperation([&] { return PdfPageSequenceEditor::adjustPageBox(document, pageNumber + 1, x1Delta, y1Delta, x2Delta, y2Delta); }, errorText)) {
         return false;
     }
     resetPageTopologyCaches();

@@ -6763,6 +6763,17 @@ bool Document::canChangePageSize() const
 
 bool Document::changePageSize(int pageNumber, double width, double height, QString *errorText)
 {
+    // Taking a size keeps the lower-left corner: only the right and the top edge
+    // move, which is the same operation the border drag uses.
+    const QSizeF currentSize = pageSizeInPoints(pageNumber);
+    if (!currentSize.isValid()) {
+        return false;
+    }
+    return adjustPageBox(pageNumber, 0.0, 0.0, width - currentSize.width(), height - currentSize.height(), errorText);
+}
+
+bool Document::adjustPageBox(int pageNumber, double x1Delta, double y1Delta, double x2Delta, double y2Delta, QString *errorText)
+{
     auto pageInsertion = dynamic_cast<PageInsertionInterface *>(d->m_generator);
     if (!pageInsertion || pageNumber < 0 || pageNumber >= d->m_pagesVector.size()) {
         return false;
@@ -6770,7 +6781,7 @@ bool Document::changePageSize(int pageNumber, double width, double height, QStri
     d->clearAndWaitForRequests();
     Page *retiredPage = d->m_pagesVector.at(pageNumber);
     Page *replacementPage = nullptr;
-    if (!pageInsertion->setPageSizeInDocument(retiredPage, pageNumber, width, height, &replacementPage, errorText) || !replacementPage) {
+    if (!pageInsertion->adjustPageBoxInDocument(retiredPage, pageNumber, x1Delta, y1Delta, x2Delta, y2Delta, &replacementPage, errorText) || !replacementPage) {
         return false;
     }
     d->m_pagesVector[pageNumber] = replacementPage;

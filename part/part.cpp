@@ -1539,7 +1539,7 @@ void Part::connectWorkspacePageView(PageView *view)
     connect(view, &PageView::changePdfLinkRectangleRequested, this, &Part::changePdfLinkRectangle);
     // Dragging a page border in Page Editing mode resizes the page, with one undo
     // step per drag.
-    connect(view, &PageView::changePageSizeRequested, this, [this](int pageNumber, const QSizeF &sizeInPoints) { changePageSize(pageNumber, sizeInPoints); });
+    connect(view, &PageView::changePageBoxRequested, this, [this](int pageNumber, double x1Delta, double y1Delta, double x2Delta, double y2Delta) { changePageBox(pageNumber, x1Delta, y1Delta, x2Delta, y2Delta); });
     connect(view, &PageView::deletePdfLinkRequested, this, &Part::deletePdfLink);
     connect(view, &PageView::advancedModeChanged, this, &Part::setAdvancedModeEnabled);
     connect(view, &PageView::moveNamedDestinationRequested, this, [this](const QString &name, int pageNumber, const Okular::NormalizedPoint &position) { moveNamedDestination(name, pageNumber, position); });
@@ -3937,21 +3937,25 @@ private:
     bool m_firstRedo = true;
 };
 
-class LivePageSizeCommand : public QUndoCommand
+class LivePageBoxCommand : public QUndoCommand
 {
 public:
-    LivePageSizeCommand(Part *part, int pageNumber, const QSizeF &beforeSize, const QSizeF &afterSize)
+    // Undo is the same edge deltas with the opposite sign, which is exact: the
+    // page editor rejects a result it cannot apply instead of clamping it.
+    LivePageBoxCommand(Part *part, int pageNumber, double x1Delta, double y1Delta, double x2Delta, double y2Delta)
         : QUndoCommand(i18nc("Undo action", "Change Page Size"))
         , m_part(part)
         , m_pageNumber(pageNumber)
-        , m_beforeSize(beforeSize)
-        , m_afterSize(afterSize)
+        , m_x1Delta(x1Delta)
+        , m_y1Delta(y1Delta)
+        , m_x2Delta(x2Delta)
+        , m_y2Delta(y2Delta)
     {
     }
 
     void undo() override
     {
-        apply(m_beforeSize);
+        apply(-m_x1Delta, -m_y1Delta, -m_x2Delta, -m_y2Delta);
     }
 
     void redo() override
@@ -3960,21 +3964,23 @@ public:
             m_firstRedo = false;
             return;
         }
-        apply(m_afterSize);
+        apply(m_x1Delta, m_y1Delta, m_x2Delta, m_y2Delta);
     }
 
 private:
-    void apply(const QSizeF &size)
+    void apply(double x1Delta, double y1Delta, double x2Delta, double y2Delta)
     {
-        if (m_part && !m_part->applyLivePageSize(m_pageNumber, size)) {
+        if (m_part && !m_part->applyLivePageBox(m_pageNumber, x1Delta, y1Delta, x2Delta, y2Delta)) {
             qWarning() << "Page size undo/redo failed";
         }
     }
 
     QPointer<Part> m_part;
     int m_pageNumber = 0;
-    QSizeF m_beforeSize;
-    QSizeF m_afterSize;
+    double m_x1Delta = 0.0;
+    double m_y1Delta = 0.0;
+    double m_x2Delta = 0.0;
+    double m_y2Delta = 0.0;
     bool m_firstRedo = true;
 };
 
@@ -6942,12 +6948,12 @@ bool Part::applyLivePageRotation(int pageNumber, int rotationDegrees)
     return true;
 }
 
-bool Part::applyLivePageSize(int pageNumber, const QSizeF &sizeInPoints)
+bool Part::applyLivePageBox(int pageNumber, double x1Delta, double y1Delta, double x2Delta, double y2Delta)
 {
     const QPointer<PageView> initiatingView = workspaceActivePageView();
     const DocumentViewport previousViewport = initiatingView ? initiatingView->documentViewport() : m_document->viewport();
     QString errorText;
-    if (!m_document->changePageSize(pageNumber, sizeInPoints.width(), sizeInPoints.height(), &errorText)) {
+    if (!m_document->adjustPageBox(pageNumber, x1Delta, y1Delta, x2Delta, y2Delta, &errorText)) {
         qWarning() << "Could not change the page size:" << errorText;
         return false;
     }
@@ -7741,6 +7747,25 @@ void Part::setPageRotation(int pageNumber, int rotationDegrees)
 
 void Part::changePageSize(int pageNumber, const QSizeF &sizeInPoints)
 {
+    if (!sizeInPoints.isValid() || sizeInPoints.width() <= 0.0 || sizeInPoints.height() <= 0.0) {
+        KMessageBox::information(widget(), i18n("The page size is not valid."));
+        return;
+    }
+    const QSizeF currentSize = m_document->pageSizeInPoints(pageNumber);
+    if (!currentSize.isValid()) {
+        KMessageBox::information(widget(), i18n("The size of the page could not be determined."));
+        return;
+    }
+    // Taking a size keeps the lower-left corner, so only the right and the top
+    // edge move; a border drag can move any edge.
+    changePageBox(pageNumber, 0.0, 0.0, sizeInPoints.width() - currentSize.width(), sizeInPoints.height() - currentSize.height());
+}
+
+void Part::changePageBox(int pageNumber, double x1Delta, double y1Delta, double x2Delta, double y2Delta)
+{
+    if (x1Delta == 0.0 && y1Delta == 0.0 && x2Delta == 0.0 && y2Delta == 0.0) {
+        return;
+    }
     if (!m_document->isOpened() || !url().isLocalFile() || isDocumentArchive || !m_document->canChangePageSize()) {
         KMessageBox::information(widget(), i18n("A page size can only be changed in local PDF files."));
         return;
@@ -7751,18 +7776,9 @@ void Part::changePageSize(int pageNumber, const QSizeF &sizeInPoints)
         KMessageBox::information(widget(), i18n("The target page could not be found."));
         return;
     }
-    if (!sizeInPoints.isValid() || sizeInPoints.width() <= 0.0 || sizeInPoints.height() <= 0.0) {
-        KMessageBox::information(widget(), i18n("The page size is not valid."));
-        return;
-    }
-
-    const QSizeF currentSize = m_document->pageSizeInPoints(pageNumber);
-    if (currentSize == sizeInPoints) {
-        return;
-    }
 
     QString errorText;
-    if (!m_document->changePageSize(pageNumber, sizeInPoints.width(), sizeInPoints.height(), &errorText)) {
+    if (!m_document->adjustPageBox(pageNumber, x1Delta, y1Delta, x2Delta, y2Delta, &errorText)) {
         if (errorText.isEmpty()) {
             KMessageBox::information(widget(), i18n("Could not change the page size."));
         } else {
@@ -7771,7 +7787,7 @@ void Part::changePageSize(int pageNumber, const QSizeF &sizeInPoints)
         return;
     }
 
-    m_document->pushUndoCommand(new LivePageSizeCommand(this, pageNumber, currentSize, sizeInPoints));
+    m_document->pushUndoCommand(new LivePageBoxCommand(this, pageNumber, x1Delta, y1Delta, x2Delta, y2Delta));
     refreshTemplateNotes();
     updateViewActions();
     updatePageEditActions();

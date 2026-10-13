@@ -135,7 +135,7 @@ class OKULARPART_EXPORT Part : public KParts::ReadWritePart, public Okular::Docu
     friend class LivePageMoveCommand;
     friend class LivePageAttachmentCommand;
     friend class LivePageRotationCommand;
-    friend class LivePageSizeCommand;
+    friend class LivePageBoxCommand;
     friend class LiveNotePageCommand;
     friend class LiveNamedDestinationCommand;
     friend class LiveNamedDestinationRenameCommand;
@@ -353,8 +353,9 @@ private:
     // wrong for a note the reader is looking at on an earlier page.
     bool applyLiveNotePageAttachment(bool attach, int insertAfterPage, quint64 editId);
     bool applyLivePageRotation(int pageNumber, int rotationDegrees);
-    // Applies a page's visible size (PDF points, unrotated axes) for undo/redo.
-    bool applyLivePageSize(int pageNumber, const QSizeF &sizeInPoints);
+    // Applies per-edge moves of a page's visible box (PDF points, unrotated axes)
+    // for undo and redo.
+    bool applyLivePageBox(int pageNumber, double x1Delta, double y1Delta, double x2Delta, double y2Delta);
     bool applyLiveNamedDestination(const QString &name, const std::optional<DocumentViewport> &destination, QString *errorText = nullptr);
     bool canUsePageLevelEditing() const;
     void setAdvancedModeEnabled(bool enabled);
@@ -410,8 +411,11 @@ private:
     void setPageTemplateFileName(const QString &fileName);
     void deletePage(int pageNumber);
     void setPageRotation(int pageNumber, int rotationDegrees);
-    // Changes the visible size of one page and records a single undo step.
+    // Changes the visible size of one page and records a single undo step. A size
+    // keeps the lower-left corner; changePageBox moves single edges instead, which
+    // is what a border drag needs.
     void changePageSize(int pageNumber, const QSizeF &sizeInPoints);
+    void changePageBox(int pageNumber, double x1Delta, double y1Delta, double x2Delta, double y2Delta);
     void changePageSizeWithDialog(int pageNumber);
     void movePageTo(int sourcePage, int destinationPage);
     void movePageFromThumbnail(int sourcePage, int targetPage, bool insertAfterTarget);

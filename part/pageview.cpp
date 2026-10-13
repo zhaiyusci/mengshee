@@ -310,19 +310,29 @@ static QRectF readingViewLabelRect(const PageViewItem *item, const QRectF &rect,
     return QRectF(QPointF(qBound(page.left(), rect.left() + 4.0, page.right() - size.width()), qBound(page.top(), rect.top() + 4.0, page.bottom() - size.height())), size);
 }
 
-// A page keeps its lower-left corner while it is resized, so only the right and
-// the top border offer a handle; the cursor shapes come from the link handles.
-static const std::array<PdfLinkHandle, 3> pageSizeHandleKinds {PdfLinkHandle::TopRight, PdfLinkHandle::Top, PdfLinkHandle::Right};
+// Every border and corner of a page can be dragged; the opposite ones stay put.
+static const std::array<PdfLinkHandle, 8> pageSizeHandleKinds {PdfLinkHandle::TopLeft,  PdfLinkHandle::Top,    PdfLinkHandle::TopRight, PdfLinkHandle::Right,
+                                                              PdfLinkHandle::BottomRight, PdfLinkHandle::Bottom, PdfLinkHandle::BottomLeft, PdfLinkHandle::Left};
 
 static QPointF pageSizeHandleCenter(const QRectF &pageRect, PdfLinkHandle handle)
 {
     switch (handle) {
-    case PdfLinkHandle::TopRight:
-        return pageRect.topRight();
+    case PdfLinkHandle::TopLeft:
+        return pageRect.topLeft();
     case PdfLinkHandle::Top:
         return QPointF(pageRect.center().x(), pageRect.top());
+    case PdfLinkHandle::TopRight:
+        return pageRect.topRight();
     case PdfLinkHandle::Right:
         return QPointF(pageRect.right(), pageRect.center().y());
+    case PdfLinkHandle::BottomRight:
+        return pageRect.bottomRight();
+    case PdfLinkHandle::Bottom:
+        return QPointF(pageRect.center().x(), pageRect.bottom());
+    case PdfLinkHandle::BottomLeft:
+        return pageRect.bottomLeft();
+    case PdfLinkHandle::Left:
+        return QPointF(pageRect.left(), pageRect.center().y());
     default:
         return pageRect.center();
     }
@@ -336,6 +346,7 @@ static PdfLinkHandle pageSizeHandleAt(const QRectF &pageRect, const QPointF &poi
             return handle;
         }
     }
+    // Move means the pointer is inside the page, where nothing is dragged.
     return PdfLinkHandle::None;
 }
 
@@ -1256,19 +1267,70 @@ void PageView::setPageEditModeEnabled(bool enabled)
     viewport()->update();
 }
 
-QSizeF PageView::pageSizeForBorderDrag(const QSizeF &sizeInPoints, const QSizeF &viewSizeAtStart, const QSizeF &draggedViewSize, int rotationDegrees)
+PageView::PageBoxDeltas PageView::pageBoxDeltasForBorderDrag(const QSizeF &sizeInPoints, double leftDelta, double topDelta, double rightDelta, double bottomDelta, int rotationDegrees)
 {
-    if (sizeInPoints.isEmpty() || viewSizeAtStart.isEmpty()) {
-        return sizeInPoints;
+    PageBoxDeltas deltas;
+    // Outward distances on the display's four borders become moves of the box's
+    // four edges. A quarter turn reads the display's horizontal axis as the page's
+    // vertical one, and half a turn swaps which edge of an axis is on the display's
+    // left or top.
+    switch (((rotationDegrees % 360) + 360) % 360) {
+    case 90:
+        deltas.y1 -= leftDelta;
+        deltas.y2 += rightDelta;
+        deltas.x1 -= topDelta;
+        deltas.x2 += bottomDelta;
+        break;
+    case 180:
+        deltas.x2 += leftDelta;
+        deltas.x1 -= rightDelta;
+        deltas.y1 -= topDelta;
+        deltas.y2 += bottomDelta;
+        break;
+    case 270:
+        deltas.y2 += leftDelta;
+        deltas.y1 -= rightDelta;
+        deltas.x2 += topDelta;
+        deltas.x1 -= bottomDelta;
+        break;
+    default:
+        deltas.x1 -= leftDelta;
+        deltas.x2 += rightDelta;
+        deltas.y2 += topDelta;
+        deltas.y1 -= bottomDelta;
+        break;
     }
-    const QSizeF displayed = pageSizeInDisplayAxes(sizeInPoints, rotationDegrees);
-    const QSizeF scaled(displayed.width() * draggedViewSize.width() / viewSizeAtStart.width(), displayed.height() * draggedViewSize.height() / viewSizeAtStart.height());
-    const QSizeF canonical = pageSizeInDisplayAxes(scaled, rotationDegrees);
-    // The same limits the page editor and the size dialog accept.
-    const auto clamp = [](double value) {
-        return qBound(1.0, value, 20000.0);
+
+    // Keep the result inside the limits the page editor accepts, scaling both
+    // deltas of an axis together so the borders that stay put still stay put.
+    const auto clampAxis = [](double size, double &lowerDelta, double &upperDelta) {
+        const double change = upperDelta - lowerDelta;
+        if (change == 0.0) {
+            return;
+        }
+        const double clampedChange = qBound(1.0 - size, change, 20000.0 - size);
+        if (clampedChange == change) {
+            return;
+        }
+        const double factor = clampedChange / change;
+        lowerDelta *= factor;
+        upperDelta *= factor;
     };
-    return QSizeF(clamp(canonical.width()), clamp(canonical.height()));
+    clampAxis(sizeInPoints.width(), deltas.x1, deltas.x2);
+    clampAxis(sizeInPoints.height(), deltas.y1, deltas.y2);
+    return deltas;
+}
+
+// The distance a page's borders travelled, in PDF points, from the view rectangle
+// a drag started with and the one it produced. Positive means a border moved
+// outward.
+static QSizeF pageSizeDisplayDeltaInPoints(const QSizeF &sizeInPoints, const QRectF &startRect, const QRectF &previewRect, int rotationDegrees)
+{
+    if (startRect.isEmpty()) {
+        return QSizeF();
+    }
+    const QSizeF displaySize = pageSizeInDisplayAxes(sizeInPoints, rotationDegrees);
+    return QSizeF((previewRect.width() - startRect.width()) * displaySize.width() / startRect.width(), (previewRect.height() - startRect.height()) * displaySize.height() / startRect.height());
 }
 
 void PageView::setCrossReferenceModeEnabled(bool enabled)
@@ -4550,17 +4612,45 @@ void PageView::mouseMoveEvent(QMouseEvent *e)
 
     if (d->pageSizeDragging && d->pageSizeDragPage >= 0) {
         if (e->buttons() & Qt::LeftButton) {
-            // Only the right and the top border follow the pointer: the page keeps
-            // its lower-left corner, so its content does not move.
+            // Only the borders this handle belongs to follow the pointer; the
+            // opposite ones stay where they are, so the content keeps its position
+            // relative to them.
             const qreal minimum = 24.0;
             const qreal pointerX = eventPos.x();
             const qreal pointerY = eventPos.y();
             QRectF updated = d->pageSizeDragStartRect;
-            if (d->pageSizeDragHandle == PdfLinkHandle::Right || d->pageSizeDragHandle == PdfLinkHandle::TopRight) {
-                updated.setRight(qMax(pointerX, updated.left() + minimum));
-            }
-            if (d->pageSizeDragHandle == PdfLinkHandle::Top || d->pageSizeDragHandle == PdfLinkHandle::TopRight) {
+            switch (d->pageSizeDragHandle) {
+            case PdfLinkHandle::TopLeft:
+                updated.setLeft(qMin(pointerX, updated.right() - minimum));
                 updated.setTop(qMin(pointerY, updated.bottom() - minimum));
+                break;
+            case PdfLinkHandle::Top:
+                updated.setTop(qMin(pointerY, updated.bottom() - minimum));
+                break;
+            case PdfLinkHandle::TopRight:
+                updated.setRight(qMax(pointerX, updated.left() + minimum));
+                updated.setTop(qMin(pointerY, updated.bottom() - minimum));
+                break;
+            case PdfLinkHandle::Right:
+                updated.setRight(qMax(pointerX, updated.left() + minimum));
+                break;
+            case PdfLinkHandle::BottomRight:
+                updated.setRight(qMax(pointerX, updated.left() + minimum));
+                updated.setBottom(qMax(pointerY, updated.top() + minimum));
+                break;
+            case PdfLinkHandle::Bottom:
+                updated.setBottom(qMax(pointerY, updated.top() + minimum));
+                break;
+            case PdfLinkHandle::BottomLeft:
+                updated.setLeft(qMin(pointerX, updated.right() - minimum));
+                updated.setBottom(qMax(pointerY, updated.top() + minimum));
+                break;
+            case PdfLinkHandle::Left:
+                updated.setLeft(qMin(pointerX, updated.right() - minimum));
+                break;
+            case PdfLinkHandle::Move:
+            case PdfLinkHandle::None:
+                break;
             }
             d->pageSizePreviewRect = updated;
             viewport()->update();
@@ -5424,6 +5514,7 @@ void PageView::mouseReleaseEvent(QMouseEvent *e)
 
     if (leftButton && d->pageSizeDragging) {
         const int pageNumber = d->pageSizeDragPage;
+        const PdfLinkHandle handle = d->pageSizeDragHandle;
         const QRectF startRect = d->pageSizeDragStartRect;
         const QRectF previewRect = d->pageSizePreviewRect;
         const QSizeF startSize = d->pageSizeDragStartSize;
@@ -5437,9 +5528,30 @@ void PageView::mouseReleaseEvent(QMouseEvent *e)
         const Okular::Page *page = pageNumber >= 0 ? d->document->page(pageNumber) : nullptr;
         if (page && previewRect.isValid() && previewRect != startRect) {
             const int rotationDegrees = static_cast<int>(page->rotation()) * 90;
-            const QSizeF requested = pageSizeForBorderDrag(startSize, startRect.size(), previewRect.size(), rotationDegrees);
-            if (requested.isValid() && requested != startSize) {
-                Q_EMIT changePageSizeRequested(pageNumber, requested);
+            // How far the page grew on screen, in points, and which of its borders
+            // that growth belongs to: a corner moves two borders, an edge one.
+            const QSizeF grew = pageSizeDisplayDeltaInPoints(startSize, startRect, previewRect, rotationDegrees);
+            double leftDelta = 0.0;
+            double topDelta = 0.0;
+            double rightDelta = 0.0;
+            double bottomDelta = 0.0;
+            const auto movesLeft = handle == PdfLinkHandle::Left || handle == PdfLinkHandle::TopLeft || handle == PdfLinkHandle::BottomLeft;
+            const auto movesRight = handle == PdfLinkHandle::Right || handle == PdfLinkHandle::TopRight || handle == PdfLinkHandle::BottomRight;
+            const auto movesTop = handle == PdfLinkHandle::Top || handle == PdfLinkHandle::TopLeft || handle == PdfLinkHandle::TopRight;
+            const auto movesBottom = handle == PdfLinkHandle::Bottom || handle == PdfLinkHandle::BottomLeft || handle == PdfLinkHandle::BottomRight;
+            if (movesLeft) {
+                leftDelta = grew.width();
+            } else if (movesRight) {
+                rightDelta = grew.width();
+            }
+            if (movesTop) {
+                topDelta = grew.height();
+            } else if (movesBottom) {
+                bottomDelta = grew.height();
+            }
+            const PageBoxDeltas deltas = pageBoxDeltasForBorderDrag(startSize, leftDelta, topDelta, rightDelta, bottomDelta, rotationDegrees);
+            if (!deltas.isZero()) {
+                Q_EMIT changePageBoxRequested(pageNumber, deltas.x1, deltas.y1, deltas.x2, deltas.y2);
             }
         }
         e->accept();

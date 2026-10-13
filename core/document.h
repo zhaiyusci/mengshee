@@ -1179,6 +1179,15 @@ public:
      */
     bool changePageSize(int pageNumber, double width, double height, QString *errorText);
 
+    /**
+     * Moves each edge of a 0-based page's visible box by its own amount, in PDF
+     * points in the page's unrotated axes. x1Delta and y1Delta move the lower-left
+     * corner, x2Delta and y2Delta the upper-right one, so a zero delta pins that
+     * edge and any corner or edge can be the anchor. Content keeps its coordinates;
+     * a smaller box only hides what falls outside it.
+     */
+    bool adjustPageBox(int pageNumber, double x1Delta, double y1Delta, double x2Delta, double y2Delta, QString *errorText);
+
     /** Non-painting, manually defined page rectangles and numbers; no navigation policy. */
     bool canEditReadingViews() const;
     bool canGenerateReadingViews() const;
