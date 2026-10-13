@@ -208,6 +208,10 @@ enum class PdfLinkHandle {
 };
 
 static constexpr qreal pdfLinkHandleSize = 8.0;
+// Every handle is outlined with a pen of this width, which paints half of itself
+// outside the rectangle it strokes. Drawing and hit testing must cover the same
+// pixels, so the grab rectangle is the stroked rectangle widened by that half.
+static constexpr qreal pdfLinkHandlePenWidth = 1.0;
 
 static QRectF pdfLinkContentRect(const PageViewItem *item, const QRectF &normalizedRect)
 {
@@ -224,6 +228,14 @@ static QRectF pdfLinkHandleRect(const QPointF &center)
 {
     const qreal half = pdfLinkHandleSize / 2.0;
     return QRectF(center.x() - half, center.y() - half, pdfLinkHandleSize, pdfLinkHandleSize);
+}
+
+// The area a drawn handle covers, pen included. This is the only rectangle that
+// decides whether a handle is grabbed, for every handle in the application.
+static QRectF pdfLinkHandleGrabRect(const QPointF &center)
+{
+    const qreal outset = pdfLinkHandlePenWidth / 2.0;
+    return pdfLinkHandleRect(center).adjusted(-outset, -outset, outset, outset);
 }
 
 static PdfLinkHandle pdfLinkHandleAt(const QRectF &rect, const QPointF &point)
@@ -248,10 +260,22 @@ static PdfLinkHandle pdfLinkHandleAt(const QRectF &rect, const QPointF &point)
                                                                     {PdfLinkHandle::Bottom, bottom},
                                                                     {PdfLinkHandle::BottomLeft, bottomLeft},
                                                                     {PdfLinkHandle::Left, left}}};
+    // The nearest handle whose drawn area covers the point, so two handles that
+    // overlap (a small page) still give the one the pointer is really on.
+    PdfLinkHandle best = PdfLinkHandle::None;
+    double bestDistance = 1e9;
     for (const auto &[handle, center] : handles) {
-        if (pdfLinkHandleRect(center).contains(point)) {
-            return handle;
+        if (!pdfLinkHandleGrabRect(center).contains(point)) {
+            continue;
         }
+        const double distance = QLineF(center, point).length();
+        if (distance < bestDistance) {
+            bestDistance = distance;
+            best = handle;
+        }
+    }
+    if (best != PdfLinkHandle::None) {
+        return best;
     }
     return rect.contains(point) ? PdfLinkHandle::Move : PdfLinkHandle::None;
 }
@@ -338,25 +362,39 @@ static QPointF pageSizeHandleCenter(const QRectF &pageRect, PdfLinkHandle handle
     }
 }
 
-static PdfLinkHandle pageSizeHandleAt(const QRectF &pageRect, const QPointF &point)
+QRectF PageView::pageSizeHandleRectangle(const QRectF &pageRect, int index)
 {
-    // The nearest handle wins: with eight of them around a page, a fixed order would
-    // let a border steal a corner when the pointer is closer to the corner.
-    PdfLinkHandle best = PdfLinkHandle::None;
+    if (index < 0 || index >= static_cast<int>(pageSizeHandleKinds.size())) {
+        return QRectF();
+    }
+    return pdfLinkHandleRect(pageSizeHandleCenter(pageRect, pageSizeHandleKinds[static_cast<size_t>(index)]));
+}
+
+int PageView::pageSizeHandleIndexAt(const QRectF &pageRect, const QPointF &point)
+{
+    // The drawn rectangle is what decides where a handle can be grabbed, for the
+    // page handles and for every other handle in the application alike. When two of
+    // them overlap, as they do on a small page, the nearer centre wins.
+    int best = -1;
     double bestDistance = 1e9;
-    for (const PdfLinkHandle candidate : pageSizeHandleKinds) {
-        const QPointF center = pageSizeHandleCenter(pageRect, candidate);
-        // The drawn square is pdfLinkHandleRect, widened by the cosmetic pen.
-        if (!pdfLinkHandleRect(center).adjusted(-1.0, -1.0, 1.0, 1.0).contains(point)) {
+    for (size_t i = 0; i < pageSizeHandleKinds.size(); ++i) {
+        const QPointF center = pageSizeHandleCenter(pageRect, pageSizeHandleKinds[i]);
+        if (!pdfLinkHandleGrabRect(center).contains(point)) {
             continue;
         }
         const double distance = QLineF(center, point).length();
         if (distance < bestDistance) {
             bestDistance = distance;
-            best = candidate;
+            best = static_cast<int>(i);
         }
     }
     return best;
+}
+
+static PdfLinkHandle pageSizeHandleAt(const QRectF &pageRect, const QPointF &point)
+{
+    const int index = PageView::pageSizeHandleIndexAt(pageRect, point);
+    return index < 0 ? PdfLinkHandle::None : pageSizeHandleKinds[static_cast<size_t>(index)];
 }
 
 // Turning a page in its display axes swaps width and height; applying the same
@@ -3947,10 +3985,9 @@ void PageView::drawPageSizeHandles(const QRect &contentsRect, QPainter *p)
     if (!handleItem) {
         return;
     }
-    // The handles belong to the page's own rectangle, which trimming margins does
-    // not change: they stay on the paper's edges and the drag is measured against
-    // the whole page.
-    const QRectF pageRect = handleItem->uncroppedGeometry();
+    // Handles belong to the page as it is displayed: the same rectangle the page is
+    // drawn into, so they sit exactly on its visible edges.
+    const QRectF pageRect = handleItem->croppedGeometry();
     if (!pageRect.adjusted(-pdfLinkHandleSize, -pdfLinkHandleSize, pdfLinkHandleSize, pdfLinkHandleSize).intersects(contentsRect)) {
         return;
     }
@@ -3963,8 +4000,10 @@ void PageView::drawPageSizeHandles(const QRect &contentsRect, QPainter *p)
     p->drawRect(pageRect);
     p->setPen(QColor::fromHsvF(0, 0, 1.0));
     p->setBrush(QColor::fromHsvF(0.11, 0.9, 0.85, 0.95));
-    for (const PdfLinkHandle handle : pageSizeHandleKinds) {
-        p->drawRect(pdfLinkHandleRect(pageSizeHandleCenter(pageRect, handle)));
+    for (size_t i = 0; i < pageSizeHandleKinds.size(); ++i) {
+        // The very rectangle the hit test uses, so a handle is grabbed where it is
+        // painted.
+        p->drawRect(pageSizeHandleRectangle(pageRect, static_cast<int>(i)));
     }
     if (d->pageSizeDragging && d->pageSizePreviewRect.isValid()) {
         QPen previewPen(QColor::fromHsvF(0.11, 1.0, 0.6, 0.9), 2.0, Qt::DashLine);
@@ -5139,13 +5178,13 @@ void PageView::mousePressEvent(QMouseEvent *e)
                 d->pageSizeSelectedPage = pageItem->pageNumber();
                 viewport()->update();
             }
-            const PdfLinkHandle handle = pageSizeHandleAt(QRectF(pageItem->uncroppedGeometry()), eventPos);
+            const PdfLinkHandle handle = pageSizeHandleAt(QRectF(pageItem->croppedGeometry()), eventPos);
             if (handle != PdfLinkHandle::None) {
                 d->pageSizeDragging = true;
                 d->pageSizeDragHandle = handle;
                 d->pageSizeDragPage = pageItem->pageNumber();
                 d->pageSizeHoverPage = pageItem->pageNumber();
-                d->pageSizeDragStartRect = QRectF(pageItem->uncroppedGeometry());
+                d->pageSizeDragStartRect = QRectF(pageItem->croppedGeometry());
                 d->pageSizePreviewRect = d->pageSizeDragStartRect;
                 d->pageSizeDragStartSize = d->document->pageSizeInPoints(pageItem->pageNumber());
                 d->scroller->stop();
@@ -7553,9 +7592,8 @@ void PageView::updatePageSizeHover(const QPointF &contentPoint)
     int page = -1;
     PdfLinkHandle handle = PdfLinkHandle::None;
     for (const PageViewItem *item : std::as_const(d->visibleItems)) {
-        // The page's own rectangle, not the trimmed one, decides where the handles
-        // are, so they sit on the paper's edges.
-        const QRectF pageRect = item->uncroppedGeometry();
+        // The rectangle the page is displayed in decides where the handles are.
+        const QRectF pageRect = item->croppedGeometry();
         if (!pageRect.contains(contentPoint)) {
             continue;
         }

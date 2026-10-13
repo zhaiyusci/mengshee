@@ -94,6 +94,14 @@ public:
      * to them.
      */
     OKULARPART_EXPORT void setPageEditModeEnabled(bool enabled);
+    /**
+     * The rectangle a page resize handle occupies, in content coordinates, for
+     * \a index from 0 to 7. Drawing and hit testing share it, so a handle can always
+     * be grabbed exactly where it is painted.
+     */
+    static QRectF pageSizeHandleRectangle(const QRectF &pageRect, int index);
+    /** The index of the handle under \a point, or -1 when there is none. */
+    static int pageSizeHandleIndexAt(const QRectF &pageRect, const QPointF &point);
     /** Per-edge moves of a page box, in PDF points in the page's unrotated axes. */    struct PageBoxDeltas {
         double x1 = 0.0;
         double y1 = 0.0;

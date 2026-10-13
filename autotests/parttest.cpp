@@ -3390,6 +3390,30 @@ void PartTest::testChangePageSize()
     QVERIFY(isDelta(deltas(30000, 0, 0, 0, 0), -19600, 0, 0, 0));
     QVERIFY(isDelta(deltas(399.5, 0, 0, 0, 0), 399, 0, 0, 0));
     QVERIFY(deltas(0, 0, 0, 0, 0).isZero());
+
+    // A handle is grabbed exactly where it is painted: the rectangle used for drawing
+    // is the one the hit test consults, for every handle, and its centre is the point
+    // on the page it belongs to.
+    const QRectF handlePageRect(100.0, 200.0, 600.0, 800.0);
+    const std::array<QPointF, 8> handleCenters {handlePageRect.topLeft(),
+                                                QPointF(handlePageRect.center().x(), handlePageRect.top()),
+                                                handlePageRect.topRight(),
+                                                QPointF(handlePageRect.right(), handlePageRect.center().y()),
+                                                handlePageRect.bottomRight(),
+                                                QPointF(handlePageRect.center().x(), handlePageRect.bottom()),
+                                                handlePageRect.bottomLeft(),
+                                                QPointF(handlePageRect.left(), handlePageRect.center().y())};
+    for (int index = 0; index < static_cast<int>(handleCenters.size()); ++index) {
+        const QRectF handleRect = PageView::pageSizeHandleRectangle(handlePageRect, index);
+        QVERIFY(handleRect.isValid());
+        QVERIFY(handleRect.center() == handleCenters[static_cast<size_t>(index)]);
+        QCOMPARE(PageView::pageSizeHandleIndexAt(handlePageRect, handleRect.center()), index);
+        // Inside the painted square, but past the pen's half pixel? Still inside the
+        // painted square, so it must hit too.
+        QCOMPARE(PageView::pageSizeHandleIndexAt(handlePageRect, handleRect.center() + QPointF(3.0, 3.0)), index);
+        // Just outside the painted square there is no handle to grab.
+        QCOMPARE(PageView::pageSizeHandleIndexAt(handlePageRect, handleRect.center() + QPointF(6.0, 6.0)), -1);
+    }
 }
 
 void PartTest::testLatexNoteOnRotatedPage()
