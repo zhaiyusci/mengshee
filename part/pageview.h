@@ -373,6 +373,8 @@ private:
     // Follows the pointer for those handles. Called from the mouse events, so the
     // hover state and the cursor never depend on asking where the cursor is.
     void updatePageSizeHover(const QPointF &contentPoint);
+    // Applies the cursor for the handle the pointer is on, on the viewport itself.
+    void updatePageSizeCursor();
     void drawNamedDestinations(const QRect &contentsRect, QPainter *p);
     void drawInternalLinkCreation(const QRect &contentsRect, QPainter *p);
     void loadNamedDestinations();

@@ -556,6 +556,7 @@ public:
     int pageSizeDragPage = -1;
     int pageSizeHoverPage = -1;
     PdfLinkHandle pageSizeHoverHandle = PdfLinkHandle::None;
+    bool pageSizeCursorSet = false;
     // The page whose handles stay visible after a drag, so they can be used again
     // without hunting for the border first.
     int pageSizeSelectedPage = -1;
@@ -4556,9 +4557,11 @@ void PageView::mouseMoveEvent(QMouseEvent *e)
         return;
     }
     // Follow the pointer for the page resize handles: hover state and cursor come
-    // from the events themselves, never from asking where the cursor is.
+    // from the events themselves, never from asking where the cursor is. The cursor
+    // is re-applied on every move, so nothing that runs later can leave it stale.
     if (d->pageSizeHandlesEnabled) {
         updatePageSizeHover(QPointF(contentAreaPoint(e->pos())));
+        updatePageSizeCursor();
     }
     if (isOcrTextEditing()) {
         const QPoint pos = contentAreaPoint(e->pos());
@@ -7614,10 +7617,25 @@ void PageView::updatePageSizeHover(const QPointF &contentPoint)
     }
     d->pageSizeHoverPage = page;
     d->pageSizeHoverHandle = handle;
-    // The cursor is deliberately not set here: this runs early in the mouse move,
-    // and the later cursor logic would overwrite it. updateCursor() sets it in the
-    // same place the link handles do, where nothing runs after it.
+    updatePageSizeCursor();
     viewport()->update();
+}
+
+// The resize cursor is set on the viewport, not only on the view: the viewport is the
+// widget under the pointer, and a cursor of its own overrides the view's. The drag
+// code for links, OCR words and reading views sets it the same way.
+void PageView::updatePageSizeCursor()
+{
+    const bool onHandle = d->pageSizeHoverHandle != PdfLinkHandle::None;
+    if (onHandle) {
+        const Qt::CursorShape shape = pdfLinkCursor(d->pageSizeHoverHandle);
+        viewport()->setCursor(shape);
+        setCursor(shape);
+        d->pageSizeCursorSet = true;
+    } else if (d->pageSizeCursorSet) {
+        viewport()->unsetCursor();
+        d->pageSizeCursorSet = false;
+    }
 }
 
 void PageView::updateCursor(const QPoint p)
@@ -7665,8 +7683,6 @@ void PageView::updateCursor(const QPoint p)
         if (d->pageSizeHandlesEnabled) {
             updatePageSizeHover(QPointF(p));
             if (d->pageSizeHoverHandle != PdfLinkHandle::None) {
-                // Set here, last in the chain, exactly as the link handles do.
-                setCursor(pdfLinkCursor(d->pageSizeHoverHandle));
                 return;
             }
         } else if (d->pageSizeHoverPage >= 0 || d->pageSizeHoverHandle != PdfLinkHandle::None) {
