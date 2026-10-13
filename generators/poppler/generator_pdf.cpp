@@ -3477,6 +3477,27 @@ bool PDFGenerator::rotatePageInDocument(Okular::Page *page, int pageNumber, int 
     return true;
 }
 
+bool PDFGenerator::canSetPageSize() const
+{
+    return true;
+}
+
+bool PDFGenerator::setPageSizeInDocument(Okular::Page *page, int pageNumber, double width, double height, Okular::Page **replacementPage, QString *errorText)
+{
+    if (!replacementPage) {
+        return false;
+    }
+    QMutexLocker locker(userMutex());
+    PDFDoc *document = popplerCoreDocument(pdfdoc.get());
+    if (!runPdfPagesOperation([&] { return PdfPageSequenceEditor::setPageSize(document, pageNumber + 1, width, height); }, errorText)) {
+        return false;
+    }
+    resetPageTopologyCaches();
+    *replacementPage = createPageModel(pageNumber);
+    forgetPageModel(page);
+    return true;
+}
+
 bool PDFGenerator::canEditNumberedCalloutNumbering() const
 {
     return canEditReadingViews();

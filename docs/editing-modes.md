@@ -7,7 +7,7 @@ A mode selector is available at the far right of the top toolbar and in the View
 | Read / Annotate | Default mode for reading, selection, and annotations |
 | Cross-References | Named destinations, internal links, and table-of-contents editing, including adding entries |
 | OCR | Text recognition and editing of existing OCR text layers |
-| Page Editing | Page insertion, duplication, deletion, rotation, templates, and page operations in the thumbnail panel |
+| Page Editing | Page insertion, duplication, deletion, rotation, page size changes, templates, and page operations in the thumbnail panel |
 | Reading Views | Icon-only tools for drawing reading regions, generating regions automatically, ordering them by clicking, and applying them to other pages; regions can be moved and resized |
 | Proofread | Numbered Callout, numbering formats (document-wide, per-page, page-and-counter, or custom), document-wide reordering by page and internal ID, and CSV proofreading checklist export |
 
@@ -16,6 +16,7 @@ A mode selector is available at the far right of the top toolbar and in the View
 Modes organize tools and editing indicators; they do not change the file format or grant permissions:
 
 - Standard annotation tools remain available in every mode, without additional annotation restrictions. This includes **Add Note Page** on the annotation toolbar, which appends a blank page at the end of the document, heads it with the note it holds, labels the clicked position with a `see note N.` link, and opens the new page in an auxiliary frame. See [Note pages](note-pages.md).
+- **Page Size…** belongs to Page Editing: it changes the visible size of the selected page, note pages included, without moving the content already on it. See [Changing a page's size](page-size.md).
 - Selecting a mode does not automatically activate a mouse tool for drawing regions, placing destinations, or editing OCR text. Activate the corresponding tool explicitly.
 - Leaving Cross-References, OCR, or Reading Views cancels that mode's unfinished gestures and hides its editing indicators without deleting committed data. Existing edits remain available for undo and redo.
 - Proofread groups the commands for creating numbered annotations and reordering them throughout the document. Existing numbered annotations remain editable in other modes, and switching modes does not automatically select an annotation tool.

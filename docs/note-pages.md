@@ -127,6 +127,18 @@ is refreshed as the last thing the edit does, including in its undo and redo
 steps. Repainting alone would keep showing the image rendered before the move,
 with the label at the old position, until something else replaced it.
 
+## Giving a note page more room
+
+A note page begins at the size of the page it was added from, which is the right
+default but not always enough for the note that goes on it. **Page Editing** mode
+can change the visible size of any page, note pages included: right-click the page
+(or use the page-edit toolbar) and choose **Page Size…**. The page keeps its
+lower-left corner, so the heading and anything already written stay where they
+are and the new room appears to the right and above them. One undo step covers the
+change, and a note page can be enlarged and reduced again as often as needed,
+because a smaller visible box only hides what falls outside it. See
+[Changing a page's size](page-size.md).
+
 ## The page heading
 
 The heading is **page content**, not an annotation: it is written as part of the

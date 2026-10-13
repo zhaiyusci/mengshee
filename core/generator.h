@@ -280,6 +280,18 @@ public:
 
     /** Assigns an explicit clockwise rotation and returns its replacement model page. */
     virtual bool rotatePageInDocument(Page *page, int pageNumber, int rotationDegrees, Page **replacementPage, QString *errorText) = 0;
+
+    /**
+     * Returns whether this generator can change the visible size of one page.
+     */
+    virtual bool canSetPageSize() const = 0;
+
+    /**
+     * Changes a page's visible size, in PDF points and in the page's unrotated
+     * axes, and returns its replacement model page. The page's lower-left corner
+     * is kept, so existing content stays where it is.
+     */
+    virtual bool setPageSizeInDocument(Page *page, int pageNumber, double width, double height, Page **replacementPage, QString *errorText) = 0;
 };
 
 /**

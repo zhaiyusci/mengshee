@@ -135,6 +135,7 @@ class OKULARPART_EXPORT Part : public KParts::ReadWritePart, public Okular::Docu
     friend class LivePageMoveCommand;
     friend class LivePageAttachmentCommand;
     friend class LivePageRotationCommand;
+    friend class LivePageSizeCommand;
     friend class LiveNotePageCommand;
     friend class LiveNamedDestinationCommand;
     friend class LiveNamedDestinationRenameCommand;
@@ -352,6 +353,8 @@ private:
     // wrong for a note the reader is looking at on an earlier page.
     bool applyLiveNotePageAttachment(bool attach, int insertAfterPage, quint64 editId);
     bool applyLivePageRotation(int pageNumber, int rotationDegrees);
+    // Applies a page's visible size (PDF points, unrotated axes) for undo/redo.
+    bool applyLivePageSize(int pageNumber, const QSizeF &sizeInPoints);
     bool applyLiveNamedDestination(const QString &name, const std::optional<DocumentViewport> &destination, QString *errorText = nullptr);
     bool canUsePageLevelEditing() const;
     void setAdvancedModeEnabled(bool enabled);
@@ -407,6 +410,9 @@ private:
     void setPageTemplateFileName(const QString &fileName);
     void deletePage(int pageNumber);
     void setPageRotation(int pageNumber, int rotationDegrees);
+    // Changes the visible size of one page and records a single undo step.
+    void changePageSize(int pageNumber, const QSizeF &sizeInPoints);
+    void changePageSizeWithDialog(int pageNumber);
     void movePageTo(int sourcePage, int destinationPage);
     void movePageFromThumbnail(int sourcePage, int targetPage, bool insertAfterTarget);
     bool documentHasTemplateNotes() const;
@@ -587,6 +593,7 @@ private:
     QAction *m_rotateCurrentPageLeft = nullptr;
     QAction *m_rotateCurrentPageRight = nullptr;
     QAction *m_resetCurrentPageRotation = nullptr;
+    QAction *m_changeCurrentPageSize = nullptr;
     QAction *m_deleteCurrentPage = nullptr;
     bool m_advancedModeEnabled = false; // Legacy alias for CrossReferences only.
     EditingMode m_editingMode = EditingMode::Reading;

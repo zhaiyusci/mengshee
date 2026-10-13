@@ -193,7 +193,7 @@ private Q_SLOTS:
     void testSaveAsUndoStackForms_data();
     void testRotateSinglePageBackend();
     void testRotateSinglePage();
-    void testLatexNoteOnRotatedPage();
+    void testChangePageSize();    void testLatexNoteOnRotatedPage();
     void testLatexAppearanceResizeHistory_data();
     void testLatexAppearanceResizeHistory();
     void testOrderedCalloutHistoryAndAppearance_data();
@@ -3261,6 +3261,104 @@ void PartTest::testRotateSinglePage()
     part.m_document->undo();
     QCOMPARE(part.m_document->page(targetPage)->orientation(), originalOrientation);
     QVERIFY(!part.m_document->canUndo());
+}
+
+void PartTest::testChangePageSize()
+{
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+    const QString sourceFile = tempDir.filePath(QStringLiteral("page-size-source.pdf"));
+    const QString savedFile = tempDir.filePath(QStringLiteral("page-size-saved.pdf"));
+    QVERIFY(writeOrderedCalloutTestPdf(sourceFile, 2));
+
+    Okular::Part part(nullptr, {});
+    QVERIFY(openDocument(&part, sourceFile));
+    QVERIFY(part.m_document->canChangePageSize());
+
+    constexpr int targetPage = 0;
+    const QSizeF originalSize = part.m_document->pageSizeInPoints(targetPage);
+    QCOMPARE(originalSize, QSizeF(300, 400));
+    QString errorText;
+    const QImage before = part.m_document->renderToImage(targetPage, 144, true, &errorText);
+    QVERIFY2(!before.isNull(), qPrintable(errorText));
+
+    // Growing keeps the lower-left corner, so the page gains room to the right
+    // and above the content instead of moving it.
+    const QSizeF enlargedSize(originalSize.width() + 200.0, originalSize.height() + 100.0);
+    const Okular::Page *originalPageObject = part.m_document->page(targetPage);
+    part.changePageSize(targetPage, enlargedSize);
+    QVERIFY(part.m_document->page(targetPage) != originalPageObject);
+    QCOMPARE(part.m_document->pageSizeInPoints(targetPage), enlargedSize);
+    QCOMPARE(part.m_document->pageSizeInPoints(targetPage + 1), originalSize);
+    QVERIFY(part.m_document->canUndo());
+
+    const QImage after = part.m_document->renderToImage(targetPage, 144, true, &errorText);
+    QVERIFY2(!after.isNull(), qPrintable(errorText));
+    QCOMPARE(after.width(), qRound(enlargedSize.width() * 2.0));
+    QCOMPARE(after.height(), qRound(enlargedSize.height() * 2.0));
+    // 144 dpi is two pixels per point, and the added room is above and to the
+    // right of the old page, so the old rendering is the bottom-left corner.
+    const QRect originalArea(0, after.height() - before.height(), before.width(), before.height());
+    QCOMPARE(after.copy(originalArea), before);
+
+    part.m_document->undo();
+    QCOMPARE(part.m_document->pageSizeInPoints(targetPage), originalSize);
+    QCOMPARE(part.m_document->renderToImage(targetPage, 144, true, &errorText), before);
+    QVERIFY(part.m_document->canRedo());
+    part.m_document->redo();
+    QCOMPARE(part.m_document->pageSizeInPoints(targetPage), enlargedSize);
+
+    QVERIFY2(part.m_document->saveChanges(savedFile, &errorText), qPrintable(errorText));
+    Okular::Part reopened(nullptr, {});
+    QVERIFY(openDocument(&reopened, savedFile));
+    QCOMPARE(reopened.m_document->pageSizeInPoints(targetPage), enlargedSize);
+    QCOMPARE(reopened.m_document->pageSizeInPoints(targetPage + 1), originalSize);
+
+    // A page that carries a crop box: the reader sees the crop box, so that is
+    // the box a new size has to move, and the media box has to keep containing
+    // it. Here the crop box is 200 x 300 inside a 400 x 500 media box.
+    const QString croppedFile = tempDir.filePath(QStringLiteral("page-size-cropped.pdf"));
+    {
+        QFile file(croppedFile);
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        file.write(fontTestPdf({QByteArray("<< /Type /Catalog /Pages 2 0 R >>"),
+                                QByteArray("<< /Type /Pages /Count 1 /Kids [3 0 R] >>"),
+                                QByteArray("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 400 500] /CropBox [20 30 220 330] /Contents 4 0 R >>"),
+                                fontTestStream("1 0 0 RG 4 w 10 10 180 280 re S\n")}));
+        file.close();
+    }
+
+    Okular::Part cropped(nullptr, {});
+    QVERIFY(openDocument(&cropped, croppedFile));
+    QCOMPARE(cropped.m_document->pageSizeInPoints(0), QSizeF(200, 300));
+
+    const QSizeF widerCrop(260.0, 360.0);
+    cropped.changePageSize(0, widerCrop);
+    QCOMPARE(cropped.m_document->pageSizeInPoints(0), widerCrop);
+
+    const QImage croppedRender = cropped.m_document->renderToImage(0, 144, true, &errorText);
+    QVERIFY2(!croppedRender.isNull(), qPrintable(errorText));
+    QCOMPARE(croppedRender.size(), QSize(qRound(widerCrop.width() * 2.0), qRound(widerCrop.height() * 2.0)));
+    // The drawing inside the old crop box is still visible.
+    int drawnPixels = 0;
+    for (int y = 0; y < croppedRender.height(); ++y) {
+        for (int x = 0; x < croppedRender.width(); ++x) {
+            if (qGray(croppedRender.pixel(x, y)) < 200) {
+                ++drawnPixels;
+            }
+        }
+    }
+    QVERIFY(drawnPixels > 100);
+
+    const QString croppedSaved = tempDir.filePath(QStringLiteral("page-size-cropped-saved.pdf"));
+    QVERIFY2(cropped.m_document->saveChanges(croppedSaved, &errorText), qPrintable(errorText));
+    QFile savedBytes(croppedSaved);
+    QVERIFY(savedBytes.open(QIODevice::ReadOnly));
+    QVERIFY(savedBytes.readAll().contains("/CropBox"));
+
+    Okular::Part croppedReopened(nullptr, {});
+    QVERIFY(openDocument(&croppedReopened, croppedSaved));
+    QCOMPARE(croppedReopened.m_document->pageSizeInPoints(0), widerCrop);
 }
 
 void PartTest::testLatexNoteOnRotatedPage()

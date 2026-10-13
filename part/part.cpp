@@ -1235,8 +1235,18 @@ void Part::setupViewerActions()
     rotateCurrentPageMenu->addAction(m_resetCurrentPageRotation);
     m_rotateCurrentPage->setMenu(rotateCurrentPageMenu);
 
-    m_deleteCurrentPage = ac->addAction(QStringLiteral("tools_delete_current_page"));
-    m_deleteCurrentPage->setText(i18n("Delete Current Page"));
+    m_changeCurrentPageSize = ac->addAction(QStringLiteral("tools_change_current_page_size"));
+    m_changeCurrentPageSize->setText(i18n("Page Size…"));
+    m_changeCurrentPageSize->setIcon(QIcon::fromTheme(QStringLiteral("transform-scale")));
+    m_changeCurrentPageSize->setEnabled(false);
+    connect(m_changeCurrentPageSize, &QAction::triggered, this, [this] {
+        const int pageNumber = workspaceActivePageNumber();
+        if (pageNumber >= 0) {
+            changePageSizeWithDialog(pageNumber);
+        }
+    });
+
+    m_deleteCurrentPage = ac->addAction(QStringLiteral("tools_delete_current_page"));    m_deleteCurrentPage->setText(i18n("Delete Current Page"));
     m_deleteCurrentPage->setIcon(QIcon::fromTheme(QStringLiteral("edit-delete")));
     m_deleteCurrentPage->setEnabled(false);
     connect(m_deleteCurrentPage, &QAction::triggered, this, &Part::slotDeleteCurrentPage);
@@ -1246,6 +1256,7 @@ void Part::setupViewerActions()
                                                nullptr,
                                                m_duplicateCurrentPage,
                                                m_rotateCurrentPage,
+                                               m_changeCurrentPageSize,
                                                nullptr,
                                                m_setPageTemplate,
                                                m_insertPageFromTemplate,
@@ -3922,6 +3933,47 @@ private:
     bool m_firstRedo = true;
 };
 
+class LivePageSizeCommand : public QUndoCommand
+{
+public:
+    LivePageSizeCommand(Part *part, int pageNumber, const QSizeF &beforeSize, const QSizeF &afterSize)
+        : QUndoCommand(i18nc("Undo action", "Change Page Size"))
+        , m_part(part)
+        , m_pageNumber(pageNumber)
+        , m_beforeSize(beforeSize)
+        , m_afterSize(afterSize)
+    {
+    }
+
+    void undo() override
+    {
+        apply(m_beforeSize);
+    }
+
+    void redo() override
+    {
+        if (m_firstRedo) {
+            m_firstRedo = false;
+            return;
+        }
+        apply(m_afterSize);
+    }
+
+private:
+    void apply(const QSizeF &size)
+    {
+        if (m_part && !m_part->applyLivePageSize(m_pageNumber, size)) {
+            qWarning() << "Page size undo/redo failed";
+        }
+    }
+
+    QPointer<Part> m_part;
+    int m_pageNumber = 0;
+    QSizeF m_beforeSize;
+    QSizeF m_afterSize;
+    bool m_firstRedo = true;
+};
+
 class LiveNamedDestinationCommand : public QUndoCommand
 {
 public:
@@ -4737,6 +4789,7 @@ void Part::updatePageEditActions()
     const int currentPageNumber = workspaceActivePageNumber();
     const Okular::Page *currentPage = currentPageNumber >= 0 && currentPageNumber < static_cast<int>(m_document->pages()) ? m_document->page(currentPageNumber) : nullptr;
     const bool canRotateCurrentPage = showPageActions && canEditPages && currentPage && m_document->canRotatePage();
+    const bool canChangeCurrentPageSize = showPageActions && canEditPages && currentPage && m_document->canChangePageSize();
     if (m_combinePdfFiles) {
         m_combinePdfFiles->setEnabled(!m_document->isOpened() || m_document->canCombinePdfFiles());
     }
@@ -4807,6 +4860,10 @@ void Part::updatePageEditActions()
     }
     if (m_resetCurrentPageRotation) {
         m_resetCurrentPageRotation->setEnabled(canRotateCurrentPage && currentPage->orientation() != Okular::Rotation0);
+    }
+    if (m_changeCurrentPageSize) {
+        m_changeCurrentPageSize->setVisible(showPageActions);
+        m_changeCurrentPageSize->setEnabled(canChangeCurrentPageSize);
     }
     if (m_deleteCurrentPage) {
         m_deleteCurrentPage->setVisible(showPageActions);
@@ -6879,6 +6936,29 @@ bool Part::applyLivePageRotation(int pageNumber, int rotationDegrees)
     return true;
 }
 
+bool Part::applyLivePageSize(int pageNumber, const QSizeF &sizeInPoints)
+{
+    const QPointer<PageView> initiatingView = workspaceActivePageView();
+    const DocumentViewport previousViewport = initiatingView ? initiatingView->documentViewport() : m_document->viewport();
+    QString errorText;
+    if (!m_document->changePageSize(pageNumber, sizeInPoints.width(), sizeInPoints.height(), &errorText)) {
+        qWarning() << "Could not change the page size:" << errorText;
+        return false;
+    }
+    if (previousViewport.isValid()) {
+        if (initiatingView) {
+            initiatingView->goToDocumentViewport(previousViewport, true, true);
+        } else {
+            m_document->setViewport(previousViewport, nullptr, true);
+        }
+    }
+    updateViewActions();
+    updatePageEditActions();
+    refreshTemplateNotes();
+    setWindowTitleFromDocument();
+    return true;
+}
+
 bool Part::applyLiveNamedDestination(const QString &name, const std::optional<DocumentViewport> &destination, QString *errorText)
 {
     const bool changed = destination ? m_document->setNamedDestination(name,
@@ -7653,6 +7733,110 @@ void Part::setPageRotation(int pageNumber, int rotationDegrees)
     }
 }
 
+void Part::changePageSize(int pageNumber, const QSizeF &sizeInPoints)
+{
+    if (!m_document->isOpened() || !url().isLocalFile() || isDocumentArchive || !m_document->canChangePageSize()) {
+        KMessageBox::information(widget(), i18n("A page size can only be changed in local PDF files."));
+        return;
+    }
+
+    const int pageCount = static_cast<int>(m_document->pages());
+    if (pageNumber < 0 || pageNumber >= pageCount) {
+        KMessageBox::information(widget(), i18n("The target page could not be found."));
+        return;
+    }
+    if (!sizeInPoints.isValid() || sizeInPoints.width() <= 0.0 || sizeInPoints.height() <= 0.0) {
+        KMessageBox::information(widget(), i18n("The page size is not valid."));
+        return;
+    }
+
+    const QSizeF currentSize = m_document->pageSizeInPoints(pageNumber);
+    if (currentSize == sizeInPoints) {
+        return;
+    }
+
+    QString errorText;
+    if (!m_document->changePageSize(pageNumber, sizeInPoints.width(), sizeInPoints.height(), &errorText)) {
+        if (errorText.isEmpty()) {
+            KMessageBox::information(widget(), i18n("Could not change the page size."));
+        } else {
+            KMessageBox::information(widget(), i18n("Could not change the page size. %1", errorText));
+        }
+        return;
+    }
+
+    m_document->pushUndoCommand(new LivePageSizeCommand(this, pageNumber, currentSize, sizeInPoints));
+    refreshTemplateNotes();
+    updateViewActions();
+    updatePageEditActions();
+
+    if (PageView *view = workspaceActivePageView()) {
+        view->displayMessage(i18n("Changed the size of page %1. Save the document to keep this change.", pageNumber + 1));
+    }
+}
+
+void Part::changePageSizeWithDialog(int pageNumber)
+{
+    if (!m_document->isOpened() || !url().isLocalFile() || isDocumentArchive || !m_document->canChangePageSize()) {
+        KMessageBox::information(widget(), i18n("A page size can only be changed in local PDF files."));
+        return;
+    }
+
+    const int pageCount = static_cast<int>(m_document->pages());
+    if (pageNumber < 0 || pageNumber >= pageCount) {
+        KMessageBox::information(widget(), i18n("The target page could not be found."));
+        return;
+    }
+
+    const QSizeF currentSize = m_document->pageSizeInPoints(pageNumber);
+    if (!currentSize.isValid()) {
+        KMessageBox::information(widget(), i18n("The size of the page could not be determined."));
+        return;
+    }
+    const Okular::Page *page = m_document->page(pageNumber);
+
+    QDialog dialog(widget());
+    dialog.setWindowTitle(i18n("Page Size"));
+    auto *layout = new QVBoxLayout(&dialog);
+    auto *form = new QFormLayout;
+    layout->addLayout(form);
+
+    // Points in the page's unrotated axes, like the blank-page size in the page
+    // insertion dialog, so these numbers do not change with the page's rotation.
+    auto *widthSpin = new QDoubleSpinBox(&dialog);
+    widthSpin->setRange(1.0, 20000.0);
+    widthSpin->setDecimals(2);
+    widthSpin->setSuffix(i18n(" pt"));
+    widthSpin->setValue(currentSize.width());
+    auto *heightSpin = new QDoubleSpinBox(&dialog);
+    heightSpin->setRange(1.0, 20000.0);
+    heightSpin->setDecimals(2);
+    heightSpin->setSuffix(i18n(" pt"));
+    heightSpin->setValue(currentSize.height());
+    auto *sizeRow = new QHBoxLayout;
+    sizeRow->addWidget(widthSpin);
+    sizeRow->addWidget(heightSpin);
+    form->addRow(i18n("Page size:"), sizeRow);
+
+    auto *hint = new QLabel(&dialog);
+    hint->setWordWrap(true);
+    hint->setText(page && page->rotation() != Okular::Rotation0
+                      ? i18n("This is the page's unrotated width and height. The page keeps its lower-left corner, so existing content stays where it is and the new room appears to the right and above it; a smaller size only hides what falls outside the page, and enlarging it again brings that back.")
+                      : i18n("The page keeps its lower-left corner, so existing content stays where it is and the new room appears to the right and above it; a smaller size only hides what falls outside the page, and enlarging it again brings that back."));
+    layout->addWidget(hint);
+
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+    layout->addWidget(buttons);
+    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+
+    if (dialog.exec() != QDialog::Accepted) {
+        return;
+    }
+
+    changePageSize(pageNumber, QSizeF(widthSpin->value(), heightSpin->value()));
+}
+
 void Part::movePageFromThumbnail(int sourcePage, int targetPage, bool insertAfterTarget)
 {
     if (m_editingMode != EditingMode::Pages) {
@@ -7956,6 +8140,7 @@ void Part::showMenu(const Okular::Page *page, const QPoint point, const QString 
     const QAction *rotatePageLeftAction = nullptr;
     const QAction *rotatePageRightAction = nullptr;
     const QAction *resetPageRotationAction = nullptr;
+    const QAction *changePageSizeAction = nullptr;
     const QAction *pasteAnnotation = nullptr;
     int pageEditTargetPage = -1;
     bool hasPastePoint = false;
@@ -8058,6 +8243,10 @@ void Part::showMenu(const Okular::Page *page, const QPoint point, const QString 
             resetPageRotationAction = resetAction;
             addedPageEditAction = true;
         }
+        if (m_editingMode == EditingMode::Pages && canEditPages && m_document->canChangePageSize()) {
+            changePageSizeAction = popup.addAction(QIcon::fromTheme(QStringLiteral("transform-scale")), i18n("Page Size…"));
+            addedPageEditAction = true;
+        }
         if (addedPageEditAction) {
             popup.addSeparator();
         }
@@ -8140,6 +8329,8 @@ void Part::showMenu(const Okular::Page *page, const QPoint point, const QString 
                 setPageRotation(pageEditTargetPage, (static_cast<int>(page->orientation()) + 1) % 4 * 90);
             } else if (res == resetPageRotationAction) {
                 setPageRotation(pageEditTargetPage, 0);
+            } else if (res == changePageSizeAction) {
+                changePageSizeWithDialog(pageEditTargetPage);
             } else if (res == pasteAnnotation) {
                 AnnotationPopup annotPopup(m_document, AnnotationPopup::SingleAnnotationMode, widget());
                 annotPopup.pasteAnnotationToPage(page->number(), hasPastePoint ? &pastePoint : nullptr);

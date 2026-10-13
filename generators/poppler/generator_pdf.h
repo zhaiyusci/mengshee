@@ -133,6 +133,8 @@ public:
     bool movePageInDocument(int sourcePageNumber, int destinationPageNumber, QString *errorText) override;
     bool canRotatePage() const override;
     bool rotatePageInDocument(Okular::Page *page, int pageNumber, int rotationDegrees, Okular::Page **replacementPage, QString *errorText) override;
+    bool canSetPageSize() const override;
+    bool setPageSizeInDocument(Okular::Page *page, int pageNumber, double width, double height, Okular::Page **replacementPage, QString *errorText) override;
     bool canEditNumberedCalloutNumbering() const override;
     bool validateNumberedCalloutLabel(const QString &label, QString *errorText) const override;
     QString numberedCalloutNumberingJson() const override;

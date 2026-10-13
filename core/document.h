@@ -1168,6 +1168,17 @@ public:
     /** Assigns an explicit clockwise rotation to a 0-based page. */
     bool rotatePage(int pageNumber, int rotationDegrees, QString *errorText);
 
+    /** Returns whether the current backend can change the visible size of one page. */
+    bool canChangePageSize() const;
+
+    /**
+     * Changes the visible size of a 0-based page, in PDF points and in the page's
+     * unrotated axes. The page's lower-left corner is kept, so existing content
+     * stays where it is and the added room appears to the right and above it. A
+     * smaller size hides whatever falls outside the page without deleting it.
+     */
+    bool changePageSize(int pageNumber, double width, double height, QString *errorText);
+
     /** Non-painting, manually defined page rectangles and numbers; no navigation policy. */
     bool canEditReadingViews() const;
     bool canGenerateReadingViews() const;

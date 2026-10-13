@@ -6755,6 +6755,29 @@ bool Document::canRotatePage() const
     return pageInsertion && pageInsertion->canRotatePage();
 }
 
+bool Document::canChangePageSize() const
+{
+    const auto pageInsertion = dynamic_cast<PageInsertionInterface *>(d->m_generator);
+    return pageInsertion && pageInsertion->canSetPageSize();
+}
+
+bool Document::changePageSize(int pageNumber, double width, double height, QString *errorText)
+{
+    auto pageInsertion = dynamic_cast<PageInsertionInterface *>(d->m_generator);
+    if (!pageInsertion || pageNumber < 0 || pageNumber >= d->m_pagesVector.size()) {
+        return false;
+    }
+    d->clearAndWaitForRequests();
+    Page *retiredPage = d->m_pagesVector.at(pageNumber);
+    Page *replacementPage = nullptr;
+    if (!pageInsertion->setPageSizeInDocument(retiredPage, pageNumber, width, height, &replacementPage, errorText) || !replacementPage) {
+        return false;
+    }
+    d->m_pagesVector[pageNumber] = replacementPage;
+    d->publishPageTopologyChange(retiredPage);
+    return true;
+}
+
 bool Document::rotatePage(int pageNumber, int rotationDegrees, QString *errorText)
 {
     auto pageInsertion = dynamic_cast<PageInsertionInterface *>(d->m_generator);
