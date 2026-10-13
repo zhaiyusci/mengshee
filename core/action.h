@@ -205,6 +205,20 @@ public:
      */
     QString destinationName() const;
 
+    /**
+     * Sets the opaque identity of the page this action points at, used when the
+     * destination is an explicit page rather than a name. The page number is resolved
+     * when the target is needed, so inserting, removing or moving pages cannot leave
+     * this action pointing at the wrong page.
+     */
+    void setPageToken(const QString &pageToken);
+
+    /**
+     * Returns the opaque page identity this action points at, or an empty string when
+     * the action does not use one.
+     */
+    QString pageToken() const;
+
 private:
     Q_DECLARE_PRIVATE(GotoAction)
     Q_DISABLE_COPY(GotoAction)

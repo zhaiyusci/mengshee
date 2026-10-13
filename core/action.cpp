@@ -110,6 +110,7 @@ public:
     QString m_extFileName;
     DocumentViewport m_vp;
     QString m_dest;
+    QString m_pageToken;
 };
 
 GotoAction::GotoAction(const QString &fileName, const DocumentViewport &viewport)
@@ -159,6 +160,18 @@ QString GotoAction::destinationName() const
 {
     Q_D(const GotoAction);
     return d->m_dest;
+}
+
+void GotoAction::setPageToken(const QString &pageToken)
+{
+    Q_D(GotoAction);
+    d->m_pageToken = pageToken;
+}
+
+QString GotoAction::pageToken() const
+{
+    Q_D(const GotoAction);
+    return d->m_pageToken;
 }
 
 // ExecuteAction

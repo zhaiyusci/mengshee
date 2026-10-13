@@ -2623,9 +2623,6 @@ void DocumentPrivate::publishPageTopologyChange(Page *retiredPage)
         Page *page = m_pagesVector.at(pageIndex);
         page->d->m_number = pageIndex;
         page->d->m_doc = this;
-        // Link destinations contain page indices. Force their lightweight
-        // object rectangles to be regenerated after any topology change.
-        page->setObjectRects({});
     }
 
     bool undoReferencesValid = true;
@@ -5286,17 +5283,14 @@ void Document::processAction(const Action *action, DocumentViewSession *viewSess
         const GotoAction *go = static_cast<const GotoAction *>(action);
 
         if (viewSession && !go->isExternal()) {
-            DocumentViewport target = go->destViewport();
-            if (!target.isValid() && !go->destinationName().isEmpty()) {
-                target = DocumentViewport(metaData(QStringLiteral("NamedViewport"), go->destinationName()).toString());
-            }
+            const DocumentViewport target = gotoTarget(go);
             if (target.isValid() && target.pageNumber >= 0 && target.pageNumber < int(d->m_pagesVector.count())) {
                 viewSession->setViewport(target, nullptr, true);
             }
             break;
         }
 
-        d->m_nextDocumentViewport = go->destViewport();
+        d->m_nextDocumentViewport = gotoTarget(go);
         d->m_nextDocumentDestination = go->destinationName();
 
         // Explanation of why d->m_nextDocumentViewport is needed:
@@ -6772,6 +6766,39 @@ bool Document::changePageSize(int pageNumber, double width, double height, QStri
     return adjustPageBox(pageNumber, 0.0, 0.0, width - currentSize.width(), height - currentSize.height(), errorText);
 }
 
+DocumentViewport Document::gotoTarget(const Action *action) const
+{
+    if (!action || action->actionType() != Action::Goto) {
+        return DocumentViewport();
+    }
+    const auto *gotoAction = static_cast<const GotoAction *>(action);
+    if (gotoAction->isExternal()) {
+        return DocumentViewport();
+    }
+    // An action that carries a viewport needs no resolving. A page identity is resolved
+    // against the current page order, so editing pages cannot leave it pointing at the
+    // wrong page, and a named destination is resolved through the named viewports.
+    DocumentViewport target = gotoAction->destViewport();
+    if (target.isValid()) {
+        return target;
+    }
+    const QString pageToken = gotoAction->pageToken();
+    if (!pageToken.isEmpty()) {
+        const int pageNumber = d->m_generator ? d->m_generator->pageNumberForPageToken(pageToken) : -1;
+        if (pageNumber < 0 || pageNumber >= d->m_pagesVector.size()) {
+            // The page is gone: report no target rather than a wrong one.
+            return DocumentViewport();
+        }
+        target.pageNumber = pageNumber;
+        return target;
+    }
+    const QString destinationName = gotoAction->destinationName();
+    if (!destinationName.isEmpty()) {
+        return DocumentViewport(metaData(QStringLiteral("NamedViewport"), destinationName).toString());
+    }
+    return DocumentViewport();
+}
+
 bool Document::adjustPageBox(int pageNumber, double x1Delta, double y1Delta, double x2Delta, double y2Delta, QString *errorText)
 {
     auto pageInsertion = dynamic_cast<PageInsertionInterface *>(d->m_generator);
@@ -6908,11 +6935,20 @@ bool Document::renameNamedDestination(const QString &oldName, const QString &new
     }
     const bool changed = editor->renameNamedDestination(oldName, newName, errorText);
     if (changed) {
-        for (Page *page : std::as_const(d->m_pagesVector)) {
-            page->setObjectRects({});
-        }
-        for (DocumentObserver *observer : std::as_const(d->m_observers)) {
-            observer->notifySetup(d->m_pagesVector, DocumentObserver::DocumentChanged);
+        // The rename rewrote every reference to the old name in the file, and the model's
+        // link actions still spell the old name, so the pages rebuild their link objects
+        // and tell the views. Their rectangles come from the same sources, so they do not
+        // move; clearing every page's objects instead dropped every link box on every page,
+        // and reporting a full document change dropped the selection as well.
+        for (int pageNumber = 0; pageNumber < d->m_pagesVector.size(); ++pageNumber) {
+            Page *page = d->m_pagesVector.at(pageNumber);
+            if (!page) {
+                continue;
+            }
+            QString refreshError;
+            if (editor->refreshPageLinks(page, pageNumber, &refreshError)) {
+                d->notifyAnnotationChanges(pageNumber);
+            }
         }
     }
     return changed;

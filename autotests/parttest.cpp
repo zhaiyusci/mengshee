@@ -193,7 +193,9 @@ private Q_SLOTS:
     void testSaveAsUndoStackForms_data();
     void testRotateSinglePageBackend();
     void testRotateSinglePage();
-    void testChangePageSize();    void testLatexNoteOnRotatedPage();
+    void testChangePageSize();
+    void testLinkTargetFollowsPages();
+    void testLatexNoteOnRotatedPage();
     void testLatexAppearanceResizeHistory_data();
     void testLatexAppearanceResizeHistory();
     void testOrderedCalloutHistoryAndAppearance_data();
@@ -3414,6 +3416,79 @@ void PartTest::testChangePageSize()
         // Just outside the painted square there is no handle to grab.
         QCOMPARE(PageView::pageSizeHandleIndexAt(handlePageRect, handleRect.center() + QPointF(6.0, 6.0)), -1);
     }
+}
+
+void PartTest::testLinkTargetFollowsPages()
+{
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+    const QString workingFile = tempDir.filePath(QStringLiteral("link-target-pages.pdf"));
+    QVERIFY(QFile::copy(QStringLiteral(KDESRCDIR "data/simple-multipage.pdf"), workingFile));
+
+    Okular::Part part(nullptr, {});
+    QVERIFY(openDocument(&part, workingFile));
+    QVERIFY(part.m_document->pages() > 3);
+
+    QString errorText;
+    // A link whose destination is an explicit page rather than a name.
+    const QRectF linkRectangle(0.10, 0.10, 0.30, 0.20);
+    QVERIFY2(part.m_document->createInternalLink(1,
+                                                 linkRectangle.left(),
+                                                 linkRectangle.top(),
+                                                 linkRectangle.right(),
+                                                 linkRectangle.bottom(),
+                                                 QString(),
+                                                 3,
+                                                 0.0,
+                                                 0.0,
+                                                 &errorText),
+             qPrintable(errorText));
+
+    const auto linkRectOnFirstPage = [&part]() -> const Okular::ObjectRect * {
+        const Okular::Page *page = part.m_document->page(0);
+        if (!page) {
+            return nullptr;
+        }
+        for (const Okular::ObjectRect *rect : page->objectRects()) {
+            if (rect && rect->objectType() == Okular::ObjectRect::Action && rect->object()) {
+                return rect;
+            }
+        }
+        return nullptr;
+    };
+
+    const Okular::ObjectRect *before = linkRectOnFirstPage();
+    QVERIFY(before);
+    const QRectF rectangleBefore = before->region().boundingRect();
+    const auto *actionBefore = static_cast<const Okular::Action *>(before->object());
+    QCOMPARE(actionBefore->actionType(), Okular::Action::Goto);
+    const auto *gotoBefore = static_cast<const Okular::GotoAction *>(actionBefore);
+    // The page number is not baked into the action: that cache is what went stale, so the
+    // action carries the page identity and the number is resolved when the target is needed.
+    QVERIFY(!gotoBefore->destViewport().isValid());
+    QVERIFY(!gotoBefore->pageToken().isEmpty());
+    const Okular::DocumentViewport targetBefore = part.m_document->gotoTarget(actionBefore);
+    QVERIFY(targetBefore.isValid());
+    QCOMPARE(targetBefore.pageNumber, 2); // 0-based page 3
+
+    quint64 editId = 0;
+    QVERIFY2(part.m_document->insertBlankPage(0, 300.0, 400.0, &editId, &errorText), qPrintable(errorText));
+
+    // The link box is still there, in the same place, and it still points at the same page
+    // content: the page it names moved one page further down.
+    const Okular::ObjectRect *after = linkRectOnFirstPage();
+    QVERIFY2(after, "inserting a page must not drop the page's link objects");
+    QCOMPARE(after->region().boundingRect(), rectangleBefore);
+    const Okular::DocumentViewport targetAfter = part.m_document->gotoTarget(static_cast<const Okular::Action *>(after->object()));
+    QVERIFY(targetAfter.isValid());
+    QCOMPARE(targetAfter.pageNumber, 3);
+
+    part.m_document->undo();
+    const Okular::ObjectRect *undone = linkRectOnFirstPage();
+    QVERIFY(undone);
+    const Okular::DocumentViewport targetUndone = part.m_document->gotoTarget(static_cast<const Okular::Action *>(undone->object()));
+    QVERIFY(targetUndone.isValid());
+    QCOMPARE(targetUndone.pageNumber, 2);
 }
 
 void PartTest::testLatexNoteOnRotatedPage()
@@ -8395,6 +8470,23 @@ void PartTest::testEditPdfNamedDestinationAndLink()
 
     const QString renamedDestinationName = QStringLiteral("user.eq2.renamed");
     QVERIFY2(editedPart.m_document->renameNamedDestination(destinationName, renamedDestinationName, &errorText), qPrintable(errorText));
+
+    // The page's link objects must survive the rename. Clearing them here is what used to
+    // make every link box disappear, and the reopen below would hide that, because a freshly
+    // opened document generates its link objects again.
+    bool linkSurvivedRename = false;
+    for (const Okular::ObjectRect *rect : editedPart.m_document->page(0)->objectRects()) {
+        if (!rect || rect->objectType() != Okular::ObjectRect::Action || !rect->object() || !rect->region().boundingRect().intersects(sourceLinkRectangle)) {
+            continue;
+        }
+        const auto *action = static_cast<const Okular::Action *>(rect->object());
+        if (action->actionType() == Okular::Action::Goto && static_cast<const Okular::GotoAction *>(action)->destinationName() == renamedDestinationName) {
+            linkSurvivedRename = true;
+            break;
+        }
+    }
+    QVERIFY2(linkSurvivedRename, "renaming a destination must not drop the page's link objects");
+
     QVERIFY2(editedPart.m_document->saveChanges(renamedDestinationFile, &errorText), qPrintable(errorText));
     editedPart.closeUrl();
 

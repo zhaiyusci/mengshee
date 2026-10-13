@@ -312,6 +312,14 @@ public:
     /** Renames a destination in the currently open document and updates exact references. */
     virtual bool renameNamedDestination(const QString &oldName, const QString &newName, QString *errorText) = 0;
 
+    /**
+     * Rebuilds one page's link objects from the open document. An edit that changes links
+     * beyond the page it was made on - renaming a named destination rewrites the action of
+     * every link that points at it - refreshes the affected pages this way. The rectangles
+     * are rebuilt from the same sources, so they do not move.
+     */
+    virtual bool refreshPageLinks(Page *page, int pageNumber, QString *errorText) = 0;
+
     /** Removes a destination from the currently open document. References are preserved. */
     virtual bool deleteNamedDestination(const QString &name, QString *errorText) = 0;
 
@@ -668,6 +676,14 @@ public:
      * @see @ref Okular::Permission
      */
     virtual bool isAllowed(Permission action) const;
+
+    /**
+     * Returns the 0-based page number a page identity refers to, or -1 when it cannot
+     * be resolved. A generator that hands out page identities for link destinations
+     * implements this, so that the target of such a link is resolved when it is needed
+     * instead of being cached as a page number. The default knows no identities.
+     */
+    virtual int pageNumberForPageToken(const QString &pageToken) const;
 
     /**
      * This method is called when the orientation has been changed by the user.

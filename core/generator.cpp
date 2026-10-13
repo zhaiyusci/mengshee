@@ -402,6 +402,12 @@ void Generator::rotationChanged(Rotation, Rotation)
 {
 }
 
+int Generator::pageNumberForPageToken(const QString &) const
+{
+    // A generator that hands out page identities overrides this.
+    return -1;
+}
+
 PageSize::List Generator::pageSizes() const
 {
     return PageSize::List();

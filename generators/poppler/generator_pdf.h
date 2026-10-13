@@ -229,6 +229,8 @@ private:
     void resetPageTopologyCaches();
     quint64 rememberLivePageState(const std::shared_ptr<void> &state);
     bool refreshPdfLinkObjects(Okular::Page *sourcePage, int nativePageNumber, QString *errorText);
+    bool refreshPageLinks(Okular::Page *page, int pageNumber, QString *errorText) override;
+    int pageNumberForPageToken(const QString &pageToken) const override;
 
     // create the document synopsis hierarchy
     void addSynopsisChildren(const QList<Poppler::OutlineItem> &outlineItems, QDomNode *parentDestination);

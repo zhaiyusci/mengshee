@@ -1168,6 +1168,15 @@ public:
     /** Assigns an explicit clockwise rotation to a 0-based page. */
     bool rotatePage(int pageNumber, int rotationDegrees, QString *errorText);
 
+    /**
+     * Returns where a goto action points, resolved when it is needed: an action that
+     * carries a viewport is used as it is, an action that carries a page identity asks
+     * the generator which page that is now, and a named destination is resolved through
+     * the document's named viewports. Returns an invalid viewport when the target cannot
+     * be resolved, so that a link can never silently point at the wrong page.
+     */
+    DocumentViewport gotoTarget(const Action *action) const;
+
     /** Returns whether the current backend can change the visible size of one page. */
     bool canChangePageSize() const;
 

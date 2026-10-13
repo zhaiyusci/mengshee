@@ -20,7 +20,11 @@
 #include <QTemporaryFile>
 #include <poppler-qt6.h>
 
-extern Okular::Action *createLinkFromPopplerLink(std::variant<const Poppler::Link *, std::unique_ptr<Poppler::Link>> popplerLink);
+class PDFDoc;
+
+// Must match the definition in generator_pdf.cpp, including the page-identity parameter:
+// a default argument does not change the mangled name, the parameter list does.
+extern Okular::Action *createLinkFromPopplerLink(std::variant<const Poppler::Link *, std::unique_ptr<Poppler::Link>> popplerLink, PDFDoc *document = nullptr);
 #define SET_ANNOT_ACTIONS                                                                                                                                                                                                                      \
     setAdditionalAction(Okular::Annotation::CursorEntering, createLinkFromPopplerLink(m_field->additionalAction(Poppler::Annotation::CursorEnteringAction)));                                                                                  \
     setAdditionalAction(Okular::Annotation::CursorLeaving, createLinkFromPopplerLink(m_field->additionalAction(Poppler::Annotation::CursorLeavingAction)));                                                                                    \

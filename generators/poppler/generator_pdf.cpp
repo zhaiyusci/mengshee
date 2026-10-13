@@ -484,11 +484,45 @@ template<typename T> auto toSharedPointer(std::unique_ptr<Poppler::Link> link)
     return std::static_pointer_cast<T>(sharedLink);
 }
 
+// A page identity for link destinations: the page object reference the PDF itself uses,
+// which keeps naming the same page when other pages are inserted, removed or moved.
+static QString pageTokenForRef(const Ref &reference)
+{
+    return QStringLiteral("%1 %2").arg(reference.num).arg(reference.gen);
+}
+
+static int nativePageForPageToken(PDFDoc *document, const QString &pageToken)
+{
+    if (!document || pageToken.isEmpty()) {
+        return -1;
+    }
+    const QStringList parts = pageToken.split(QLatin1Char(' '));
+    if (parts.size() != 2) {
+        return -1;
+    }
+    bool numberOk = false;
+    bool generationOk = false;
+    const int number = parts.at(0).toInt(&numberOk);
+    const int generation = parts.at(1).toInt(&generationOk);
+    if (!numberOk || !generationOk) {
+        return -1;
+    }
+    for (int page = 0; page < document->getNumPages(); ++page) {
+        const Ref *pageRef = document->getCatalog()->getPageRef(page);
+        if (pageRef && pageRef->num == number && pageRef->gen == generation) {
+            return page;
+        }
+    }
+    return -1;
+}
+
 /**
  * Note: the function will take ownership of the popplerLink if the popplerlink object is in a unique ptr
+ *
+ * When @p document is given, a link whose destination names an explicit page remembers that page as an
+ * identity instead of a page number, so that editing pages cannot leave it pointing at a stale one.
  */
-Okular::Action *createLinkFromPopplerLink(std::variant<const Poppler::Link *, std::unique_ptr<Poppler::Link>> popplerLink)
-{
+Okular::Action *createLinkFromPopplerLink(std::variant<const Poppler::Link *, std::unique_ptr<Poppler::Link>> popplerLink, PDFDoc *document = nullptr){
     auto rawPopplerLink = rawPtr(popplerLink);
     if (!rawPopplerLink) {
         return nullptr;
@@ -507,7 +541,20 @@ Okular::Action *createLinkFromPopplerLink(std::variant<const Poppler::Link *, st
         const QString destName = dest.destinationName();
         if (destName.isEmpty()) {
             fillViewportFromLinkDestination(viewport, dest);
-            link = new Okular::GotoAction(popplerLinkGoto->fileName(), viewport);
+            // An explicit destination names a page object, not a page number. Remember that
+            // page and drop the number from the viewport: the number is resolved when the
+            // link is followed, so inserting, removing or moving pages cannot leave the link
+            // pointing at the wrong page.
+            QString pageToken;
+            if (document && viewport.pageNumber >= 0) {
+                if (const Ref *pageRef = document->getCatalog()->getPageRef(viewport.pageNumber)) {
+                    pageToken = pageTokenForRef(*pageRef);
+                    viewport.pageNumber = -1;
+                }
+            }
+            auto *gotoLink = new Okular::GotoAction(popplerLinkGoto->fileName(), viewport);
+            gotoLink->setPageToken(pageToken);
+            link = gotoLink;
         } else {
             link = new Okular::GotoAction(popplerLinkGoto->fileName(), destName);
         }
@@ -681,14 +728,14 @@ Okular::Action *createLinkFromPopplerLink(std::variant<const Poppler::Link *, st
 /**
  * Note: the function will take ownership of the popplerLink objects.
  */
-static QList<Okular::ObjectRect *> generateLinks(std::vector<std::unique_ptr<Poppler::Link>> &&popplerLinks)
+static QList<Okular::ObjectRect *> generateLinks(PDFDoc *document, std::vector<std::unique_ptr<Poppler::Link>> &&popplerLinks)
 {
     QList<Okular::ObjectRect *> links;
     for (auto &popplerLink : popplerLinks) {
         QRectF linkArea = popplerLink->linkArea();
         double nl = linkArea.left(), nt = linkArea.top(), nr = linkArea.right(), nb = linkArea.bottom();
         // create the rect using normalized coords and attach the Okular::Link to it
-        Okular::ObjectRect *rect = new Okular::ObjectRect(nl, nt, nr, nb, false, Okular::ObjectRect::Action, createLinkFromPopplerLink(std::move(popplerLink)));
+        Okular::ObjectRect *rect = new Okular::ObjectRect(nl, nt, nr, nb, false, Okular::ObjectRect::Action, createLinkFromPopplerLink(std::move(popplerLink), document));
         // add the ObjectRect to the container
         links.push_front(rect);
     }
@@ -1102,7 +1149,7 @@ PDFGenerator::SwapBackingFileResult PDFGenerator::swapBackingFile(QString const 
                     std::unique_ptr<Poppler::Page> pp = pdfdoc->page(i);
                     Okular::Page *page = newPagesVector.value(i, nullptr);
                     if (pp && page) {
-                        page->setObjectRects(generateLinks(pp->links()));
+                        page->setObjectRects(generateLinks(popplerCoreDocument(pdfdoc.get()), pp->links()));
                         rectsGenerated[i] = true;
                         resolveMediaLinkReferences(page);
                     }
@@ -1807,7 +1854,7 @@ QImage PDFGenerator::image(Okular::PixmapRequest *request)
         // TODO previously we extracted Image type rects too, but that needed porting to poppler
         // and as we are not doing anything with Image type rects i did not port it, have a look at
         // dead gp_outputdev.cpp on image extraction
-        page->setObjectRects(generateLinks(p->links()));
+        page->setObjectRects(generateLinks(popplerCoreDocument(pdfdoc.get()), p->links()));
         rectsGenerated[nativePage] = true;
 
         resolveMediaLinkReferences(page);
@@ -3836,6 +3883,19 @@ bool PDFGenerator::deleteNamedDestination(const QString &name, QString *errorTex
     return runPdfPagesOperation([&] { return PdfPageSequenceEditor::deleteNamedDestination(document, encodedName); }, errorText);
 }
 
+int PDFGenerator::pageNumberForPageToken(const QString &pageToken) const
+{
+    QMutexLocker locker(userMutex());
+    const int nativePage = nativePageForPageToken(popplerCoreDocument(pdfdoc.get()), pageToken);
+    return nativePage < 0 ? -1 : m_pageOrder.indexOf(nativePage);
+}
+
+bool PDFGenerator::refreshPageLinks(Okular::Page *page, int pageNumber, QString *errorText)
+{
+    // The document model counts pages in display order, the PDF in file order.
+    return refreshPdfLinkObjects(page, nativePageForLogicalPage(pageNumber), errorText);
+}
+
 bool PDFGenerator::refreshPdfLinkObjects(Okular::Page *sourcePage, int nativePageNumber, QString *errorText)
 {
     if (!pdfdoc || !sourcePage || nativePageNumber < 0 || nativePageNumber >= pdfdoc->numPages() || nativePageNumber >= rectsGenerated.size()) {
@@ -3852,7 +3912,7 @@ bool PDFGenerator::refreshPdfLinkObjects(Okular::Page *sourcePage, int nativePag
         }
         return false;
     }
-    sourcePage->setObjectRects(generateLinks(page->links()));
+    sourcePage->setObjectRects(generateLinks(popplerCoreDocument(pdfdoc.get()), page->links()));
     rectsGenerated[nativePageNumber] = true;
     resolveMediaLinkReferences(sourcePage);
     return true;

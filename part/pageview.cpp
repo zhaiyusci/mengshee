@@ -7574,10 +7574,9 @@ static bool viewportForInternalGotoLink(const Okular::Document *document, const 
         return false;
     }
 
-    Okular::DocumentViewport target = gotoAction->destViewport();
-    if (!target.isValid() && !gotoAction->destinationName().isEmpty()) {
-        target = Okular::DocumentViewport(document->metaData(QStringLiteral("NamedViewport"), gotoAction->destinationName()).toString());
-    }
+    // Resolved when it is needed: a page identity is looked up in the current page
+    // order, a named destination through the named viewports.
+    const Okular::DocumentViewport target = document->gotoTarget(action);
 
     if (!target.isValid() || target.pageNumber < 0 || target.pageNumber >= static_cast<int>(document->pages())) {
         return false;
