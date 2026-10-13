@@ -500,6 +500,9 @@ public:
     PdfLinkHandle pageSizeDragHandle = PdfLinkHandle::None;
     int pageSizeDragPage = -1;
     int pageSizeHoverPage = -1;
+    // The page whose handles stay visible after a drag, so they can be used again
+    // without hunting for the border first.
+    int pageSizeSelectedPage = -1;
     QRectF pageSizeDragStartRect;
     QRectF pageSizePreviewRect;
     QSizeF pageSizeDragStartSize;
@@ -1256,11 +1259,16 @@ void PageView::setPageEditModeEnabled(bool enabled)
         return;
     }
     d->pageSizeHandlesEnabled = enabled;
-    if (!enabled) {
+    if (enabled) {
+        // Show them on the page the reader is on, so the handles are visible as soon
+        // as Page Editing starts instead of waiting for a press.
+        d->pageSizeSelectedPage = d->document->currentPage();
+    } else {
         d->pageSizeDragging = false;
         d->pageSizeDragHandle = PdfLinkHandle::None;
         d->pageSizeDragPage = -1;
         d->pageSizeHoverPage = -1;
+        d->pageSizeSelectedPage = -1;
         d->pageSizeDragStartRect = QRectF();
         d->pageSizePreviewRect = QRectF();
     }
@@ -3909,7 +3917,9 @@ void PageView::drawPageSizeHandles(const QRect &contentsRect, QPainter *p)
         return;
     }
     // While a drag runs the handles stay on the page being resized; otherwise they
-    // are on the page under the pointer, which needs no selection of its own.
+    // are on the page under the pointer, and when the pointer is elsewhere they
+    // stay on the page that was last resized so it can be resized again straight
+    // away.
     int handlePage = d->pageSizeDragging ? d->pageSizeDragPage : -1;
     if (handlePage < 0) {
         const QPointF pointer = contentAreaPoint(viewport()->mapFromGlobal(QCursor::pos()));
@@ -3920,6 +3930,9 @@ void PageView::drawPageSizeHandles(const QRect &contentsRect, QPainter *p)
                 break;
             }
         }
+    }
+    if (handlePage < 0) {
+        handlePage = d->pageSizeSelectedPage;
     }
     if (handlePage < 0) {
         return;
@@ -5113,6 +5126,11 @@ void PageView::mousePressEvent(QMouseEvent *e)
     if (e->button() == Qt::LeftButton && e->modifiers() == Qt::NoModifier && d->pageSizeHandlesEnabled) {
         PageViewItem *pageItem = pickItemOnPoint(eventPos.x(), eventPos.y());
         if (pageItem) {
+            // Pressing a page makes it the one whose handles stay on screen.
+            if (d->pageSizeSelectedPage != pageItem->pageNumber()) {
+                d->pageSizeSelectedPage = pageItem->pageNumber();
+                viewport()->update();
+            }
             const PdfLinkHandle handle = pageSizeHandleAt(pageItem->croppedGeometry(), eventPos);
             if (handle != PdfLinkHandle::None) {
                 d->pageSizeDragging = true;
