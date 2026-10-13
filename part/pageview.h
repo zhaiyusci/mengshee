@@ -94,8 +94,7 @@ public:
      * to them.
      */
     OKULARPART_EXPORT void setPageEditModeEnabled(bool enabled);
-    /** Per-edge moves of a page box, in PDF points in the page's unrotated axes. */
-    struct PageBoxDeltas {
+    /** Per-edge moves of a page box, in PDF points in the page's unrotated axes. */    struct PageBoxDeltas {
         double x1 = 0.0;
         double y1 = 0.0;
         double x2 = 0.0;
@@ -359,6 +358,10 @@ private:
     // draw background and items on the opened qpainter
     void drawDocumentOnPainter(const QRect contentsRect, QPainter *p, bool visibleOnly = false);
     void drawLinkHighlights(const QRect &contentsRect, QPainter *p);
+    // Resize handles for Page Editing mode: drawn for the page under the pointer,
+    // or for the page being resized while a drag runs. Unlike the link handles this
+    // is independent of the cross-reference overlays.
+    void drawPageSizeHandles(const QRect &contentsRect, QPainter *p);
     void drawNamedDestinations(const QRect &contentsRect, QPainter *p);
     void drawInternalLinkCreation(const QRect &contentsRect, QPainter *p);
     void loadNamedDestinations();

@@ -3781,6 +3781,7 @@ void PageView::paintEvent(QPaintEvent *pe)
             // finish painting and draw contents
             pixmapPainter.end();
             screenPainter.drawPixmap(contentsRect.left(), contentsRect.top(), doubleBuffer);
+            drawPageSizeHandles(contentsRect, &screenPainter);
         } else {
             // 1) Layer 0: paint items and clear bg on unpainted rects
             drawDocumentOnPainter(contentsRect, &screenPainter, true);
@@ -3813,6 +3814,7 @@ void PageView::paintEvent(QPaintEvent *pe)
             drawReadingViews(contentsRect, &screenPainter);
             drawNamedDestinations(contentsRect, &screenPainter);
             drawInternalLinkCreation(contentsRect, &screenPainter);
+            drawPageSizeHandles(contentsRect, &screenPainter);
             if (Okular::Settings::debugDrawBoundaries()) {
                 screenPainter.setPen(Qt::red);
                 screenPainter.drawRect(contentsRect);
@@ -3898,43 +3900,63 @@ void PageView::drawLinkHighlights(const QRect &contentsRect, QPainter *p)
         }
     }
 
-    if (d->pageSizeHandlesEnabled) {
-        // Handles follow the page under the pointer, and stay on the page being
-        // resized while the button is down.
-        const int handlePage = d->pageSizeDragging ? d->pageSizeDragPage : d->pageSizeHoverPage;
-        const PageViewItem *handleItem = nullptr;
+    p->restore();
+}
+
+void PageView::drawPageSizeHandles(const QRect &contentsRect, QPainter *p)
+{
+    if (!d->pageSizeHandlesEnabled) {
+        return;
+    }
+    // While a drag runs the handles stay on the page being resized; otherwise they
+    // are on the page under the pointer, which needs no selection of its own.
+    int handlePage = d->pageSizeDragging ? d->pageSizeDragPage : -1;
+    if (handlePage < 0) {
+        const QPointF pointer = contentAreaPoint(viewport()->mapFromGlobal(QCursor::pos()));
         for (const PageViewItem *item : std::as_const(d->visibleItems)) {
-            if (item->pageNumber() == handlePage) {
-                handleItem = item;
+            // croppedGeometry() is a QRect, so widen it before testing a float point.
+            if (QRectF(item->croppedGeometry()).contains(pointer)) {
+                handlePage = item->pageNumber();
                 break;
             }
         }
-        if (handleItem) {
-            const QRectF pageRect = handleItem->croppedGeometry();
-            if (pageRect.adjusted(-pdfLinkHandleSize, -pdfLinkHandleSize, pdfLinkHandleSize, pdfLinkHandleSize).intersects(contentsRect)) {
-                p->save();
-                QPen borderPen(QColor::fromHsvF(0.11, 0.9, 0.85, 0.9), 2.0, Qt::SolidLine, Qt::SquareCap, Qt::BevelJoin);
-                borderPen.setCosmetic(true);
-                p->setPen(borderPen);
-                p->setBrush(Qt::NoBrush);
-                p->drawRect(pageRect);
-                p->setPen(QColor::fromHsvF(0, 0, 1.0));
-                p->setBrush(QColor::fromHsvF(0.11, 0.9, 0.85, 0.95));
-                for (const PdfLinkHandle handle : pageSizeHandleKinds) {
-                    p->drawRect(pdfLinkHandleRect(pageSizeHandleCenter(pageRect, handle)));
-                }
-                if (d->pageSizeDragging && d->pageSizePreviewRect.isValid()) {
-                    QPen previewPen(QColor::fromHsvF(0.11, 1.0, 0.6, 0.9), 2.0, Qt::DashLine);
-                    previewPen.setCosmetic(true);
-                    p->setPen(previewPen);
-                    p->setBrush(Qt::NoBrush);
-                    p->drawRect(d->pageSizePreviewRect);
-                }
-                p->restore();
-            }
+    }
+    if (handlePage < 0) {
+        return;
+    }
+    const PageViewItem *handleItem = nullptr;
+    for (const PageViewItem *item : std::as_const(d->visibleItems)) {
+        if (item->pageNumber() == handlePage) {
+            handleItem = item;
+            break;
         }
     }
+    if (!handleItem) {
+        return;
+    }
+    const QRectF pageRect = handleItem->croppedGeometry();
+    if (!pageRect.adjusted(-pdfLinkHandleSize, -pdfLinkHandleSize, pdfLinkHandleSize, pdfLinkHandleSize).intersects(contentsRect)) {
+        return;
+    }
 
+    p->save();
+    QPen borderPen(QColor::fromHsvF(0.11, 0.9, 0.85, 0.95), 2.0, Qt::SolidLine, Qt::SquareCap, Qt::BevelJoin);
+    borderPen.setCosmetic(true);
+    p->setPen(borderPen);
+    p->setBrush(Qt::NoBrush);
+    p->drawRect(pageRect);
+    p->setPen(QColor::fromHsvF(0, 0, 1.0));
+    p->setBrush(QColor::fromHsvF(0.11, 0.9, 0.85, 0.95));
+    for (const PdfLinkHandle handle : pageSizeHandleKinds) {
+        p->drawRect(pdfLinkHandleRect(pageSizeHandleCenter(pageRect, handle)));
+    }
+    if (d->pageSizeDragging && d->pageSizePreviewRect.isValid()) {
+        QPen previewPen(QColor::fromHsvF(0.11, 1.0, 0.6, 0.9), 2.0, Qt::DashLine);
+        previewPen.setCosmetic(true);
+        p->setPen(previewPen);
+        p->setBrush(Qt::NoBrush);
+        p->drawRect(d->pageSizePreviewRect);
+    }
     p->restore();
 }
 
@@ -7540,16 +7562,20 @@ void PageView::updateCursor(const QPoint p)
         }
 
         if (d->pageSizeHandlesEnabled) {
+            // The handles themselves are drawn for the page under the pointer, so
+            // repaint when that page changes and show the border's cursor.
+            if (d->pageSizeHoverPage != pageItem->pageNumber()) {
+                d->pageSizeHoverPage = pageItem->pageNumber();
+                viewport()->update();
+            }
             const PdfLinkHandle pageHandle = pageSizeHandleAt(pageItem->croppedGeometry(), p);
             if (pageHandle != PdfLinkHandle::None) {
-                d->pageSizeHoverPage = pageItem->pageNumber();
                 setCursor(pdfLinkCursor(pageHandle));
                 return;
             }
-            if (d->pageSizeHoverPage == pageItem->pageNumber()) {
-                d->pageSizeHoverPage = -1;
-                viewport()->update();
-            }
+        } else if (d->pageSizeHoverPage >= 0) {
+            d->pageSizeHoverPage = -1;
+            viewport()->update();
         }
 
         if (pageItem->pageNumber() == d->selectedPdfLinkPage) {
