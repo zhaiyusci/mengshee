@@ -1537,6 +1537,9 @@ void Part::connectWorkspacePageView(PageView *view)
     });
     connect(view, &PageView::createPdfLinkRequested, this, &Part::createPdfLink);
     connect(view, &PageView::changePdfLinkRectangleRequested, this, &Part::changePdfLinkRectangle);
+    // Dragging a page border in Page Editing mode resizes the page, with one undo
+    // step per drag.
+    connect(view, &PageView::changePageSizeRequested, this, [this](int pageNumber, const QSizeF &sizeInPoints) { changePageSize(pageNumber, sizeInPoints); });
     connect(view, &PageView::deletePdfLinkRequested, this, &Part::deletePdfLink);
     connect(view, &PageView::advancedModeChanged, this, &Part::setAdvancedModeEnabled);
     connect(view, &PageView::moveNamedDestinationRequested, this, [this](const QString &name, int pageNumber, const Okular::NormalizedPoint &position) { moveNamedDestination(name, pageNumber, position); });
@@ -1597,6 +1600,7 @@ void Part::openAuxiliaryView(PageView *sourceView, const DocumentViewport &targe
     const QScopedValueRollback<bool> updatingMode(m_updatingEditingMode, true);
     view->setCrossReferenceModeEnabled(m_editingMode == EditingMode::CrossReferences);
     view->setOcrModeEnabled(m_editingMode == EditingMode::Ocr);
+    view->setPageEditModeEnabled(m_editingMode == EditingMode::Pages);
     view->setReadingViewEditingEnabled(m_editingMode == EditingMode::Views && canUsePageLevelEditing() && m_document->canEditReadingViews());
     registerWorkspacePageViewActions(view);
     connectWorkspacePageView(view);
@@ -4739,6 +4743,7 @@ void Part::updatePageEditActions()
         if (view) {
             view->setCrossReferenceModeEnabled(showCrossReferenceActions);
             view->setOcrModeEnabled(showOcrActions);
+            view->setPageEditModeEnabled(showPageActions);
             view->setReadingViewEditingEnabled(canEditViews);
         }
     };
@@ -4974,6 +4979,7 @@ void Part::setEditingMode(EditingMode mode)
     for (PageView *view : std::as_const(views)) {
         view->setCrossReferenceModeEnabled(mode == EditingMode::CrossReferences);
         view->setOcrModeEnabled(mode == EditingMode::Ocr);
+        view->setPageEditModeEnabled(mode == EditingMode::Pages);
         view->setReadingViewEditingEnabled(mode == EditingMode::Views && canUsePageLevelEditing() && m_document->canEditReadingViews());
     }
     updatePageEditActions();

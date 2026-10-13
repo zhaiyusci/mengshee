@@ -310,6 +310,42 @@ static QRectF readingViewLabelRect(const PageViewItem *item, const QRectF &rect,
     return QRectF(QPointF(qBound(page.left(), rect.left() + 4.0, page.right() - size.width()), qBound(page.top(), rect.top() + 4.0, page.bottom() - size.height())), size);
 }
 
+// A page keeps its lower-left corner while it is resized, so only the right and
+// the top border offer a handle; the cursor shapes come from the link handles.
+static const std::array<PdfLinkHandle, 3> pageSizeHandleKinds {PdfLinkHandle::TopRight, PdfLinkHandle::Top, PdfLinkHandle::Right};
+
+static QPointF pageSizeHandleCenter(const QRectF &pageRect, PdfLinkHandle handle)
+{
+    switch (handle) {
+    case PdfLinkHandle::TopRight:
+        return pageRect.topRight();
+    case PdfLinkHandle::Top:
+        return QPointF(pageRect.center().x(), pageRect.top());
+    case PdfLinkHandle::Right:
+        return QPointF(pageRect.right(), pageRect.center().y());
+    default:
+        return pageRect.center();
+    }
+}
+
+static PdfLinkHandle pageSizeHandleAt(const QRectF &pageRect, const QPointF &point)
+{
+    const PdfLinkHandle handle = pdfLinkHandleAt(pageRect, point);
+    for (const PdfLinkHandle candidate : pageSizeHandleKinds) {
+        if (handle == candidate) {
+            return handle;
+        }
+    }
+    return PdfLinkHandle::None;
+}
+
+// Turning a page in its display axes swaps width and height; applying the same
+// swap twice maps a size back to the page's own unrotated axes.
+static QSizeF pageSizeInDisplayAxes(const QSizeF &size, int rotationDegrees)
+{
+    return (rotationDegrees == 90 || rotationDegrees == 270) ? QSizeF(size.height(), size.width()) : size;
+}
+
 static PdfLinkHandle readingViewHandleAt(const QRectF &rect, const QRectF &label, const QPointF &point, bool selected)
 {
     if (selected) {
@@ -447,6 +483,15 @@ public:
     QRectF selectedPdfLinkOriginalRect;
     QRectF selectedPdfLinkRect;
     PdfLinkHandle pdfLinkDragHandle = PdfLinkHandle::None;
+    // Page-border resizing, offered in Page Editing mode.
+    bool pageSizeHandlesEnabled = false;
+    bool pageSizeDragging = false;
+    PdfLinkHandle pageSizeDragHandle = PdfLinkHandle::None;
+    int pageSizeDragPage = -1;
+    int pageSizeHoverPage = -1;
+    QRectF pageSizeDragStartRect;
+    QRectF pageSizePreviewRect;
+    QSizeF pageSizeDragStartSize;
     bool pdfLinkDragging = false;
     QPoint pdfLinkDragStart;
     QRectF pdfLinkDragStartRect;
@@ -1192,6 +1237,38 @@ void PageView::goToDisplayedPage(int index, bool atBottom)
 void PageView::setAdvancedModeEnabled(bool enabled)
 {
     setCrossReferenceModeEnabled(enabled);
+}
+
+void PageView::setPageEditModeEnabled(bool enabled)
+{
+    if (d->pageSizeHandlesEnabled == enabled) {
+        return;
+    }
+    d->pageSizeHandlesEnabled = enabled;
+    if (!enabled) {
+        d->pageSizeDragging = false;
+        d->pageSizeDragHandle = PdfLinkHandle::None;
+        d->pageSizeDragPage = -1;
+        d->pageSizeHoverPage = -1;
+        d->pageSizeDragStartRect = QRectF();
+        d->pageSizePreviewRect = QRectF();
+    }
+    viewport()->update();
+}
+
+QSizeF PageView::pageSizeForBorderDrag(const QSizeF &sizeInPoints, const QSizeF &viewSizeAtStart, const QSizeF &draggedViewSize, int rotationDegrees)
+{
+    if (sizeInPoints.isEmpty() || viewSizeAtStart.isEmpty()) {
+        return sizeInPoints;
+    }
+    const QSizeF displayed = pageSizeInDisplayAxes(sizeInPoints, rotationDegrees);
+    const QSizeF scaled(displayed.width() * draggedViewSize.width() / viewSizeAtStart.width(), displayed.height() * draggedViewSize.height() / viewSizeAtStart.height());
+    const QSizeF canonical = pageSizeInDisplayAxes(scaled, rotationDegrees);
+    // The same limits the page editor and the size dialog accept.
+    const auto clamp = [](double value) {
+        return qBound(1.0, value, 20000.0);
+    };
+    return QSizeF(clamp(canonical.width()), clamp(canonical.height()));
 }
 
 void PageView::setCrossReferenceModeEnabled(bool enabled)
@@ -3759,6 +3836,43 @@ void PageView::drawLinkHighlights(const QRect &contentsRect, QPainter *p)
         }
     }
 
+    if (d->pageSizeHandlesEnabled) {
+        // Handles follow the page under the pointer, and stay on the page being
+        // resized while the button is down.
+        const int handlePage = d->pageSizeDragging ? d->pageSizeDragPage : d->pageSizeHoverPage;
+        const PageViewItem *handleItem = nullptr;
+        for (const PageViewItem *item : std::as_const(d->visibleItems)) {
+            if (item->pageNumber() == handlePage) {
+                handleItem = item;
+                break;
+            }
+        }
+        if (handleItem) {
+            const QRectF pageRect = handleItem->croppedGeometry();
+            if (pageRect.adjusted(-pdfLinkHandleSize, -pdfLinkHandleSize, pdfLinkHandleSize, pdfLinkHandleSize).intersects(contentsRect)) {
+                p->save();
+                QPen borderPen(QColor::fromHsvF(0.11, 0.9, 0.85, 0.9), 2.0, Qt::SolidLine, Qt::SquareCap, Qt::BevelJoin);
+                borderPen.setCosmetic(true);
+                p->setPen(borderPen);
+                p->setBrush(Qt::NoBrush);
+                p->drawRect(pageRect);
+                p->setPen(QColor::fromHsvF(0, 0, 1.0));
+                p->setBrush(QColor::fromHsvF(0.11, 0.9, 0.85, 0.95));
+                for (const PdfLinkHandle handle : pageSizeHandleKinds) {
+                    p->drawRect(pdfLinkHandleRect(pageSizeHandleCenter(pageRect, handle)));
+                }
+                if (d->pageSizeDragging && d->pageSizePreviewRect.isValid()) {
+                    QPen previewPen(QColor::fromHsvF(0.11, 1.0, 0.6, 0.9), 2.0, Qt::DashLine);
+                    previewPen.setCosmetic(true);
+                    p->setPen(previewPen);
+                    p->setBrush(Qt::NoBrush);
+                    p->drawRect(d->pageSizePreviewRect);
+                }
+                p->restore();
+            }
+        }
+    }
+
     p->restore();
 }
 
@@ -4434,6 +4548,28 @@ void PageView::mouseMoveEvent(QMouseEvent *e)
         return;
     }
 
+    if (d->pageSizeDragging && d->pageSizeDragPage >= 0) {
+        if (e->buttons() & Qt::LeftButton) {
+            // Only the right and the top border follow the pointer: the page keeps
+            // its lower-left corner, so its content does not move.
+            const qreal minimum = 24.0;
+            const qreal pointerX = eventPos.x();
+            const qreal pointerY = eventPos.y();
+            QRectF updated = d->pageSizeDragStartRect;
+            if (d->pageSizeDragHandle == PdfLinkHandle::Right || d->pageSizeDragHandle == PdfLinkHandle::TopRight) {
+                updated.setRight(qMax(pointerX, updated.left() + minimum));
+            }
+            if (d->pageSizeDragHandle == PdfLinkHandle::Top || d->pageSizeDragHandle == PdfLinkHandle::TopRight) {
+                updated.setTop(qMin(pointerY, updated.bottom() - minimum));
+            }
+            d->pageSizePreviewRect = updated;
+            viewport()->update();
+            setCursor(pdfLinkCursor(d->pageSizeDragHandle));
+        }
+        e->accept();
+        return;
+    }
+
     if (d->pdfLinkDragging && d->selectedPdfLinkPage >= 0) {
         if (e->buttons() & Qt::LeftButton) {
             PageViewItem *selectedItem = sourceItem(d->selectedPdfLinkPage);
@@ -4862,6 +4998,28 @@ void PageView::mousePressEvent(QMouseEvent *e)
         }
     }
 
+    if (e->button() == Qt::LeftButton && e->modifiers() == Qt::NoModifier && d->pageSizeHandlesEnabled) {
+        PageViewItem *pageItem = pickItemOnPoint(eventPos.x(), eventPos.y());
+        if (pageItem) {
+            const PdfLinkHandle handle = pageSizeHandleAt(pageItem->croppedGeometry(), eventPos);
+            if (handle != PdfLinkHandle::None) {
+                d->pageSizeDragging = true;
+                d->pageSizeDragHandle = handle;
+                d->pageSizeDragPage = pageItem->pageNumber();
+                d->pageSizeHoverPage = pageItem->pageNumber();
+                d->pageSizeDragStartRect = pageItem->croppedGeometry();
+                d->pageSizePreviewRect = d->pageSizeDragStartRect;
+                d->pageSizeDragStartSize = d->document->pageSizeInPoints(pageItem->pageNumber());
+                d->scroller->stop();
+                d->dragScrollTimer.stop();
+                viewport()->update();
+                setCursor(pdfLinkCursor(handle));
+                e->accept();
+                return;
+            }
+        }
+    }
+
     if (e->button() == Qt::LeftButton && e->modifiers() == Qt::NoModifier && d->showNamedDestinations && d->document->canEditPdfLinks()) {
         PageViewItem *pageItem = pickItemOnPoint(eventPos.x(), eventPos.y());
         PdfLinkHandle handle = PdfLinkHandle::None;
@@ -5262,6 +5420,30 @@ void PageView::mouseReleaseEvent(QMouseEvent *e)
     }
     if (leftButton) {
         d->mousePressLinkObject = nullptr;
+    }
+
+    if (leftButton && d->pageSizeDragging) {
+        const int pageNumber = d->pageSizeDragPage;
+        const QRectF startRect = d->pageSizeDragStartRect;
+        const QRectF previewRect = d->pageSizePreviewRect;
+        const QSizeF startSize = d->pageSizeDragStartSize;
+        d->pageSizeDragging = false;
+        d->pageSizeDragHandle = PdfLinkHandle::None;
+        d->pageSizeDragPage = -1;
+        d->pageSizeDragStartRect = QRectF();
+        d->pageSizePreviewRect = QRectF();
+        viewport()->update();
+        updateCursor();
+        const Okular::Page *page = pageNumber >= 0 ? d->document->page(pageNumber) : nullptr;
+        if (page && previewRect.isValid() && previewRect != startRect) {
+            const int rotationDegrees = static_cast<int>(page->rotation()) * 90;
+            const QSizeF requested = pageSizeForBorderDrag(startSize, startRect.size(), previewRect.size(), rotationDegrees);
+            if (requested.isValid() && requested != startSize) {
+                Q_EMIT changePageSizeRequested(pageNumber, requested);
+            }
+        }
+        e->accept();
+        return;
     }
 
     if (leftButton && d->pdfLinkDragging) {
@@ -7243,6 +7425,19 @@ void PageView::updateCursor(const QPoint p)
         if (destinationNames.size() == 1) {
             setCursor(Qt::SizeAllCursor);
             return;
+        }
+
+        if (d->pageSizeHandlesEnabled) {
+            const PdfLinkHandle pageHandle = pageSizeHandleAt(pageItem->croppedGeometry(), p);
+            if (pageHandle != PdfLinkHandle::None) {
+                d->pageSizeHoverPage = pageItem->pageNumber();
+                setCursor(pdfLinkCursor(pageHandle));
+                return;
+            }
+            if (d->pageSizeHoverPage == pageItem->pageNumber()) {
+                d->pageSizeHoverPage = -1;
+                viewport()->update();
+            }
         }
 
         if (pageItem->pageNumber() == d->selectedPdfLinkPage) {

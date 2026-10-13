@@ -87,6 +87,19 @@ public:
     void setAdvancedModeEnabled(bool enabled);
     OKULARPART_EXPORT void setCrossReferenceModeEnabled(bool enabled);
     OKULARPART_EXPORT void setOcrModeEnabled(bool enabled);
+    /**
+     * Page Editing mode shows resize handles on a page's right and top border.
+     * Dragging one changes the page's visible size. The lower-left corner stays
+     * put, so only those two borders can move.
+     */
+    OKULARPART_EXPORT void setPageEditModeEnabled(bool enabled);
+    /**
+     * Size a page takes when a border is dragged to \a draggedViewSize, in PDF
+     * points in the page's unrotated axes, given the size and the view rectangle
+     * the drag started from. The result stays within the limits the page editor
+     * accepts (1 to 20000 points).
+     */
+    static QSizeF pageSizeForBorderDrag(const QSizeF &sizeInPoints, const QSizeF &viewSizeAtStart, const QSizeF &draggedViewSize, int rotationDegrees);
     OKULARPART_EXPORT bool ocrModeEnabled() const;
     OKULARPART_EXPORT bool namedDestinationsVisible() const;
     void refreshNamedDestinations();
@@ -289,6 +302,8 @@ Q_SIGNALS:
     void notePageCreationChanged(bool active);
     /** Requests moving or resizing a PDF link annotation in this view. */
     void changePdfLinkRectangleRequested(int sourcePageNumber, const QRectF &oldNormalizedRectangle, const QRectF &newNormalizedRectangle);
+    /** Requests a new visible size for a page, in PDF points, after a border drag. */
+    void changePageSizeRequested(int pageNumber, const QSizeF &sizeInPoints);
     /** Requests deleting the selected PDF link annotation. */
     void deletePdfLinkRequested(int sourcePageNumber,
                                 const QRectF &normalizedLinkRectangle,

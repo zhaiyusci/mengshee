@@ -1,11 +1,29 @@
 # Changing a page's size
 
 Page Editing mode can change the visible size of any page, including the pages
-**Add Note Page** appends. Right-click a page (or use the page-edit toolbar) and
-choose **Page Size…**, then enter a width and a height in PDF points.
+**Add Note Page** appends.
 
-The values are the page's **unrotated** size, like the blank-page size in the page
-insertion dialog, so they keep their meaning when the page is rotated.
+## Dragging a border
+
+The page under the pointer shows handles on its **right border**, its **top
+border** and its **top-right corner**. Drag one, and a dashed preview follows the
+pointer; release, and the page takes that size.
+
+- Only the right and the top border move. The page keeps its lower-left corner, so
+  everything already on it stays exactly where it was and the new room appears to
+  the right of and above the content.
+- Dragging inwards makes the page smaller, which only hides what falls outside the
+  visible box; enlarging it again brings that back.
+- One drag is one undo step, and the size reaches the file when the document is
+  saved.
+- The handles belong to Page Editing mode and follow the page you point at, so
+  reading, annotating and the other editing modes are unaffected.
+
+**Page Size…** in the page context menu — and the same button in the page-edit
+toolbar — performs the same operation with exact numbers instead of a drag. Its
+values are the page's **unrotated** width and height in PDF points, like the
+blank-page size in the page insertion dialog, so they keep their meaning when the
+page is rotated.
 
 ## What the user sees grows
 

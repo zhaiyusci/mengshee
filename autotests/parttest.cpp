@@ -3359,6 +3359,20 @@ void PartTest::testChangePageSize()
     Okular::Part croppedReopened(nullptr, {});
     QVERIFY(openDocument(&croppedReopened, croppedSaved));
     QCOMPARE(croppedReopened.m_document->pageSizeInPoints(0), widerCrop);
+
+    // A border drag scales the page in the axes the reader sees and returns points
+    // in the page's own unrotated axes. Only the dragged sides move, because the
+    // lower-left corner is what stays put.
+    QVERIFY(PageView::pageSizeForBorderDrag(QSizeF(400, 500), QSizeF(200, 250), QSizeF(300, 250), 0) == QSizeF(600, 500));
+    QVERIFY(PageView::pageSizeForBorderDrag(QSizeF(400, 500), QSizeF(200, 250), QSizeF(200, 500), 0) == QSizeF(400, 1000));
+    // A quarter turn reads width and height the other way round, so dragging the
+    // right border of a rotated page grows its unrotated height, and the bottom
+    // border grows its width.
+    QVERIFY(PageView::pageSizeForBorderDrag(QSizeF(400, 500), QSizeF(250, 200), QSizeF(500, 200), 90) == QSizeF(400, 1000));
+    QVERIFY(PageView::pageSizeForBorderDrag(QSizeF(400, 500), QSizeF(250, 200), QSizeF(250, 400), 270) == QSizeF(800, 500));
+    // The page editor's own limits hold whatever the drag does.
+    QVERIFY(PageView::pageSizeForBorderDrag(QSizeF(400, 500), QSizeF(200, 250), QSizeF(0.2, 250), 0) == QSizeF(1, 500));
+    QVERIFY(PageView::pageSizeForBorderDrag(QSizeF(400, 500), QSizeF(200, 250), QSizeF(20000, 250), 0) == QSizeF(20000, 500));
 }
 
 void PartTest::testLatexNoteOnRotatedPage()
