@@ -54,7 +54,10 @@ Mengshee PDF generator still compiles the editor source directly.
 
 ## Updating Poppler
 
-Treat a Poppler update as a two-repository change:
+Treat a Poppler update as a two-repository change. The fork keeps its work on its
+own `master` branch, so the gitlink recorded here is normally the tip of that
+branch: push the Poppler commit to `master` first, then point the gitlink at it.
+Feature branches are for work in progress and can be deleted once they are merged.
 
 1. Make and test the generic Poppler changes in `external/poppler`.
 2. Commit and push the Poppler fork commit first.
