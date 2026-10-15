@@ -1,1 +1,3 @@
 linux-build/scripts/*.sh text eol=lf
+# Their cross-reference tables store byte offsets, so line-ending conversion would break them.
+*.pdf -text
