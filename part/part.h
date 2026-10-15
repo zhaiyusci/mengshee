@@ -397,7 +397,7 @@ private:
     void renameNamedDestination(const QString &oldName);
     void deleteNamedDestination(const QString &name);
     void moveNamedDestination(const QString &name, int pageNumber, const Okular::NormalizedPoint &position);
-    void editPdfLink(int sourcePageNumber, const QRectF &normalizedLinkRectangle, const QString &currentDestinationName, const Okular::DocumentViewport &currentDestination, const QUrl &currentExternalUrl, const QString &currentRemoteFileName);
+    void editPdfLink(int sourcePageNumber, const QRectF &normalizedLinkRectangle, const QString &currentDestinationName, const Okular::DocumentViewport &currentDestination, const QUrl &currentExternalUrl, const QString &currentRemoteFileName, const QString &currentRemoteDestinationName);
     void createPdfLink(int sourcePageNumber, const QRectF &normalizedLinkRectangle);
     void changePdfLinkRectangle(int sourcePageNumber, const QRectF &oldNormalizedRectangle, const QRectF &newNormalizedRectangle);
     void deletePdfLink(int sourcePageNumber,
@@ -412,6 +412,7 @@ private:
                           const Okular::DocumentViewport &currentDestination,
                           const QUrl &currentExternalUrl,
                           const QString &currentRemoteFileName,
+                          const QString &currentRemoteDestinationName,
                           bool creating);
     bool applyLiveNamedDestinationRename(const QString &oldName, const QString &newName, QString *errorText);
     QString pageTemplateFileName() const;

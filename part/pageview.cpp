@@ -8022,6 +8022,9 @@ QMenu *PageView::createProcessLinkMenu(PageViewItem *item, const QPoint eventPos
         const auto *browseAction = dynamic_cast<const Okular::BrowseAction *>(link);
         const QString currentDestinationName = isInternalGoto ? gotoAction->destinationName() : QString();
         const QString currentRemoteFileName = isRemoteGoto ? gotoAction->fileName() : QString();
+        // A cross-file link addresses the other file either by page or by a named
+        // destination of that file, and the two are told apart by which one it stores.
+        const QString currentRemoteDestinationName = isRemoteGoto ? gotoAction->destinationName() : QString();
         const QUrl currentExternalUrl = browseAction ? browseAction->url() : QUrl();
         if (isRemoteGoto) {
             // The viewport of a cross-file destination belongs to the other file, so it is
@@ -8038,8 +8041,8 @@ QMenu *PageView::createProcessLinkMenu(PageViewItem *item, const QPoint eventPos
             const QRectF normalizedLinkRectangle = rect->region().boundingRect();
             QAction *editLink = menu->addAction(QIcon::fromTheme(QStringLiteral("edit-link"), QIcon::fromTheme(QStringLiteral("document-edit"))), i18n("Edit Link Destination..."));
             editLink->setObjectName(QStringLiteral("EditPdfLinkAction"));
-            connect(editLink, &QAction::triggered, this, [this, sourcePageNumber, normalizedLinkRectangle, currentDestinationName, target, currentExternalUrl, currentRemoteFileName]() {
-                Q_EMIT editPdfLinkRequested(sourcePageNumber, normalizedLinkRectangle, currentDestinationName, target, currentExternalUrl, currentRemoteFileName);
+            connect(editLink, &QAction::triggered, this, [this, sourcePageNumber, normalizedLinkRectangle, currentDestinationName, target, currentExternalUrl, currentRemoteFileName, currentRemoteDestinationName]() {
+                Q_EMIT editPdfLinkRequested(sourcePageNumber, normalizedLinkRectangle, currentDestinationName, target, currentExternalUrl, currentRemoteFileName, currentRemoteDestinationName);
             });
         }
         if ((isInternalGoto || isRemoteGoto || browseAction) && d->showNamedDestinations && d->document->canEditPdfLinks()) {

@@ -7075,17 +7075,20 @@ bool Document::editRemoteLinkDestination(int sourcePageNumber,
                                          int destinationPageNumber,
                                          double destinationX,
                                          double destinationY,
-                                         QString *errorText)
+                                         QString *errorText,
+                                         const QString &remoteDestinationName)
 {
     auto editor = dynamic_cast<PdfLinkEditingInterface *>(d->m_generator);
     Page *sourcePage = d->m_pagesVector.value(sourcePageNumber - 1, nullptr);
-    if (!editor || !sourcePage || fileName.isEmpty() || destinationPageNumber < 1) {
+    // A named destination of the other file says where the link lands, so a page number
+    // is only required when no name was given.
+    if (!editor || !sourcePage || fileName.isEmpty() || (remoteDestinationName.isEmpty() && destinationPageNumber < 1)) {
         if (errorText) {
             errorText->clear();
         }
         return false;
     }
-    const bool changed = editor->editRemoteLinkDestination(sourcePage, linkLeft, linkTop, linkRight, linkBottom, fileName, destinationPageNumber, destinationX, destinationY, errorText);
+    const bool changed = editor->editRemoteLinkDestination(sourcePage, linkLeft, linkTop, linkRight, linkBottom, fileName, destinationPageNumber, destinationX, destinationY, errorText, remoteDestinationName);
     if (changed) {
         d->notifyAnnotationChanges(sourcePageNumber - 1);
     }
@@ -7101,17 +7104,19 @@ bool Document::createRemoteLink(int sourcePageNumber,
                                 int destinationPageNumber,
                                 double destinationX,
                                 double destinationY,
-                                QString *errorText)
+                                QString *errorText,
+                                const QString &remoteDestinationName)
 {
     auto editor = dynamic_cast<PdfLinkEditingInterface *>(d->m_generator);
     Page *sourcePage = d->m_pagesVector.value(sourcePageNumber - 1, nullptr);
-    if (!editor || !sourcePage || fileName.isEmpty() || destinationPageNumber < 1) {
+    // See editRemoteLinkDestination: a destination name stands in for the page number.
+    if (!editor || !sourcePage || fileName.isEmpty() || (remoteDestinationName.isEmpty() && destinationPageNumber < 1)) {
         if (errorText) {
             errorText->clear();
         }
         return false;
     }
-    const bool changed = editor->createRemoteLink(sourcePage, linkLeft, linkTop, linkRight, linkBottom, fileName, destinationPageNumber, destinationX, destinationY, errorText);
+    const bool changed = editor->createRemoteLink(sourcePage, linkLeft, linkTop, linkRight, linkBottom, fileName, destinationPageNumber, destinationX, destinationY, errorText, remoteDestinationName);
     if (changed) {
         d->notifyAnnotationChanges(sourcePageNumber - 1);
     }

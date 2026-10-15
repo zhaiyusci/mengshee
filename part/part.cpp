@@ -4089,9 +4089,12 @@ struct PdfLinkTarget {
     double destinationX = 0.0;
     double destinationY = 0.0;
     QString externalUrl;
-    // Set when the target is a page in another file. That file name and page go into
-    // the link as they are, unlike an internal destination, which is resolved here.
+    // Set when the target is a destination in another file. That file name and either the
+    // page or the named destination go into the link as they are, unlike an internal
+    // destination, which is resolved here.
     QString remoteFileName;
+    // A named destination of the other file, which stands in for the page number.
+    QString remoteDestinationName;
 };
 
 static bool applyLivePdfLinkTarget(Document *document, bool create, int sourcePageNumber, const QRectF &rectangle, const PdfLinkTarget &target, QString *errorText)
@@ -4131,7 +4134,8 @@ static bool applyLivePdfLinkTarget(Document *document, bool create, int sourcePa
                                               target.destinationPageNumber,
                                               target.destinationX,
                                               target.destinationY,
-                                              errorText);
+                                              errorText,
+                                              target.remoteDestinationName);
         }
         return document->editRemoteLinkDestination(sourcePageNumber,
                                                    rectangle.left(),
@@ -4142,7 +4146,8 @@ static bool applyLivePdfLinkTarget(Document *document, bool create, int sourcePa
                                                    target.destinationPageNumber,
                                                    target.destinationX,
                                                    target.destinationY,
-                                                   errorText);
+                                                   errorText,
+                                                   target.remoteDestinationName);
     }
     if (create) {
         // A link that points at a note page carries that note's label, so
@@ -7195,14 +7200,14 @@ void Part::moveNamedDestination(const QString &name, int pageNumber, const Okula
     }
 }
 
-void Part::editPdfLink(int sourcePageNumber, const QRectF &normalizedLinkRectangle, const QString &currentDestinationName, const Okular::DocumentViewport &currentDestination, const QUrl &currentExternalUrl, const QString &currentRemoteFileName)
+void Part::editPdfLink(int sourcePageNumber, const QRectF &normalizedLinkRectangle, const QString &currentDestinationName, const Okular::DocumentViewport &currentDestination, const QUrl &currentExternalUrl, const QString &currentRemoteFileName, const QString &currentRemoteDestinationName)
 {
-    configurePdfLink(sourcePageNumber, normalizedLinkRectangle, currentDestinationName, currentDestination, currentExternalUrl, currentRemoteFileName, false);
+    configurePdfLink(sourcePageNumber, normalizedLinkRectangle, currentDestinationName, currentDestination, currentExternalUrl, currentRemoteFileName, currentRemoteDestinationName, false);
 }
 
 void Part::createPdfLink(int sourcePageNumber, const QRectF &normalizedLinkRectangle)
 {
-    configurePdfLink(sourcePageNumber, normalizedLinkRectangle, QString(), Okular::DocumentViewport(), QUrl(), QString(), true);
+    configurePdfLink(sourcePageNumber, normalizedLinkRectangle, QString(), Okular::DocumentViewport(), QUrl(), QString(), QString(), true);
 }
 
 namespace {
@@ -7332,6 +7337,7 @@ void Part::configurePdfLink(int sourcePageNumber,
                             const Okular::DocumentViewport &currentDestination,
                             const QUrl &currentExternalUrl,
                             const QString &currentRemoteFileName,
+                            const QString &currentRemoteDestinationName,
                             bool creating)
 {
     if (m_editingMode != EditingMode::CrossReferences || !m_document->canEditPdfLinks() || sourcePageNumber < 0 || sourcePageNumber >= static_cast<int>(m_document->pages())) {
@@ -7444,39 +7450,110 @@ void Part::configurePdfLink(int sourcePageNumber,
     externalUrlEdit->setText(currentExternalUrl.toDisplayString());
     form->addRow(externalRadio, externalUrlEdit);
 
-    // A cross-file link is shown as its own kind of target, and only for an existing
-    // link: making a new one would mean picking a file and a page in it, which is not
-    // what a reader does to a paper that arrived with a broken link.
-    const bool remoteLink = !currentRemoteFileName.isEmpty();
+    // A cross-file link is offered for a new link as well as for an existing one: the format
+    // stores only a file name, which is exactly what makes such a link fragile, and creating
+    // one is sometimes the only way to produce what another tool expects to receive.
+    const bool remoteLink = creating || !currentRemoteFileName.isEmpty();
     QRadioButton *remoteRadio = nullptr;
     QLineEdit *remoteFileEdit = nullptr;
     QSpinBox *remotePageSpin = nullptr;
+    QLineEdit *remoteNameEdit = nullptr;
+    QRadioButton *remotePageRadio = nullptr;
+    QRadioButton *remoteNameRadio = nullptr;
+    QLabel *remoteMarker = nullptr;
     if (remoteLink) {
         remoteRadio = new QRadioButton(i18n("File in another document"), &dialog);
         remoteRadio->setObjectName(QStringLiteral("RemoteLinkTargetRadio"));
+        const QString remoteWarning = i18nc("@info:tooltip why a link into another file is discouraged",
+                                            "Not recommended.\n"
+                                            "The link stores only the other file's name, so renaming or moving that file breaks it.\n"
+                                            "Merging the documents and using internal links is the robust option.");
+        remoteRadio->setToolTip(remoteWarning);
         auto *remoteControls = new QWidget(&dialog);
-        auto *remoteLayout = new QHBoxLayout(remoteControls);
+        auto *remoteLayout = new QVBoxLayout(remoteControls);
         remoteLayout->setContentsMargins(0, 0, 0, 0);
-        remoteFileEdit = new QLineEdit(remoteControls);
+        auto *remoteFileRow = new QWidget(remoteControls);
+        auto *remoteFileLayout = new QHBoxLayout(remoteFileRow);
+        remoteFileLayout->setContentsMargins(0, 0, 0, 0);
+        remoteFileEdit = new QLineEdit(remoteFileRow);
         remoteFileEdit->setObjectName(QStringLiteral("RemoteLinkFileName"));
         // The name is what the file stores, not what it resolves to here: that is the
         // only value a re-point has to replace, and showing a resolved path would hide
         // what a receiver of this document will try to open.
         remoteFileEdit->setText(currentRemoteFileName);
-        auto *locateButton = new QPushButton(i18n("Locate File…"), remoteControls);
+        auto *locateButton = new QPushButton(i18n("Locate File…"), remoteFileRow);
         locateButton->setObjectName(QStringLiteral("LocateRemoteLinkFile"));
-        remotePageSpin = new QSpinBox(remoteControls);
+        remoteFileLayout->addWidget(new QLabel(i18n("File:"), remoteFileRow));
+        remoteFileLayout->addWidget(remoteFileEdit, 1);
+        remoteFileLayout->addWidget(locateButton);
+        remoteLayout->addWidget(remoteFileRow);
+
+        // The other file can be addressed either by a page or by one of its named
+        // destinations. A named destination survives pages being inserted or removed in
+        // that file, which a page number does not, so it is offered as the sturdier of
+        // the two even though it has to be typed without that file being open here.
+        auto *remoteDestinationRow = new QWidget(remoteControls);
+        auto *remoteDestinationLayout = new QHBoxLayout(remoteDestinationRow);
+        remoteDestinationLayout->setContentsMargins(0, 0, 0, 0);
+        remotePageRadio = new QRadioButton(i18n("Page:"), remoteDestinationRow);
+        remotePageRadio->setObjectName(QStringLiteral("RemoteLinkPageRadio"));
+        remotePageSpin = new QSpinBox(remoteDestinationRow);
         remotePageSpin->setObjectName(QStringLiteral("RemoteLinkPage"));
         // The page belongs to the other file, whose length is unknown here, so the
         // range only has to be wide enough to name any page that file could have.
         remotePageSpin->setRange(1, 100000);
-        remotePageSpin->setValue(effectiveDestination.pageNumber + 1);
-        remoteLayout->addWidget(new QLabel(i18n("File:"), remoteControls));
-        remoteLayout->addWidget(remoteFileEdit, 1);
-        remoteLayout->addWidget(locateButton);
-        remoteLayout->addWidget(new QLabel(i18n("Page:"), remoteControls));
-        remoteLayout->addWidget(remotePageSpin);
-        form->addRow(remoteRadio, remoteControls);
+        remotePageSpin->setValue(effectiveDestination.isValid() ? effectiveDestination.pageNumber + 1 : 1);
+        remoteNameRadio = new QRadioButton(i18n("Named destination:"), remoteDestinationRow);
+        remoteNameRadio->setObjectName(QStringLiteral("RemoteLinkNameRadio"));
+        remoteNameEdit = new QLineEdit(remoteDestinationRow);
+        remoteNameEdit->setObjectName(QStringLiteral("RemoteLinkNamedDestination"));
+        remoteNameEdit->setPlaceholderText(i18n("Name used in the other document"));
+        remoteNameEdit->setClearButtonEnabled(true);
+        remoteNameEdit->setText(currentRemoteDestinationName);
+        remoteDestinationLayout->addWidget(remotePageRadio);
+        remoteDestinationLayout->addWidget(remotePageSpin);
+        remoteDestinationLayout->addSpacing(12);
+        remoteDestinationLayout->addWidget(remoteNameRadio);
+        remoteDestinationLayout->addWidget(remoteNameEdit, 1);
+        remoteLayout->addWidget(remoteDestinationRow);
+        // The marker sits next to the choice it warns about, with the warning itself in a
+        // tooltip shared with the option: the choice keeps its width and the explanation is
+        // only read when it is asked for. The row is laid out to span the form, because the
+        // radio button and the marker have to stand together.
+        auto *remoteChoiceRow = new QWidget(&dialog);
+        auto *remoteChoiceLayout = new QHBoxLayout(remoteChoiceRow);
+        remoteChoiceLayout->setContentsMargins(0, 0, 0, 0);
+        remoteChoiceLayout->addWidget(remoteRadio);
+        remoteMarker = new QLabel(remoteChoiceRow);
+        remoteMarker->setObjectName(QStringLiteral("RemoteLinkWarningMarker"));
+        remoteMarker->setToolTip(remoteWarning);
+        const QIcon remoteWarningIcon = QIcon::fromTheme(QStringLiteral("dialog-warning"));
+        if (!remoteWarningIcon.isNull()) {
+            // About the height of the option's own text: enough to be noticed as a note and
+            // not enough to draw the eye away from the choice.
+            remoteMarker->setPixmap(remoteWarningIcon.pixmap(QSize(14, 14)));
+        } else {
+            // No icon theme is no reason to lose the warning: the glyph is what is left.
+            remoteMarker->setText(QStringLiteral("(!)"));
+        }
+        remoteChoiceLayout->addWidget(remoteMarker);
+        remoteChoiceLayout->addStretch(1);
+        form->addRow(remoteChoiceRow);
+        form->addRow(QString(), remoteControls);
+        // A radio button that is disabled while it is the checked one of its group is
+        // unchecked by Qt, and the choice would then read as the other one. The option is
+        // therefore chosen before the controls are enabled from it, which happens after the
+        // kind of target has been settled.
+        if (currentRemoteDestinationName.isEmpty()) {
+            remotePageRadio->setChecked(true);
+        } else {
+            remoteNameRadio->setChecked(true);
+        }
+        // Selected here as well, so that the controls are enabled from a settled choice; the
+        // block that picks the kind of target finds this option already checked.
+        if (currentExternalUrl.isEmpty() && !creating) {
+            remoteRadio->setChecked(true);
+        }
 
         connect(locateButton, &QPushButton::clicked, &dialog, [this, &dialog, remoteFileEdit]() {
             const QString chosen = QFileDialog::getOpenFileName(&dialog, i18n("Locate Linked File"), QFileInfo(url().toLocalFile()).absolutePath(), i18n("PDF Documents (*.pdf);;All Files (*)"));
@@ -7494,7 +7571,7 @@ void Part::configurePdfLink(int sourcePageNumber,
 
     if (!currentExternalUrl.isEmpty()) {
         externalRadio->setChecked(true);
-    } else if (remoteLink) {
+    } else if (remoteLink && !creating) {
         remoteRadio->setChecked(true);
     } else if ((creating && !destinations.isEmpty()) || currentNamedIndex >= 0 || (currentDestinationName.isEmpty() && matchingNamedIndex >= 0)) {
         namedRadio->setChecked(true);
@@ -7512,8 +7589,12 @@ void Part::configurePdfLink(int sourcePageNumber,
         directControls->setEnabled(directRadio->isChecked());
         externalUrlEdit->setEnabled(externalRadio->isChecked());
         if (remoteLink) {
-            remoteFileEdit->setEnabled(remoteRadio->isChecked());
-            remotePageSpin->setEnabled(remoteRadio->isChecked());
+            const bool remoteTarget = remoteRadio->isChecked();
+            remoteFileEdit->setEnabled(remoteTarget);
+            remotePageRadio->setEnabled(remoteTarget);
+            remoteNameRadio->setEnabled(remoteTarget);
+            remotePageSpin->setEnabled(remoteTarget && remotePageRadio->isChecked());
+            remoteNameEdit->setEnabled(remoteTarget && remoteNameRadio->isChecked());
         }
     };
     connect(namedRadio, &QRadioButton::toggled, &dialog, updateControls);
@@ -7521,6 +7602,8 @@ void Part::configurePdfLink(int sourcePageNumber,
     connect(externalRadio, &QRadioButton::toggled, &dialog, updateControls);
     if (remoteLink) {
         connect(remoteRadio, &QRadioButton::toggled, &dialog, updateControls);
+        connect(remotePageRadio, &QRadioButton::toggled, &dialog, updateControls);
+        connect(remoteNameRadio, &QRadioButton::toggled, &dialog, updateControls);
     }
     connect(destinationList, &QListWidget::itemClicked, &dialog, [namedRadio](QListWidgetItem *) { namedRadio->setChecked(true); });
     connect(destinationList, &QListWidget::itemDoubleClicked, &dialog, [&dialog, namedRadio](QListWidgetItem *) {
@@ -7544,6 +7627,10 @@ void Part::configurePdfLink(int sourcePageNumber,
 
     auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
     layout->addWidget(buttons);
+    // The dialog decides by itself when Ok may be pressed, and it is the button the whole
+    // dialog is for: Qt makes the default button out of the first button that accepts, and
+    // a button box that has no default button disables the ones it holds.
+    buttons->button(QDialogButtonBox::Ok)->setDefault(true);
     connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
     connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
     const auto externalUrl = [externalUrlEdit]() {
@@ -7558,14 +7645,20 @@ void Part::configurePdfLink(int sourcePageNumber,
         const bool namedChoiceValid = !namedRadio->isChecked() || (destinationList->currentItem() && !destinationList->currentItem()->isHidden());
         const QUrl url = externalUrl();
         const bool externalChoiceValid = !externalRadio->isChecked() || (!url.isEmpty() && url.isValid() && !url.scheme().isEmpty());
-        const bool remoteChoiceValid = !remoteLink || !remoteRadio->isChecked() || !remoteFileEdit->text().trimmed().isEmpty();
+        // The other file can only be addressed by a page number or by a name, and the
+        // backend rejects a link that names neither.
+        const bool remoteChoiceValid = !remoteLink || !remoteRadio->isChecked()
+            || (!remoteFileEdit->text().trimmed().isEmpty() && (remotePageRadio->isChecked() || !remoteNameEdit->text().trimmed().isEmpty()));
         buttons->button(QDialogButtonBox::Ok)->setEnabled(namedChoiceValid && externalChoiceValid && remoteChoiceValid);
     };
     connect(namedRadio, &QRadioButton::toggled, &dialog, updateAcceptButton);
     connect(externalRadio, &QRadioButton::toggled, &dialog, updateAcceptButton);
     if (remoteLink) {
         connect(remoteRadio, &QRadioButton::toggled, &dialog, updateAcceptButton);
+        connect(remotePageRadio, &QRadioButton::toggled, &dialog, updateAcceptButton);
+        connect(remoteNameRadio, &QRadioButton::toggled, &dialog, updateAcceptButton);
         connect(remoteFileEdit, &QLineEdit::textChanged, &dialog, [updateAcceptButton](const QString &) { updateAcceptButton(); });
+        connect(remoteNameEdit, &QLineEdit::textChanged, &dialog, [updateAcceptButton](const QString &) { updateAcceptButton(); });
     }
     connect(destinationList, &QListWidget::currentItemChanged, &dialog, [updateAcceptButton](QListWidgetItem *, QListWidgetItem *) { updateAcceptButton(); });
     connect(destinationSearch, &QLineEdit::textChanged, &dialog, [updateAcceptButton](const QString &) { updateAcceptButton(); });
@@ -7584,6 +7677,9 @@ void Part::configurePdfLink(int sourcePageNumber,
     const QString externalUrlText = externalTarget ? QString::fromLatin1(externalUrl().toEncoded(QUrl::FullyEncoded)) : QString();
     const bool remoteTarget = remoteLink && remoteRadio->isChecked();
     const QString remoteFileNameText = remoteTarget ? remoteFileEdit->text().trimmed() : QString();
+    // Only a name that was asked for is written as one: the page stays the target of a
+    // link that names no destination, and leaving it in place keeps the two apart.
+    const QString remoteDestinationNameText = remoteTarget && remoteNameRadio->isChecked() ? remoteNameEdit->text().trimmed() : QString();
     if (namedRadio->isChecked() && destinationList->currentItem()) {
         destinationName = destinationList->currentItem()->data(Qt::UserRole).toString();
         const int destinationIndex = destinationList->currentItem()->data(Qt::UserRole + 1).toInt();
@@ -7593,7 +7689,7 @@ void Part::configurePdfLink(int sourcePageNumber,
         destinationY = choice.viewport.rePos.enabled ? choice.viewport.rePos.normalizedY : 0.0;
     } else if (remoteTarget) {
         // A position on a page in another file is not something this dialog can show,
-        // so the stored one is kept and only the file and the page are replaced.
+        // so the stored one is kept and only the file and the destination are replaced.
         destinationPageNumber = remotePageSpin->value();
         destinationX = currentDestination.rePos.enabled ? currentDestination.rePos.normalizedX : 0.0;
         destinationY = currentDestination.rePos.enabled ? currentDestination.rePos.normalizedY : 0.0;
@@ -7607,6 +7703,7 @@ void Part::configurePdfLink(int sourcePageNumber,
     newTarget.destinationX = destinationX;
     newTarget.destinationY = destinationY;
     newTarget.remoteFileName = remoteFileNameText;
+    newTarget.remoteDestinationName = remoteDestinationNameText;
 
     PdfLinkTarget oldTarget;
     oldTarget.external = !currentExternalUrl.isEmpty();
@@ -7616,6 +7713,7 @@ void Part::configurePdfLink(int sourcePageNumber,
     oldTarget.destinationX = currentDestination.rePos.enabled ? currentDestination.rePos.normalizedX : 0.0;
     oldTarget.destinationY = currentDestination.rePos.enabled ? currentDestination.rePos.normalizedY : 0.0;
     oldTarget.remoteFileName = currentRemoteFileName;
+    oldTarget.remoteDestinationName = currentRemoteDestinationName;
 
     QPointer<Document> document = m_document;
     const int pageNumberOneBased = sourcePageNumber + 1;
@@ -7641,7 +7739,10 @@ void Part::configurePdfLink(int sourcePageNumber,
         m_document->pushUndoCommand(new LivePdfLinkCommand(creating ? i18nc("Undo action", "Create Link") : i18nc("Undo action", "Edit Link Destination"), std::move(undoOperation), applyNewTarget));
         if (PageView *view = workspaceActivePageView()) {
             if (remoteTarget) {
-                view->displayMessage(i18n("Updated the link to '%1'.", newTarget.remoteFileName));
+                // A link that names a destination in the other file is worth saying out
+                // loud, because nothing here can check that the name exists there.
+                view->displayMessage(remoteDestinationNameText.isEmpty() ? i18n("Updated the link to '%1'.", newTarget.remoteFileName)
+                                                                        : i18n("Linked to '%1' in '%2'.", remoteDestinationNameText, newTarget.remoteFileName));
             } else if (externalTarget) {
                 view->displayMessage(creating ? i18n("Created the external link.") : i18n("Updated the external link."));
             } else if (creating) {

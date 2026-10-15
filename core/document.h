@@ -1263,8 +1263,10 @@ public:
     bool createExternalLink(int sourcePageNumber, double linkLeft, double linkTop, double linkRight, double linkBottom, const QString &url, QString *errorText);
 
     /**
-     * Re-points one link at a page in another file, named the way the format stores it.
-     * The page belongs to that file and is not checked against this document.
+     * Re-points one link at a destination in another file, named the way the format stores
+     * it. The destination is a page of that file, or the name of one of its destinations
+     * when @p remoteDestinationName is not empty; either belongs to that file, so neither
+     * is checked or resolved against this document.
      */
     bool editRemoteLinkDestination(int sourcePageNumber,
                                    double linkLeft,
@@ -1275,9 +1277,10 @@ public:
                                    int destinationPageNumber,
                                    double destinationX,
                                    double destinationY,
-                                   QString *errorText);
+                                   QString *errorText,
+                                   const QString &remoteDestinationName = QString());
 
-    /** Adds one link to a page in another file to the open document. */
+    /** Adds one link to a destination in another file to the open document. */
     bool createRemoteLink(int sourcePageNumber,
                           double linkLeft,
                           double linkTop,
@@ -1287,7 +1290,8 @@ public:
                           int destinationPageNumber,
                           double destinationX,
                           double destinationY,
-                          QString *errorText);
+                          QString *errorText,
+                          const QString &remoteDestinationName = QString());
 
     /**
      * Moves or resizes one link in the open document. @p appearance is the

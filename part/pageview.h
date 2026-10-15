@@ -299,9 +299,17 @@ Q_SIGNALS:
     void openInternalLinkInAuxiliaryFrame(const Okular::DocumentViewport &viewport, const QString &title);
     /**
      * Requests editing the PDF-level target of an internal, external or cross-file link.
-     * @p currentRemoteFileName is the file a cross-file link names, empty otherwise.
+     * @p currentRemoteFileName is the file a cross-file link names, empty otherwise, and
+     * @p currentRemoteDestinationName is the destination it names inside that file when it
+     * addresses one by name rather than by page.
      */
-    void editPdfLinkRequested(int sourcePageNumber, const QRectF &normalizedLinkRectangle, const QString &currentDestinationName, const Okular::DocumentViewport &currentDestination, const QUrl &currentExternalUrl, const QString &currentRemoteFileName);
+    void editPdfLinkRequested(int sourcePageNumber,
+                              const QRectF &normalizedLinkRectangle,
+                              const QString &currentDestinationName,
+                              const Okular::DocumentViewport &currentDestination,
+                              const QUrl &currentExternalUrl,
+                              const QString &currentRemoteFileName,
+                              const QString &currentRemoteDestinationName);
     /** Requests moving a named destination to a point selected in this view. */
     void moveNamedDestinationRequested(const QString &name, int pageNumber, const Okular::NormalizedPoint &position);
     /** Requests creating a named destination at a point selected in this view. */

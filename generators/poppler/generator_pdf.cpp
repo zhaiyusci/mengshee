@@ -4372,18 +4372,20 @@ bool PDFGenerator::editRemoteLinkDestination(Okular::Page *sourcePage,
                                              int destinationPageNumber,
                                              double destinationX,
                                              double destinationY,
-                                             QString *errorText)
+                                             QString *errorText,
+                                             const QString &remoteDestinationName)
 {
     QMutexLocker locker(userMutex());
     PDFDoc *document = popplerCoreDocument(pdfdoc.get());
     const int nativeSourcePageNumber = nativePageForLogicalPage(sourcePage ? sourcePage->number() : -1) + 1;
     const std::string encodedFileName = fileName.toUtf8().toStdString();
-    // The destination page and position belong to the named file, so unlike an internal
-    // destination they are passed on unchanged: mapping them through this document's
-    // page order would point the link at an unrelated page of that other file.
+    const std::string encodedDestinationName = remoteDestinationName.toUtf8().toStdString();
+    // The destination belongs to the named file, so unlike an internal destination it is
+    // passed on unchanged: mapping it through this document's page order, or resolving its
+    // name here, would point the link at something that file does not have.
     if (!runPdfPagesOperation(
             [&] {
-                return PdfPageSequenceEditor::editRemoteLinkDestination(document, nativeSourcePageNumber, linkLeft, linkTop, linkRight, linkBottom, encodedFileName, destinationPageNumber, destinationX, destinationY);
+                return PdfPageSequenceEditor::editRemoteLinkDestination(document, nativeSourcePageNumber, linkLeft, linkTop, linkRight, linkBottom, encodedFileName, destinationPageNumber, destinationX, destinationY, encodedDestinationName);
             },
             errorText)) {
         return false;
@@ -4400,15 +4402,18 @@ bool PDFGenerator::createRemoteLink(Okular::Page *sourcePage,
                                     int destinationPageNumber,
                                     double destinationX,
                                     double destinationY,
-                                    QString *errorText)
+                                    QString *errorText,
+                                    const QString &remoteDestinationName)
 {
     QMutexLocker locker(userMutex());
     PDFDoc *document = popplerCoreDocument(pdfdoc.get());
     const int nativeSourcePageNumber = nativePageForLogicalPage(sourcePage ? sourcePage->number() : -1) + 1;
     const std::string encodedFileName = fileName.toUtf8().toStdString();
+    const std::string encodedDestinationName = remoteDestinationName.toUtf8().toStdString();
+    // See editRemoteLinkDestination: the destination belongs to the named file.
     if (!runPdfPagesOperation(
             [&] {
-                return PdfPageSequenceEditor::createRemoteLink(document, nativeSourcePageNumber, linkLeft, linkTop, linkRight, linkBottom, encodedFileName, destinationPageNumber, destinationX, destinationY);
+                return PdfPageSequenceEditor::createRemoteLink(document, nativeSourcePageNumber, linkLeft, linkTop, linkRight, linkBottom, encodedFileName, destinationPageNumber, destinationX, destinationY, encodedDestinationName);
             },
             errorText)) {
         return false;

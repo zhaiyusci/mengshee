@@ -355,9 +355,11 @@ public:
     virtual bool createExternalLink(Page *sourcePage, double linkLeft, double linkTop, double linkRight, double linkBottom, const QString &url, QString *errorText) = 0;
 
     /**
-     * Re-points one link at a page in another file, named by @p fileName as the format
-     * stores it. That page belongs to the other file, so it is not checked against this
-     * document's page count.
+     * Re-points one link at a destination in another file, named by @p fileName as the
+     * format stores it. The destination is a page of that file, which is not checked
+     * against this document's page count, or a @p remoteDestinationName naming a
+     * destination of that file, which is not resolved here either; when the name is not
+     * empty it decides the destination and @p destinationPageNumber is ignored.
      */
     virtual bool editRemoteLinkDestination(Page *sourcePage,
                                            double linkLeft,
@@ -368,9 +370,10 @@ public:
                                            int destinationPageNumber,
                                            double destinationX,
                                            double destinationY,
-                                           QString *errorText) = 0;
+                                           QString *errorText,
+                                           const QString &remoteDestinationName = QString()) = 0;
 
-    /** Adds one link to a page in another file to the open document. */
+    /** Adds one link to a destination in another file to the open document. */
     virtual bool createRemoteLink(Page *sourcePage,
                                   double linkLeft,
                                   double linkTop,
@@ -380,7 +383,8 @@ public:
                                   int destinationPageNumber,
                                   double destinationX,
                                   double destinationY,
-                                  QString *errorText) = 0;
+                                  QString *errorText,
+                                  const QString &remoteDestinationName = QString()) = 0;
 
     /**
      * Moves or resizes one link in the open document. @p appearance is the

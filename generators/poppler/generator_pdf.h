@@ -184,7 +184,8 @@ public:
                                    int destinationPageNumber,
                                    double destinationX,
                                    double destinationY,
-                                   QString *errorText) override;
+                                   QString *errorText,
+                                   const QString &remoteDestinationName = QString()) override;
     bool createRemoteLink(Okular::Page *sourcePage,
                           double linkLeft,
                           double linkTop,
@@ -194,7 +195,8 @@ public:
                           int destinationPageNumber,
                           double destinationX,
                           double destinationY,
-                          QString *errorText) override;
+                          QString *errorText,
+                          const QString &remoteDestinationName = QString()) override;
     bool editPdfLinkRectangle(Okular::Page *sourcePage,
                               double oldLinkLeft,
                               double oldLinkTop,
