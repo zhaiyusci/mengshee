@@ -7066,6 +7066,58 @@ bool Document::createExternalLink(int sourcePageNumber, double linkLeft, double 
     return changed;
 }
 
+bool Document::editRemoteLinkDestination(int sourcePageNumber,
+                                         double linkLeft,
+                                         double linkTop,
+                                         double linkRight,
+                                         double linkBottom,
+                                         const QString &fileName,
+                                         int destinationPageNumber,
+                                         double destinationX,
+                                         double destinationY,
+                                         QString *errorText)
+{
+    auto editor = dynamic_cast<PdfLinkEditingInterface *>(d->m_generator);
+    Page *sourcePage = d->m_pagesVector.value(sourcePageNumber - 1, nullptr);
+    if (!editor || !sourcePage || fileName.isEmpty() || destinationPageNumber < 1) {
+        if (errorText) {
+            errorText->clear();
+        }
+        return false;
+    }
+    const bool changed = editor->editRemoteLinkDestination(sourcePage, linkLeft, linkTop, linkRight, linkBottom, fileName, destinationPageNumber, destinationX, destinationY, errorText);
+    if (changed) {
+        d->notifyAnnotationChanges(sourcePageNumber - 1);
+    }
+    return changed;
+}
+
+bool Document::createRemoteLink(int sourcePageNumber,
+                                double linkLeft,
+                                double linkTop,
+                                double linkRight,
+                                double linkBottom,
+                                const QString &fileName,
+                                int destinationPageNumber,
+                                double destinationX,
+                                double destinationY,
+                                QString *errorText)
+{
+    auto editor = dynamic_cast<PdfLinkEditingInterface *>(d->m_generator);
+    Page *sourcePage = d->m_pagesVector.value(sourcePageNumber - 1, nullptr);
+    if (!editor || !sourcePage || fileName.isEmpty() || destinationPageNumber < 1) {
+        if (errorText) {
+            errorText->clear();
+        }
+        return false;
+    }
+    const bool changed = editor->createRemoteLink(sourcePage, linkLeft, linkTop, linkRight, linkBottom, fileName, destinationPageNumber, destinationX, destinationY, errorText);
+    if (changed) {
+        d->notifyAnnotationChanges(sourcePageNumber - 1);
+    }
+    return changed;
+}
+
 bool Document::editPdfLinkRectangle(int sourcePageNumber,
                                     double oldLinkLeft,
                                     double oldLinkTop,

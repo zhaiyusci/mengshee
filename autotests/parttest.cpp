@@ -197,6 +197,8 @@ private Q_SLOTS:
     void testLinkTargetFollowsPages();
     void testLinkToFirstPageFollowsInsertion();
     void testCrossFileLinkKeepsItsPage();
+    void testCrossFileLinkCanBeRepointed();
+    void testCrossFileLinkDialogOffersRepointing();
     void testLatexNoteOnRotatedPage();
     void testLatexAppearanceResizeHistory_data();
     void testLatexAppearanceResizeHistory();
@@ -1050,7 +1052,8 @@ static bool linkEditorOpensForView(PageView *view, const Okular::DocumentViewpor
                                                    Q_ARG(QRectF, QRectF(0.1, 0.1, 0.1, 0.1)),
                                                    Q_ARG(QString, QStringLiteral("subsection.2.1")),
                                                    Q_ARG(Okular::DocumentViewport, target),
-                                                   Q_ARG(QUrl, QUrl()));
+                                                   Q_ARG(QUrl, QUrl()),
+                                                   Q_ARG(QString, QString()));
     dialogCloser.stop();
     return invoked && editorShown;
 }
@@ -3608,6 +3611,169 @@ void PartTest::testCrossFileLinkKeepsItsPage()
     const Okular::DocumentViewport target = part.m_document->gotoTarget(action);
     QVERIFY(target.isValid());
     QCOMPARE(target.pageNumber, 2); // page 3 of the other file, zero-based
+}
+
+void PartTest::testCrossFileLinkCanBeRepointed()
+{
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+    QVERIFY(QFile::copy(QStringLiteral(KDESRCDIR "data/goto-remote-source.pdf"), tempDir.filePath(QStringLiteral("source.pdf"))));
+    QVERIFY(QFile::copy(QStringLiteral(KDESRCDIR "data/goto-remote-target.pdf"), tempDir.filePath(QStringLiteral("target.pdf"))));
+
+    // A link object exists only once its page has been requested, which is what the test
+    // above relies on as well.
+    const auto crossFileLinkOnFirstPage = [](Okular::Part &part) -> const Okular::ObjectRect * {
+        part.widget()->show();
+        if (!QTest::qWaitForWindowExposed(part.widget())) {
+            return nullptr;
+        }
+        part.m_document->setViewportPage(0);
+        for (int attempt = 0; attempt < 200 && !part.m_document->page(0)->hasPixmap(part.m_pageView); ++attempt) {
+            QTest::qWait(50);
+        }
+        for (const Okular::ObjectRect *rect : part.m_document->page(0)->objectRects()) {
+            if (!rect || rect->objectType() != Okular::ObjectRect::Action || !rect->object()) {
+                continue;
+            }
+            const auto *action = static_cast<const Okular::Action *>(rect->object());
+            if (action->actionType() == Okular::Action::Goto && static_cast<const Okular::GotoAction *>(action)->isExternal()) {
+                return rect;
+            }
+        }
+        return nullptr;
+    };
+
+    QString errorText;
+    Okular::Part part(nullptr, {});
+    QVERIFY(openDocument(&part, tempDir.filePath(QStringLiteral("source.pdf"))));
+
+    const Okular::ObjectRect *linkRect = crossFileLinkOnFirstPage(part);
+    QVERIFY(linkRect);
+    const auto *gotoAction = static_cast<const Okular::GotoAction *>(linkRect->object());
+    QCOMPARE(gotoAction->fileName(), QStringLiteral("target.pdf"));
+    QCOMPARE(part.m_document->gotoTarget(gotoAction).pageNumber, 2); // page 3 of the other file
+
+    // Re-point the link at a renamed file and at its second page: the file name in the
+    // link is what the submission system broke, and the page is part of the same target.
+    const QRectF rectangle = linkRect->region().boundingRect();
+    QVERIFY2(part.m_document->editRemoteLinkDestination(1, rectangle.left(), rectangle.top(), rectangle.right(), rectangle.bottom(), QStringLiteral("renamed-target.pdf"), 2, 0.0, 0.0, &errorText),
+             qPrintable(errorText));
+
+    const QString repointedFile = tempDir.filePath(QStringLiteral("repointed.pdf"));
+    QVERIFY2(part.m_document->saveChanges(repointedFile, &errorText), qPrintable(errorText));
+    part.closeUrl();
+
+    Okular::Part reopenedPart(nullptr, {});
+    QVERIFY(openDocument(&reopenedPart, repointedFile));
+    const Okular::ObjectRect *reopenedRect = crossFileLinkOnFirstPage(reopenedPart);
+    QVERIFY(reopenedRect);
+    const auto *reopenedAction = static_cast<const Okular::GotoAction *>(reopenedRect->object());
+    QVERIFY(reopenedAction->isExternal());
+    QCOMPARE(reopenedAction->fileName(), QStringLiteral("renamed-target.pdf"));
+    const Okular::DocumentViewport target = reopenedPart.m_document->gotoTarget(reopenedAction);
+    QVERIFY(target.isValid());
+    QCOMPARE(target.pageNumber, 1); // page 2 of the named file, zero-based
+}
+
+void PartTest::testCrossFileLinkDialogOffersRepointing()
+{
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+    QVERIFY(QFile::copy(QStringLiteral(KDESRCDIR "data/goto-remote-source.pdf"), tempDir.filePath(QStringLiteral("source.pdf"))));
+    QVERIFY(QFile::copy(QStringLiteral(KDESRCDIR "data/goto-remote-target.pdf"), tempDir.filePath(QStringLiteral("target.pdf"))));
+
+    Okular::Part part(nullptr, {});
+    QVERIFY(openDocument(&part, tempDir.filePath(QStringLiteral("source.pdf"))));
+    part.widget()->show();
+    QVERIFY(QTest::qWaitForWindowExposed(part.widget()));
+    part.m_document->setViewportPage(0);
+    QTRY_VERIFY(part.m_document->page(0)->hasPixmap(part.m_pageView));
+    // Editing PDF links is what the cross-reference mode enables, exactly as the link
+    // context menu requires before it offers the entry.
+    QAction *advancedMode = part.actionCollection()->action(QStringLiteral("view_toggle_named_destinations"));
+    QVERIFY(advancedMode);
+    advancedMode->setChecked(true);
+
+    const auto remoteLinkOnFirstPage = [&part]() -> const Okular::ObjectRect * {
+        for (const Okular::ObjectRect *rect : part.m_document->page(0)->objectRects()) {
+            if (!rect || rect->objectType() != Okular::ObjectRect::Action || !rect->object()) {
+                continue;
+            }
+            const auto *action = static_cast<const Okular::Action *>(rect->object());
+            if (action->actionType() == Okular::Action::Goto && static_cast<const Okular::GotoAction *>(action)->isExternal()) {
+                return rect;
+            }
+        }
+        return nullptr;
+    };
+
+    const Okular::ObjectRect *linkRect = remoteLinkOnFirstPage();
+    QVERIFY(linkRect);
+    // The context menu hands the dialog the link's own rectangle, which is what the edit
+    // looks the link up by.
+    const QRectF linkRectangle = linkRect->region().boundingRect();
+
+    // The dialog is reached through the same signal the context menu emits. A cross-file
+    // link hands it the stored file name and the page number of that other file; with
+    // @p repointFileName it is filled in and accepted the way a user would.
+    const auto runLinkDialog = [&part, linkRectangle](const QString &remoteFileName, const Okular::DocumentViewport &remoteDestination, const QString &repointFileName, int repointPageNumber) {
+        QStringList findings;
+        QTimer dialogCloser;
+        dialogCloser.setSingleShot(true);
+        QObject::connect(&dialogCloser, &QTimer::timeout, part.m_pageView, [&findings, repointFileName, repointPageNumber]() {
+            auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+            if (!dialog || dialog->objectName() != QLatin1String("EditLinkDestinationDialog")) {
+                findings = {QStringLiteral("no dialog")};
+                return;
+            }
+            auto *fileNameEdit = dialog->findChild<QLineEdit *>(QStringLiteral("RemoteLinkFileName"));
+            auto *pageSpin = dialog->findChild<QSpinBox *>(QStringLiteral("RemoteLinkPage"));
+            auto *locateButton = dialog->findChild<QPushButton *>(QStringLiteral("LocateRemoteLinkFile"));
+            auto *radio = dialog->findChild<QRadioButton *>(QStringLiteral("RemoteLinkTargetRadio"));
+            if (!radio || !fileNameEdit || !pageSpin || !locateButton) {
+                findings = {QStringLiteral("absent")};
+                dialog->reject();
+                return;
+            }
+            findings = {QStringLiteral("present"), fileNameEdit->text(), QString::number(pageSpin->value()), radio->isChecked() ? QStringLiteral("checked") : QStringLiteral("unchecked"), locateButton->text()};
+            if (repointFileName.isEmpty()) {
+                dialog->reject();
+                return;
+            }
+            fileNameEdit->setText(repointFileName);
+            pageSpin->setValue(repointPageNumber);
+            dialog->findChild<QDialogButtonBox *>()->button(QDialogButtonBox::Ok)->click();
+        });
+        dialogCloser.start(0);
+        const bool invoked = QMetaObject::invokeMethod(part.m_pageView,
+                                                       "editPdfLinkRequested",
+                                                       Qt::DirectConnection,
+                                                       Q_ARG(int, 0),
+                                                       Q_ARG(QRectF, linkRectangle),
+                                                       Q_ARG(QString, QString()),
+                                                       Q_ARG(Okular::DocumentViewport, remoteDestination),
+                                                       Q_ARG(QUrl, QUrl()),
+                                                       Q_ARG(QString, remoteFileName));
+        dialogCloser.stop();
+        return invoked ? findings : QStringList {QStringLiteral("not invoked")};
+    };
+
+    Okular::DocumentViewport remoteDestination(2); // page 3 of the other file, as the link stores it
+    const QStringList remoteFindings = runLinkDialog(QStringLiteral("target.pdf"), remoteDestination, QString(), 0);
+    QCOMPARE(remoteFindings, QStringList({QStringLiteral("present"), QStringLiteral("target.pdf"), QStringLiteral("3"), QStringLiteral("checked"), i18n("Locate File…")}));
+
+    // Accepting the dialog re-points the open link, without a save or a reopen.
+    QCOMPARE(runLinkDialog(QStringLiteral("target.pdf"), remoteDestination, QStringLiteral("renamed-target.pdf"), 2), remoteFindings);
+    const Okular::ObjectRect *repointedRect = remoteLinkOnFirstPage();
+    QVERIFY(repointedRect);
+    const auto *repointedAction = static_cast<const Okular::GotoAction *>(repointedRect->object());
+    QCOMPARE(repointedAction->fileName(), QStringLiteral("renamed-target.pdf"));
+    QCOMPARE(part.m_document->gotoTarget(repointedAction).pageNumber, 1); // page 2 of the named file
+
+    // The cross-file kind is only for a link that already names a file: nothing offers to
+    // create one, and a link of another kind looks exactly as it did before.
+    Okular::DocumentViewport renamedDestination(1);
+    QCOMPARE(runLinkDialog(QString(), renamedDestination, QString(), 0), QStringList {QStringLiteral("absent")});
 }
 
 void PartTest::testLatexNoteOnRotatedPage()

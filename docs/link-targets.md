@@ -35,3 +35,29 @@ Consequences:
   move;
 - the outline, the named-destination metadata and the script API already resolve on
   demand and are untouched by page edits.
+
+## Cross-file links
+
+A link can also point at a page in **another file**, written as a `/GoToR` action
+(`/A << /S /GoToR /F (other.pdf) /D [2 /XYZ …] >>`). Such a link comes from the tool that
+produced the document — LaTeX, most often — and not from this application, which only
+creates links inside the file it has open.
+
+The two forms differ in a way that matters:
+
+- the file is named **as the producing tool wrote it**, usually a plain file name relative
+  to the document, and it is what the format stores. Renaming the other file therefore
+  breaks the link, and so does moving it away from the document;
+- the page is a plain **page number** inside that other file, not a page reference: a
+  reference would name a page of *this* document, which means nothing in the other one. It
+  is written zero-based, as `/D [pageNumber - 1 /XYZ …]`.
+
+Because the target belongs to another file, the page identity machinery described above
+does not apply: `Okular::GotoAction::fileName()` carries the file name, and
+`Okular::Document::gotoTarget()` hands its stored viewport on unchanged instead of
+resolving it here. Following such a link when the file is not where the name points
+reports the missing file rather than doing nothing.
+
+An existing cross-file link can be **re-pointed** from the link context menu ("Edit Link
+Destination…"), which shows the stored file name and the page and offers "Locate File…"
+to pick the renamed file. Nothing in the interface creates a new one.

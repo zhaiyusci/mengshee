@@ -4363,6 +4363,59 @@ bool PDFGenerator::createExternalLink(Okular::Page *sourcePage, double linkLeft,
     return refreshPdfLinkObjects(sourcePage, nativeSourcePageNumber - 1, errorText);
 }
 
+bool PDFGenerator::editRemoteLinkDestination(Okular::Page *sourcePage,
+                                             double linkLeft,
+                                             double linkTop,
+                                             double linkRight,
+                                             double linkBottom,
+                                             const QString &fileName,
+                                             int destinationPageNumber,
+                                             double destinationX,
+                                             double destinationY,
+                                             QString *errorText)
+{
+    QMutexLocker locker(userMutex());
+    PDFDoc *document = popplerCoreDocument(pdfdoc.get());
+    const int nativeSourcePageNumber = nativePageForLogicalPage(sourcePage ? sourcePage->number() : -1) + 1;
+    const std::string encodedFileName = fileName.toUtf8().toStdString();
+    // The destination page and position belong to the named file, so unlike an internal
+    // destination they are passed on unchanged: mapping them through this document's
+    // page order would point the link at an unrelated page of that other file.
+    if (!runPdfPagesOperation(
+            [&] {
+                return PdfPageSequenceEditor::editRemoteLinkDestination(document, nativeSourcePageNumber, linkLeft, linkTop, linkRight, linkBottom, encodedFileName, destinationPageNumber, destinationX, destinationY);
+            },
+            errorText)) {
+        return false;
+    }
+    return refreshPdfLinkObjects(sourcePage, nativeSourcePageNumber - 1, errorText);
+}
+
+bool PDFGenerator::createRemoteLink(Okular::Page *sourcePage,
+                                    double linkLeft,
+                                    double linkTop,
+                                    double linkRight,
+                                    double linkBottom,
+                                    const QString &fileName,
+                                    int destinationPageNumber,
+                                    double destinationX,
+                                    double destinationY,
+                                    QString *errorText)
+{
+    QMutexLocker locker(userMutex());
+    PDFDoc *document = popplerCoreDocument(pdfdoc.get());
+    const int nativeSourcePageNumber = nativePageForLogicalPage(sourcePage ? sourcePage->number() : -1) + 1;
+    const std::string encodedFileName = fileName.toUtf8().toStdString();
+    if (!runPdfPagesOperation(
+            [&] {
+                return PdfPageSequenceEditor::createRemoteLink(document, nativeSourcePageNumber, linkLeft, linkTop, linkRight, linkBottom, encodedFileName, destinationPageNumber, destinationX, destinationY);
+            },
+            errorText)) {
+        return false;
+    }
+    return refreshPdfLinkObjects(sourcePage, nativeSourcePageNumber - 1, errorText);
+}
+
 bool PDFGenerator::editPdfLinkRectangle(Okular::Page *sourcePage,
                                         double oldLinkLeft,
                                         double oldLinkTop,

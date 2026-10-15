@@ -1263,6 +1263,33 @@ public:
     bool createExternalLink(int sourcePageNumber, double linkLeft, double linkTop, double linkRight, double linkBottom, const QString &url, QString *errorText);
 
     /**
+     * Re-points one link at a page in another file, named the way the format stores it.
+     * The page belongs to that file and is not checked against this document.
+     */
+    bool editRemoteLinkDestination(int sourcePageNumber,
+                                   double linkLeft,
+                                   double linkTop,
+                                   double linkRight,
+                                   double linkBottom,
+                                   const QString &fileName,
+                                   int destinationPageNumber,
+                                   double destinationX,
+                                   double destinationY,
+                                   QString *errorText);
+
+    /** Adds one link to a page in another file to the open document. */
+    bool createRemoteLink(int sourcePageNumber,
+                          double linkLeft,
+                          double linkTop,
+                          double linkRight,
+                          double linkBottom,
+                          const QString &fileName,
+                          int destinationPageNumber,
+                          double destinationX,
+                          double destinationY,
+                          QString *errorText);
+
+    /**
      * Moves or resizes one link in the open document. @p appearance is the
      * visible appearance the moved link must keep: changing a link's rectangle
      * drops its annotation appearance, so a caller that labelled the link asks

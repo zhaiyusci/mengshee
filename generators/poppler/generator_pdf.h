@@ -175,6 +175,26 @@ public:
                             Okular::PdfLinkAppearance appearance = {}) override;
     bool editExternalLinkDestination(Okular::Page *sourcePage, double linkLeft, double linkTop, double linkRight, double linkBottom, const QString &url, QString *errorText) override;
     bool createExternalLink(Okular::Page *sourcePage, double linkLeft, double linkTop, double linkRight, double linkBottom, const QString &url, QString *errorText) override;
+    bool editRemoteLinkDestination(Okular::Page *sourcePage,
+                                   double linkLeft,
+                                   double linkTop,
+                                   double linkRight,
+                                   double linkBottom,
+                                   const QString &fileName,
+                                   int destinationPageNumber,
+                                   double destinationX,
+                                   double destinationY,
+                                   QString *errorText) override;
+    bool createRemoteLink(Okular::Page *sourcePage,
+                          double linkLeft,
+                          double linkTop,
+                          double linkRight,
+                          double linkBottom,
+                          const QString &fileName,
+                          int destinationPageNumber,
+                          double destinationX,
+                          double destinationY,
+                          QString *errorText) override;
     bool editPdfLinkRectangle(Okular::Page *sourcePage,
                               double oldLinkLeft,
                               double oldLinkTop,

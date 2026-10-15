@@ -297,8 +297,11 @@ Q_SIGNALS:
      * possible and otherwise falls back to the destination page number.
      */
     void openInternalLinkInAuxiliaryFrame(const Okular::DocumentViewport &viewport, const QString &title);
-    /** Requests editing the PDF-level target of an internal or external link. */
-    void editPdfLinkRequested(int sourcePageNumber, const QRectF &normalizedLinkRectangle, const QString &currentDestinationName, const Okular::DocumentViewport &currentDestination, const QUrl &currentExternalUrl);
+    /**
+     * Requests editing the PDF-level target of an internal, external or cross-file link.
+     * @p currentRemoteFileName is the file a cross-file link names, empty otherwise.
+     */
+    void editPdfLinkRequested(int sourcePageNumber, const QRectF &normalizedLinkRectangle, const QString &currentDestinationName, const Okular::DocumentViewport &currentDestination, const QUrl &currentExternalUrl, const QString &currentRemoteFileName);
     /** Requests moving a named destination to a point selected in this view. */
     void moveNamedDestinationRequested(const QString &name, int pageNumber, const Okular::NormalizedPoint &position);
     /** Requests creating a named destination at a point selected in this view. */
@@ -330,7 +333,8 @@ Q_SIGNALS:
                                 const QRectF &normalizedLinkRectangle,
                                 const QString &currentDestinationName,
                                 const Okular::DocumentViewport &currentDestination,
-                                const QUrl &currentExternalUrl);
+                                const QUrl &currentExternalUrl,
+                                const QString &currentRemoteFileName);
 
 protected:
     bool event(QEvent *event) override;

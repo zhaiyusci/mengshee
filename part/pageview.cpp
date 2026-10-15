@@ -8015,30 +8015,40 @@ QMenu *PageView::createProcessLinkMenu(PageViewItem *item, const QPoint eventPos
         const bool hasResolvedInternalTarget = viewportForInternalGotoLink(d->document, rect, &target);
         const auto *gotoAction = link->actionType() == Okular::Action::Goto ? static_cast<const Okular::GotoAction *>(link) : nullptr;
         const bool isInternalGoto = gotoAction && !gotoAction->isExternal();
+        // A link that names another file is just as editable as an internal one, and
+        // re-pointing it is the whole reason to offer that: the other file gets renamed
+        // by whoever receives it, and the file name in the link is what then goes stale.
+        const bool isRemoteGoto = gotoAction && gotoAction->isExternal();
         const auto *browseAction = dynamic_cast<const Okular::BrowseAction *>(link);
         const QString currentDestinationName = isInternalGoto ? gotoAction->destinationName() : QString();
+        const QString currentRemoteFileName = isRemoteGoto ? gotoAction->fileName() : QString();
         const QUrl currentExternalUrl = browseAction ? browseAction->url() : QUrl();
+        if (isRemoteGoto) {
+            // The viewport of a cross-file destination belongs to the other file, so it is
+            // handed on as the stored page instead of being resolved against this document.
+            target = d->document->gotoTarget(link);
+        }
         if (hasResolvedInternalTarget) {
             QAction *openInAuxiliaryFrame = menu->addAction(QIcon::fromTheme(QStringLiteral("view-right-new")), i18n("Open in Auxiliary Frame"));
             openInAuxiliaryFrame->setObjectName(QStringLiteral("OpenLinkInAuxiliaryFrameAction"));
             connect(openInAuxiliaryFrame, &QAction::triggered, this, [this, rect, eventPos]() { requestInternalLinkInAuxiliaryFrame(rect, eventPos); });
         }
-        if ((isInternalGoto || browseAction) && d->showNamedDestinations && d->document->canEditPdfLinks()) {
+        if ((isInternalGoto || isRemoteGoto || browseAction) && d->showNamedDestinations && d->document->canEditPdfLinks()) {
             const int sourcePageNumber = item->pageNumber();
             const QRectF normalizedLinkRectangle = rect->region().boundingRect();
             QAction *editLink = menu->addAction(QIcon::fromTheme(QStringLiteral("edit-link"), QIcon::fromTheme(QStringLiteral("document-edit"))), i18n("Edit Link Destination..."));
             editLink->setObjectName(QStringLiteral("EditPdfLinkAction"));
-            connect(editLink, &QAction::triggered, this, [this, sourcePageNumber, normalizedLinkRectangle, currentDestinationName, target, currentExternalUrl]() {
-                Q_EMIT editPdfLinkRequested(sourcePageNumber, normalizedLinkRectangle, currentDestinationName, target, currentExternalUrl);
+            connect(editLink, &QAction::triggered, this, [this, sourcePageNumber, normalizedLinkRectangle, currentDestinationName, target, currentExternalUrl, currentRemoteFileName]() {
+                Q_EMIT editPdfLinkRequested(sourcePageNumber, normalizedLinkRectangle, currentDestinationName, target, currentExternalUrl, currentRemoteFileName);
             });
         }
-        if ((isInternalGoto || browseAction) && d->showNamedDestinations && d->document->canEditPdfLinks()) {
+        if ((isInternalGoto || isRemoteGoto || browseAction) && d->showNamedDestinations && d->document->canEditPdfLinks()) {
             const int sourcePageNumber = item->pageNumber();
             const QRectF normalizedLinkRectangle = rect->region().boundingRect();
             QAction *deleteLink = menu->addAction(QIcon::fromTheme(QStringLiteral("edit-delete")), i18n("Delete Link"));
             deleteLink->setObjectName(QStringLiteral("DeletePdfLinkAction"));
-            connect(deleteLink, &QAction::triggered, this, [this, sourcePageNumber, normalizedLinkRectangle, currentDestinationName, target, currentExternalUrl]() {
-                Q_EMIT deletePdfLinkRequested(sourcePageNumber, normalizedLinkRectangle, currentDestinationName, target, currentExternalUrl);
+            connect(deleteLink, &QAction::triggered, this, [this, sourcePageNumber, normalizedLinkRectangle, currentDestinationName, target, currentExternalUrl, currentRemoteFileName]() {
+                Q_EMIT deletePdfLinkRequested(sourcePageNumber, normalizedLinkRectangle, currentDestinationName, target, currentExternalUrl, currentRemoteFileName);
             });
         }
         if (link->actionType() == Okular::Action::Sound) {

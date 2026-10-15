@@ -397,15 +397,22 @@ private:
     void renameNamedDestination(const QString &oldName);
     void deleteNamedDestination(const QString &name);
     void moveNamedDestination(const QString &name, int pageNumber, const Okular::NormalizedPoint &position);
-    void editPdfLink(int sourcePageNumber, const QRectF &normalizedLinkRectangle, const QString &currentDestinationName, const Okular::DocumentViewport &currentDestination, const QUrl &currentExternalUrl);
+    void editPdfLink(int sourcePageNumber, const QRectF &normalizedLinkRectangle, const QString &currentDestinationName, const Okular::DocumentViewport &currentDestination, const QUrl &currentExternalUrl, const QString &currentRemoteFileName);
     void createPdfLink(int sourcePageNumber, const QRectF &normalizedLinkRectangle);
     void changePdfLinkRectangle(int sourcePageNumber, const QRectF &oldNormalizedRectangle, const QRectF &newNormalizedRectangle);
     void deletePdfLink(int sourcePageNumber,
                        const QRectF &normalizedLinkRectangle,
                        const QString &currentDestinationName,
                        const Okular::DocumentViewport &currentDestination,
-                       const QUrl &currentExternalUrl);
-    void configurePdfLink(int sourcePageNumber, const QRectF &normalizedLinkRectangle, const QString &currentDestinationName, const Okular::DocumentViewport &currentDestination, const QUrl &currentExternalUrl, bool creating);
+                       const QUrl &currentExternalUrl,
+                       const QString &currentRemoteFileName);
+    void configurePdfLink(int sourcePageNumber,
+                          const QRectF &normalizedLinkRectangle,
+                          const QString &currentDestinationName,
+                          const Okular::DocumentViewport &currentDestination,
+                          const QUrl &currentExternalUrl,
+                          const QString &currentRemoteFileName,
+                          bool creating);
     bool applyLiveNamedDestinationRename(const QString &oldName, const QString &newName, QString *errorText);
     QString pageTemplateFileName() const;
     void setPageTemplateFileName(const QString &fileName);

@@ -355,6 +355,34 @@ public:
     virtual bool createExternalLink(Page *sourcePage, double linkLeft, double linkTop, double linkRight, double linkBottom, const QString &url, QString *errorText) = 0;
 
     /**
+     * Re-points one link at a page in another file, named by @p fileName as the format
+     * stores it. That page belongs to the other file, so it is not checked against this
+     * document's page count.
+     */
+    virtual bool editRemoteLinkDestination(Page *sourcePage,
+                                           double linkLeft,
+                                           double linkTop,
+                                           double linkRight,
+                                           double linkBottom,
+                                           const QString &fileName,
+                                           int destinationPageNumber,
+                                           double destinationX,
+                                           double destinationY,
+                                           QString *errorText) = 0;
+
+    /** Adds one link to a page in another file to the open document. */
+    virtual bool createRemoteLink(Page *sourcePage,
+                                  double linkLeft,
+                                  double linkTop,
+                                  double linkRight,
+                                  double linkBottom,
+                                  const QString &fileName,
+                                  int destinationPageNumber,
+                                  double destinationX,
+                                  double destinationY,
+                                  QString *errorText) = 0;
+
+    /**
      * Moves or resizes one link in the open document. @p appearance is the
      * visible appearance the moved link must keep, because the backend drops an
      * annotation's appearance when its rectangle changes.
