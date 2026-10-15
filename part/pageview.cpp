@@ -6647,7 +6647,13 @@ bool PageView::viewportEvent(QEvent *e)
                 Okular::DocumentViewport target;
                 if (link->actionType() == Okular::Action::Goto) {
                     const auto *gotoAction = static_cast<const Okular::GotoAction *>(link);
-                    if (!gotoAction->isExternal()) {
+                    if (gotoAction->isExternal()) {
+                        // A destination in another file: name the file and the page it opens, because
+                        // "Open external file" says nothing about where the link goes.
+                        const Okular::DocumentViewport fileTarget = d->document->gotoTarget(gotoAction);
+                        tip = fileTarget.isValid() ? i18nc("@info:tooltip Cross-file PDF link and the page it opens", "Opens %1 at page %2", gotoAction->fileName(), fileTarget.pageNumber + 1)
+                                                   : i18nc("@info:tooltip Cross-file PDF link", "Opens %1", gotoAction->fileName());
+                    } else {
                         const QString destinationName = gotoAction->destinationName();
                         const bool resolved = viewportForInternalGotoLink(d->document, rect, &target);
                         QString destinationTip;

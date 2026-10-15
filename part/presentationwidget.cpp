@@ -650,11 +650,15 @@ bool PresentationWidget::event(QEvent *e)
 
         if (link) {
             QString tip = link->actionTip();
-            if (tip.isEmpty() && m_document && link->actionType() == Okular::Action::Goto) {
-                // An explicit destination no longer carries a page number, so it is resolved
-                // here, the way the page view resolves it.
+            if (link->actionType() == Okular::Action::Goto && m_document) {
+                const auto *gotoAction = static_cast<const Okular::GotoAction *>(link);
+                // Resolve the target the way the page view does: an explicit destination no longer
+                // carries a page number, and a destination in another file belongs to that file.
                 const Okular::DocumentViewport target = m_document->gotoTarget(link);
-                if (target.isValid()) {
+                if (gotoAction->isExternal()) {
+                    tip = target.isValid() ? i18nc("@info:tooltip Cross-file PDF link and the page it opens", "Opens %1 at page %2", gotoAction->fileName(), target.pageNumber + 1)
+                                           : i18nc("@info:tooltip Cross-file PDF link", "Opens %1", gotoAction->fileName());
+                } else if (tip.isEmpty() && target.isValid()) {
                     tip = i18n("Go to page %1", target.pageNumber + 1);
                 }
             }

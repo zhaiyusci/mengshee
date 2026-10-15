@@ -5303,6 +5303,16 @@ void Document::processAction(const Action *action, DocumentViewSession *viewSess
 
         // first open filename if link is pointing outside this document
         const QString filename = go->fileName();
+        // A destination in another file: say so when the file it names is not there, instead of
+        // leaving the reader with a link that appears to do nothing.
+        if (go->isExternal()) {
+            const QUrl targetUrl = d->giveAbsoluteUrl(filename);
+            if (targetUrl.isEmpty() || (targetUrl.isLocalFile() && !QFileInfo::exists(targetUrl.toLocalFile()))) {
+                Q_EMIT error(i18n("Could not open \"%1\": the file was not found.", filename), 5000);
+                break;
+            }
+        }
+
         if (go->isExternal() && !d->openRelativeFile(filename)) {
             if (!documentGuard) {
                 return;
