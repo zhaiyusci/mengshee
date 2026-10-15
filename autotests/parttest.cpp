@@ -196,6 +196,7 @@ private Q_SLOTS:
     void testChangePageSize();
     void testLinkTargetFollowsPages();
     void testLinkToFirstPageFollowsInsertion();
+    void testCrossFileLinkKeepsItsPage();
     void testLatexNoteOnRotatedPage();
     void testLatexAppearanceResizeHistory_data();
     void testLatexAppearanceResizeHistory();
@@ -3564,6 +3565,49 @@ void PartTest::testLinkToFirstPageFollowsInsertion()
     const Okular::DocumentViewport targetAfter = part.m_document->gotoTarget(after);
     QVERIFY(targetAfter.isValid());
     QCOMPARE(targetAfter.pageNumber, 1);
+}
+
+void PartTest::testCrossFileLinkKeepsItsPage()
+{
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+    // The link inside the source names the target by file name, so the copies keep the names
+    // the fixture uses.
+    QVERIFY(QFile::copy(QStringLiteral(KDESRCDIR "data/goto-remote-source.pdf"), tempDir.filePath(QStringLiteral("source.pdf"))));
+    QVERIFY(QFile::copy(QStringLiteral(KDESRCDIR "data/goto-remote-target.pdf"), tempDir.filePath(QStringLiteral("target.pdf"))));
+
+    Okular::Part part(nullptr, {});
+    QVERIFY(openDocument(&part, tempDir.filePath(QStringLiteral("source.pdf"))));
+
+    // A link that comes from the file exists once the page has been requested, which is what
+    // the tests that read fixture links rely on.
+    part.widget()->show();
+    QVERIFY(QTest::qWaitForWindowExposed(part.widget()));
+    part.m_document->setViewportPage(0);
+    QTRY_VERIFY(part.m_document->page(0)->hasPixmap(part.m_pageView));
+
+    const Okular::Action *action = nullptr;
+    for (const Okular::ObjectRect *rect : part.m_document->page(0)->objectRects()) {
+        if (!rect || rect->objectType() != Okular::ObjectRect::Action || !rect->object()) {
+            continue;
+        }
+        const auto *candidate = static_cast<const Okular::Action *>(rect->object());
+        if (candidate->actionType() == Okular::Action::Goto) {
+            action = candidate;
+            break;
+        }
+    }
+    QVERIFY(action);
+    const auto *gotoAction = static_cast<const Okular::GotoAction *>(action);
+    QVERIFY(gotoAction->isExternal());
+    QCOMPARE(gotoAction->fileName(), QStringLiteral("target.pdf"));
+
+    // A destination in another file belongs to that file: it keeps its page number and must not
+    // take a page identity from this document, which is what sent the opened file to page one.
+    QVERIFY2(gotoAction->pageToken().isEmpty(), "a cross-file destination must not take a page identity from this document");
+    const Okular::DocumentViewport target = part.m_document->gotoTarget(action);
+    QVERIFY(target.isValid());
+    QCOMPARE(target.pageNumber, 2); // page 3 of the other file, zero-based
 }
 
 void PartTest::testLatexNoteOnRotatedPage()
