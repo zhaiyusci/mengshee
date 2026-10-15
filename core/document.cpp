@@ -6937,43 +6937,21 @@ bool Document::renameNamedDestination(const QString &oldName, const QString &new
         }
         return false;
     }
-    // Only the pages whose links spell the old name need rebuilding. Refreshing every page
-    // would replace its link objects for nothing, and would drop whatever else the page
-    // keeps in that list, such as a SyncTeX source reference.
-    QList<int> referencingPages;
-    for (int pageNumber = 0; pageNumber < d->m_pagesVector.size(); ++pageNumber) {
-        Page *page = d->m_pagesVector.at(pageNumber);
-        if (!page) {
-            continue;
-        }
-        for (const ObjectRect *rect : page->objectRects()) {
-            if (!rect || rect->objectType() != ObjectRect::Action || !rect->object()) {
-                continue;
-            }
-            const auto *action = static_cast<const Action *>(rect->object());
-            if (action->actionType() == Action::Goto && static_cast<const GotoAction *>(action)->destinationName() == oldName) {
-                referencingPages.append(pageNumber);
-                break;
-            }
-        }
-    }
-
     const bool changed = editor->renameNamedDestination(oldName, newName, errorText);
     if (changed) {
         // The rename rewrote every reference to the old name in the file, and the model's
-        // link actions still spell the old name, so those pages rebuild their link objects
-        // and tell the views. Their rectangles come from the same sources, so they do not
-        // move; clearing every page's objects instead dropped every link box on every page,
-        // and reporting a full document change dropped the selection as well.
-        for (int pageNumber : referencingPages) {
+        // link actions still spell the old name, so every page rebuilds its link objects and
+        // tells the views. Their rectangles come from the same sources, so they do not move;
+        // clearing every page's objects instead dropped every link box on every page, and
+        // reporting a full document change dropped the selection as well.
+        for (int pageNumber = 0; pageNumber < d->m_pagesVector.size(); ++pageNumber) {
             Page *page = d->m_pagesVector.at(pageNumber);
             if (!page) {
                 continue;
             }
             QString refreshError;
-            if (editor->refreshPageLinks(page, pageNumber, &refreshError)) {
-                d->notifyAnnotationChanges(pageNumber);
-            }
+            editor->refreshPageLinks(page, pageNumber, &refreshError);
+            d->notifyAnnotationChanges(pageNumber);
         }
     }
     return changed;

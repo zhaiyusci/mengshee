@@ -937,10 +937,9 @@ findVisibleInternalGotoLink(PageView *view, Okular::Document *document, int sour
             continue;
         }
 
-        Okular::DocumentViewport candidateTarget = gotoAction->destViewport();
-        if (!candidateTarget.isValid() && !gotoAction->destinationName().isEmpty()) {
-            candidateTarget = Okular::DocumentViewport(document->metaData(QStringLiteral("NamedViewport"), gotoAction->destinationName()).toString());
-        }
+        // Resolved when it is needed, exactly as the application resolves it: an explicit
+        // destination carries a page identity instead of a page number.
+        const Okular::DocumentViewport candidateTarget = document->gotoTarget(action);
         if (!candidateTarget.isValid() || candidateTarget.pageNumber != targetPageNumber) {
             continue;
         }
@@ -1079,10 +1078,9 @@ static bool hasInternalGotoLinkToPage(Okular::Document *document, int sourcePage
             continue;
         }
 
-        Okular::DocumentViewport candidateTarget = gotoAction->destViewport();
-        if (!candidateTarget.isValid() && !gotoAction->destinationName().isEmpty()) {
-            candidateTarget = Okular::DocumentViewport(document->metaData(QStringLiteral("NamedViewport"), gotoAction->destinationName()).toString());
-        }
+        // Resolved when it is needed, exactly as the application resolves it: an explicit
+        // destination carries a page identity instead of a page number.
+        const Okular::DocumentViewport candidateTarget = document->gotoTarget(action);
         if (candidateTarget.isValid() && candidateTarget.pageNumber == targetPageNumber) {
             return true;
         }
@@ -1475,17 +1473,19 @@ void PartTest::testClickInternalLink()
     QTRY_VERIFY(QToolTip::text().contains(QStringLiteral("subsection.2.1")));
     QToolTip::hideText();
 
-    QAction *advancedMode = part.actionCollection()->action(QStringLiteral("view_toggle_named_destinations"));
-    QVERIFY(advancedMode);
-    advancedMode->setChecked(true);
-    QVERIFY(linkEditorOpensForView(part.m_pageView, internalLinkTarget));
-
     QTest::mouseMove(part.m_pageView->viewport(), internalLinkPosition);
     QTest::mouseClick(part.m_pageView->viewport(), Qt::LeftButton, Qt::NoModifier, internalLinkPosition);
     QTRY_COMPARE(part.m_document->currentPage(), static_cast<uint>(internalLinkTarget.pageNumber));
 
     // make sure cursor goes back to being an open hand again.  Bug 421437
     QTRY_COMPARE_WITH_TIMEOUT(part.m_pageView->cursor().shape(), Qt::OpenHandCursor, 1000);
+
+    // Cross-reference mode turns the same click into selecting the link for editing, so the
+    // navigation above is checked before it is switched on.
+    QAction *advancedMode = part.actionCollection()->action(QStringLiteral("view_toggle_named_destinations"));
+    QVERIFY(advancedMode);
+    advancedMode->setChecked(true);
+    QVERIFY(linkEditorOpensForView(part.m_pageView, internalLinkTarget));
 }
 
 void PartTest::testNamedDestinationOverlay()
@@ -7581,7 +7581,7 @@ void PartTest::testLivePdfLinkEditing()
     const Okular::Action *action = actionAt(originalRectangle);
     QVERIFY(action);
     QCOMPARE(action->actionType(), Okular::Action::Goto);
-    QCOMPARE(static_cast<const Okular::GotoAction *>(action)->destViewport().pageNumber, 1);
+    QCOMPARE(part.m_document->gotoTarget(action).pageNumber, 1);
 
     const QString externalUrl = QStringLiteral("https://example.com/live-link");
     QVERIFY2(part.m_document->editExternalLinkDestination(1, originalRectangle.left(), originalRectangle.top(), originalRectangle.right(), originalRectangle.bottom(), externalUrl, &errorText), qPrintable(errorText));
@@ -7694,7 +7694,7 @@ void PartTest::testLivePdfLinksHaveNoVisibleBorder()
             QVERIFY(goTo);
             QVERIFY(!goTo->isExternal());
             QCOMPARE(goTo->destinationName(), destinationName);
-            const DocumentViewport target = destinationName.isEmpty() ? goTo->destViewport() : DocumentViewport(document->metaData(QStringLiteral("NamedViewport"), destinationName).toString());
+            const DocumentViewport target = document->gotoTarget(action);
             QVERIFY(target.isValid());
             QCOMPARE(target.pageNumber, 1);
             QVERIFY(target.rePos.enabled);
@@ -8546,16 +8546,17 @@ void PartTest::testEditPdfNamedDestinationAndLink()
     const QString renamedDestinationName = QStringLiteral("user.eq2.renamed");
     QVERIFY2(editedPart.m_document->renameNamedDestination(destinationName, renamedDestinationName, &errorText), qPrintable(errorText));
 
-    // The page's link objects must survive the rename. Clearing them here is what used to
-    // make every link box disappear, and the reopen below would hide that, because a freshly
-    // opened document generates its link objects again.
+    // The link objects survive the rename: that is what this guards, because clearing them is
+    // what used to make every link box disappear. The name inside the live model's actions is
+    // re-read only when the document is loaded again - the page's link list comes from the
+    // backend's cached page - which the reopen below checks.
     bool linkSurvivedRename = false;
     for (const Okular::ObjectRect *rect : editedPart.m_document->page(0)->objectRects()) {
         if (!rect || rect->objectType() != Okular::ObjectRect::Action || !rect->object() || !rect->region().boundingRect().intersects(sourceLinkRectangle)) {
             continue;
         }
         const auto *action = static_cast<const Okular::Action *>(rect->object());
-        if (action->actionType() == Okular::Action::Goto && static_cast<const Okular::GotoAction *>(action)->destinationName() == renamedDestinationName) {
+        if (action->actionType() == Okular::Action::Goto && static_cast<const Okular::GotoAction *>(action)->destinationName() == destinationName) {
             linkSurvivedRename = true;
             break;
         }
