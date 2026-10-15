@@ -195,6 +195,7 @@ private Q_SLOTS:
     void testRotateSinglePage();
     void testChangePageSize();
     void testLinkTargetFollowsPages();
+    void testLinkToFirstPageFollowsInsertion();
     void testLatexNoteOnRotatedPage();
     void testLatexAppearanceResizeHistory_data();
     void testLatexAppearanceResizeHistory();
@@ -3489,6 +3490,75 @@ void PartTest::testLinkTargetFollowsPages()
     const Okular::DocumentViewport targetUndone = part.m_document->gotoTarget(static_cast<const Okular::Action *>(undone->object()));
     QVERIFY(targetUndone.isValid());
     QCOMPARE(targetUndone.pageNumber, 2);
+}
+
+void PartTest::testLinkToFirstPageFollowsInsertion()
+{
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+    const QString workingFile = tempDir.filePath(QStringLiteral("link-first-page.pdf"));
+    QVERIFY(QFile::copy(QStringLiteral(KDESRCDIR "data/simple-multipage.pdf"), workingFile));
+
+    Okular::Part part(nullptr, {});
+    QVERIFY(openDocument(&part, workingFile));
+    QVERIFY(part.m_document->pages() > 2);
+
+    QString errorText;
+    // An explicit destination to the *first* page. It has to carry a page identity as well:
+    // a cached page number is what goes stale once a page is inserted before it.
+    const QRectF linkRectangle(0.55, 0.10, 0.75, 0.20);
+    QVERIFY2(part.m_document->createInternalLink(1,
+                                                 linkRectangle.left(),
+                                                 linkRectangle.top(),
+                                                 linkRectangle.right(),
+                                                 linkRectangle.bottom(),
+                                                 QString(),
+                                                 1,
+                                                 0.0,
+                                                 0.0,
+                                                 &errorText),
+             qPrintable(errorText));
+
+    const auto findLink = [&part](const QRectF &rectangle) -> const Okular::Action * {
+        for (int pageNumber = 0; pageNumber < part.m_document->pages(); ++pageNumber) {
+            const Okular::Page *page = part.m_document->page(pageNumber);
+            if (!page) {
+                continue;
+            }
+            for (const Okular::ObjectRect *rect : page->objectRects()) {
+                if (!rect || rect->objectType() != Okular::ObjectRect::Action || !rect->object()) {
+                    continue;
+                }
+                if (!rect->region().boundingRect().intersects(rectangle)) {
+                    continue;
+                }
+                const auto *action = static_cast<const Okular::Action *>(rect->object());
+                if (action->actionType() == Okular::Action::Goto) {
+                    return action;
+                }
+            }
+        }
+        return nullptr;
+    };
+
+    const Okular::Action *before = findLink(linkRectangle);
+    QVERIFY(before);
+    const auto *gotoBefore = static_cast<const Okular::GotoAction *>(before);
+    QVERIFY2(!gotoBefore->pageToken().isEmpty(), "a link to the first page must carry a page identity too");
+    QVERIFY(!gotoBefore->destViewport().isValid());
+    const Okular::DocumentViewport targetBefore = part.m_document->gotoTarget(before);
+    QVERIFY(targetBefore.isValid());
+    QCOMPARE(targetBefore.pageNumber, 0);
+
+    quint64 editId = 0;
+    QVERIFY2(part.m_document->insertBlankPage(-1, 300.0, 400.0, &editId, &errorText), qPrintable(errorText));
+
+    // The page it names is still the same page, now one position further down.
+    const Okular::Action *after = findLink(linkRectangle);
+    QVERIFY2(after, "the link must survive inserting a page before the first page");
+    const Okular::DocumentViewport targetAfter = part.m_document->gotoTarget(after);
+    QVERIFY(targetAfter.isValid());
+    QCOMPARE(targetAfter.pageNumber, 1);
 }
 
 void PartTest::testLatexNoteOnRotatedPage()

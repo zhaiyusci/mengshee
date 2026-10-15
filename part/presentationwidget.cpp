@@ -650,6 +650,14 @@ bool PresentationWidget::event(QEvent *e)
 
         if (link) {
             QString tip = link->actionTip();
+            if (tip.isEmpty() && m_document && link->actionType() == Okular::Action::Goto) {
+                // An explicit destination no longer carries a page number, so it is resolved
+                // here, the way the page view resolves it.
+                const Okular::DocumentViewport target = m_document->gotoTarget(link);
+                if (target.isValid()) {
+                    tip = i18n("Go to page %1", target.pageNumber + 1);
+                }
+            }
             if (!tip.isEmpty()) {
                 QToolTip::showText(he->globalPos(), tip, this, r);
             }

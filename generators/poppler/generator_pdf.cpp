@@ -507,10 +507,12 @@ static int nativePageForPageToken(PDFDoc *document, const QString &pageToken)
     if (!numberOk || !generationOk) {
         return -1;
     }
-    for (int page = 0; page < document->getNumPages(); ++page) {
+    // getPageRef() counts pages from one, so the whole range is 1..count and the result
+    // comes back as the zero-based page number the document model uses.
+    for (int page = 1; page <= document->getNumPages(); ++page) {
         const Ref *pageRef = document->getCatalog()->getPageRef(page);
         if (pageRef && pageRef->num == number && pageRef->gen == generation) {
-            return page;
+            return page - 1;
         }
     }
     return -1;
@@ -546,8 +548,13 @@ Okular::Action *createLinkFromPopplerLink(std::variant<const Poppler::Link *, st
             // link is followed, so inserting, removing or moving pages cannot leave the link
             // pointing at the wrong page.
             QString pageToken;
-            if (document && viewport.pageNumber >= 0) {
-                if (const Ref *pageRef = document->getCatalog()->getPageRef(viewport.pageNumber)) {
+            // Only a destination inside this document can be remembered as a page identity:
+            // a link to another file carries a page number that belongs to that file, and
+            // resolving it here would point at whatever page we happen to have.
+            if (document && popplerLinkGoto->fileName().isEmpty() && viewport.pageNumber >= 0) {
+                // getPageRef() counts pages from one, the viewport from zero, so page one
+                // is number 1 rather than nothing.
+                if (const Ref *pageRef = document->getCatalog()->getPageRef(viewport.pageNumber + 1)) {
                     pageToken = pageTokenForRef(*pageRef);
                     viewport.pageNumber = -1;
                 }
@@ -3871,6 +3878,9 @@ bool PDFGenerator::renameNamedDestination(const QString &oldName, const QString 
     const bool changed = runPdfPagesOperation([&] { return PdfPageSequenceEditor::renameNamedDestination(document, encodedOldName, encodedNewName); }, errorText);
     if (changed) {
         rectsGenerated.fill(false);
+        // The outline was built with the old destination name and is only regenerated when
+        // it is asked for again, so its cached copy has to be marked out of date.
+        docSynopsisDirty = true;
     }
     return changed;
 }

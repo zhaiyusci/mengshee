@@ -6619,7 +6619,9 @@ bool Document::movePage(int sourcePageNumber, int destinationPageNumber, QString
             if (page) {
                 page->d->m_number = pageIndex;
                 page->d->m_doc = d;
-                page->setObjectRects({});
+                // The page's link objects are rebuilt from the file, which still names the
+                // same page objects; clearing them here only lost their boxes and the
+                // current selection until the next render.
             }
         }
     };
@@ -6772,13 +6774,15 @@ DocumentViewport Document::gotoTarget(const Action *action) const
         return DocumentViewport();
     }
     const auto *gotoAction = static_cast<const GotoAction *>(action);
+    DocumentViewport target = gotoAction->destViewport();
     if (gotoAction->isExternal()) {
-        return DocumentViewport();
+        // The viewport belongs to the file that is about to be opened, so it is handed on
+        // as it is rather than resolved against this document.
+        return target;
     }
     // An action that carries a viewport needs no resolving. A page identity is resolved
     // against the current page order, so editing pages cannot leave it pointing at the
     // wrong page, and a named destination is resolved through the named viewports.
-    DocumentViewport target = gotoAction->destViewport();
     if (target.isValid()) {
         return target;
     }
@@ -6933,14 +6937,35 @@ bool Document::renameNamedDestination(const QString &oldName, const QString &new
         }
         return false;
     }
+    // Only the pages whose links spell the old name need rebuilding. Refreshing every page
+    // would replace its link objects for nothing, and would drop whatever else the page
+    // keeps in that list, such as a SyncTeX source reference.
+    QList<int> referencingPages;
+    for (int pageNumber = 0; pageNumber < d->m_pagesVector.size(); ++pageNumber) {
+        Page *page = d->m_pagesVector.at(pageNumber);
+        if (!page) {
+            continue;
+        }
+        for (const ObjectRect *rect : page->objectRects()) {
+            if (!rect || rect->objectType() != ObjectRect::Action || !rect->object()) {
+                continue;
+            }
+            const auto *action = static_cast<const Action *>(rect->object());
+            if (action->actionType() == Action::Goto && static_cast<const GotoAction *>(action)->destinationName() == oldName) {
+                referencingPages.append(pageNumber);
+                break;
+            }
+        }
+    }
+
     const bool changed = editor->renameNamedDestination(oldName, newName, errorText);
     if (changed) {
         // The rename rewrote every reference to the old name in the file, and the model's
-        // link actions still spell the old name, so the pages rebuild their link objects
+        // link actions still spell the old name, so those pages rebuild their link objects
         // and tell the views. Their rectangles come from the same sources, so they do not
         // move; clearing every page's objects instead dropped every link box on every page,
         // and reporting a full document change dropped the selection as well.
-        for (int pageNumber = 0; pageNumber < d->m_pagesVector.size(); ++pageNumber) {
+        for (int pageNumber : referencingPages) {
             Page *page = d->m_pagesVector.at(pageNumber);
             if (!page) {
                 continue;
