@@ -3266,6 +3266,14 @@ void PartTest::testRotateSinglePage()
     QVERIFY(!part.m_document->canUndo());
 }
 
+// Defined further down in this file, but used by tests above it. It lives in the
+// anonymous namespace, so the declaration has to be made in that namespace as well
+// (reopening it), otherwise it names a different function and calls become ambiguous.
+namespace
+{
+bool writeOrderedCalloutTestPdf(const QString &fileName, int pages, bool appearance = false);
+}
+
 void PartTest::testChangePageSize()
 {
     QTemporaryDir tempDir;
@@ -3520,7 +3528,7 @@ void PartTest::testLinkToFirstPageFollowsInsertion()
              qPrintable(errorText));
 
     const auto findLink = [&part](const QRectF &rectangle) -> const Okular::Action * {
-        for (int pageNumber = 0; pageNumber < part.m_document->pages(); ++pageNumber) {
+        for (int pageNumber = 0; pageNumber < static_cast<int>(part.m_document->pages()); ++pageNumber) {
             const Okular::Page *page = part.m_document->page(pageNumber);
             if (!page) {
                 continue;
@@ -3695,7 +3703,7 @@ void PartTest::testLatexAppearanceResizeHistory()
 }
 
 namespace {
-bool writeOrderedCalloutTestPdf(const QString &fileName, int pages, bool appearance = false)
+bool writeOrderedCalloutTestPdf(const QString &fileName, int pages, bool appearance)
 {
     QPdfWriter writer(fileName);
     writer.setResolution(72);
