@@ -99,9 +99,9 @@ public:
      * \a index from 0 to 7. Drawing and hit testing share it, so a handle can always
      * be grabbed exactly where it is painted.
      */
-    static QRectF pageSizeHandleRectangle(const QRectF &pageRect, int index);
+    static OKULARPART_EXPORT QRectF pageSizeHandleRectangle(const QRectF &pageRect, int index);
     /** The index of the handle under \a point, or -1 when there is none. */
-    static int pageSizeHandleIndexAt(const QRectF &pageRect, const QPointF &point);
+    static OKULARPART_EXPORT int pageSizeHandleIndexAt(const QRectF &pageRect, const QPointF &point);
     /** Per-edge moves of a page box, in PDF points in the page's unrotated axes. */    struct PageBoxDeltas {
         double x1 = 0.0;
         double y1 = 0.0;
@@ -120,7 +120,7 @@ public:
      * same way, and it is limited to the sizes the page editor accepts (1 to 20000
      * points per side), which keeps a drag from being rejected mid-gesture.
      */
-    static PageBoxDeltas pageBoxDeltasForBorderDrag(const QSizeF &sizeInPoints, double leftDelta, double topDelta, double rightDelta, double bottomDelta, int rotationDegrees);
+    static OKULARPART_EXPORT PageBoxDeltas pageBoxDeltasForBorderDrag(const QSizeF &sizeInPoints, double leftDelta, double topDelta, double rightDelta, double bottomDelta, int rotationDegrees);
     OKULARPART_EXPORT bool ocrModeEnabled() const;
     OKULARPART_EXPORT bool namedDestinationsVisible() const;
     void refreshNamedDestinations();
