@@ -265,9 +265,16 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_SOURCE_DIR}/cmake/modules)
 
 find_package(ZLIB REQUIRED)
 
-find_package(Poppler "24.08.0" COMPONENTS Qt6)
-set_okular_optional_package_properties(Poppler PROPERTIES
-        PURPOSE "Support for PDF files in okular.")
+set(MENGSHEE_PDF_BACKEND "MuPDF" CACHE STRING "PDF backend: MuPDF or Poppler")
+set_property(CACHE MENGSHEE_PDF_BACKEND PROPERTY STRINGS MuPDF Poppler)
+if(MENGSHEE_PDF_BACKEND STREQUAL "MuPDF")
+    list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
+    find_package(MuPDF 1.28 REQUIRED)
+elseif(MENGSHEE_PDF_BACKEND STREQUAL "Poppler")
+    find_package(Poppler "24.08.0" COMPONENTS Qt6 REQUIRED)
+else()
+    message(FATAL_ERROR "Unknown PDF backend: ${MENGSHEE_PDF_BACKEND}")
+endif()
 
 option(MENGSHEE_ENABLE_OCR "Enable English OCR for PDF documents" ON)
 if(MENGSHEE_ENABLE_OCR)
@@ -667,11 +674,16 @@ endif()
 kconfig_add_kcfg_files(okularpart_SRCS GENERATE_MOC conf/settings.kcfgc)
 
 add_library(okularpart SHARED ${okularpart_SRCS})
+if(MENGSHEE_PDF_BACKEND STREQUAL "MuPDF")
+    target_compile_definitions(okularpart PRIVATE MENGSHEE_USE_MUPDF=1)
+    target_link_libraries(okularpart MuPDF::MuPDF)
+else()
+    target_link_libraries(okularpart Poppler::Qt6)
+endif()
 generate_export_header(okularpart BASE_NAME okularpart)
 
 target_link_libraries(okularpart okularcore
     ${MATH_LIB}
-    Poppler::Qt6
     pdf_page_bounds
     Qt6::Svg
     Qt6::Concurrent

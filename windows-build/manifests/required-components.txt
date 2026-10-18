@@ -1,6 +1,7 @@
-# Required components for Mengshee PDF staging
+# Historical Poppler staging manifest; not the MuPDF runtime dependency list.
+# MuPDF dependencies are validated by package-windows.cmake and the stage smoke test.
 # Generated: 2026-06-13T19:07:20.6152213+08:00
-# StageRoot: C:\Users\jairy\Documents\okular\windows_build\dist\mengshee-pdf\app
+# Historical machine-specific stage path omitted.
 
 bin\avcodec-62.dll	DLL import required by heif.dll
 bin\avif.dll	DLL import required by kimg_avif.dll

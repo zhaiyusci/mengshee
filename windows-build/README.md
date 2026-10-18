@@ -1,26 +1,34 @@
 # Mengshee Windows Build
 
+> MuPDF migration branch: the default backend is now MuPDF. See
+> [MuPDF build and migration status](../docs/mupdf-backend.md) for the current
+> in-repository workspace, build commands, and remaining feature gaps. The
+> historical Poppler instructions below apply only with
+> `-DMENGSHEE_PDF_BACKEND=Poppler`.
+
 This directory contains the Windows standalone SDK, runtime deployment, staging,
 and installer scripts for this Mengshee checkout.
 
 Run commands from the repository root:
 
 ```powershell
-cd C:\Users\jairy\Documents\okular\mengshee
+cd C:\Users\jairy\Documents\mengshee
 ```
 
-Build output lives outside the source checkout under the sibling
-`..\windows_build` directory.
+Build scripts live in the version-controlled `windows-build/` directory.
+SDKs, build trees, logs, and runtimes live inside the checkout under
+`windows-build-workspace/`, which is ignored by Git. All Windows entry points
+use this workspace by default; an explicit workspace argument can override it.
 
 ## Layout
 
 - Source tree: `.`
-- Build workspace: `..\windows_build`
-- SDK prefix: `..\windows_build\sdk`
-- Mengshee build dir: `..\windows_build\build\mengshee-standalone`
-- Mengshee install dir: `..\windows_build\install\mengshee`
-- Package stage: `..\windows_build\dist\mengshee-pdf\app`
-- Package output: `..\windows_build\dist`
+- Build workspace: `windows-build-workspace`
+- SDK prefix: `windows-build-workspace\sdk`
+- Mengshee build dir: `windows-build-workspace\build\mengshee-standalone`
+- Mengshee install dir: `windows-build-workspace\install\mengshee`
+- Package stage: `windows-build-workspace\dist\mengshee-pdf\app`
+- Package output: `windows-build-workspace\dist`
 
 The install dir and the package stage are both runnable: start
 `install\mengshee\bin\mengshee.exe` or `dist\mengshee-pdf\app\bin\mengshee.exe`
@@ -74,7 +82,7 @@ elevated) or produce a stage from a StemTeX build tree and pass it to the driver
 ```powershell
 $stemtexRoot = "C:\Users\jairy\Documents\xetex\stemtex"
 $stemtexVersion = (Get-Content "$stemtexRoot\VERSION").Trim()
-$stemtexStage = "C:\Users\jairy\Documents\okular\windows-build-workspace\stemtex\StemTeX-$stemtexVersion"
+$stemtexStage = "C:\Users\jairy\Documents\mengshee\windows-build-workspace\stemtex\StemTeX-$stemtexVersion"
 
 if (Test-Path $stemtexStage) {
   throw "StemTeX stage already exists: $stemtexStage"
@@ -131,7 +139,7 @@ It runs:
 
 1. CMake configure/build/install for Mengshee
 2. CMake runtime deployment from the SDK, Qt, StemTeX, and Mengshee data
-3. stage refresh under `..\windows_build\dist\mengshee-pdf\app`
+3. stage refresh under `windows-build-workspace\dist\mengshee-pdf\app`
 4. Inno Setup installer build
 
 For a clean Mengshee rebuild, add `-DCLEAN_BUILD=ON`.
@@ -150,7 +158,7 @@ If Inno Setup is not installed, still build and stage the runtime with:
 & "C:\Qt\Tools\CMake_64\bin\cmake.exe" `
   -DQT_PREFIX=C:/Qt/6.11.1/msvc2022_64 `
   -DVCVARS="C:/Program Files/Microsoft Visual Studio/18/Community/VC/Auxiliary/Build/vcvars64.bat" `
-  -DWORKSPACE_ROOT=C:/Users/jairy/Documents/okular/windows_build `
+  -DWORKSPACE_ROOT=C:/Users/jairy/Documents/mengshee/windows-build-workspace `
   -DSKIP_INSTALLER=ON `
   -P windows-build/cmake/build-windows.cmake
 ```
@@ -158,7 +166,7 @@ If Inno Setup is not installed, still build and stage the runtime with:
 Expected installer output:
 
 ```text
-..\windows_build\dist\mengshee-<version>\Mengshee-<version>-Setup.exe
+windows-build-workspace\dist\mengshee-<version>\Mengshee-<version>-Setup.exe
 ```
 
 ## Running The Build Before Packaging
@@ -167,8 +175,8 @@ The install tree and the package stage are complete runtimes, so a developer can
 start one and try a change before it is packaged:
 
 ```text
-..\windows_build\install\mengshee\bin\mengshee.exe
-..\windows_build\dist\mengshee-pdf\app\bin\mengshee.exe     (the developer runtime)
+windows-build-workspace\install\mengshee\bin\mengshee.exe
+windows-build-workspace\dist\mengshee-pdf\app\bin\mengshee.exe     (the developer runtime)
 ```
 
 Those trees have to run with the rights of a normal user. Windows starts a process
@@ -208,8 +216,8 @@ that already exists, use the script directly - it accepts `-Check` to report
 without changing anything:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File windows-build\scripts\make-runnable.ps1 -Root ..\windows_build\dist\mengshee-pdf\app
-powershell -ExecutionPolicy Bypass -File windows-build\scripts\make-runnable.ps1 -Root ..\windows_build\install\mengshee -Check
+powershell -ExecutionPolicy Bypass -File windows-build\scripts\make-runnable.ps1 -Root windows-build-workspace\dist\mengshee-pdf\app
+powershell -ExecutionPolicy Bypass -File windows-build\scripts\make-runnable.ps1 -Root windows-build-workspace\install\mengshee -Check
 ```
 
 The staged smoke test checks the same thing before it launches the application, so
@@ -257,24 +265,24 @@ session, instead of being driven from a confined shell.
 
 ## CMake Package Step
 
-After `..\windows_build\install\mengshee` has been built and deployed, the
+After `windows-build-workspace\install\mengshee` has been built and deployed, the
 package-only CMake script can recreate the stage and installer without
 rebuilding Mengshee:
 
 ```powershell
 & "C:\Qt\Tools\CMake_64\bin\cmake.exe" `
   -DCLEAN_STAGE=ON `
-  -DWORKSPACE_ROOT=C:/Users/jairy/Documents/okular/windows_build `
+  -DWORKSPACE_ROOT=C:/Users/jairy/Documents/mengshee/windows-build-workspace `
   -P windows-build/cmake/package-windows.cmake
 ```
 
 This script mirrors the deployed install tree into
-`..\windows_build\dist\mengshee-pdf\app`, validates Mengshee icons, gettext
+`windows-build-workspace\dist\mengshee-pdf\app`, validates Mengshee icons, gettext
 catalogs, annotation resources, and Poppler CMap/CID data, then calls Inno
 Setup. The main installer keeps the StemTeX renderer binaries and only the
 maintained `unicodemath` base profile in its required core component. The TeX
 package/font tree is staged
-under `..\windows_build\dist\mengshee-pdf\optional\stemtex-support` and embedded
+under `windows-build-workspace\dist\mengshee-pdf\optional\stemtex-support` and embedded
 in the same installer as the optional `Bundled StemTeX TeX tree` component.
 The recommended installation type selects it by default; users can choose the
 compact type or clear the component when they want to use an external TeX tree.
@@ -285,7 +293,7 @@ To validate staging without building an installer:
 & "C:\Qt\Tools\CMake_64\bin\cmake.exe" `
   -DSKIP_INSTALLER=ON `
   -DCLEAN_STAGE=ON `
-  -DWORKSPACE_ROOT=C:/Users/jairy/Documents/okular/windows_build `
+  -DWORKSPACE_ROOT=C:/Users/jairy/Documents/mengshee/windows-build-workspace `
   -P windows-build/cmake/package-windows.cmake
 ```
 
@@ -294,8 +302,8 @@ To write the installer into a temporary output directory:
 ```powershell
 & "C:\Qt\Tools\CMake_64\bin\cmake.exe" `
   -DCLEAN_STAGE=ON `
-  -DWORKSPACE_ROOT=C:/Users/jairy/Documents/okular/windows_build `
-  -DOUTPUT_DIR=C:/Users/jairy/Documents/okular/windows_build/tmp/cmake-package-test `
+  -DWORKSPACE_ROOT=C:/Users/jairy/Documents/mengshee/windows-build-workspace `
+  -DOUTPUT_DIR=C:/Users/jairy/Documents/mengshee/windows-build-workspace/tmp/cmake-package-test `
   -P windows-build/cmake/package-windows.cmake
 ```
 
@@ -331,7 +339,7 @@ of the Windows pipeline.
   - CMake-based runtime deployment from an installed Mengshee tree.
 - `cmake\package-windows.cmake`
   - CMake-based stage and installer creation from an already deployed
-    `..\windows_build\install\mengshee` tree.
+    `windows-build-workspace\install\mengshee` tree.
   - Builds one Mengshee installer containing the bundled StemTeX TeX tree as an
     optional installation component.
 - `cmake\bootstrap-kf6-sdk.cmake`
@@ -351,8 +359,9 @@ of the Windows pipeline.
     each module needs.
 - `smoke-test-mengshee-stage.ps1`
   - Starts staged `mengshee.exe` with a test PDF and verifies it loads modules
-    from the stage, not from another workspace tree. It finds both the
-    sibling-workspace and in-checkout layouts.
+    from the stage, not from another workspace tree. It defaults to
+    `windows-build-workspace/dist/mengshee-pdf/app`; use `-StageRoot` to select
+    another runtime explicitly.
 
 The legacy PowerShell build, deploy, and installer entry points have been
 removed. Use the CMake drivers above for all Windows builds and packages.
@@ -366,7 +375,7 @@ script to refresh the stage without rebuilding the installer:
 & "C:\Qt\Tools\CMake_64\bin\cmake.exe" `
   -DSKIP_INSTALLER=ON `
   -DCLEAN_STAGE=ON `
-  -DWORKSPACE_ROOT=C:/Users/jairy/Documents/okular/windows_build `
+  -DWORKSPACE_ROOT=C:/Users/jairy/Documents/mengshee/windows-build-workspace `
   -P windows-build/cmake/package-windows.cmake
 ```
 
@@ -380,7 +389,7 @@ Get-Process | Where-Object { $_.ProcessName -match 'mengshee|stemtex|xetex|xelat
 ## Runtime Data Contract
 
 The CMake runtime deployment intentionally mirrors SDK runtime data from
-`..\windows_build\sdk\bin\data` into `bin\data`. That SDK sync can remove files
+`windows-build-workspace\sdk\bin\data` into `bin\data`. That SDK sync can remove files
 installed earlier by CMake, so deployment must restore Mengshee data after the
 sync.
 
@@ -437,7 +446,7 @@ powershell.exe -ExecutionPolicy Bypass -NoProfile `
 Quick file checks:
 
 ```powershell
-$stage = "C:\Users\jairy\Documents\okular\windows_build\dist\mengshee-pdf\app"
+$stage = "C:\Users\jairy\Documents\mengshee\windows-build-workspace\dist\mengshee-pdf\app"
 Test-Path "$stage\bin\data\mengshee\pics\annotation-latex-note.svg"
 Test-Path "$stage\bin\data\locale\zh_CN\LC_MESSAGES\okular.mo"
 Test-Path "$stage\share\poppler\cMap\Adobe-GB1\UniGB-UTF16-H"
@@ -452,7 +461,7 @@ The whole SDK bootstraps with one CMake driver:
 & "C:\Qt\Tools\CMake_64\bin\cmake.exe" `
   -DQT_PREFIX=C:/Qt/6.11.1/msvc2022_64 `
   -DVCVARS="C:/Program Files/Microsoft Visual Studio/18/Community/VC/Auxiliary/Build/vcvars64.bat" `
-  -DWORKSPACE_ROOT=C:/path/to/checkout/windows_build `
+  -DWORKSPACE_ROOT=C:/path/to/checkout/windows-build-workspace `
   -P windows-build/cmake/bootstrap-windows-sdk.cmake
 ```
 
@@ -470,7 +479,7 @@ Bootstrap ECM:
 & "C:\Qt\Tools\CMake_64\bin\cmake.exe" `
   -DQT_PREFIX=C:/Qt/6.11.1/msvc2022_64 `
   -DVCVARS="C:/Program Files/Microsoft Visual Studio/18/Community/VC/Auxiliary/Build/vcvars64.bat" `
-  -DWORKSPACE_ROOT=C:/Users/jairy/Documents/okular/windows_build `
+  -DWORKSPACE_ROOT=C:/Users/jairy/Documents/mengshee/windows-build-workspace `
   -P windows-build/cmake/bootstrap-kf6-sdk.cmake
 ```
 
@@ -478,33 +487,33 @@ Build support libraries and tools:
 
 ```powershell
 & "C:\Qt\Tools\CMake_64\bin\cmake.exe" `
-  -DWORKSPACE_ROOT=C:/Users/jairy/Documents/okular/windows_build `
+  -DWORKSPACE_ROOT=C:/Users/jairy/Documents/mengshee/windows-build-workspace `
   -P windows-build/cmake/install-gettext-native-sdk.cmake
 
 & "C:\Qt\Tools\CMake_64\bin\cmake.exe" `
-  -DWORKSPACE_ROOT=C:/Users/jairy/Documents/okular/windows_build `
+  -DWORKSPACE_ROOT=C:/Users/jairy/Documents/mengshee/windows-build-workspace `
   -P windows-build/cmake/install-winflexbison-sdk.cmake
 
 & "C:\Qt\Tools\CMake_64\bin\cmake.exe" `
   -DQT_PREFIX=C:/Qt/6.11.1/msvc2022_64 `
   -DVCVARS="C:/Program Files/Microsoft Visual Studio/18/Community/VC/Auxiliary/Build/vcvars64.bat" `
-  -DWORKSPACE_ROOT=C:/Users/jairy/Documents/okular/windows_build `
+  -DWORKSPACE_ROOT=C:/Users/jairy/Documents/mengshee/windows-build-workspace `
   -P windows-build/cmake/build-zlib-sdk.cmake
 
 & "C:\Qt\Tools\CMake_64\bin\cmake.exe" `
   -DQT_PREFIX=C:/Qt/6.11.1/msvc2022_64 `
   -DVCVARS="C:/Program Files/Microsoft Visual Studio/18/Community/VC/Auxiliary/Build/vcvars64.bat" `
-  -DWORKSPACE_ROOT=C:/Users/jairy/Documents/okular/windows_build `
+  -DWORKSPACE_ROOT=C:/Users/jairy/Documents/mengshee/windows-build-workspace `
   -P windows-build/cmake/build-freetype-sdk.cmake
 
 & "C:\Qt\Tools\CMake_64\bin\cmake.exe" `
   -DQT_PREFIX=C:/Qt/6.11.1/msvc2022_64 `
   -DVCVARS="C:/Program Files/Microsoft Visual Studio/18/Community/VC/Auxiliary/Build/vcvars64.bat" `
-  -DWORKSPACE_ROOT=C:/Users/jairy/Documents/okular/windows_build `
+  -DWORKSPACE_ROOT=C:/Users/jairy/Documents/mengshee/windows-build-workspace `
   -P windows-build/cmake/build-libintl-shim-sdk.cmake
 ```
 
-Build required KF6 modules into `..\windows_build\sdk` with the CMake module
+Build required KF6 modules into `windows-build-workspace\sdk` with the CMake module
 driver:
 
 ```powershell
@@ -512,7 +521,7 @@ driver:
   -DMODULE=kcoreaddons `
   -DQT_PREFIX=C:/Qt/6.11.1/msvc2022_64 `
   -DVCVARS="C:/Program Files/Microsoft Visual Studio/18/Community/VC/Auxiliary/Build/vcvars64.bat" `
-  -DWORKSPACE_ROOT=C:/Users/jairy/Documents/okular/windows_build `
+  -DWORKSPACE_ROOT=C:/Users/jairy/Documents/mengshee/windows-build-workspace `
   -P windows-build/cmake/build-kf6-module.cmake
 ```
 
@@ -525,7 +534,7 @@ Build custom Poppler:
 & "C:\Qt\Tools\CMake_64\bin\cmake.exe" `
   -DQT_PREFIX=C:/Qt/6.11.1/msvc2022_64 `
   -DVCVARS="C:/Program Files/Microsoft Visual Studio/18/Community/VC/Auxiliary/Build/vcvars64.bat" `
-  -DWORKSPACE_ROOT=C:/Users/jairy/Documents/okular/windows_build `
+  -DWORKSPACE_ROOT=C:/Users/jairy/Documents/mengshee/windows-build-workspace `
   -P windows-build/cmake/build-poppler-sdk.cmake
 ```
 
@@ -542,7 +551,7 @@ Build the cross-platform English OCR runtime and its single bundled model:
 & "C:\Qt\Tools\CMake_64\bin\cmake.exe" `
   -DQT_PREFIX=C:/Qt/6.11.1/msvc2022_64 `
   -DVCVARS="C:/Program Files/Microsoft Visual Studio/18/Community/VC/Auxiliary/Build/vcvars64.bat" `
-  -DWORKSPACE_ROOT=C:/Users/jairy/Documents/okular/windows_build `
+  -DWORKSPACE_ROOT=C:/Users/jairy/Documents/mengshee/windows-build-workspace `
   -P windows-build/cmake/build-tesseract-sdk.cmake
 ```
 
@@ -552,7 +561,7 @@ only `eng.traineddata`. The same Tesseract API is used on Windows and Linux.
 
 `install-gettext-native-sdk.cmake` installs pinned native Windows
 `gettext-iconv-windows` tools under
-`..\windows_build\sdk\tools\gettext-native`. Mengshee uses that `msgfmt.exe` to
+`windows-build-workspace\sdk\tools\gettext-native`. Mengshee uses that `msgfmt.exe` to
 compile real gettext catalogs; the libintl shim is only the runtime
 compatibility layer needed by KI18n.
 

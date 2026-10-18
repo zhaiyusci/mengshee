@@ -2,9 +2,9 @@
 
 The agreed Mengshee development entry point on this machine is:
 
-`C:\Users\jairy\Documents\okular\windows_build\dist\mengshee-pdf\app\bin\mengshee.exe`
+`C:\Users\jairy\Documents\mengshee\windows-build-workspace\dist\mengshee-pdf\app\bin\mengshee.exe`
 
-The CMake build directory, `windows_build\build\mengshee-standalone`, is separate from this runtime directory. A successful build or verification in the build or temporary test directory **does not mean the development runtime has been updated**. When investigating a missing development entry point, do not start by assuming that the user opened the wrong version.
+The CMake build directory, `windows-build-workspace\build\mengshee-standalone`, is separate from this runtime directory. A successful build or verification in the build or temporary test directory **does not mean the development runtime has been updated**. When investigating a missing development entry point, do not start by assuming that the user opened the wrong version.
 
 After installing a release, the user may instead be running `C:\Program Files\Mengshee\bin\mengshee.exe`. Check the actual process path. Synchronizing the development directory does not update the installed application, and processes with unsaved documents must not be closed.
 

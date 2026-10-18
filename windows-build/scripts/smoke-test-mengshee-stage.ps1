@@ -8,19 +8,8 @@ param(
 $ErrorActionPreference = "Stop"
 
 $repoRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot "..\.."))
-# The workspace is either a sibling of the checkout (the older layout, named
-# windows_build) or inside it (windows-build-workspace, the default of
-# windows-build/cmake/build-windows-from-scratch.cmake). Use whichever one holds
-# a staged runtime; -StageRoot overrides both.
-$siblingWorkspace = Join-Path (Split-Path -Parent $repoRoot) "windows_build"
-$inTreeWorkspace = Join-Path $repoRoot "windows-build-workspace"
-$windowsBuildRoot = $siblingWorkspace
-foreach ($candidate in @($siblingWorkspace, $inTreeWorkspace)) {
-    if (Test-Path -LiteralPath (Join-Path $candidate "dist\mengshee-pdf\app\bin\mengshee.exe")) {
-        $windowsBuildRoot = $candidate
-        break
-    }
-}
+# Match the canonical build workspace. -StageRoot explicitly selects another runtime.
+$windowsBuildRoot = Join-Path $repoRoot "windows-build-workspace"
 if (!$StageRoot) {
     $StageRoot = Join-Path $windowsBuildRoot "dist\mengshee-pdf\app"
 }
@@ -75,7 +64,7 @@ try {
 
     $modules = $process.Modules | ForEach-Object FileName | Where-Object { $_ }
     $unexpectedWorkspaceModules = $modules | Where-Object {
-        $_ -like "$workspaceRoot\*" -and $_ -notlike "$StageRoot\*"
+        $_ -like "$windowsBuildRoot\*" -and $_ -notlike "$StageRoot\*"
     }
     $pdfModules = $modules | Where-Object { $_ -match "okularGenerator|poppler|okularpart" } | Sort-Object
 
@@ -93,11 +82,17 @@ try {
         exit 2
     }
 
-    $requiredPdfModules = @(
-        Join-Path $StageRoot "bin\poppler.dll"
-        Join-Path $StageRoot "bin\poppler-qt6.dll"
-        Join-Path $StageRoot "bin\plugins\kf6\parts\okularpart.dll"
-    )
+    $pdfGenerator = Join-Path $StageRoot "bin\plugins\okular_generators\okularGenerator_mupdf.dll"
+    $requiredPdfModules = @(Join-Path $StageRoot "bin\plugins\kf6\parts\okularpart.dll")
+    if (Test-Path -LiteralPath $pdfGenerator) {
+        $requiredPdfModules += $pdfGenerator
+        if ($modules | Where-Object { $_ -match '\\poppler[^\\]*\.dll$|okularGenerator_poppler\.dll$' }) {
+            throw "MuPDF runtime loaded a stale Poppler module."
+        }
+    } else {
+        $pdfGenerator = Join-Path $StageRoot "bin\plugins\okular_generators\okularGenerator_poppler.dll"
+        $requiredPdfModules += @(Join-Path $StageRoot "bin\poppler.dll"; Join-Path $StageRoot "bin\poppler-qt6.dll")
+    }
     $missingPdfModules = $requiredPdfModules | Where-Object { $pdfModules -notcontains $_ }
     if ($missingPdfModules) {
         Write-Warning "Required staged PDF modules were not loaded:"
@@ -105,7 +100,6 @@ try {
         exit 3
     }
 
-    $pdfGenerator = Join-Path $StageRoot "bin\plugins\okular_generators\okularGenerator_poppler.dll"
     if ($pdfModules -notcontains $pdfGenerator) {
         Write-Warning "PDF generator module was not visible in the process module list. If the PDF opened successfully, this can be a loader-timing false negative."
     }

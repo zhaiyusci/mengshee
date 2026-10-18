@@ -32,7 +32,7 @@ set "VSLANG=1033"
 echo Source    : %ROOT%
 echo Workspace : %MENGSHEE_WORKSPACE%
 echo.
-"%MENGSHEE_CMAKE%" -DWORKSPACE_ROOT="%MENGSHEE_WORKSPACE%" -P "%ROOT%\windows-build\cmake\build-windows.cmake" %*
+"%MENGSHEE_CMAKE%" -DWORKSPACE_ROOT="%MENGSHEE_WORKSPACE%" %* -P "%ROOT%\windows-build\cmake\build-windows.cmake"
 set "RESULT=%ERRORLEVEL%"
 
 echo.

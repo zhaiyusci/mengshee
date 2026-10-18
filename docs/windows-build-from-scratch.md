@@ -22,8 +22,10 @@ Everything lands inside the checkout by default:
   dist\installer\                Mengshee-<version>-Setup.exe
 ```
 
-`windows-build-workspace/` is ignored by git, and `smoke-test-mengshee-stage.ps1` finds
-both this layout and the older sibling-workspace layout.
+`windows-build-workspace/` is ignored by Git. Build, package, release, and smoke-test
+entry points all use this directory by default. To use another location, pass
+the relevant workspace argument or `-StageRoot` explicitly; no older layout is
+automatically detected.
 
 Both runnable trees — `install\mengshee` and `dist\mengshee-pdf\app` — are given
 the integrity label of an ordinary process by the build itself, because an
@@ -82,7 +84,7 @@ Useful switches:
 
 | Switch | Effect |
 | --- | --- |
-| `-DWORKSPACE_ROOT=<dir>` | keep the workspace outside the checkout (the older sibling layout) |
+| `-DWORKSPACE_ROOT=<dir>` | explicitly override the default `<checkout>/windows-build-workspace` |
 | `-DSTEPS=sdk;stemtex;app;smoke` | run a subset; the same list is accepted by `bootstrap-windows-sdk.cmake` (`python`, `ecm`, `gettext`, `winflexbison`, `zlib`, `freetype`, `libintl`, `kf6`, `poppler`, `poppler-data`, `tesseract`) |
 | `-DFORCE=ON` | redo the selected steps from scratch |
 | `-DJOBS=<n>` | parallel build jobs |

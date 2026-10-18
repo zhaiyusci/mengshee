@@ -23,8 +23,7 @@ cmake_minimum_required(VERSION 3.20)
 #   windows-build-workspace/dist/mengshee-pdf/app          staged runtime
 #   windows-build-workspace/dist/installer                 installer output
 #
-# Pass -DWORKSPACE_ROOT=<dir> to keep the workspace somewhere else (the older
-# sibling layout, for example ..\windows_build, still works), -DSTEPS=<list> to
+# Pass -DWORKSPACE_ROOT=<dir> to explicitly select another workspace, -DSTEPS=<list> to
 # run a subset and -DFORCE=ON to redo the selected steps from scratch.
 #
 # Example:
@@ -92,7 +91,7 @@ set(_common_args
     "-DCMAKE_EXE=${CMAKE_PROGRAM}"
     "-DNINJA=${NINJA_PROGRAM}"
 )
-foreach(_passthrough IN ITEMS PYTHON_EXECUTABLE KF6_VERSION BUILD_TYPE VS_INSTALL_DIR STEMTEX_VERSION STEMTEX_INSTALLER STEMTEX_INSTALLER_SHA256 STEMTEX_STAGE_ROOT STEMTEX_REPO STEMTEX_QSCINTILLA_REF STEMTEX_SETUP_TYPE)
+foreach(_passthrough IN ITEMS MENGSHEE_PDF_BACKEND PYTHON_EXECUTABLE KF6_VERSION BUILD_TYPE VS_INSTALL_DIR STEMTEX_VERSION STEMTEX_INSTALLER STEMTEX_INSTALLER_SHA256 STEMTEX_STAGE_ROOT STEMTEX_REPO STEMTEX_QSCINTILLA_REF STEMTEX_SETUP_TYPE)
     if(DEFINED ${_passthrough} AND NOT "${${_passthrough}}" STREQUAL "")
         list(APPEND _common_args "-D${_passthrough}=${${_passthrough}}")
     endif()

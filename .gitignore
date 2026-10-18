@@ -18,11 +18,8 @@ CMakeLists.txt.user*
 build-dir
 .DS_Store
 
-# Windows build workspace. It sits inside the checkout when
-# build-windows-from-scratch.cmake uses its default WORKSPACE_ROOT, and next to
-# the checkout (as windows_build) in the older layout.
+# Generated Windows SDK, builds, and runtimes live inside the checkout.
 /windows-build-workspace/
-/windows_build/
 
 # StemTeX used to be a submodule; it is a prebuilt runtime now and a leftover
 # checkout of the old submodule should not show up as untracked.

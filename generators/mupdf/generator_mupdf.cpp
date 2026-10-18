@@ -1,0 +1,436 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+#include "generator_mupdf.h"
+#include "annots.h"
+#include "pageimport.h"
+#include <QDebug>
+#include <QFile>
+#include <QMutex>
+#include <QPainter>
+#include <QPrinter>
+#include <QSaveFile>
+#include <QTemporaryDir>
+#include <QTemporaryFile>
+#include <QtMath>
+#include <cmath>
+#include <core/page.h>
+#include <core/textpage.h>
+
+K_PLUGIN_CLASS_WITH_JSON(MuPDFGenerator, "libokularGenerator_mupdf.json")
+
+MuPDFGenerator::MuPDFGenerator(QObject *parent, const QVariantList &args)
+    : Generator(parent, args)
+{
+    m_context = fz_new_context(nullptr, nullptr, FZ_STORE_DEFAULT);
+    m_annotations = std::make_unique<MuPDFAnnotationProxy>(this);
+    setFeature(TextExtraction);
+    setFeature(ReadRawData);
+    setFeature(SwapBackingFile);
+    setFeature(Threaded);
+    setFeature(PrintNative);
+}
+
+MuPDFGenerator::~MuPDFGenerator()
+{
+    doCloseDocument();
+    fz_drop_context(m_context);
+}
+
+bool MuPDFGenerator::doCloseDocument()
+{
+    qDeleteAll(m_embeddedFiles);
+    m_embeddedFiles.clear();
+    m_embeddedLoaded = false;
+    if (m_annotations)
+        m_annotations->clear();
+    for (auto *object : m_detached)
+        pdf_drop_obj(m_context, object);
+    m_detached.clear();
+    for (auto *page : m_pages)
+        fz_drop_page(m_context, reinterpret_cast<fz_page *>(page));
+    m_pages.clear();
+    m_editError.clear();
+    m_annotationWarningShown = false;
+    pdf_drop_document(m_context, m_document);
+    m_document = nullptr;
+    m_data.clear();
+    return true;
+}
+
+Okular::Document::OpenResult MuPDFGenerator::loadDocumentWithPassword(const QString &path, QList<Okular::Page *> &pages, const QString &password)
+{
+    QFile input(path);
+    if (!input.open(QIODevice::ReadOnly))
+        return Okular::Document::OpenError;
+    return loadDocumentFromDataWithPassword(input.readAll(), pages, password);
+}
+
+Okular::Document::OpenResult MuPDFGenerator::loadDocumentFromDataWithPassword(const QByteArray &data, QList<Okular::Page *> &pages, const QString &password)
+{
+    doCloseDocument();
+    if (!m_context)
+        return Okular::Document::OpenError;
+    m_data = data;
+    fz_stream *stream = nullptr;
+    fz_var(stream);
+    fz_try(m_context)
+    {
+        stream = fz_open_memory(m_context, reinterpret_cast<const unsigned char *>(m_data.constData()), m_data.size());
+        m_document = pdf_open_document_with_stream(m_context, stream);
+    }
+    fz_always(m_context)
+    {
+        fz_drop_stream(m_context, stream);
+    }
+    fz_catch(m_context)
+    {
+        qWarning() << "MuPDF open:" << fz_caught_message(m_context);
+        doCloseDocument();
+        return Okular::Document::OpenError;
+    }
+    return finishOpen(pages, password);
+}
+
+Okular::Document::OpenResult MuPDFGenerator::finishOpen(QList<Okular::Page *> &pages, const QString &password)
+{
+    const QByteArray encodedPassword = password.toUtf8();
+    bool needsPassword = false;
+    fz_var(needsPassword);
+    fz_try(m_context)
+    {
+        needsPassword = pdf_needs_password(m_context, m_document) && !pdf_authenticate_password(m_context, m_document, encodedPassword.constData());
+        if (!needsPassword) {
+            const int count = pdf_count_pages(m_context, m_document);
+            for (int i = 0; i < count; ++i) {
+                fz_rect box;
+                fz_matrix matrix;
+                pdf_page_obj_transform(m_context, pdf_lookup_page_obj(m_context, m_document, i), &box, &matrix);
+                box = fz_transform_rect(box, matrix);
+                auto *page = new Okular::Page(i, (box.x1 - box.x0) * dpi().width() / 72.0, (box.y1 - box.y0) * dpi().height() / 72.0, Okular::Rotation0);
+                pages.append(page);
+                auto *native = pdf_load_page(m_context, m_document, i);
+                m_pages.append(native);
+                m_annotations->load(native, page);
+                loadLinks(native, page);
+                loadForms(native, page);
+            }
+        }
+    }
+    fz_catch(m_context)
+    {
+        qWarning() << "MuPDF pages:" << fz_caught_message(m_context);
+        qDeleteAll(pages);
+        pages.clear();
+        doCloseDocument();
+        return Okular::Document::OpenError;
+    }
+    if (needsPassword) {
+        doCloseDocument();
+        return Okular::Document::OpenNeedsPassword;
+    }
+    return Okular::Document::OpenSuccess;
+}
+
+QImage MuPDFGenerator::render(int number, int width, int height, bool annotations, QString *error)
+{
+    if (!m_document || width <= 0 || height <= 0 || qint64(width) * height > 100000000) {
+        if (error)
+            *error = QStringLiteral("Invalid or oversized PDF render request.");
+        return {};
+    }
+    pdf_page *page = nullptr;
+    fz_pixmap *pixmap = nullptr;
+    fz_device *device = nullptr;
+    QImage result;
+    fz_var(page);
+    fz_var(pixmap);
+    fz_var(device);
+    fz_try(m_context)
+    {
+        page = pdf_load_page(m_context, m_document, number);
+        const fz_rect bounds = pdf_bound_page(m_context, page, FZ_CROP_BOX);
+        const fz_matrix transform = fz_scale(width / (bounds.x1 - bounds.x0), height / (bounds.y1 - bounds.y0));
+        pixmap = fz_new_pixmap_with_bbox(m_context, fz_device_rgb(m_context), fz_make_irect(0, 0, width, height), nullptr, 0);
+        fz_clear_pixmap_with_value(m_context, pixmap, 255);
+        device = fz_new_draw_device(m_context, transform, pixmap);
+        pdf_run_page_contents(m_context, page, device, fz_identity, nullptr);
+        fz_close_device(m_context, device);
+        if (annotations)
+            renderAnnotations(page, pixmap, transform);
+        result = QImage(fz_pixmap_samples(m_context, pixmap), width, height, fz_pixmap_stride(m_context, pixmap), QImage::Format_RGB888).copy();
+    }
+    fz_always(m_context)
+    {
+        fz_drop_device(m_context, device);
+        fz_drop_pixmap(m_context, pixmap);
+        fz_drop_page(m_context, reinterpret_cast<fz_page *>(page));
+    }
+    fz_catch(m_context)
+    {
+        if (error)
+            *error = QString::fromUtf8(fz_caught_message(m_context));
+        return {};
+    }
+    return result;
+}
+
+QImage MuPDFGenerator::image(Okular::PixmapRequest *request)
+{
+    QMutexLocker lock(userMutex());
+    return render(request->pageNumber(), request->width(), request->height(), true, nullptr);
+}
+
+QImage MuPDFGenerator::renderToImage(int page, int dpi, bool annotations, QString *error)
+{
+    QMutexLocker lock(userMutex());
+    fz_rect box = fz_empty_rect;
+    fz_try(m_context)
+    {
+        fz_matrix matrix;
+        pdf_page_obj_transform(m_context, pdf_lookup_page_obj(m_context, m_document, page), &box, &matrix);
+        box = fz_transform_rect(box, matrix);
+    }
+    fz_catch(m_context)
+    {
+        if (error)
+            *error = QString::fromUtf8(fz_caught_message(m_context));
+        return {};
+    }
+    return render(page, qCeil((box.x1 - box.x0) * dpi / 72.0), qCeil((box.y1 - box.y0) * dpi / 72.0), annotations, error);
+}
+
+Okular::TextPage *MuPDFGenerator::textPage(Okular::TextRequest *request)
+{
+    QMutexLocker lock(userMutex());
+    auto *result = new Okular::TextPage;
+    fz_stext_page *text = nullptr;
+    fz_var(text);
+    fz_try(m_context)
+    {
+        text = fz_new_stext_page_from_page_number(m_context, reinterpret_cast<fz_document *>(m_document), request->page()->number(), nullptr);
+        const float width = text->mediabox.x1 - text->mediabox.x0;
+        const float height = text->mediabox.y1 - text->mediabox.y0;
+        for (fz_stext_block *block = text->first_block; block; block = block->next) {
+            if (block->type != FZ_STEXT_BLOCK_TEXT)
+                continue;
+            for (fz_stext_line *line = block->u.t.first_line; line; line = line->next) {
+                for (fz_stext_char *ch = line->first_char; ch; ch = ch->next) {
+                    const fz_rect rect = fz_rect_from_quad(ch->quad);
+                    const char32_t codepoint = ch->c;
+                    result->append(QString::fromUcs4(&codepoint, 1),
+                                   Okular::NormalizedRect((rect.x0 - text->mediabox.x0) / width, (rect.y0 - text->mediabox.y0) / height, (rect.x1 - text->mediabox.x0) / width, (rect.y1 - text->mediabox.y0) / height));
+                }
+            }
+        }
+    }
+    fz_always(m_context)
+    {
+        fz_drop_stext_page(m_context, text);
+    }
+    fz_catch(m_context)
+    {
+        qWarning() << "MuPDF text:" << fz_caught_message(m_context);
+    }
+    return result;
+}
+
+Okular::DocumentInfo MuPDFGenerator::generateDocumentInfo(const QSet<Okular::DocumentInfo::Key> &) const
+{
+    Okular::DocumentInfo info;
+    info.set(Okular::DocumentInfo::MimeType, QStringLiteral("application/pdf"));
+    const_cast<MuPDFGenerator *>(this)->operation(
+        [&] {
+            const std::pair<Okular::DocumentInfo::Key, const char *> keys[] = {{Okular::DocumentInfo::Title, "Title"},
+                                                                               {Okular::DocumentInfo::Author, "Author"},
+                                                                               {Okular::DocumentInfo::Subject, "Subject"},
+                                                                               {Okular::DocumentInfo::Keywords, "Keywords"},
+                                                                               {Okular::DocumentInfo::Creator, "Creator"},
+                                                                               {Okular::DocumentInfo::Producer, "Producer"}};
+            auto *dictionary = pdf_dict_get(m_context, pdf_trailer(m_context, m_document), PDF_NAME(Info));
+            for (const auto &[key, name] : keys)
+                info.set(key, QString::fromUtf8(pdf_to_text_string(m_context, pdf_dict_gets(m_context, dictionary, name))));
+        },
+        nullptr);
+    return info;
+}
+
+bool MuPDFGenerator::isAllowed(Okular::Permission permission) const
+{
+    fz_permission native = FZ_PERMISSION_EDIT;
+    switch (permission) {
+    case Okular::AllowCopy:
+        native = FZ_PERMISSION_COPY;
+        break;
+    case Okular::AllowPrint:
+        native = FZ_PERMISSION_PRINT;
+        break;
+    case Okular::AllowNotes:
+        native = FZ_PERMISSION_ANNOTATE;
+        break;
+    case Okular::AllowFillForms:
+        native = FZ_PERMISSION_FORM;
+        break;
+    default:
+        break;
+    }
+    bool allowed = false;
+    const_cast<MuPDFGenerator *>(this)->operation([&] { allowed = pdf_has_permission(m_context, m_document, native); }, nullptr);
+    return allowed;
+}
+
+Okular::Document::PrintError MuPDFGenerator::print(QPrinter &printer)
+{
+    if (!isAllowed(Okular::AllowPrint))
+        return Okular::Document::UnknownPrintError;
+    QPainter painter;
+    if (!painter.begin(&printer))
+        return Okular::Document::InvalidPrinterStatePrintError;
+    const int first = printer.fromPage() > 0 ? printer.fromPage() - 1 : 0;
+    const int last = printer.toPage() > 0 ? std::min(printer.toPage(), int(m_pages.size())) - 1 : m_pages.size() - 1;
+    for (int i = first; i <= last; ++i) {
+        if (i != first && !printer.newPage())
+            return Okular::Document::UnknownPrintError;
+        const int index = printer.pageOrder() == QPrinter::LastPageFirst ? last - (i - first) : i;
+        QString error;
+        const auto image = renderToImage(index, std::min(printer.resolution(), 300), true, &error);
+        if (image.isNull())
+            return Okular::Document::UnknownPrintError;
+        const QRect area = printer.pageLayout().paintRectPixels(printer.resolution());
+        QSize size = image.size();
+        size.scale(area.size(), Qt::KeepAspectRatio);
+        painter.drawImage(QRect(area.center() - QPoint(size.width() / 2, size.height() / 2), size), image);
+    }
+    painter.end();
+    return Okular::Document::NoPrintError;
+}
+
+bool MuPDFGenerator::supportsOption(SaveOption option) const
+{
+    return option == SaveChanges;
+}
+Okular::AnnotationProxy *MuPDFGenerator::annotationProxy() const
+{
+    return m_annotations.get();
+}
+
+bool MuPDFGenerator::save(const QString &path, SaveOptions, QString *error)
+{
+    QMutexLocker lock(userMutex());
+    QTemporaryDir temporary;
+    if (!m_editError.isEmpty()) {
+        if (error)
+            *error = m_editError;
+        return false;
+    }
+    if (!temporary.isValid()) {
+        if (error)
+            *error = QStringLiteral("Could not create the PDF save staging directory.");
+        return false;
+    }
+    const QString stagedPath = temporary.filePath(QStringLiteral("document.pdf"));
+    const QByteArray name = stagedPath.toUtf8();
+    pdf_write_options options = pdf_default_write_options;
+    options.do_compress = 1;
+    fz_try(m_context)
+    {
+        pdf_save_document(m_context, m_document, name.constData(), &options);
+    }
+    fz_catch(m_context)
+    {
+        if (error)
+            *error = QString::fromUtf8(fz_caught_message(m_context));
+        return false;
+    }
+    QFile source(stagedPath);
+    QSaveFile destination(path);
+    if (!source.open(QIODevice::ReadOnly) || !destination.open(QIODevice::WriteOnly)) {
+        if (error)
+            *error = QStringLiteral("Could not open PDF save destination.");
+        return false;
+    }
+    while (!source.atEnd()) {
+        const QByteArray block = source.read(1024 * 1024);
+        if (block.isEmpty() && source.error() != QFileDevice::NoError)
+            return false;
+        if (destination.write(block) != block.size())
+            return false;
+    }
+    if (!destination.commit()) {
+        if (error)
+            *error = destination.errorString();
+        return false;
+    }
+    return true;
+}
+
+#include "generator_mupdf.moc"
+
+MuPDFGenerator::SwapBackingFileResult MuPDFGenerator::swapBackingFile(const QString &path, QList<Okular::Page *> &pages)
+{
+    QFile input(path);
+    if (!input.open(QIODevice::ReadOnly) || !pages.isEmpty())
+        return SwapBackingFileError;
+    QMutexLocker lock(userMutex());
+    auto oldData = m_data;
+    auto *oldDocument = m_document;
+    auto oldPages = std::move(m_pages);
+    auto oldAnnotations = std::move(m_annotations);
+    auto oldDetached = std::move(m_detached);
+    auto oldEmbedded = std::move(m_embeddedFiles);
+    const bool oldEmbeddedLoaded = m_embeddedLoaded;
+    const auto oldError = m_editError;
+    m_document = nullptr;
+    m_annotations = std::make_unique<MuPDFAnnotationProxy>(this);
+    m_embeddedLoaded = false;
+    bool valid = loadDocumentFromDataWithPassword(input.readAll(), pages, {}) == Okular::Document::OpenSuccess;
+    QString migrationError;
+    if (valid) {
+        fz_try(m_context)
+        {
+            if (pages.isEmpty())
+                fz_throw(m_context, FZ_ERROR_FORMAT, "Replacement PDF has no pages");
+            if (!oldDetached.isEmpty()) {
+                if (pdf_count_pages(m_context, oldDocument) != pages.size())
+                    fz_throw(m_context, FZ_ERROR_ARGUMENT, "Replacement changes page count while page edits are pending");
+                m_detached = migrateMuPDFPageEdits(m_context, m_document, oldDocument, oldDetached, &migrationError);
+                if (!migrationError.isEmpty())
+                    fz_throw(m_context, FZ_ERROR_ARGUMENT, "%s", qPrintable(migrationError));
+            }
+        }
+        fz_catch(m_context)
+        {
+            valid = false;
+        }
+    }
+    if (!valid) {
+        qDeleteAll(pages);
+        pages.clear();
+        doCloseDocument();
+        m_data = oldData;
+        m_document = oldDocument;
+        m_pages = std::move(oldPages);
+        m_annotations = std::move(oldAnnotations);
+        m_detached = std::move(oldDetached);
+        m_embeddedFiles = std::move(oldEmbedded);
+        m_embeddedLoaded = oldEmbeddedLoaded;
+        m_editError = oldError;
+        return SwapBackingFileError;
+    }
+    oldAnnotations.reset();
+    qDeleteAll(oldEmbedded);
+    for (auto *page : oldPages)
+        fz_drop_page(m_context, reinterpret_cast<fz_page *>(page));
+    for (auto *object : oldDetached)
+        pdf_drop_obj(m_context, object);
+    pdf_drop_document(m_context, oldDocument);
+    m_synopsis = Okular::DocumentSynopsis();
+    return SwapBackingFileReloadInternalData;
+}
+
+void MuPDFGenerator::reportAnnotationError(const QString &detail)
+{
+    qWarning() << "MuPDF annotation:" << detail;
+    if (!m_annotationWarningShown) {
+        m_annotationWarningShown = true;
+        Q_EMIT warning(tr("Some annotations could not be loaded or displayed. Their original PDF data has been retained."), -1);
+    }
+}

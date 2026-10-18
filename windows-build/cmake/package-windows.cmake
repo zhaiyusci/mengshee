@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.20)
 get_filename_component(_script_dir "${CMAKE_CURRENT_LIST_FILE}" DIRECTORY)
 get_filename_component(_windows_build_dir "${_script_dir}/.." ABSOLUTE)
 get_filename_component(_default_source_root "${_windows_build_dir}/.." ABSOLUTE)
-get_filename_component(_default_workspace_root "${_default_source_root}/../windows_build" ABSOLUTE)
+get_filename_component(_default_workspace_root "${_default_source_root}/windows-build-workspace" ABSOLUTE)
 include("${_script_dir}/run-tree-common.cmake")
 
 function(mengshee_default_path variable default_value)
@@ -126,7 +126,9 @@ if(IS_DIRECTORY "${INSTALL_PREFIX}/share/poppler")
     mengshee_sync_tree("${INSTALL_PREFIX}/share/poppler" "${STAGE_ROOT}/share/poppler" "${STAGE_ROOT}")
 else()
     mengshee_remove_inside("${STAGE_ROOT}/share/poppler" "${STAGE_ROOT}")
-    message(WARNING "Poppler CMap/CID data was not found under ${INSTALL_PREFIX}/share/poppler.")
+    if(NOT MENGSHEE_PDF_BACKEND STREQUAL "MuPDF")
+        message(WARNING "Poppler CMap/CID data was not found under ${INSTALL_PREFIX}/share/poppler.")
+    endif()
 endif()
 
 if(IS_DIRECTORY "${INSTALL_PREFIX}/StemTeX")
@@ -202,11 +204,20 @@ foreach(_required IN ITEMS
     "bin/data/locale/zh_CN/LC_MESSAGES/okular.mo"
     "bin/data/locale/zh_CN/LC_MESSAGES/kconfigwidgets6.mo"
     "bin/data/locale/zh_CN/LC_MESSAGES/kxmlgui6.mo"
-    "share/poppler/cMap/Adobe-GB1/UniGB-UTF16-H"
-    "share/poppler/cidToUnicode/Adobe-GB1"
 )
     mengshee_validate_file("${STAGE_ROOT}" "${_required}")
 endforeach()
+
+if(EXISTS "${STAGE_ROOT}/bin/plugins/okular_generators/okularGenerator_mupdf.dll")
+    if(EXISTS "${STAGE_ROOT}/bin/poppler.dll" OR EXISTS "${STAGE_ROOT}/bin/plugins/okular_generators/okularGenerator_poppler.dll")
+        message(FATAL_ERROR "MuPDF stage contains a stale Poppler runtime")
+    endif()
+    file(MAKE_DIRECTORY "${STAGE_ROOT}/share/licenses/mupdf")
+    file(COPY "${SOURCE_ROOT}/external/mupdf/COPYING" DESTINATION "${STAGE_ROOT}/share/licenses/mupdf")
+else()
+    mengshee_validate_file("${STAGE_ROOT}" "share/poppler/cMap/Adobe-GB1/UniGB-UTF16-H")
+    mengshee_validate_file("${STAGE_ROOT}" "share/poppler/cidToUnicode/Adobe-GB1")
+endif()
 
 # The stage is the runtime a developer starts and the exact tree the installer
 # packages, so it has to run with the rights of a normal user. A build started

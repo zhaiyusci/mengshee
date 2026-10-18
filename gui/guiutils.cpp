@@ -19,7 +19,12 @@
 #include <QSizeF>
 #include <QTextDocument>
 
+#ifdef MENGSHEE_USE_MUPDF
+#include <mupdf/fitz.h>
+#include <mupdf/pdf.h>
+#else
 #include <poppler-qt6.h>
+#endif
 
 // local includes
 #include "core/action.h"
@@ -298,6 +303,28 @@ QSizeF pdfPageSizeInPoints(const QString &pdfFileName)
         return QSizeF();
     }
 
+#ifdef MENGSHEE_USE_MUPDF
+    fz_context *context = fz_new_context(nullptr, nullptr, FZ_STORE_DEFAULT);
+    if (!context) return {};
+    pdf_document *document = nullptr;
+    fz_var(document);
+    QSizeF size;
+    const auto path = pdfFileName.toUtf8();
+    fz_try(context) {
+        document = pdf_open_document(context, path.constData());
+        if (pdf_count_pages(context, document) > 0 && !pdf_needs_password(context, document)) {
+            fz_rect box;
+            fz_matrix matrix;
+            pdf_page_obj_transform(context, pdf_lookup_page_obj(context, document, 0), &box, &matrix);
+            box = fz_transform_rect(box, matrix);
+            size = QSizeF(box.x1 - box.x0, box.y1 - box.y0);
+        }
+    }
+    fz_always(context) { pdf_drop_document(context, document); }
+    fz_catch(context) { size = {}; }
+    fz_drop_context(context);
+    return size;
+#else
     std::unique_ptr<Poppler::Document> document(Poppler::Document::load(pdfFileName, nullptr, nullptr));
     if (!document || document->numPages() < 1) {
         return QSizeF();
@@ -309,6 +336,7 @@ QSizeF pdfPageSizeInPoints(const QString &pdfFileName)
     }
 
     return page->pageSizeF();
+#endif
 }
 
 QPixmap stampPixmap(const QString &nameOrPath, QSize size, Qt::AspectRatioMode aspectRatio)

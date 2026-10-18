@@ -128,6 +128,7 @@ fi
 
 PKG_CONFIG_PATH="$prefix/lib/pkgconfig:$prefix/lib64/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}" \
 cmake -S . -B "$okular_build" \
+    -DMENGSHEE_PDF_BACKEND=Poppler \
     -DCMAKE_PREFIX_PATH="$prefix" \
     -DCMAKE_INSTALL_LIBDIR=lib \
     -DKDE_INSTALL_LIBDIR=lib \

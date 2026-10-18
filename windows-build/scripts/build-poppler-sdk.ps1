@@ -16,7 +16,7 @@ $ErrorActionPreference = "Stop"
 
 $repoRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot "..\.."))
 if (!$WorkspaceRoot) {
-    $WorkspaceRoot = Join-Path (Split-Path -Parent $repoRoot) "windows_build"
+    $WorkspaceRoot = Join-Path $repoRoot "windows-build-workspace"
 }
 $WorkspaceRoot = [System.IO.Path]::GetFullPath($WorkspaceRoot)
 if (!$SdkPrefix) {

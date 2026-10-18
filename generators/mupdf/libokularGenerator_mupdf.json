@@ -1,0 +1,13 @@
+{
+    "KPlugin": {
+        "Name": "MuPDF",
+        "Description": "PDF backend using MuPDF",
+        "Id": "okularGenerator_mupdf",
+        "License": "AGPL-3.0-or-later",
+        "Version": "1.0",
+        "MimeTypes": ["application/pdf"]
+    },
+    "X-KDE-Priority": 3,
+    "X-KDE-okularAPIVersion": 1,
+    "X-KDE-okularHasInternalSettings": false
+}

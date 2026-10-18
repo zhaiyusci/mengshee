@@ -22,13 +22,13 @@ cmake_minimum_required(VERSION 3.20)
 #   & "C:\Qt\Tools\CMake_64\bin\cmake.exe" `
 #     -DQT_PREFIX=C:/Qt/6.11.1/msvc2022_64 `
 #     -DVCVARS="C:/Program Files/Microsoft Visual Studio/18/Community/VC/Auxiliary/Build/vcvars64.bat" `
-#     -DWORKSPACE_ROOT=C:/path/to/checkout/windows_build `
+#     -DWORKSPACE_ROOT=C:/path/to/checkout/windows-build-workspace `
 #     -P windows-build/cmake/bootstrap-windows-sdk.cmake
 
 get_filename_component(_script_dir "${CMAKE_CURRENT_LIST_FILE}" DIRECTORY)
 get_filename_component(_windows_build_dir "${_script_dir}/.." ABSOLUTE)
 get_filename_component(_default_source_root "${_windows_build_dir}/.." ABSOLUTE)
-get_filename_component(_default_workspace_root "${_default_source_root}/../windows_build" ABSOLUTE)
+get_filename_component(_default_workspace_root "${_default_source_root}/windows-build-workspace" ABSOLUTE)
 include("${_script_dir}/kf6-sdk-common.cmake")
 
 mengshee_default_path(SOURCE_ROOT "${_default_source_root}")
@@ -46,7 +46,15 @@ if(NOT DEFINED BUILD_TYPE OR "${BUILD_TYPE}" STREQUAL "")
     set(BUILD_TYPE "RelWithDebInfo")
 endif()
 
-set(_all_steps python ecm gettext winflexbison zlib freetype libintl kf6 poppler poppler-data tesseract)
+if(NOT MENGSHEE_PDF_BACKEND)
+    set(MENGSHEE_PDF_BACKEND MuPDF)
+endif()
+set(_all_steps python ecm gettext winflexbison zlib freetype libintl kf6 tesseract)
+if(MENGSHEE_PDF_BACKEND STREQUAL "MuPDF")
+    list(APPEND _all_steps mupdf)
+else()
+    list(APPEND _all_steps poppler poppler-data)
+endif()
 if(DEFINED STEPS AND NOT "${STEPS}" STREQUAL "")
     set(_steps "${STEPS}")
 else()
@@ -342,6 +350,11 @@ endif()
 mengshee_sdk_step_required(_run poppler "${SDK_PREFIX}/bin/poppler-qt6.dll")
 if(_run)
     mengshee_run_sdk_script(build-poppler-sdk.cmake)
+endif()
+
+mengshee_sdk_step_required(_run mupdf "${SDK_PREFIX}/mupdf/lib/libmupdf.lib")
+if(_run)
+    mengshee_run_sdk_script(build-mupdf-sdk.cmake)
 endif()
 
 mengshee_sdk_step_required(_run poppler-data "${SDK_PREFIX}/share/poppler/cMap/Adobe-GB1/UniGB-UTF16-H")

@@ -2,3 +2,6 @@
 	path = external/poppler
 	url = ../poppler.git
 	branch = local-okular-vector-stamp
+[submodule "external/mupdf"]
+	path = external/mupdf
+	url = https://github.com/ArtifexSoftware/mupdf.git

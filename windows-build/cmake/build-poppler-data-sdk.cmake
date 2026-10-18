@@ -14,13 +14,13 @@ cmake_minimum_required(VERSION 3.20)
 #
 # Example:
 #   & "C:\Qt\Tools\CMake_64\bin\cmake.exe" `
-#     -DWORKSPACE_ROOT=C:/path/to/checkout/windows_build `
+#     -DWORKSPACE_ROOT=C:/path/to/checkout/windows-build-workspace `
 #     -P windows-build/cmake/build-poppler-data-sdk.cmake
 
 get_filename_component(_script_dir "${CMAKE_CURRENT_LIST_FILE}" DIRECTORY)
 get_filename_component(_windows_build_dir "${_script_dir}/.." ABSOLUTE)
 get_filename_component(_default_source_root "${_windows_build_dir}/.." ABSOLUTE)
-get_filename_component(_default_workspace_root "${_default_source_root}/../windows_build" ABSOLUTE)
+get_filename_component(_default_workspace_root "${_default_source_root}/windows-build-workspace" ABSOLUTE)
 include("${_script_dir}/kf6-sdk-common.cmake")
 
 if(NOT DEFINED POPPLER_DATA_VERSION OR "${POPPLER_DATA_VERSION}" STREQUAL "")

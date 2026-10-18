@@ -28,7 +28,7 @@ $repoRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot ".."))
 $workspaceRoot = Split-Path -Parent $repoRoot
 
 if (!$WindowsBuildRoot) {
-    $WindowsBuildRoot = Join-Path $workspaceRoot "windows_build"
+    $WindowsBuildRoot = Join-Path $repoRoot "windows-build-workspace"
 }
 $WindowsBuildRoot = [System.IO.Path]::GetFullPath($WindowsBuildRoot)
 

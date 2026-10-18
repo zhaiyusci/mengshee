@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.20)
 get_filename_component(_script_dir "${CMAKE_CURRENT_LIST_FILE}" DIRECTORY)
 get_filename_component(_windows_build_dir "${_script_dir}/.." ABSOLUTE)
 get_filename_component(_default_source_root "${_windows_build_dir}/.." ABSOLUTE)
-get_filename_component(_default_workspace_root "${_default_source_root}/../windows_build" ABSOLUTE)
+get_filename_component(_default_workspace_root "${_default_source_root}/windows-build-workspace" ABSOLUTE)
 include("${_script_dir}/kf6-sdk-common.cmake")
 
 mengshee_default_path(SOURCE_ROOT "${_default_source_root}")

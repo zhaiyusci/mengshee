@@ -11,9 +11,11 @@ endfunction()
 
 # let's enable the generators properly configured
 
-if(Poppler_Qt6_FOUND)
+if(MENGSHEE_PDF_BACKEND STREQUAL "MuPDF")
+  add_subdirectory(mupdf)
+elseif(Poppler_Qt6_FOUND)
   add_subdirectory(poppler)
-endif(Poppler_Qt6_FOUND)
+endif()
 
 if(OKULAR_PDF_ONLY)
   return()

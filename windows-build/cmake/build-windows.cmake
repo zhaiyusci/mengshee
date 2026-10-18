@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.20)
 get_filename_component(_script_dir "${CMAKE_CURRENT_LIST_FILE}" DIRECTORY)
 get_filename_component(_windows_build_dir "${_script_dir}/.." ABSOLUTE)
 get_filename_component(_default_source_root "${_windows_build_dir}/.." ABSOLUTE)
-get_filename_component(_default_workspace_root "${_default_source_root}/../windows_build" ABSOLUTE)
+get_filename_component(_default_workspace_root "${_default_source_root}/windows-build-workspace" ABSOLUTE)
 include("${_script_dir}/stemtex-common.cmake")
 include("${_script_dir}/run-tree-common.cmake")
 
@@ -152,6 +152,9 @@ endfunction()
 mengshee_default_path(SOURCE_ROOT "${_default_source_root}")
 mengshee_default_path(WORKSPACE_ROOT "${_default_workspace_root}")
 mengshee_default_path(SDK_PREFIX "${WORKSPACE_ROOT}/sdk")
+if(NOT DEFINED MENGSHEE_PDF_BACKEND)
+    set(MENGSHEE_PDF_BACKEND MuPDF)
+endif()
 mengshee_default_path(INSTALL_PREFIX "${WORKSPACE_ROOT}/install/mengshee")
 mengshee_default_path(BUILD_DIR "${WORKSPACE_ROOT}/build/mengshee-standalone")
 mengshee_find_qt_prefix(QT_PREFIX_RESOLVED)
@@ -196,8 +199,6 @@ mengshee_find_msgfmt(MSGFMT "${SDK_PREFIX}")
 foreach(_required IN ITEMS
     "share/ECM/cmake/ECMConfig.cmake"
     "lib/cmake/KF6Parts/KF6PartsConfig.cmake"
-    "lib/poppler.lib"
-    "lib/poppler-qt6.lib"
     "lib/tesseract55.lib"
     "include/tesseract/baseapi.h"
     "share/tessdata/eng.traineddata"
@@ -206,6 +207,9 @@ foreach(_required IN ITEMS
         message(FATAL_ERROR "Standalone SDK is missing ${_required} in ${SDK_PREFIX}.")
     endif()
 endforeach()
+if(MENGSHEE_PDF_BACKEND STREQUAL "MuPDF" AND NOT EXISTS "${SDK_PREFIX}/mupdf/lib/libmupdf.lib")
+    message(FATAL_ERROR "MuPDF SDK missing. Run windows-build/cmake/build-mupdf-sdk.cmake first.")
+endif()
 
 message(STATUS "Mengshee Windows CMake driver")
 message(STATUS "  Source      : ${SOURCE_ROOT}")
@@ -232,6 +236,8 @@ if(NOT DEFINED SKIP_BUILD OR NOT SKIP_BUILD)
         -G Ninja
         "-DCMAKE_MAKE_PROGRAM=\"${NINJA_PROGRAM}\""
         "-DCMAKE_BUILD_TYPE=${BUILD_TYPE}"
+        "-DMENGSHEE_PDF_BACKEND=${MENGSHEE_PDF_BACKEND}"
+        "-DMuPDF_ROOT=\"${SDK_PREFIX}/mupdf\""
         "-DCMAKE_INSTALL_PREFIX=\"${INSTALL_PREFIX}\""
         "-DCMAKE_PREFIX_PATH=\"${_cmake_prefix_path}\""
         "-DGETTEXT_MSGFMT_EXECUTABLE=\"${MSGFMT}\""
@@ -273,6 +279,8 @@ if(NOT DEFINED SKIP_DEPLOY OR NOT SKIP_DEPLOY)
         "-DSOURCE_ROOT=${SOURCE_ROOT}"
         "-DWORKSPACE_ROOT=${WORKSPACE_ROOT}"
         "-DSDK_PREFIX=${SDK_PREFIX}"
+        "-DBUILD_DIR=${BUILD_DIR}"
+        "-DMENGSHEE_PDF_BACKEND=${MENGSHEE_PDF_BACKEND}"
         "-DINSTALL_PREFIX=${INSTALL_PREFIX}"
         "-DQT_PREFIX=${QT_PREFIX}"
         "-DQSCINTILLA_ROOT=${QSCINTILLA_ROOT_RESOLVED}"
@@ -302,6 +310,7 @@ if(NOT DEFINED SKIP_PACKAGE OR NOT SKIP_PACKAGE)
         "-DWORKSPACE_ROOT=${WORKSPACE_ROOT}"
         "-DINSTALL_PREFIX=${INSTALL_PREFIX}"
     )
+    list(APPEND _package_args "-DMENGSHEE_PDF_BACKEND=${MENGSHEE_PDF_BACKEND}")
     if(DEFINED OUTPUT_DIR AND NOT "${OUTPUT_DIR}" STREQUAL "")
         list(APPEND _package_args "-DOUTPUT_DIR=${OUTPUT_DIR}")
     endif()
@@ -335,7 +344,14 @@ if(NOT DEFINED SKIP_PACKAGE OR NOT SKIP_PACKAGE)
     endif()
 endif()
 
-set(_stage_root "${WORKSPACE_ROOT}/dist/mengshee-pdf/app")
+set(_stage_root "${INSTALL_PREFIX}")
+if(NOT SKIP_PACKAGE)
+    if(STAGE_ROOT)
+        set(_stage_root "${STAGE_ROOT}")
+    else()
+        set(_stage_root "${WORKSPACE_ROOT}/dist/mengshee-pdf/app")
+    endif()
+endif()
 mengshee_report_run_trees()
 if(IS_DIRECTORY "${_stage_root}/bin")
     message(STATUS "Developer runtime: ${_stage_root}/bin/mengshee.exe")

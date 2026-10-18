@@ -40,7 +40,7 @@ From the repository root:
 & "C:\Qt\Tools\CMake_64\bin\cmake.exe" `
   -DQT_PREFIX=C:/Qt/6.11.1/msvc2022_64 `
   -DVCVARS="C:/Program Files/Microsoft Visual Studio/18/Community/VC/Auxiliary/Build/vcvars64.bat" `
-  -DWORKSPACE_ROOT=C:/Users/jairy/Documents/okular/windows_build `
+  -DWORKSPACE_ROOT=C:/Users/jairy/Documents/mengshee/windows-build-workspace `
   -P windows-build/cmake/bootstrap-kf6-sdk.cmake
 ```
 
@@ -50,7 +50,7 @@ To pin a different stable KF6 release:
 & "C:\Qt\Tools\CMake_64\bin\cmake.exe" `
   -DQT_PREFIX=C:/Qt/6.11.1/msvc2022_64 `
   -DVCVARS="C:/Program Files/Microsoft Visual Studio/18/Community/VC/Auxiliary/Build/vcvars64.bat" `
-  -DWORKSPACE_ROOT=C:/Users/jairy/Documents/okular/windows_build `
+  -DWORKSPACE_ROOT=C:/Users/jairy/Documents/mengshee/windows-build-workspace `
   -DKF6_VERSION=6.26.0 `
   -P windows-build/cmake/bootstrap-kf6-sdk.cmake
 ```
@@ -67,13 +67,13 @@ Build zlib and freetype before modules that need compression or font support:
 & "C:\Qt\Tools\CMake_64\bin\cmake.exe" `
   -DQT_PREFIX=C:/Qt/6.11.1/msvc2022_64 `
   -DVCVARS="C:/Program Files/Microsoft Visual Studio/18/Community/VC/Auxiliary/Build/vcvars64.bat" `
-  -DWORKSPACE_ROOT=C:/Users/jairy/Documents/okular/windows_build `
+  -DWORKSPACE_ROOT=C:/Users/jairy/Documents/mengshee/windows-build-workspace `
   -P windows-build/cmake/build-zlib-sdk.cmake
 
 & "C:\Qt\Tools\CMake_64\bin\cmake.exe" `
   -DQT_PREFIX=C:/Qt/6.11.1/msvc2022_64 `
   -DVCVARS="C:/Program Files/Microsoft Visual Studio/18/Community/VC/Auxiliary/Build/vcvars64.bat" `
-  -DWORKSPACE_ROOT=C:/Users/jairy/Documents/okular/windows_build `
+  -DWORKSPACE_ROOT=C:/Users/jairy/Documents/mengshee/windows-build-workspace `
   -P windows-build/cmake/build-freetype-sdk.cmake
 ```
 
@@ -81,13 +81,13 @@ Install the libintl compatibility shim used by KI18n on Windows:
 
 ```powershell
 & "C:\Qt\Tools\CMake_64\bin\cmake.exe" `
-  -DWORKSPACE_ROOT=C:/Users/jairy/Documents/okular/windows_build `
+  -DWORKSPACE_ROOT=C:/Users/jairy/Documents/mengshee/windows-build-workspace `
   -P windows-build/cmake/install-gettext-native-sdk.cmake
 
 & "C:\Qt\Tools\CMake_64\bin\cmake.exe" `
   -DQT_PREFIX=C:/Qt/6.11.1/msvc2022_64 `
   -DVCVARS="C:/Program Files/Microsoft Visual Studio/18/Community/VC/Auxiliary/Build/vcvars64.bat" `
-  -DWORKSPACE_ROOT=C:/Users/jairy/Documents/okular/windows_build `
+  -DWORKSPACE_ROOT=C:/Users/jairy/Documents/mengshee/windows-build-workspace `
   -P windows-build/cmake/build-libintl-shim-sdk.cmake
 ```
 
@@ -100,7 +100,7 @@ Install pinned flex and bison wrappers for modules that generate parsers:
 
 ```powershell
 & "C:\Qt\Tools\CMake_64\bin\cmake.exe" `
-  -DWORKSPACE_ROOT=C:/Users/jairy/Documents/okular/windows_build `
+  -DWORKSPACE_ROOT=C:/Users/jairy/Documents/mengshee/windows-build-workspace `
   -P windows-build/cmake/install-winflexbison-sdk.cmake
 ```
 
@@ -113,14 +113,14 @@ After ECM is installed, build individual stable KF6 modules with:
   -DMODULE=kcoreaddons `
   -DQT_PREFIX=C:/Qt/6.11.1/msvc2022_64 `
   -DVCVARS="C:/Program Files/Microsoft Visual Studio/18/Community/VC/Auxiliary/Build/vcvars64.bat" `
-  -DWORKSPACE_ROOT=C:/Users/jairy/Documents/okular/windows_build `
+  -DWORKSPACE_ROOT=C:/Users/jairy/Documents/mengshee/windows-build-workspace `
   -P windows-build/cmake/build-kf6-module.cmake
 ```
 
 The script records installed modules in:
 
 ```text
-..\windows_build\sdk\mengshee-sdk-modules.cmake
+windows-build-workspace\sdk\mengshee-sdk-modules.cmake
 ```
 
 Some modules need extra CMake options. For example, build `KArchive` with
@@ -132,7 +132,7 @@ nonessential compression and crypto backends disabled:
   -DEXTRA_CMAKE_ARGS="-DWITH_BZIP2=OFF,-DWITH_LIBLZMA=OFF,-DWITH_OPENSSL=OFF,-DWITH_LIBZSTD=OFF" `
   -DQT_PREFIX=C:/Qt/6.11.1/msvc2022_64 `
   -DVCVARS="C:/Program Files/Microsoft Visual Studio/18/Community/VC/Auxiliary/Build/vcvars64.bat" `
-  -DWORKSPACE_ROOT=C:/Users/jairy/Documents/okular/windows_build `
+  -DWORKSPACE_ROOT=C:/Users/jairy/Documents/mengshee/windows-build-workspace `
   -P windows-build/cmake/build-kf6-module.cmake
 ```
 
@@ -144,13 +144,13 @@ After zlib and freetype are installed in the SDK, build custom Poppler:
 & "C:\Qt\Tools\CMake_64\bin\cmake.exe" `
   -DQT_PREFIX=C:/Qt/6.11.1/msvc2022_64 `
   -DVCVARS="C:/Program Files/Microsoft Visual Studio/18/Community/VC/Auxiliary/Build/vcvars64.bat" `
-  -DWORKSPACE_ROOT=C:/Users/jairy/Documents/okular/windows_build `
+  -DWORKSPACE_ROOT=C:/Users/jairy/Documents/mengshee/windows-build-workspace `
   -P windows-build/cmake/build-poppler-sdk.cmake
 ```
 
-Mengshee uses the installed Poppler libraries from `..\windows_build\sdk` and
+Mengshee uses the installed Poppler libraries from `windows-build-workspace\sdk` and
 the generated private Poppler headers from
-`..\windows_build\build\thirdparty\poppler-custom`.
+`windows-build-workspace\build\thirdparty\poppler-custom`.
 
 `external/poppler` is a locally modified, pinned fork rather than an arbitrary
 upstream checkout. After changing its gitlink, rebuild both the Poppler SDK and

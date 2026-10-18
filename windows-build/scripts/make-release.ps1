@@ -27,7 +27,7 @@ Installer to publish. Defaults to
 Release directory. Defaults to `<checkout>\output\releases\<version>`.
 
 .PARAMETER WorkspaceRoot
-Build workspace holding `dist\`; detected when omitted.
+Build workspace holding `dist\`; defaults to `<checkout>\windows-build-workspace`.
 #>
 [CmdletBinding()]
 param(
@@ -41,12 +41,7 @@ $ErrorActionPreference = "Stop"
 
 $sourceRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot "..\.."))
 if (!$WorkspaceRoot) {
-    foreach ($candidate in @((Join-Path $sourceRoot "windows-build-workspace"), (Join-Path (Split-Path -Parent $sourceRoot) "windows_build"))) {
-        if (Test-Path -LiteralPath (Join-Path $candidate "dist")) {
-            $WorkspaceRoot = $candidate
-            break
-        }
-    }
+    $WorkspaceRoot = Join-Path $sourceRoot "windows-build-workspace"
 }
 if (!$Installer) {
     if (!$WorkspaceRoot) {
