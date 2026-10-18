@@ -3,6 +3,10 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QFileInfo>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QMutex>
 #include <QScopeGuard>
 #include <QStandardPaths>
 #include <algorithm>
@@ -11,6 +15,16 @@
 #if HAVE_TESSERACT
 #include <tesseract/baseapi.h>
 #include <tesseract/resultiterator.h>
+#ifdef Q_OS_WIN
+// The bundled MuPDF archive redirects Leptonica allocation through a single
+// context. Match its OCR wrapper's lifecycle, including engine destruction.
+extern "C" void fz_set_leptonica_mem(fz_context *ctx);
+extern "C" void fz_clear_leptonica_mem(fz_context *ctx);
+namespace
+{
+QMutex ocrAllocatorMutex;
+}
+#endif
 #endif
 
 bool MuPDFGenerator::canPerformEnglishOcr() const
@@ -26,6 +40,32 @@ bool MuPDFGenerator::readOcrTextLayer(int index, QList<Okular::OcrTextWord> *wor
     if (!words)
         return false;
     words->clear();
+    QString stored;
+    if (!operation(
+            [&] {
+                if (index < 0 || index >= m_pages.size())
+                    fz_throw(m_context, FZ_ERROR_ARGUMENT, "Invalid OCR page index");
+                stored = QString::fromUtf8(pdf_dict_gets(m_context, m_pages[index]->obj, "MengsheeOCRWords") ? pdf_to_text_string(m_context, pdf_dict_gets(m_context, m_pages[index]->obj, "MengsheeOCRWords")) : "");
+            },
+            error))
+        return false;
+    if (!stored.isEmpty()) {
+        const auto root = QJsonDocument::fromJson(stored.toUtf8()).object();
+        if (root.value(QStringLiteral("version")).toInt() == 1 && root.value(QStringLiteral("words")).isArray()) {
+            for (const auto &value : root.value(QStringLiteral("words")).toArray()) {
+                const auto word = value.toObject();
+                const auto rect = word.value(QStringLiteral("rect")).toArray();
+                if (rect.size() != 4) {
+                    words->clear();
+                    if (error)
+                        *error = QStringLiteral("Invalid stored OCR word rectangle.");
+                    return false;
+                }
+                words->append({word.value(QStringLiteral("text")).toString(), QRectF(rect[0].toDouble(), rect[1].toDouble(), rect[2].toDouble(), rect[3].toDouble())});
+            }
+            return true;
+        }
+    }
     fz_stext_page *text = nullptr;
     fz_var(text);
     return operation(
@@ -87,14 +127,22 @@ bool MuPDFGenerator::replaceOcrTextLayer(int index, const QList<Okular::OcrTextW
             return false;
         }
     }
+    // Glyph bounds include font ascent/descent and cannot recover an editing
+    // rectangle exactly. Persist the input geometry independently of glyphs.
+    QJsonArray storedWords;
+    for (const auto &word : words)
+        storedWords.append(QJsonObject {{QStringLiteral("text"), word.text}, {QStringLiteral("rect"), QJsonArray {word.rectangle.x(), word.rectangle.y(), word.rectangle.width(), word.rectangle.height()}}});
+    const auto stored = QJsonDocument(QJsonObject {{QStringLiteral("version"), 1}, {QStringLiteral("words"), storedWords}}).toJson(QJsonDocument::Compact);
     fz_buffer *buffer = nullptr;
     fz_device *device = nullptr;
     fz_font *font = nullptr;
     fz_text *text = nullptr;
+    pdf_obj *ocrResources = nullptr;
     fz_var(buffer);
     fz_var(device);
     fz_var(font);
     fz_var(text);
+    fz_var(ocrResources);
     return operation(
         [&] {
             if (index < 0 || index >= m_pages.size())
@@ -122,7 +170,10 @@ bool MuPDFGenerator::replaceOcrTextLayer(int index, const QList<Okular::OcrTextW
             {
                 buffer = fz_new_buffer(m_context, 1024);
                 fz_append_string(m_context, buffer, "q\n");
-                device = pdf_new_pdf_device(m_context, m_document, fz_identity, resources, buffer);
+                // The PDF device allocates names starting at F0. Keep them in
+                // a Form resource dictionary so existing page fonts are untouched.
+                ocrResources = pdf_new_dict(m_context, m_document, 1);
+                device = pdf_new_pdf_device(m_context, m_document, fz_identity, ocrResources, buffer);
                 font = fz_new_base14_font(m_context, "Helvetica");
                 for (const auto &word : words) {
                     const auto utf8 = word.text.toUtf8();
@@ -140,6 +191,19 @@ bool MuPDFGenerator::replaceOcrTextLayer(int index, const QList<Okular::OcrTextW
                 }
                 fz_close_device(m_context, device);
                 fz_append_string(m_context, buffer, "Q\n");
+                char name[64];
+                int suffix = 0;
+                auto *forms = pdf_dict_get(m_context, resources, PDF_NAME(XObject));
+                if (!forms)
+                    forms = pdf_dict_put_dict(m_context, resources, PDF_NAME(XObject), 1);
+                do {
+                    fz_snprintf(name, sizeof(name), "MengsheeOCR%d", suffix++);
+                } while (pdf_dict_gets(m_context, forms, name));
+                pdf_dict_puts_drop(m_context, forms, name, pdf_new_xobject(m_context, m_document, fz_transform_rect(box, inverse), fz_identity, ocrResources, buffer));
+                fz_drop_buffer(m_context, buffer);
+                buffer = nullptr;
+                buffer = fz_new_buffer(m_context, 64);
+                fz_append_printf(m_context, buffer, "q /%s Do Q\n", name);
                 auto *stream = pdf_add_stream(m_context, m_document, buffer, nullptr, 0);
                 auto *contents = pdf_dict_get(m_context, object, PDF_NAME(Contents));
                 if (pdf_is_array(m_context, contents))
@@ -151,9 +215,11 @@ bool MuPDFGenerator::replaceOcrTextLayer(int index, const QList<Okular::OcrTextW
                     pdf_array_push_drop(m_context, array, stream);
                     pdf_dict_put_drop(m_context, object, PDF_NAME(Contents), array);
                 }
+                pdf_dict_puts_drop(m_context, object, "MengsheeOCRWords", pdf_new_text_string(m_context, stored.constData()));
             }
             fz_always(m_context)
             {
+                pdf_drop_obj(m_context, ocrResources);
                 fz_drop_text(m_context, text);
                 fz_drop_device(m_context, device);
                 fz_drop_font(m_context, font);
@@ -182,6 +248,12 @@ Okular::OcrResult MuPDFGenerator::saveWithEnglishOcr(const QString &input, const
     if (data.isEmpty())
         data = QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("data/mengshee/tessdata/eng.traineddata"));
     const auto directory = QFileInfo(data).absolutePath().toUtf8();
+#ifdef Q_OS_WIN
+    QMutexLocker allocatorLock(&ocrAllocatorMutex);
+    if (!snapshot.operation([&] { fz_set_leptonica_mem(snapshot.m_context); }, &result.errorText))
+        return result;
+    const auto releaseAllocator = qScopeGuard([&] { fz_clear_leptonica_mem(snapshot.m_context); });
+#endif
     tesseract::TessBaseAPI engine;
     if (engine.Init(directory.constData(), "eng", tesseract::OEM_LSTM_ONLY) != 0) {
         result.errorText = QStringLiteral("Could not load the English OCR model.");
@@ -273,6 +345,12 @@ Okular::ReadingViewGenerationResult MuPDFGenerator::generateReadingViews(const Q
         result.errorText = QStringLiteral("Cannot open the layout snapshot.");
         return result;
     }
+#ifdef Q_OS_WIN
+    QMutexLocker allocatorLock(&ocrAllocatorMutex);
+    if (!snapshot.operation([&] { fz_set_leptonica_mem(snapshot.m_context); }, &result.errorText))
+        return result;
+    const auto releaseAllocator = qScopeGuard([&] { fz_clear_leptonica_mem(snapshot.m_context); });
+#endif
     tesseract::TessBaseAPI engine;
     engine.InitForAnalysePage();
     engine.SetPageSegMode(tesseract::PSM_AUTO);

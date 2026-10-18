@@ -1,3 +1,4 @@
+#include "rectangleinteraction.h"
 /*
     SPDX-FileCopyrightText: 2017 Tobias Deiminger <haxtibal@t-online.de>
     SPDX-FileCopyrightText: 2004-2005 Enrico Ros <eros.kde@email.it>
@@ -49,7 +50,7 @@
 #include "pageview.h"
 #include "videowidget.h"
 
-static const int handleSize = 10;
+static const int handleSize = RectangleInteraction::handleSize;
 static const int handleSizeHalf = handleSize / 2;
 static const int latexWarningMarkerSize = 14;
 
@@ -364,16 +365,6 @@ static bool handleAdjustsLayoutWidth(MouseAnnotation::ResizeHandle rotatedHandle
     return handleAdjustsHorizontally(rotatedHandle);
 }
 
-static QRectF latexControlRectAfterResize(const Okular::NormalizedRect &baseLayoutRect, MouseAnnotation::ResizeHandle rotatedHandle, const QPointF &delta1, const QPointF &delta2)
-{
-    const QRectF baseRect = toRectF(baseLayoutRect);
-    if (baseRect.width() <= 0.0 || baseRect.height() <= 0.0) {
-        return {};
-    }
-
-    Q_UNUSED(rotatedHandle);
-    return QRectF(baseRect.left() + delta1.x(), baseRect.top() + delta1.y(), baseRect.width() + delta2.x() - delta1.x(), baseRect.height() + delta2.y() - delta1.y());
-}
 
 static MouseAnnotation::ResizeHandle rotateHandleForPage(MouseAnnotation::ResizeHandle handle, Okular::Rotation rotation)
 {
@@ -396,63 +387,8 @@ static MouseAnnotation::ResizeHandle rotateHandleForPage(MouseAnnotation::Resize
     return static_cast<MouseAnnotation::ResizeHandle>(rotatedHandle);
 }
 
-static void fitRectInsidePage(QRectF &rect)
-{
-    constexpr double minSize = 1e-6;
-    if (!std::isfinite(rect.left()) || !std::isfinite(rect.top()) || !std::isfinite(rect.right()) || !std::isfinite(rect.bottom()) || rect.width() <= minSize || rect.height() <= minSize) {
-        rect = QRectF();
-        return;
-    }
 
-    if (rect.width() > 1.0 || rect.height() > 1.0) {
-        const double scale = qMin(1.0 / rect.width(), 1.0 / rect.height());
-        const QSizeF scaledSize(rect.width() * scale, rect.height() * scale);
-        rect = QRectF(rect.center() - QPointF(scaledSize.width() / 2.0, scaledSize.height() / 2.0), scaledSize);
-    }
 
-    if (rect.left() < 0.0) {
-        rect.translate(-rect.left(), 0.0);
-    }
-    if (rect.top() < 0.0) {
-        rect.translate(0.0, -rect.top());
-    }
-    if (rect.right() > 1.0) {
-        rect.translate(1.0 - rect.right(), 0.0);
-    }
-    if (rect.bottom() > 1.0) {
-        rect.translate(0.0, 1.0 - rect.bottom());
-    }
-}
-
-static Okular::NormalizedRect adjustedRectForResize(const Okular::NormalizedRect &sourceRect, const QPointF &delta1, const QPointF &delta2)
-{
-    QRectF adjustedRect(sourceRect.left + delta1.x(), sourceRect.top + delta1.y(), sourceRect.width() + delta2.x() - delta1.x(), sourceRect.height() + delta2.y() - delta1.y());
-    fitRectInsidePage(adjustedRect);
-    const Okular::NormalizedRect normalizedRect = toNormalizedRect(adjustedRect);
-    return isUsableRect(normalizedRect) ? normalizedRect : Okular::NormalizedRect();
-}
-
-static double stampImageAspectRatio(const Okular::Annotation *annotation)
-{
-    if (!isStampAnnotation(annotation)) {
-        return 0.0;
-    }
-
-    const auto *stamp = static_cast<const Okular::StampAnnotation *>(annotation);
-    const QString iconName = stamp->stampImagePath().isEmpty() ? stamp->stampIconName() : stamp->stampImagePath();
-    if (QFile::exists(iconName)) {
-        QImageReader reader(iconName);
-        QSize imageSize = reader.size();
-        if (imageSize.isEmpty()) {
-            imageSize = reader.read().size();
-        }
-        if (imageSize.width() > 0 && imageSize.height() > 0) {
-            return double(imageSize.width()) / imageSize.height();
-        }
-    }
-
-    return 0.0;
-}
 
 static bool latexTextAnnotationBoxed(const Okular::TextAnnotation *annotation)
 {
@@ -847,32 +783,6 @@ bool MouseAnnotation::updateLatexNoteAfterResizeAsync(const AnnotationDescriptio
     return true;
 }
 
-static double stampNormalizedAspectRatio(const AnnotationDescription &ad)
-{
-    const double imageAspectRatio = stampImageAspectRatio(ad.annotation);
-    if (std::isfinite(imageAspectRatio) && imageAspectRatio > 0.0 && ad.pageViewItem && ad.pageViewItem->page()) {
-        const Okular::Page *page = ad.pageViewItem->page();
-        if (page->width() > 0.0 && page->height() > 0.0) {
-            return imageAspectRatio * page->height() / page->width();
-        }
-    }
-
-    if (std::isfinite(imageAspectRatio) && imageAspectRatio > 0.0 && ad.pageViewItem) {
-        const QRect &pageRect = ad.pageViewItem->uncroppedGeometry();
-        if (pageRect.width() > 0 && pageRect.height() > 0) {
-            return imageAspectRatio * double(pageRect.height()) / pageRect.width();
-        }
-    }
-
-    if (!ad.annotation) {
-        return 0.0;
-    }
-    const Okular::NormalizedRect rect = ad.annotation->boundingRectangle();
-    if (rect.height() > 0.0) {
-        return rect.width() / rect.height();
-    }
-    return 0.0;
-}
 
 bool AnnotationDescription::isValid() const
 {
@@ -936,7 +846,6 @@ MouseAnnotation::MouseAnnotation(PageView *parent, Okular::Document *document)
     , m_latexResizeRequestId(0)
     , m_hasPendingLatexResizePreview(false)
 {
-    m_resizeHandleList << RH_Left << RH_Right << RH_Top << RH_Bottom << RH_TopLeft << RH_TopRight << RH_BottomLeft << RH_BottomRight;
 }
 
 MouseAnnotation::~MouseAnnotation()
@@ -1143,8 +1052,7 @@ void MouseAnnotation::routePaint(QPainter *painter, const QRect paintRect)
     painter->save();
     painter->setClipRect(paintRect, Qt::IntersectClip);
     painter->translate(m_focusedAnnotation.pageViewItem->uncroppedGeometry().topLeft());
-    painter->setPen(QPen(fillColor, 2, (drawingMovePreview || drawingLatexResizePreview) ? Qt::DashLine : Qt::SolidLine, Qt::SquareCap, Qt::BevelJoin));
-    painter->drawRect(selectionRect);
+    RectangleInteraction::draw(painter, QRectF(selectionRect), m_focusedAnnotation.annotation->canBeResized(), drawingMovePreview || drawingLatexResizePreview, {fillColor, borderColor, fillColor});
     if (drawingMovePreview) {
         painter->restore();
         return;
@@ -1156,7 +1064,7 @@ void MouseAnnotation::routePaint(QPainter *painter, const QRect paintRect)
         painter->setPen(borderColor);
         painter->setBrush(fillColor);
         for (int i = 0; i < points.count(); ++i) {
-            painter->drawRect(getLinePointHandleRect(i, m_focusedAnnotation));
+            RectangleInteraction::drawHandle(painter, QRectF(getLinePointHandleRect(i, m_focusedAnnotation)).center(), {fillColor, borderColor, fillColor});
         }
     }
     if (m_focusedAnnotation.annotation->canBeResized()) {
@@ -1165,16 +1073,11 @@ void MouseAnnotation::routePaint(QPainter *painter, const QRect paintRect)
             painter->setPen(borderColor);
             painter->setBrush(fillColor);
             for (int i = 0; i < 3; ++i) {
-                painter->drawRect(getHandleRect(calloutHandleForIndex(i), m_focusedAnnotation));
+                RectangleInteraction::drawHandle(painter, QRectF(getHandleRect(calloutHandleForIndex(i), m_focusedAnnotation)).center(), {fillColor, borderColor, fillColor});
             }
         }
 
-        for (const ResizeHandle &handle : std::as_const(m_resizeHandleList)) {
-            const QRect rect = getHandleRect(handle, m_focusedAnnotation);
-            painter->setPen(borderColor);
-            painter->setBrush(fillColor);
-            painter->drawRect(rect);
-        }
+
         const QRect warningMarkerRect = getLatexWarningMarkerRect(m_focusedAnnotation);
         if (warningMarkerRect.isValid()) {
             const QPoint center = warningMarkerRect.center();
@@ -1246,28 +1149,7 @@ Qt::CursorShape MouseAnnotation::cursor() const
         if (isMoved()) {
             return Qt::SizeAllCursor;
         } else if (isFocused() || isResized()) {
-            switch (m_handle) {
-            case RH_Top:
-                return Qt::SizeVerCursor;
-            case RH_TopRight:
-                return Qt::SizeBDiagCursor;
-            case RH_Right:
-                return Qt::SizeHorCursor;
-            case RH_BottomRight:
-                return Qt::SizeFDiagCursor;
-            case RH_Bottom:
-                return Qt::SizeVerCursor;
-            case RH_BottomLeft:
-                return Qt::SizeBDiagCursor;
-            case RH_Left:
-                return Qt::SizeHorCursor;
-            case RH_TopLeft:
-                return Qt::SizeFDiagCursor;
-            case RH_Content:
-                return Qt::SizeAllCursor;
-            default:
-                return Qt::OpenHandCursor;
-            }
+            return RectangleInteraction::cursor(static_cast<RectangleInteraction::Handle>(int(m_handle)));
         }
     } else if (m_mouseOverAnnotation.isValid()) {
         /* Mouse is over annotation, but the annotation is not yet selected. */
@@ -1491,8 +1373,7 @@ void MouseAnnotation::performCommand(const QPoint newPos)
         Okular::NormalizedPoint delta(normalizedRotatedMouseDelta.x(), normalizedRotatedMouseDelta.y());
         const Okular::NormalizedRect annotRect = m_hasPreviewBoundingRect ? m_previewBoundingRect : m_focusedAnnotation.annotation->boundingRectangle();
 
-        QRectF adjustedRect = toRectF(annotRect).translated(delta.x, delta.y);
-        fitRectInsidePage(adjustedRect);
+        const QRectF adjustedRect = RectangleInteraction::drag(toRectF(annotRect), RectangleInteraction::Handle::Move, {}, QPointF(delta.x, delta.y), {}, QRectF(0, 0, 1, 1));
         const Okular::NormalizedRect normalizedRect = toNormalizedRect(adjustedRect);
         if (isUsableRect(normalizedRect)) {
             m_previewBoundingRect = normalizedRect;
@@ -1556,78 +1437,18 @@ void MouseAnnotation::performCommand(const QPoint newPos)
             return;
         }
 
-        QPointF delta1, delta2;
-        handleToAdjust(normalizedRotatedMouseDelta, delta1, delta2, m_handle, m_focusedAnnotation.pageViewItem->page()->rotation());
-        const Okular::NormalizedRect annotRect = m_hasPreviewBoundingRect ? m_previewBoundingRect : m_focusedAnnotation.annotation->boundingRectangle();
-        const ResizeHandle rotatedHandle = rotateHandle(m_handle, m_focusedAnnotation.pageViewItem->page()->rotation());
-
-        if (LatexNoteUtils::annotationIsLatex(m_focusedAnnotation.annotation)) {
-            const Okular::NormalizedRect baseLayoutRect = m_hasLatexResizeLayoutRect ? m_latexResizeLayoutRect : annotRect;
-            QRectF adjustedLayoutRect = latexControlRectAfterResize(baseLayoutRect, rotatedHandle, delta1, delta2);
-            if (adjustedLayoutRect.width() > 0.0 && adjustedLayoutRect.height() > 0.0) {
-                fitRectInsidePage(adjustedLayoutRect);
-                const Okular::NormalizedRect normalizedLayoutRect = toNormalizedRect(adjustedLayoutRect);
-                if (isUsableRect(normalizedLayoutRect)) {
-                    m_latexResizeLayoutRect = normalizedLayoutRect;
-                    m_hasLatexResizeLayoutRect = true;
-                    m_previewBoundingRect = normalizedLayoutRect;
-                    m_hasPreviewBoundingRect = true;
-                }
-            }
-            return;
-        }
-
-        if (isStampAnnotation(m_focusedAnnotation.annotation)) {
-            const double aspectRatio = stampNormalizedAspectRatio(m_focusedAnnotation);
-            if (std::isfinite(aspectRatio) && aspectRatio > 0.0) {
-                QRectF adjustedRect(annotRect.left + delta1.x(), annotRect.top + delta1.y(), annotRect.width() + delta2.x() - delta1.x(), annotRect.height() + delta2.y() - delta1.y());
-                if (adjustedRect.width() > 0.0 && adjustedRect.height() > 0.0) {
-                    const bool adjustsLeft = rotatedHandle & RH_Left;
-                    const bool adjustsRight = rotatedHandle & RH_Right;
-                    const bool adjustsTop = rotatedHandle & RH_Top;
-                    const bool adjustsBottom = rotatedHandle & RH_Bottom;
-
-                    if ((adjustsLeft || adjustsRight) && !(adjustsTop || adjustsBottom)) {
-                        const double height = adjustedRect.width() / aspectRatio;
-                        const double centerY = annotRect.top + annotRect.height() / 2.0;
-                        adjustedRect.setTop(centerY - height / 2.0);
-                        adjustedRect.setBottom(centerY + height / 2.0);
-                    } else if ((adjustsTop || adjustsBottom) && !(adjustsLeft || adjustsRight)) {
-                        const double width = adjustedRect.height() * aspectRatio;
-                        const double centerX = annotRect.left + annotRect.width() / 2.0;
-                        adjustedRect.setLeft(centerX - width / 2.0);
-                        adjustedRect.setRight(centerX + width / 2.0);
-                    } else if (adjustedRect.width() / adjustedRect.height() > aspectRatio) {
-                        const double width = adjustedRect.height() * aspectRatio;
-                        if (adjustsLeft) {
-                            adjustedRect.setLeft(adjustedRect.right() - width);
-                        } else {
-                            adjustedRect.setRight(adjustedRect.left() + width);
-                        }
-                    } else {
-                        const double height = adjustedRect.width() / aspectRatio;
-                        if (adjustsTop) {
-                            adjustedRect.setTop(adjustedRect.bottom() - height);
-                        } else {
-                            adjustedRect.setBottom(adjustedRect.top() + height);
-                        }
-                    }
-
-                    fitRectInsidePage(adjustedRect);
-                    const Okular::NormalizedRect normalizedRect = toNormalizedRect(adjustedRect);
-                    if (isUsableRect(normalizedRect)) {
-                        m_previewBoundingRect = normalizedRect;
-                        m_hasPreviewBoundingRect = true;
-                    }
-                    return;
-                }
-            }
-        }
-
-        const Okular::NormalizedRect normalizedRect = adjustedRectForResize(annotRect, delta1, delta2);
-        if (isUsableRect(normalizedRect)) {
-            m_previewBoundingRect = normalizedRect;
-            m_hasPreviewBoundingRect = true;
+        const bool latex = LatexNoteUtils::annotationIsLatex(m_focusedAnnotation.annotation);
+        const auto initial = latex && m_hasLatexResizeLayoutRect ? m_latexResizeLayoutRect : m_hasPreviewBoundingRect ? m_previewBoundingRect : m_focusedAnnotation.annotation->boundingRectangle();
+        const auto handle = static_cast<RectangleInteraction::Handle>(int(rotateHandle(m_handle, m_focusedAnnotation.pageViewItem->page()->rotation())));
+        QSizeF minimum(4.0 / pageViewItemRect.width(), 4.0 / pageViewItemRect.height());
+        const auto rotation = m_focusedAnnotation.pageViewItem->page()->rotation();
+        if (rotation == Okular::Rotation90 || rotation == Okular::Rotation270) minimum.transpose();
+        const auto resized = RectangleInteraction::drag(toRectF(initial), handle, {}, normalizedRotatedMouseDelta, minimum, QRectF(0, 0, 1, 1));
+        m_previewBoundingRect = toNormalizedRect(resized);
+        m_hasPreviewBoundingRect = true;
+        if (latex) {
+            m_latexResizeLayoutRect = m_previewBoundingRect;
+            m_hasLatexResizeLayoutRect = true;
         }
     }
 }
@@ -1904,7 +1725,6 @@ void MouseAnnotation::clearLatexRenderWarning()
    ad: The annotation to get the handle for. */
 MouseAnnotation::ResizeHandle MouseAnnotation::getHandleAt(const QPoint eventPos, const AnnotationDescription &ad) const
 {
-    ResizeHandle selected = RH_None;
     m_linePointHandleIndex = -1;
 
     if (hasUsableLinePoints(ad.annotation)) {
@@ -1928,41 +1748,8 @@ MouseAnnotation::ResizeHandle MouseAnnotation::getHandleAt(const QPoint eventPos
             }
         }
 
-        for (const ResizeHandle &handle : m_resizeHandleList) {
-            const QRect rect = getHandleRect(handle, ad);
-            if (rect.contains(eventPos)) {
-                selected |= handle;
-            }
-        }
-
-        /*
-         * Handles may overlap when selection is very small.
-         * Then it can happen that cursor is over more than one handles,
-         * and therefore maybe more than two flags are set.
-         * Favor one handle in that case.
-         */
-        if ((selected & RH_BottomRight) == RH_BottomRight) {
-            return RH_BottomRight;
-        }
-        if ((selected & RH_TopRight) == RH_TopRight) {
-            return RH_TopRight;
-        }
-        if ((selected & RH_TopLeft) == RH_TopLeft) {
-            return RH_TopLeft;
-        }
-        if ((selected & RH_BottomLeft) == RH_BottomLeft) {
-            return RH_BottomLeft;
-        }
     }
-
-    if (selected == RH_None && ad.annotation->canBeMoved()) {
-        const QRect boundingRect = Okular::AnnotationUtils::annotationGeometry(ad.annotation, ad.pageViewItem->uncroppedWidth(), ad.pageViewItem->uncroppedHeight());
-        if (boundingRect.contains(eventPos)) {
-            return RH_Content;
-        }
-    }
-
-    return selected;
+    return ResizeHandle(static_cast<ResizeHandleFlag>(RectangleInteraction::hitTest(QRectF(controlGeometryForInteraction(ad)), eventPos, ad.annotation->canBeResized(), ad.annotation->canBeMoved())));
 }
 
 /* Get the rectangle for a specified resizie handle. */
@@ -1981,26 +1768,8 @@ QRect MouseAnnotation::getHandleRect(ResizeHandle handle, const AnnotationDescri
         return QRect(left, top, handleSize, handleSize);
     }
 
-    QRect boundingRect = controlGeometryForInteraction(ad);
-    int left, top;
+    return RectangleInteraction::handleRect(RectangleInteraction::center(QRectF(controlGeometryForInteraction(ad)), static_cast<RectangleInteraction::Handle>(int(handle)))).toAlignedRect();
 
-    if (handle & RH_Top) {
-        top = boundingRect.top() - handleSizeHalf;
-    } else if (handle & RH_Bottom) {
-        top = boundingRect.bottom() - handleSizeHalf;
-    } else {
-        top = boundingRect.top() + boundingRect.height() / 2 - handleSizeHalf;
-    }
-
-    if (handle & RH_Left) {
-        left = boundingRect.left() - handleSizeHalf;
-    } else if (handle & RH_Right) {
-        left = boundingRect.right() - handleSizeHalf;
-    } else {
-        left = boundingRect.left() + boundingRect.width() / 2 - handleSizeHalf;
-    }
-
-    return QRect(left, top, handleSize, handleSize);
 }
 
 QRect MouseAnnotation::getLinePointHandleRect(int pointIndex, const AnnotationDescription &ad) const
@@ -2115,11 +1884,9 @@ void MouseAnnotation::restoreOriginalLineGeometry(const AnnotationDescription &a
 /* Convert a resize handle delta into two adjust delta coordinates. */
 void MouseAnnotation::handleToAdjust(const QPointF dIn, QPointF &dOut1, QPointF &dOut2, MouseAnnotation::ResizeHandle handle, Okular::Rotation rotation)
 {
-    const MouseAnnotation::ResizeHandle rotatedHandle = MouseAnnotation::rotateHandle(handle, rotation);
-    dOut1.rx() = (rotatedHandle & MouseAnnotation::RH_Left) ? dIn.x() : 0;
-    dOut1.ry() = (rotatedHandle & MouseAnnotation::RH_Top) ? dIn.y() : 0;
-    dOut2.rx() = (rotatedHandle & MouseAnnotation::RH_Right) ? dIn.x() : 0;
-    dOut2.ry() = (rotatedHandle & MouseAnnotation::RH_Bottom) ? dIn.y() : 0;
+    const auto delta = RectangleInteraction::adjustment(static_cast<RectangleInteraction::Handle>(int(rotateHandle(handle, rotation))), dIn);
+    dOut1 = delta.first;
+    dOut2 = delta.second;
 }
 
 QPointF MouseAnnotation::rotateInRect(const QPointF rotated, Okular::Rotation rotation)

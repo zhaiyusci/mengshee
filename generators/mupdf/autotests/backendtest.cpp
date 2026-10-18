@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+#include "../../../part/closedtemporarypdffile.h"
 #include "../../poppler/pdfpagebounds.h"
 #include "../generator_mupdf.h"
 #include <QSignalSpy>
@@ -44,11 +45,11 @@ private Q_SLOTS:
         pdf_obj *resources = pdf_new_dict(ctx, doc, 1);
         auto *fonts = pdf_dict_put_dict(ctx, resources, PDF_NAME(Font), 1);
         auto *font = pdf_new_dict(ctx, doc, 3);
-        pdf_dict_puts_drop(ctx, fonts, "F1", font);
+        pdf_dict_puts_drop(ctx, fonts, "F0", font);
         pdf_dict_put_name(ctx, font, PDF_NAME(Type), "Font");
         pdf_dict_put_name(ctx, font, PDF_NAME(Subtype), "Type1");
         pdf_dict_put_name(ctx, font, PDF_NAME(BaseFont), "Helvetica");
-        const char bytes[] = "BT /F1 20 Tf 30 150 Td (MuPDF migration test) Tj ET\n";
+        const char bytes[] = "BT /F0 20 Tf 30 150 Td (MuPDF migration test) Tj ET\n";
         auto *buffer = fz_new_buffer_from_copied_data(ctx, reinterpret_cast<const unsigned char *>(bytes), sizeof(bytes) - 1);
         auto *page = pdf_add_page(ctx, doc, fz_make_rect(0, 0, 300, 200), 0, resources, buffer);
         pdf_insert_page(ctx, doc, -1, page);
@@ -91,6 +92,75 @@ private Q_SLOTS:
         QCOMPARE(inserted->height() * 72.0 / screenDpi.height(), 500.0);
         QCOMPARE(backend.renderToImage(1, 72, false).size(), QSize(400, 500));
         qDeleteAll(pages);
+    }
+    void ocrWordRectanglesRemainStable()
+    {
+        MuPDFGenerator backend(nullptr, {});
+        QList<Okular::Page *> pages;
+        QCOMPARE(backend.loadDocumentWithPassword(sample(), pages, {}), Okular::Document::OpenSuccess);
+        QList<Okular::OcrTextWord> words {{QStringLiteral("first"), QRectF(.1, .3, .2, .04)}, {QStringLiteral("untouched"), QRectF(.4, .3, .3, .04)}};
+        QString error;
+        const auto original = backend.renderToImage(0, 144, false);
+        for (int i = 0; i < 5; ++i) {
+            words[0].rectangle.setWidth(.2 + i * .01);
+            QVERIFY2(backend.replaceOcrTextLayer(0, words, &error), qPrintable(error));
+            QList<Okular::OcrTextWord> actual;
+            QVERIFY2(backend.readOcrTextLayer(0, &actual, &error), qPrintable(error));
+            QCOMPARE(actual, words);
+            QCOMPARE(backend.renderToImage(0, 144, false), original);
+        }
+        const auto saved = m_directory.filePath(QStringLiteral("ocr-edited.pdf"));
+        QVERIFY2(backend.save(saved, Okular::SaveInterface::SaveChanges, &error), qPrintable(error));
+        MuPDFGenerator reopened(nullptr, {});
+        QList<Okular::Page *> fresh;
+        QCOMPARE(reopened.loadDocumentWithPassword(saved, fresh, {}), Okular::Document::OpenSuccess);
+        QList<Okular::OcrTextWord> actual;
+        QVERIFY2(reopened.readOcrTextLayer(0, &actual, &error), qPrintable(error));
+        QCOMPARE(actual, words);
+        // Undo/redo payloads also round-trip without expanding other words.
+        words[0].rectangle.setWidth(.2);
+        QVERIFY2(reopened.replaceOcrTextLayer(0, words, &error), qPrintable(error));
+        QVERIFY2(reopened.readOcrTextLayer(0, &actual, &error), qPrintable(error));
+        QCOMPARE(actual, words);
+        qDeleteAll(pages);
+        qDeleteAll(fresh);
+    }
+    void ocrSnapshotTemporaryFiles()
+    {
+        MuPDFGenerator backend(nullptr, {});
+        QList<Okular::Page *> pages;
+        QCOMPARE(backend.loadDocumentWithPassword(sample(), pages, {}), Okular::Document::OpenSuccess);
+        auto source = ClosedTemporaryPdfFile::create(m_directory.filePath(QStringLiteral("ocr-source-XXXXXX.pdf")));
+        auto output = ClosedTemporaryPdfFile::create(m_directory.filePath(QStringLiteral("ocr-output-XXXXXX.pdf")));
+        QVERIFY(source);
+        QVERIFY(output);
+        const auto sourcePath = source->fileName(), outputPath = output->fileName();
+        QString error;
+        QVERIFY2(backend.save(sourcePath, Okular::SaveInterface::SaveChanges, &error), qPrintable(error));
+        QVERIFY2(backend.save(sourcePath, Okular::SaveInterface::SaveChanges, &error), qPrintable(error));
+        const auto result = backend.saveWithEnglishOcr(sourcePath, outputPath, {1}, false, {});
+        QVERIFY2(result.success, qPrintable(result.errorText));
+        QCOMPARE(result.recognizedPages, 1);
+        QVERIFY(result.recognizedWords > 0);
+        const auto repeated = backend.saveWithEnglishOcr(sourcePath, outputPath, {1}, true, {});
+        QVERIFY2(repeated.success, qPrintable(repeated.errorText));
+        QCOMPARE(repeated.skippedPages, 1);
+        // Restore recognized output after exercising a second allocator session.
+        const auto recognized = backend.saveWithEnglishOcr(sourcePath, outputPath, {1}, false, {});
+        QVERIFY2(recognized.success, qPrintable(recognized.errorText));
+        MuPDFGenerator reopened(nullptr, {});
+        QList<Okular::Page *> fresh;
+        QCOMPARE(reopened.loadDocumentWithPassword(outputPath, fresh, {}), Okular::Document::OpenSuccess);
+        QList<Okular::OcrTextWord> words;
+        QVERIFY2(reopened.readOcrTextLayer(0, &words, &error), qPrintable(error));
+        QVERIFY(!words.isEmpty());
+        QCOMPARE(reopened.renderToImage(0, 144, false), backend.renderToImage(0, 144, false));
+        source.reset();
+        output.reset();
+        QVERIFY(!QFileInfo::exists(sourcePath));
+        QVERIFY(!QFileInfo::exists(outputPath));
+        qDeleteAll(pages);
+        qDeleteAll(fresh);
     }
     void renderAndSave()
     {
@@ -244,12 +314,19 @@ private Q_SLOTS:
         for (int i = 0; i < pages.size(); ++i)
             QVERIFY(!backend.renderToImage(i, 36, true).isNull());
         QString error;
+        const auto original = backend.renderToImage(0, 144, false);
+        const QList<Okular::OcrTextWord> words {{QStringLiteral("OCR regression"), QRectF(.1, .1, .3, .03)}};
+        QVERIFY2(backend.replaceOcrTextLayer(0, words, &error), qPrintable(error));
+        QCOMPARE(backend.renderToImage(0, 144, false), original);
+        QVERIFY2(backend.replaceOcrTextLayer(0, words, &error), qPrintable(error));
+        QCOMPARE(backend.renderToImage(0, 144, false), original);
         const auto saved = m_directory.filePath(QStringLiteral("external-copy.pdf"));
         QVERIFY2(backend.save(saved, Okular::SaveInterface::SaveChanges, &error), qPrintable(error));
         MuPDFGenerator reopened(nullptr, {});
         QList<Okular::Page *> fresh;
         QCOMPARE(reopened.loadDocumentWithPassword(saved, fresh, {}), Okular::Document::OpenSuccess);
         QCOMPARE(fresh.size(), pages.size());
+        QCOMPARE(reopened.renderToImage(0, 144, false), original);
         for (int i = 0; i < pages.size(); ++i)
             QCOMPARE(fresh[i]->annotations().size(), pages[i]->annotations().size());
         qDeleteAll(pages);
@@ -528,12 +605,24 @@ private Q_SLOTS:
         qDeleteAll(pages);
         qDeleteAll(fresh);
     }
+    void flattenedExportPreservesAppearanceAndSource_data()
+    {
+        QTest::addColumn<bool>("linkFirst");
+        QTest::addColumn<bool>("overlap");
+        QTest::newRow("separate-link") << false << false;
+        QTest::newRow("overlapping-link-before-note") << true << true;
+        QTest::newRow("overlapping-link-after-note") << false << true;
+    }
     void flattenedExportPreservesAppearanceAndSource()
     {
+        QFETCH(bool, linkFirst);
+        QFETCH(bool, overlap);
         MuPDFGenerator backend(nullptr, {});
         QList<Okular::Page *> pages;
         QString error;
         QCOMPARE(backend.loadDocumentWithPassword(sample(), pages, {}), Okular::Document::OpenSuccess);
+        if (linkFirst)
+            QVERIFY2(backend.createExternalLink(pages[0], .1, overlap ? .4 : .1, .3, overlap ? .5 : .2, QStringLiteral("https://example.com"), &error), qPrintable(error));
         Okular::StampAnnotation annotation;
         annotation.setOkularLatex(true);
         annotation.setLatexNoteType(Okular::Annotation::LatexNoteBoxed);
@@ -544,7 +633,8 @@ private Q_SLOTS:
         annotation.setLatexBorderColor(Qt::blue);
         annotation.style().setWidth(1);
         backend.annotationProxy()->notifyAddition(&annotation, 0);
-        QVERIFY2(backend.createExternalLink(pages[0], .1, .1, .3, .2, QStringLiteral("https://example.com"), &error), qPrintable(error));
+        if (!linkFirst)
+            QVERIFY2(backend.createExternalLink(pages[0], .1, overlap ? .4 : .1, .3, overlap ? .5 : .2, QStringLiteral("https://example.com"), &error), qPrintable(error));
         const auto before = backend.renderToImage(0, 144, true);
         int baked = -1, retained = -1;
         const auto path = m_directory.filePath(QStringLiteral("flat.pdf"));
@@ -557,6 +647,15 @@ private Q_SLOTS:
         QCOMPARE(reopened.loadDocumentWithPassword(path, fresh, {}), Okular::Document::OpenSuccess);
         QVERIFY(fresh[0]->annotations().isEmpty());
         QCOMPARE(reopened.renderToImage(0, 144, false), before);
+        auto *ctx = fz_new_context(nullptr, nullptr, FZ_STORE_DEFAULT);
+        auto *doc = pdf_open_document(ctx, path.toUtf8().constData());
+        auto *links = pdf_dict_get(ctx, pdf_lookup_page_obj(ctx, doc, 0), PDF_NAME(Annots));
+        QCOMPARE(pdf_array_len(ctx, links), 1);
+        auto *link = pdf_array_get(ctx, links, 0);
+        QVERIFY(pdf_name_eq(ctx, pdf_dict_get(ctx, link, PDF_NAME(Subtype)), PDF_NAME(Link)));
+        QCOMPARE(QByteArray(pdf_to_text_string(ctx, pdf_dict_getp(ctx, link, "A/URI"))), QByteArray("https://example.com"));
+        pdf_drop_document(ctx, doc);
+        fz_drop_context(ctx);
         qDeleteAll(pages);
         qDeleteAll(fresh);
     }

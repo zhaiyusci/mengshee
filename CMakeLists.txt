@@ -395,6 +395,13 @@ if(BUILD_TESTING)
    add_subdirectory( autotests )
 endif()
 
+add_executable(rectangleinteraction_test EXCLUDE_FROM_ALL autotests/rectangleinteractiontest.cpp)
+target_link_libraries(rectangleinteraction_test PRIVATE Qt6::Test Qt6::Gui)
+if(BUILD_TESTING)
+    set_target_properties(rectangleinteraction_test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+    add_test(NAME rectangleinteraction_test COMMAND rectangleinteraction_test)
+endif()
+
 if(KF6DocTools_FOUND)
     add_subdirectory(doc)
 endif()

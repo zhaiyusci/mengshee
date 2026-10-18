@@ -35,7 +35,7 @@ $workspace = "$PWD/windows-build-workspace"
 这复用现有 Qt/KF6/QScintilla/StemTeX SDK。SDK 脚本可用 `MSBUILD`、
 `PLATFORM_TOOLSET`、`JOBS` 覆盖默认值。MuPDF 上游 MSVC archive 已包含
 Tesseract，插件使用随 SDK 安装的匹配头文件，不能再链接外部 Tesseract DLL。
-英语识别仍需要原有 `eng.traineddata`。
+英语识别仍需要原有 `eng.traineddata`。OCR 回归测试也需将其放在测试程序旁的 `data/mengshee/tessdata/` 中。
 
 运行：`windows-build-workspace/install/mengshee-mupdf/bin/mengshee.exe`。
 该目录与原有 `dist/mengshee-pdf/app` 隔离。
@@ -52,7 +52,7 @@ Tesseract，插件使用随 SDK 安装的匹配头文件，不能再链接外部
   导入会复制注释对象及引用关系，并处理命名目标和表单字段重名。
 - 文本、复选/单选和选择列表表单的读写；表单显示文本与实际值分别处理。
 - 目录读取/编辑、命名目标和链接编辑、可见 note-link 标签、保留交互链接和表单的
-  注释扁平化导出。扁平化使用现有 PDF 外观，保留 LaTeX 矢量内容。
+  注释扁平化导出。扁平化使用现有 PDF 外观，保留 LaTeX 矢量内容；与链接或表单重叠不会阻止导出。
 - 英语 OCR、布局分析、Unicode 隐形文本层写入和替换。
 - Windows 构建、部署、许可证复制和 PDF 插件加载冒烟检查。
 
@@ -74,8 +74,10 @@ Tesseract，插件使用随 SDK 安装的匹配头文件，不能再链接外部
 
 ## 验证
 
+矩形编辑共用 `part/rectangleinteraction.h` 的命中、光标、拖动和绘制逻辑；调用方保留各自配色。`rectangleinteraction_test` 的 5 项测试通过（含初始化和清理），覆盖控制点重叠、拖动起点、对边固定、最小尺寸和选框内部透明。
+
 2026-10-19 本机结果：完整 Windows 构建及运行目录部署成功；QtTest
-24 passed、0 failed（含初始化和清理）；`file1.pdf` 及用户提供的 Zhai2026 PDF 启动冒烟成功，窗口响应正常，
+28 passed、0 failed（含初始化和清理）；`file1.pdf` 及用户提供的 Zhai2026 PDF 启动冒烟成功，窗口响应正常，
 实际加载 `okularGenerator_mupdf.dll`，未加载 Poppler，运行目录外项目 DLL 数量为 0。
 安装包生成及上述功能边界不在此次通过范围内。
 
@@ -93,7 +95,7 @@ $test.ExitCode
 
 可设置环境变量 `MENGSHEE_TEST_PDF` 指向本地 PDF，额外验证逐页渲染、另存副本和重开；不设置时该项跳过。原文件不会被改写。
 
-覆盖不同显示 DPI 下的页面逻辑像素/物理点数换算、LaTeX AP 回归、坏注释隔离及保存保留、六类几何驱动注释、渲染保存、普通注释、页面/阅读视图、LaTeX 外观及拖动期间 AP 保留（含另存重开与图像一致性）、Unicode OCR、表单及附件、
+覆盖 OCR 快照原子替换、实际英文识别/重复运行/跳过已有文字及临时文件清理、OCR 独立字体资源及真实 PDF 前后逐像素一致性、单词编辑范围精确往返及保存重开、不同显示 DPI 下的页面逻辑像素/物理点数换算、LaTeX AP 回归、坏注释隔离及保存保留、六类几何驱动注释、渲染保存、普通注释、页面/阅读视图、LaTeX 外观及拖动期间 AP 保留（含另存重开与图像一致性）、Unicode OCR、表单及附件、
 目录和 note-link、扁平化、关闭源文件后的外观粘贴、同名目标合并、文件替换后
 恢复删除页、错误输入返回、复制页注释独立性和外观页边界。运行目录冒烟：
 

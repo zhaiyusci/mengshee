@@ -75,6 +75,7 @@
 #include <QSpinBox>
 #include <QStandardPaths>
 #include <QTemporaryFile>
+#include "closedtemporarypdffile.h"
 #include <QTimer>
 #include <QToolButton>
 #include <QUndoCommand>
@@ -3680,19 +3681,12 @@ static QUrl resolveSymlinksIfFileExists(const QUrl &saveUrl)
     }
 }
 
-static QTemporaryFile *createClosedTemporaryPdfFile(const QString &prefix, bool autoRemove = true)
+static ClosedTemporaryPdfFile *createClosedTemporaryPdfFile(const QString &prefix, bool autoRemove = true)
 {
-    auto temporaryFile = std::make_unique<QTemporaryFile>(QDir::tempPath() + QLatin1Char('/') + prefix + QLatin1String("-XXXXXX.pdf"));
-    temporaryFile->setAutoRemove(autoRemove);
-    if (!temporaryFile->open()) {
-        return nullptr;
-    }
-
-    temporaryFile->close();
-    return temporaryFile.release();
+    return ClosedTemporaryPdfFile::create(QDir::tempPath() + QLatin1Char('/') + prefix + QLatin1String("-XXXXXX.pdf"), autoRemove).release();
 }
 
-static QTemporaryFile *createClosedOcrTemporaryPdfFile(const QString &prefix)
+static ClosedTemporaryPdfFile *createClosedOcrTemporaryPdfFile(const QString &prefix)
 {
     const QString dataRoot = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
     if (dataRoot.isEmpty()) {
@@ -3704,13 +3698,7 @@ static QTemporaryFile *createClosedOcrTemporaryPdfFile(const QString &prefix)
         return nullptr;
     }
 
-    auto temporaryFile = std::make_unique<QTemporaryFile>(QDir(jobsDirectory).filePath(prefix + QStringLiteral("-XXXXXX.pdf")));
-    temporaryFile->setAutoRemove(true);
-    if (!temporaryFile->open()) {
-        return nullptr;
-    }
-    temporaryFile->close();
-    return temporaryFile.release();
+    return ClosedTemporaryPdfFile::create(QDir(jobsDirectory).filePath(prefix + QStringLiteral("-XXXXXX.pdf"))).release();
 }
 
 enum class PageEditSourceSnapshotResult {
@@ -3719,7 +3707,7 @@ enum class PageEditSourceSnapshotResult {
     SaveError,
 };
 
-static PageEditSourceSnapshotResult createPageEditSourceSnapshot(Document *document, const QString &prefix, std::unique_ptr<QTemporaryFile> &snapshotFile, QString &sourceFileName, QString &errorText)
+static PageEditSourceSnapshotResult createPageEditSourceSnapshot(Document *document, const QString &prefix, std::unique_ptr<ClosedTemporaryPdfFile> &snapshotFile, QString &sourceFileName, QString &errorText)
 {
     sourceFileName.clear();
     errorText.clear();
@@ -3753,9 +3741,9 @@ class PageBackingFileCommand : public QUndoCommand
 public:
     PageBackingFileCommand(Part *part,
                            const QString &text,
-                           std::unique_ptr<QTemporaryFile> beforeTempFile,
+                           std::unique_ptr<ClosedTemporaryPdfFile> beforeTempFile,
                            const QString &beforeFileName,
-                           std::unique_ptr<QTemporaryFile> afterTempFile,
+                           std::unique_ptr<ClosedTemporaryPdfFile> afterTempFile,
                            const QString &afterFileName,
                            int beforePage,
                            int afterPage,
@@ -3802,8 +3790,8 @@ public:
 
 private:
     QPointer<Part> m_part;
-    std::unique_ptr<QTemporaryFile> m_beforeTempFile;
-    std::unique_ptr<QTemporaryFile> m_afterTempFile;
+    std::unique_ptr<ClosedTemporaryPdfFile> m_beforeTempFile;
+    std::unique_ptr<ClosedTemporaryPdfFile> m_afterTempFile;
     QString m_beforeFileName;
     QString m_afterFileName;
     int m_beforePage = 0;
@@ -5142,8 +5130,8 @@ void Part::slotRecognizeEnglishText()
     }
 
     const QUrl documentUrl = url();
-    std::unique_ptr<QTemporaryFile> sourceFile(createClosedOcrTemporaryPdfFile(QStringLiteral("source")));
-    std::unique_ptr<QTemporaryFile> outputFile(createClosedOcrTemporaryPdfFile(QStringLiteral("output")));
+    std::unique_ptr<ClosedTemporaryPdfFile> sourceFile(createClosedOcrTemporaryPdfFile(QStringLiteral("source")));
+    std::unique_ptr<ClosedTemporaryPdfFile> outputFile(createClosedOcrTemporaryPdfFile(QStringLiteral("output")));
     if (!sourceFile || !outputFile) {
         KMessageBox::information(widget(), i18n("Could not create the Mengshee OCR working files."));
         return;
@@ -5467,7 +5455,7 @@ void Part::slotCombinePdfFiles()
         }
     }
 
-    std::unique_ptr<QTemporaryFile> currentSnapshot;
+    std::unique_ptr<ClosedTemporaryPdfFile> currentSnapshot;
     QString snapshotFileName;
     if (!currentFileName.isEmpty()) {
         if (documentHasTemplateNotes()) {
@@ -6207,7 +6195,7 @@ void Part::slotGenerateReadingViews()
         return;
     }
     const QUrl documentUrl = url();
-    std::unique_ptr<QTemporaryFile> snapshot(createClosedOcrTemporaryPdfFile(QStringLiteral("views")));
+    std::unique_ptr<ClosedTemporaryPdfFile> snapshot(createClosedOcrTemporaryPdfFile(QStringLiteral("views")));
     QString error;
     if (!snapshot || !m_document->saveChanges(snapshot->fileName(), &error)) {
         KMessageBox::information(widget(), i18n("Could not prepare the current document for View detection. %1", error));

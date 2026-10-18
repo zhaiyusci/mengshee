@@ -1,3 +1,4 @@
+#include "rectangleinteraction.h"
 /*
     SPDX-FileCopyrightText: 2017 Tobias Deiminger <haxtibal@t-online.de>
     SPDX-FileCopyrightText: 2004-2005 Enrico Ros <eros.kde@email.it>
@@ -132,16 +133,16 @@ public:
     enum MouseAnnotationState { StateInactive, StateFocused, StateMoving, StateResizing };
 
     enum ResizeHandleFlag {
-        RH_None = 0,
-        RH_Top = 1,
-        RH_Right = 2,
-        RH_Bottom = 4,
-        RH_Left = 8,
+        RH_None = int(RectangleInteraction::Handle::None),
+        RH_Top = int(RectangleInteraction::Handle::Top),
+        RH_Right = int(RectangleInteraction::Handle::Right),
+        RH_Bottom = int(RectangleInteraction::Handle::Bottom),
+        RH_Left = int(RectangleInteraction::Handle::Left),
         RH_TopLeft = RH_Top | RH_Left,
         RH_BottomLeft = RH_Bottom | RH_Left,
         RH_TopRight = RH_Top | RH_Right,
         RH_BottomRight = RH_Bottom | RH_Right,
-        RH_Content = 16,
+        RH_Content = int(RectangleInteraction::Handle::Move),
         RH_CalloutTip = 32,
         RH_CalloutKnee = 64,
         RH_CalloutAnchor = 128,
@@ -213,7 +214,6 @@ private:
     Okular::NormalizedRect m_pendingLatexResizePreviewRect;
     bool m_hasPendingLatexResizePreview;
 
-    QList<ResizeHandle> m_resizeHandleList;
 };
 
 #endif

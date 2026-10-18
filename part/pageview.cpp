@@ -18,6 +18,7 @@
 
 #include "pageview.h"
 #include "ocrtextlayout.h"
+#include "rectangleinteraction.h"
 
 // qt/kde includes
 #include <QActionGroup>
@@ -194,24 +195,8 @@ struct NamedDestinationHitRegion {
     QRectF rect;
 };
 
-enum class PdfLinkHandle {
-    None,
-    Move,
-    TopLeft,
-    Top,
-    TopRight,
-    Right,
-    BottomRight,
-    Bottom,
-    BottomLeft,
-    Left,
-};
-
-static constexpr qreal pdfLinkHandleSize = 8.0;
-// Every handle is outlined with a pen of this width, which paints half of itself
-// outside the rectangle it strokes. Drawing and hit testing must cover the same
-// pixels, so the grab rectangle is the stroked rectangle widened by that half.
-static constexpr qreal pdfLinkHandlePenWidth = 1.0;
+using RectangleHandle = RectangleInteraction::Handle;
+static constexpr qreal pdfLinkHandleSize = RectangleInteraction::handleSize;
 
 static QRectF pdfLinkContentRect(const PageViewItem *item, const QRectF &normalizedRect)
 {
@@ -226,81 +211,17 @@ static QRectF pdfLinkContentRect(const PageViewItem *item, const QRectF &normali
 
 static QRectF pdfLinkHandleRect(const QPointF &center)
 {
-    const qreal half = pdfLinkHandleSize / 2.0;
-    return QRectF(center.x() - half, center.y() - half, pdfLinkHandleSize, pdfLinkHandleSize);
+    return RectangleInteraction::handleRect(center);
 }
 
-// The area a drawn handle covers, pen included. This is the only rectangle that
-// decides whether a handle is grabbed, for every handle in the application.
-static QRectF pdfLinkHandleGrabRect(const QPointF &center)
+static RectangleHandle pdfLinkHandleAt(const QRectF &rect, const QPointF &point)
 {
-    const qreal outset = pdfLinkHandlePenWidth / 2.0;
-    return pdfLinkHandleRect(center).adjusted(-outset, -outset, outset, outset);
+    return RectangleInteraction::hitTest(rect, point);
 }
 
-static PdfLinkHandle pdfLinkHandleAt(const QRectF &rect, const QPointF &point)
+static Qt::CursorShape pdfLinkCursor(RectangleHandle handle)
 {
-    if (!rect.isValid()) {
-        return PdfLinkHandle::None;
-    }
-
-    const QPointF topLeft = rect.topLeft();
-    const QPointF top(rect.center().x(), rect.top());
-    const QPointF topRight = rect.topRight();
-    const QPointF right(rect.right(), rect.center().y());
-    const QPointF bottomRight = rect.bottomRight();
-    const QPointF bottom(rect.center().x(), rect.bottom());
-    const QPointF bottomLeft = rect.bottomLeft();
-    const QPointF left(rect.left(), rect.center().y());
-    const std::array<std::pair<PdfLinkHandle, QPointF>, 8> handles {{{PdfLinkHandle::TopLeft, topLeft},
-                                                                    {PdfLinkHandle::Top, top},
-                                                                    {PdfLinkHandle::TopRight, topRight},
-                                                                    {PdfLinkHandle::Right, right},
-                                                                    {PdfLinkHandle::BottomRight, bottomRight},
-                                                                    {PdfLinkHandle::Bottom, bottom},
-                                                                    {PdfLinkHandle::BottomLeft, bottomLeft},
-                                                                    {PdfLinkHandle::Left, left}}};
-    // The nearest handle whose drawn area covers the point, so two handles that
-    // overlap (a small page) still give the one the pointer is really on.
-    PdfLinkHandle best = PdfLinkHandle::None;
-    double bestDistance = 1e9;
-    for (const auto &[handle, center] : handles) {
-        if (!pdfLinkHandleGrabRect(center).contains(point)) {
-            continue;
-        }
-        const double distance = QLineF(center, point).length();
-        if (distance < bestDistance) {
-            bestDistance = distance;
-            best = handle;
-        }
-    }
-    if (best != PdfLinkHandle::None) {
-        return best;
-    }
-    return rect.contains(point) ? PdfLinkHandle::Move : PdfLinkHandle::None;
-}
-
-static Qt::CursorShape pdfLinkCursor(PdfLinkHandle handle)
-{
-    switch (handle) {
-    case PdfLinkHandle::TopLeft:
-    case PdfLinkHandle::BottomRight:
-        return Qt::SizeFDiagCursor;
-    case PdfLinkHandle::TopRight:
-    case PdfLinkHandle::BottomLeft:
-        return Qt::SizeBDiagCursor;
-    case PdfLinkHandle::Top:
-    case PdfLinkHandle::Bottom:
-        return Qt::SizeVerCursor;
-    case PdfLinkHandle::Left:
-    case PdfLinkHandle::Right:
-        return Qt::SizeHorCursor;
-    case PdfLinkHandle::Move:
-        return Qt::SizeAllCursor;
-    case PdfLinkHandle::None:
-        return Qt::ArrowCursor;
-    }
-    return Qt::ArrowCursor;
+    return RectangleInteraction::cursor(handle);
 }
 
 static bool samePdfLinkRectangle(const QRectF &first, const QRectF &second)
@@ -309,8 +230,7 @@ static bool samePdfLinkRectangle(const QRectF &first, const QRectF &second)
     return std::abs(first.left() - second.left()) < tolerance && std::abs(first.top() - second.top()) < tolerance && std::abs(first.right() - second.right()) < tolerance && std::abs(first.bottom() - second.bottom()) < tolerance;
 }
 
-// Reading Views use the same display-normalized geometry as links, but only
-// labels, borders and handles are interactive: interiors must remain readable.
+// Reading Views use the same display-normalized geometry as links.
 static QRectF readingViewDisplayRect(const PageViewItem *item, const Okular::NormalizedRect &rect)
 {
     switch (item->page()->rotation()) {
@@ -335,8 +255,8 @@ static QRectF readingViewLabelRect(const PageViewItem *item, const QRectF &rect,
 }
 
 // Every border and corner of a page can be dragged; the opposite ones stay put.
-static const std::array<PdfLinkHandle, 8> pageSizeHandleKinds {PdfLinkHandle::TopLeft,  PdfLinkHandle::Top,    PdfLinkHandle::TopRight, PdfLinkHandle::Right,
-                                                              PdfLinkHandle::BottomRight, PdfLinkHandle::Bottom, PdfLinkHandle::BottomLeft, PdfLinkHandle::Left};
+static const std::array<RectangleHandle, 8> pageSizeHandleKinds {RectangleHandle::TopLeft,  RectangleHandle::Top,    RectangleHandle::TopRight, RectangleHandle::Right,
+                                                              RectangleHandle::BottomRight, RectangleHandle::Bottom, RectangleHandle::BottomLeft, RectangleHandle::Left};
 
 // The page's own rectangle, taken from the same function the link handles use for a
 // normalized rectangle (0,0 to 1,1 is the whole page). The page handles then live in
@@ -346,28 +266,9 @@ static QRectF pageSizePageRect(const PageViewItem *item)
     return pdfLinkContentRect(item, QRectF(0.0, 0.0, 1.0, 1.0));
 }
 
-static QPointF pageSizeHandleCenter(const QRectF &pageRect, PdfLinkHandle handle)
+static QPointF pageSizeHandleCenter(const QRectF &pageRect, RectangleHandle handle)
 {
-    switch (handle) {
-    case PdfLinkHandle::TopLeft:
-        return pageRect.topLeft();
-    case PdfLinkHandle::Top:
-        return QPointF(pageRect.center().x(), pageRect.top());
-    case PdfLinkHandle::TopRight:
-        return pageRect.topRight();
-    case PdfLinkHandle::Right:
-        return QPointF(pageRect.right(), pageRect.center().y());
-    case PdfLinkHandle::BottomRight:
-        return pageRect.bottomRight();
-    case PdfLinkHandle::Bottom:
-        return QPointF(pageRect.center().x(), pageRect.bottom());
-    case PdfLinkHandle::BottomLeft:
-        return pageRect.bottomLeft();
-    case PdfLinkHandle::Left:
-        return QPointF(pageRect.left(), pageRect.center().y());
-    default:
-        return pageRect.center();
-    }
+    return RectangleInteraction::center(pageRect, handle);
 }
 
 QRectF PageView::pageSizeHandleRectangle(const QRectF &pageRect, int index)
@@ -380,29 +281,15 @@ QRectF PageView::pageSizeHandleRectangle(const QRectF &pageRect, int index)
 
 int PageView::pageSizeHandleIndexAt(const QRectF &pageRect, const QPointF &point)
 {
-    // The drawn rectangle is what decides where a handle can be grabbed, for the
-    // page handles and for every other handle in the application alike. When two of
-    // them overlap, as they do on a small page, the nearer centre wins.
-    int best = -1;
-    double bestDistance = 1e9;
-    for (size_t i = 0; i < pageSizeHandleKinds.size(); ++i) {
-        const QPointF center = pageSizeHandleCenter(pageRect, pageSizeHandleKinds[i]);
-        if (!pdfLinkHandleGrabRect(center).contains(point)) {
-            continue;
-        }
-        const double distance = QLineF(center, point).length();
-        if (distance < bestDistance) {
-            bestDistance = distance;
-            best = static_cast<int>(i);
-        }
-    }
-    return best;
+    const auto handle = RectangleInteraction::hitTest(pageRect, point, true, false);
+    const auto it = std::find(pageSizeHandleKinds.begin(), pageSizeHandleKinds.end(), handle);
+    return it == pageSizeHandleKinds.end() ? -1 : static_cast<int>(it - pageSizeHandleKinds.begin());
 }
 
-static PdfLinkHandle pageSizeHandleAt(const QRectF &pageRect, const QPointF &point)
+static RectangleHandle pageSizeHandleAt(const QRectF &pageRect, const QPointF &point)
 {
     const int index = PageView::pageSizeHandleIndexAt(pageRect, point);
-    return index < 0 ? PdfLinkHandle::None : pageSizeHandleKinds[static_cast<size_t>(index)];
+    return index < 0 ? RectangleHandle::None : pageSizeHandleKinds[static_cast<size_t>(index)];
 }
 
 // Turning a page in its display axes swaps width and height; applying the same
@@ -412,18 +299,9 @@ static QSizeF pageSizeInDisplayAxes(const QSizeF &size, int rotationDegrees)
     return (rotationDegrees == 90 || rotationDegrees == 270) ? QSizeF(size.height(), size.width()) : size;
 }
 
-static PdfLinkHandle readingViewHandleAt(const QRectF &rect, const QRectF &label, const QPointF &point, bool selected)
+static RectangleHandle readingViewHandleAt(const QRectF &rect, const QRectF &label, const QPointF &point, bool selected)
 {
-    if (selected) {
-        const PdfLinkHandle handle = pdfLinkHandleAt(rect, point);
-        if (handle != PdfLinkHandle::None && handle != PdfLinkHandle::Move) {
-            return handle;
-        }
-    }
-    constexpr qreal borderHitWidth = 4.0;
-    const bool onBorder = rect.adjusted(-borderHitWidth, -borderHitWidth, borderHitWidth, borderHitWidth).contains(point)
-        && !rect.adjusted(borderHitWidth, borderHitWidth, -borderHitWidth, -borderHitWidth).contains(point);
-    return label.contains(point) || onBorder ? PdfLinkHandle::Move : PdfLinkHandle::None;
+    return label.contains(point) && !rect.contains(point) ? RectangleHandle::Move : RectangleInteraction::hitTest(rect, point, selected);
 }
 
 TableSelectionPart::TableSelectionPart(PageViewItem *item_p, const Okular::NormalizedRect &rectInItem_p, const Okular::NormalizedRect &rectInSelection_p)
@@ -506,7 +384,7 @@ public:
     int ocrEditingWord = -1;
     QRectF ocrNewWordRectangle;
     int selectedOcrWord = -1;
-    PdfLinkHandle ocrWordDragHandle = PdfLinkHandle::None;
+    RectangleHandle ocrWordDragHandle = RectangleHandle::None;
     bool ocrWordDragging = false;
     QPoint ocrWordDragStart;
     QRectF ocrWordDragStartRect;
@@ -523,7 +401,7 @@ public:
     int selectedReadingViewPage = -1;
     QString selectedReadingViewId;
     int readingViewDragPage = -1;
-    PdfLinkHandle readingViewDragHandle = PdfLinkHandle::None;
+    RectangleHandle readingViewDragHandle = RectangleHandle::None;
     QPoint readingViewDragStart;
     QRectF readingViewDragStartRect;
     QRectF readingViewDraftRect;
@@ -548,19 +426,20 @@ public:
     int selectedPdfLinkPage = -1;
     QRectF selectedPdfLinkOriginalRect;
     QRectF selectedPdfLinkRect;
-    PdfLinkHandle pdfLinkDragHandle = PdfLinkHandle::None;
+    RectangleHandle pdfLinkDragHandle = RectangleHandle::None;
     // Page-border resizing, offered in Page Editing mode.
     bool pageSizeHandlesEnabled = false;
     bool pageSizeDragging = false;
-    PdfLinkHandle pageSizeDragHandle = PdfLinkHandle::None;
+    RectangleHandle pageSizeDragHandle = RectangleHandle::None;
     int pageSizeDragPage = -1;
     int pageSizeHoverPage = -1;
-    PdfLinkHandle pageSizeHoverHandle = PdfLinkHandle::None;
+    RectangleHandle pageSizeHoverHandle = RectangleHandle::None;
     bool pageSizeCursorSet = false;
     // The page whose handles stay visible after a drag, so they can be used again
     // without hunting for the border first.
     int pageSizeSelectedPage = -1;
     QRectF pageSizeDragStartRect;
+    QPointF pageSizeDragStart;
     QRectF pageSizePreviewRect;
     QSizeF pageSizeDragStartSize;
     bool pdfLinkDragging = false;
@@ -1141,7 +1020,7 @@ void PageView::stopOcrTextEditing()
     d->ocrWords.clear();
     d->selectedOcrWord = -1;
     d->ocrWordDragging = false;
-    d->ocrWordDragHandle = PdfLinkHandle::None;
+    d->ocrWordDragHandle = RectangleHandle::None;
     viewport()->update();
     Q_EMIT ocrTextEditingChanged();
 }
@@ -1322,10 +1201,10 @@ void PageView::setPageEditModeEnabled(bool enabled)
         d->pageSizeSelectedPage = d->document->currentPage();
     } else {
         d->pageSizeDragging = false;
-        d->pageSizeDragHandle = PdfLinkHandle::None;
+        d->pageSizeDragHandle = RectangleHandle::None;
         d->pageSizeDragPage = -1;
         d->pageSizeHoverPage = -1;
-        d->pageSizeHoverHandle = PdfLinkHandle::None;
+        d->pageSizeHoverHandle = RectangleHandle::None;
         d->pageSizeSelectedPage = -1;
         d->pageSizeDragStartRect = QRectF();
         d->pageSizePreviewRect = QRectF();
@@ -1421,7 +1300,7 @@ void PageView::setCrossReferenceModeEnabled(bool enabled)
         d->selectedPdfLinkPage = -1;
         d->selectedPdfLinkOriginalRect = QRectF();
         d->selectedPdfLinkRect = QRectF();
-        d->pdfLinkDragHandle = PdfLinkHandle::None;
+        d->pdfLinkDragHandle = RectangleHandle::None;
         d->pdfLinkDragging = false;
         const bool cancelledNotePageCreation = d->creatingNotePage;
         d->creatingNotePage = false;
@@ -1452,7 +1331,7 @@ void PageView::startNamedDestinationCreation(bool continuous)
     d->internalLinkCreationDragging = false;
     d->internalLinkCreationPage = -1;
     d->internalLinkCreationRect = QRect();
-    d->pdfLinkDragHandle = PdfLinkHandle::None;
+    d->pdfLinkDragHandle = RectangleHandle::None;
     d->pdfLinkDragging = false;
     d->scroller->stop();
     setCursor(Qt::CrossCursor);
@@ -1486,7 +1365,7 @@ void PageView::startNotePageCreation()
     d->selectedPdfLinkPage = -1;
     d->selectedPdfLinkOriginalRect = QRectF();
     d->selectedPdfLinkRect = QRectF();
-    d->pdfLinkDragHandle = PdfLinkHandle::None;
+    d->pdfLinkDragHandle = RectangleHandle::None;
     d->pdfLinkDragging = false;
     d->creatingNotePage = true;
     d->notePagePlacementPress = false;
@@ -1535,7 +1414,7 @@ void PageView::startLinkCreation()
     d->selectedPdfLinkPage = -1;
     d->selectedPdfLinkOriginalRect = QRectF();
     d->selectedPdfLinkRect = QRectF();
-    d->pdfLinkDragHandle = PdfLinkHandle::None;
+    d->pdfLinkDragHandle = RectangleHandle::None;
     d->pdfLinkDragging = false;
     d->scroller->stop();
     setCursor(Qt::CrossCursor);
@@ -1556,7 +1435,7 @@ void PageView::refreshReadingViews()
     d->readingViewDragging = false;
     d->readingViewCreatingGesture = false;
     d->readingViewDragPage = -1;
-    d->readingViewDragHandle = PdfLinkHandle::None;
+    d->readingViewDragHandle = RectangleHandle::None;
     d->readingViewDragStartRect = {};
     d->readingViewDraftRect = {};
     viewport()->update();
@@ -1570,7 +1449,7 @@ void PageView::cancelReadingViewCreation()
     d->readingViewDragging = false;
     d->readingViewCreatingGesture = false;
     d->readingViewDragPage = -1;
-    d->readingViewDragHandle = PdfLinkHandle::None;
+    d->readingViewDragHandle = RectangleHandle::None;
     d->readingViewDraftRect = {};
     d->selectedReadingViewPage = -1;
     d->selectedReadingViewId.clear();
@@ -1728,7 +1607,7 @@ QStringList PageView::readingViewsAtGlobalPos(QPoint globalPos, int *pageNumber)
             const QRectF rect = pdfLinkContentRect(item, readingViewDisplayRect(item, it->rectangle));
             const QRectF label = readingViewLabelRect(item, rect, it->number, font());
             const bool selected = d->selectedReadingViewPage == item->pageNumber() && d->selectedReadingViewId == it->id;
-            if (readingViewHandleAt(rect, label, point, selected) != PdfLinkHandle::None) {
+            if (readingViewHandleAt(rect, label, point, selected) != RectangleHandle::None) {
                 ids.append(it->id);
             }
         }
@@ -1770,11 +1649,7 @@ void PageView::drawReadingViews(const QRect &contentsRect, QPainter *p)
             p->drawRect(label);
             p->drawText(label, Qt::AlignCenter, QString::number(view.number));
             if (selected && d->readingViewEditingEnabled && d->document->canEditReadingViews()) {
-                const std::array<QPointF, 8> centers {rect.topLeft(), QPointF(rect.center().x(), rect.top()), rect.topRight(), QPointF(rect.right(), rect.center().y()),
-                                                      rect.bottomRight(), QPointF(rect.center().x(), rect.bottom()), rect.bottomLeft(), QPointF(rect.left(), rect.center().y())};
-                for (const auto &center : centers) {
-                    p->drawRect(pdfLinkHandleRect(center));
-                }
+                RectangleInteraction::draw(p, rect, true, false, {color, color, Qt::white});
             }
         }
         if (d->readingViewCreatingGesture && d->readingViewDragging && d->readingViewDragPage == item->pageNumber()) {
@@ -1825,7 +1700,7 @@ bool PageView::readingViewMousePress(QMouseEvent *event)
             d->mousePressLinkObject = nullptr;
             if (item && event->modifiers() == Qt::NoModifier) {
                 d->readingViewCreatingGesture = true;
-                d->readingViewDragHandle = PdfLinkHandle::None;
+                d->readingViewDragHandle = RectangleHandle::None;
                 d->readingViewDragPage = item->pageNumber();
                 d->readingViewDragStart = point;
                 const QPointF start(qBound(0.0, item->absToPageX(point.x()), 1.0), qBound(0.0, item->absToPageY(point.y()), 1.0));
@@ -1891,25 +1766,14 @@ bool PageView::readingViewMouseMove(QMouseEvent *event)
                 // minimum; resizing one must still remain within the page.
                 const double minWidth = std::min({4.0 / item->uncroppedWidth(), rect.right(), 1.0 - rect.left()});
                 const double minHeight = std::min({4.0 / item->uncroppedHeight(), rect.bottom(), 1.0 - rect.top()});
-                switch (d->readingViewDragHandle) {
-                case PdfLinkHandle::Move:
-                    rect.translate(qBound(-rect.left(), current.x() - start.x(), 1.0 - rect.right()), qBound(-rect.top(), current.y() - start.y(), 1.0 - rect.bottom()));
-                    break;
-                case PdfLinkHandle::TopLeft:
-                case PdfLinkHandle::Top:
-                case PdfLinkHandle::TopRight:
-                    rect.setTop(qMin(current.y(), rect.bottom() - minHeight));
-                    break;
-                default:
-                    break;
-                }
-                if (d->readingViewDragHandle == PdfLinkHandle::BottomLeft || d->readingViewDragHandle == PdfLinkHandle::Bottom || d->readingViewDragHandle == PdfLinkHandle::BottomRight) {
+                rect = RectangleInteraction::drag(rect, d->readingViewDragHandle, start, current, QSizeF(minWidth, minHeight), QRectF(0, 0, 1, 1));
+                if (d->readingViewDragHandle == RectangleHandle::BottomLeft || d->readingViewDragHandle == RectangleHandle::Bottom || d->readingViewDragHandle == RectangleHandle::BottomRight) {
                     rect.setBottom(qMax(current.y(), rect.top() + minHeight));
                 }
-                if (d->readingViewDragHandle == PdfLinkHandle::TopLeft || d->readingViewDragHandle == PdfLinkHandle::Left || d->readingViewDragHandle == PdfLinkHandle::BottomLeft) {
+                if (d->readingViewDragHandle == RectangleHandle::TopLeft || d->readingViewDragHandle == RectangleHandle::Left || d->readingViewDragHandle == RectangleHandle::BottomLeft) {
                     rect.setLeft(qMin(current.x(), rect.right() - minWidth));
                 }
-                if (d->readingViewDragHandle == PdfLinkHandle::TopRight || d->readingViewDragHandle == PdfLinkHandle::Right || d->readingViewDragHandle == PdfLinkHandle::BottomRight) {
+                if (d->readingViewDragHandle == RectangleHandle::TopRight || d->readingViewDragHandle == RectangleHandle::Right || d->readingViewDragHandle == RectangleHandle::BottomRight) {
                     rect.setRight(qMax(current.x(), rect.left() + minWidth));
                 }
             }
@@ -1961,7 +1825,7 @@ bool PageView::readingViewMouseRelease(QMouseEvent *event)
     d->readingViewDragging = false;
     d->readingViewCreatingGesture = false;
     d->readingViewDragPage = -1;
-    d->readingViewDragHandle = PdfLinkHandle::None;
+    d->readingViewDragHandle = RectangleHandle::None;
     d->readingViewDragStartRect = {};
     d->readingViewDraftRect = {};
     if (active && creating) {
@@ -2870,7 +2734,7 @@ void PageView::notifySetup(const QList<Okular::Page *> &pageSet, int setupFlags)
     d->readingViewDragging = false;
     d->readingViewCreatingGesture = false;
     d->readingViewDragPage = -1;
-    d->readingViewDragHandle = PdfLinkHandle::None;
+    d->readingViewDragHandle = RectangleHandle::None;
     d->readingViewDragStartRect = {};
     d->readingViewDraftRect = {};
     d->selectedReadingViewPage = -1;
@@ -2911,7 +2775,7 @@ void PageView::notifySetup(const QList<Okular::Page *> &pageSet, int setupFlags)
         d->selectedPdfLinkPage = -1;
         d->selectedPdfLinkOriginalRect = QRectF();
         d->selectedPdfLinkRect = QRectF();
-        d->pdfLinkDragHandle = PdfLinkHandle::None;
+        d->pdfLinkDragHandle = RectangleHandle::None;
         d->pdfLinkDragging = false;
     }
 
@@ -3331,7 +3195,7 @@ void PageView::notifyPageChanged(int pageNumber, int changedFlags)
                 d->selectedPdfLinkPage = -1;
                 d->selectedPdfLinkOriginalRect = QRectF();
                 d->selectedPdfLinkRect = QRectF();
-                d->pdfLinkDragHandle = PdfLinkHandle::None;
+                d->pdfLinkDragHandle = RectangleHandle::None;
                 d->pdfLinkDragging = false;
             }
         }
@@ -3942,25 +3806,7 @@ void PageView::drawLinkHighlights(const QRect &contentsRect, QPainter *p)
             if (selectionRect.adjusted(-pdfLinkHandleSize, -pdfLinkHandleSize, pdfLinkHandleSize, pdfLinkHandleSize).intersects(contentsRect)) {
                 p->save();
                 p->setClipRect(selectedItem->croppedGeometry().adjusted(-qCeil(pdfLinkHandleSize), -qCeil(pdfLinkHandleSize), qCeil(pdfLinkHandleSize), qCeil(pdfLinkHandleSize)), Qt::IntersectClip);
-                QPen selectionPen(QColor::fromHsvF(0, 0, 0.75, 0.9), 2.0, Qt::SolidLine, Qt::SquareCap, Qt::BevelJoin);
-                selectionPen.setCosmetic(true);
-                p->setPen(selectionPen);
-                p->setBrush(Qt::NoBrush);
-                p->drawRect(selectionRect);
-
-                const std::array<QPointF, 8> centers {selectionRect.topLeft(),
-                                                     QPointF(selectionRect.center().x(), selectionRect.top()),
-                                                     selectionRect.topRight(),
-                                                     QPointF(selectionRect.right(), selectionRect.center().y()),
-                                                     selectionRect.bottomRight(),
-                                                     QPointF(selectionRect.center().x(), selectionRect.bottom()),
-                                                     selectionRect.bottomLeft(),
-                                                     QPointF(selectionRect.left(), selectionRect.center().y())};
-                p->setPen(QColor::fromHsvF(0, 0, 1.0));
-                p->setBrush(QColor::fromHsvF(0, 0, 0.75, 0.9));
-                for (const QPointF &center : centers) {
-                    p->drawRect(pdfLinkHandleRect(center));
-                }
+                RectangleInteraction::draw(p, selectionRect, true, false, {QColor::fromHsvF(0, 0, 0.75, 0.9), Qt::white, QColor::fromHsvF(0, 0, 0.75, 0.9)});
                 p->restore();
             }
         }
@@ -4001,25 +3847,8 @@ void PageView::drawPageSizeHandles(const QRect &contentsRect, QPainter *p)
     }
 
     p->save();
-    QPen borderPen(QColor::fromHsvF(0.11, 0.9, 0.85, 0.95), 2.0, Qt::SolidLine, Qt::SquareCap, Qt::BevelJoin);
-    borderPen.setCosmetic(true);
-    p->setPen(borderPen);
-    p->setBrush(Qt::NoBrush);
-    p->drawRect(pageRect);
-    p->setPen(QColor::fromHsvF(0, 0, 1.0));
-    p->setBrush(QColor::fromHsvF(0.11, 0.9, 0.85, 0.95));
-    for (size_t i = 0; i < pageSizeHandleKinds.size(); ++i) {
-        // The very rectangle the hit test uses, so a handle is grabbed where it is
-        // painted.
-        p->drawRect(pageSizeHandleRectangle(pageRect, static_cast<int>(i)));
-    }
-    if (d->pageSizeDragging && d->pageSizePreviewRect.isValid()) {
-        QPen previewPen(QColor::fromHsvF(0.11, 1.0, 0.6, 0.9), 2.0, Qt::DashLine);
-        previewPen.setCosmetic(true);
-        p->setPen(previewPen);
-        p->setBrush(Qt::NoBrush);
-        p->drawRect(d->pageSizePreviewRect);
-    }
+    const QColor color = QColor::fromHsvF(0.11, 0.9, 0.85, 0.95);
+    RectangleInteraction::draw(p, d->pageSizeDragging ? d->pageSizePreviewRect : pageRect, true, false, {color, Qt::white, color});
     p->restore();
 }
 
@@ -4327,7 +4156,7 @@ void PageView::keyPressEvent(QKeyEvent *e)
         d->selectedPdfLinkPage = -1;
         d->selectedPdfLinkOriginalRect = QRectF();
         d->selectedPdfLinkRect = QRectF();
-        d->pdfLinkDragHandle = PdfLinkHandle::None;
+        d->pdfLinkDragHandle = RectangleHandle::None;
         d->pdfLinkDragging = false;
         viewport()->update();
         updateCursor();
@@ -4572,44 +4401,7 @@ void PageView::mouseMoveEvent(QMouseEvent *e)
             QRectF updated = d->ocrWordDragStartRect;
             const qreal minimumWidth = qMin(1.0, 4.0 / item->uncroppedWidth());
             const qreal minimumHeight = qMin(1.0, 4.0 / item->uncroppedHeight());
-            switch (d->ocrWordDragHandle) {
-            case PdfLinkHandle::Move: {
-                const qreal dx = qBound(-updated.left(), current.x() - start.x(), 1.0 - updated.right());
-                const qreal dy = qBound(-updated.top(), current.y() - start.y(), 1.0 - updated.bottom());
-                updated.translate(dx, dy);
-                break;
-            }
-            case PdfLinkHandle::TopLeft:
-                updated.setLeft(qMin(current.x(), updated.right() - minimumWidth));
-                updated.setTop(qMin(current.y(), updated.bottom() - minimumHeight));
-                break;
-            case PdfLinkHandle::Top:
-                updated.setTop(qMin(current.y(), updated.bottom() - minimumHeight));
-                break;
-            case PdfLinkHandle::TopRight:
-                updated.setRight(qMax(current.x(), updated.left() + minimumWidth));
-                updated.setTop(qMin(current.y(), updated.bottom() - minimumHeight));
-                break;
-            case PdfLinkHandle::Right:
-                updated.setRight(qMax(current.x(), updated.left() + minimumWidth));
-                break;
-            case PdfLinkHandle::BottomRight:
-                updated.setRight(qMax(current.x(), updated.left() + minimumWidth));
-                updated.setBottom(qMax(current.y(), updated.top() + minimumHeight));
-                break;
-            case PdfLinkHandle::Bottom:
-                updated.setBottom(qMax(current.y(), updated.top() + minimumHeight));
-                break;
-            case PdfLinkHandle::BottomLeft:
-                updated.setLeft(qMin(current.x(), updated.right() - minimumWidth));
-                updated.setBottom(qMax(current.y(), updated.top() + minimumHeight));
-                break;
-            case PdfLinkHandle::Left:
-                updated.setLeft(qMin(current.x(), updated.right() - minimumWidth));
-                break;
-            case PdfLinkHandle::None:
-                break;
-            }
+            updated = RectangleInteraction::drag(updated, d->ocrWordDragHandle, start, current, QSizeF(minimumWidth, minimumHeight), QRectF(0, 0, 1, 1));
             d->ocrWords[d->selectedOcrWord].rectangle = updated;
             d->ocrTextLayout = OcrTextLayout::arrange(d->ocrWords);
             viewport()->setCursor(pdfLinkCursor(d->ocrWordDragHandle));
@@ -4620,8 +4412,8 @@ void PageView::mouseMoveEvent(QMouseEvent *e)
                                       pageRect.top() + d->ocrWords[d->selectedOcrWord].rectangle.y() * item->uncroppedHeight(),
                                       d->ocrWords[d->selectedOcrWord].rectangle.width() * item->uncroppedWidth(),
                                       d->ocrWords[d->selectedOcrWord].rectangle.height() * item->uncroppedHeight());
-            const PdfLinkHandle handle = pdfLinkHandleAt(selectedRect, pos);
-            viewport()->setCursor(handle == PdfLinkHandle::None ? Qt::IBeamCursor : pdfLinkCursor(handle));
+            const RectangleHandle handle = pdfLinkHandleAt(selectedRect, pos);
+            viewport()->setCursor(handle == RectangleHandle::None ? Qt::IBeamCursor : pdfLinkCursor(handle));
         } else {
             viewport()->setCursor(Qt::IBeamCursor);
         }
@@ -4711,39 +4503,7 @@ void PageView::mouseMoveEvent(QMouseEvent *e)
             const qreal pointerX = eventPos.x();
             const qreal pointerY = eventPos.y();
             QRectF updated = d->pageSizeDragStartRect;
-            switch (d->pageSizeDragHandle) {
-            case PdfLinkHandle::TopLeft:
-                updated.setLeft(qMin(pointerX, updated.right() - minimum));
-                updated.setTop(qMin(pointerY, updated.bottom() - minimum));
-                break;
-            case PdfLinkHandle::Top:
-                updated.setTop(qMin(pointerY, updated.bottom() - minimum));
-                break;
-            case PdfLinkHandle::TopRight:
-                updated.setRight(qMax(pointerX, updated.left() + minimum));
-                updated.setTop(qMin(pointerY, updated.bottom() - minimum));
-                break;
-            case PdfLinkHandle::Right:
-                updated.setRight(qMax(pointerX, updated.left() + minimum));
-                break;
-            case PdfLinkHandle::BottomRight:
-                updated.setRight(qMax(pointerX, updated.left() + minimum));
-                updated.setBottom(qMax(pointerY, updated.top() + minimum));
-                break;
-            case PdfLinkHandle::Bottom:
-                updated.setBottom(qMax(pointerY, updated.top() + minimum));
-                break;
-            case PdfLinkHandle::BottomLeft:
-                updated.setLeft(qMin(pointerX, updated.right() - minimum));
-                updated.setBottom(qMax(pointerY, updated.top() + minimum));
-                break;
-            case PdfLinkHandle::Left:
-                updated.setLeft(qMin(pointerX, updated.right() - minimum));
-                break;
-            case PdfLinkHandle::Move:
-            case PdfLinkHandle::None:
-                break;
-            }
+            updated = RectangleInteraction::drag(updated, d->pageSizeDragHandle, d->pageSizeDragStart, QPointF(pointerX, pointerY), QSizeF(minimum, minimum));
             d->pageSizePreviewRect = updated;
             viewport()->update();
             setCursor(pdfLinkCursor(d->pageSizeDragHandle));
@@ -4763,44 +4523,7 @@ void PageView::mouseMoveEvent(QMouseEvent *e)
                 const qreal minimumWidth = qMin(1.0, 4.0 / selectedItem->uncroppedWidth());
                 const qreal minimumHeight = qMin(1.0, 4.0 / selectedItem->uncroppedHeight());
 
-                switch (d->pdfLinkDragHandle) {
-                case PdfLinkHandle::Move: {
-                    const qreal dx = qBound(-updated.left(), current.x() - start.x(), 1.0 - updated.right());
-                    const qreal dy = qBound(-updated.top(), current.y() - start.y(), 1.0 - updated.bottom());
-                    updated.translate(dx, dy);
-                    break;
-                }
-                case PdfLinkHandle::TopLeft:
-                    updated.setLeft(qMin(current.x(), updated.right() - minimumWidth));
-                    updated.setTop(qMin(current.y(), updated.bottom() - minimumHeight));
-                    break;
-                case PdfLinkHandle::Top:
-                    updated.setTop(qMin(current.y(), updated.bottom() - minimumHeight));
-                    break;
-                case PdfLinkHandle::TopRight:
-                    updated.setRight(qMax(current.x(), updated.left() + minimumWidth));
-                    updated.setTop(qMin(current.y(), updated.bottom() - minimumHeight));
-                    break;
-                case PdfLinkHandle::Right:
-                    updated.setRight(qMax(current.x(), updated.left() + minimumWidth));
-                    break;
-                case PdfLinkHandle::BottomRight:
-                    updated.setRight(qMax(current.x(), updated.left() + minimumWidth));
-                    updated.setBottom(qMax(current.y(), updated.top() + minimumHeight));
-                    break;
-                case PdfLinkHandle::Bottom:
-                    updated.setBottom(qMax(current.y(), updated.top() + minimumHeight));
-                    break;
-                case PdfLinkHandle::BottomLeft:
-                    updated.setLeft(qMin(current.x(), updated.right() - minimumWidth));
-                    updated.setBottom(qMax(current.y(), updated.top() + minimumHeight));
-                    break;
-                case PdfLinkHandle::Left:
-                    updated.setLeft(qMin(current.x(), updated.right() - minimumWidth));
-                    break;
-                case PdfLinkHandle::None:
-                    break;
-                }
+                updated = RectangleInteraction::drag(updated, d->pdfLinkDragHandle, start, current, QSizeF(minimumWidth, minimumHeight), QRectF(0, 0, 1, 1));
 
                 d->selectedPdfLinkRect = updated;
                 const QRectF changed = previousContentRect.united(pdfLinkContentRect(selectedItem, updated)).adjusted(-pdfLinkHandleSize, -pdfLinkHandleSize, pdfLinkHandleSize, pdfLinkHandleSize);
@@ -5007,8 +4730,8 @@ void PageView::mousePressEvent(QMouseEvent *e)
                                           pageRect.top() + d->ocrWords[d->selectedOcrWord].rectangle.y() * item->uncroppedHeight(),
                                           d->ocrWords[d->selectedOcrWord].rectangle.width() * item->uncroppedWidth(),
                                           d->ocrWords[d->selectedOcrWord].rectangle.height() * item->uncroppedHeight());
-                const PdfLinkHandle handle = pdfLinkHandleAt(selectedRect, pos);
-                if (handle != PdfLinkHandle::None && e->type() != QEvent::MouseButtonDblClick) {
+                const RectangleHandle handle = pdfLinkHandleAt(selectedRect, pos);
+                if (handle != RectangleHandle::None && e->type() != QEvent::MouseButtonDblClick) {
                     d->ocrWordDragHandle = handle;
                     d->ocrWordDragging = true;
                     d->ocrWordDragStart = pos;
@@ -5184,7 +4907,7 @@ void PageView::mousePressEvent(QMouseEvent *e)
         // The handle is matched before the page area: it reaches half of itself outside
         // the page, so a press from just outside the border must grab it too.
         PageViewItem *handleItem = nullptr;
-        PdfLinkHandle handle = PdfLinkHandle::None;
+        RectangleHandle handle = RectangleHandle::None;
         for (const PageViewItem *item : std::as_const(d->visibleItems)) {
             const QRectF pageRect = pageSizePageRect(item);
             const int index = pageSizeHandleIndexAt(pageRect, eventPos);
@@ -5194,7 +4917,7 @@ void PageView::mousePressEvent(QMouseEvent *e)
                 break;
             }
         }
-        if (handleItem && handle != PdfLinkHandle::None) {
+        if (handleItem && handle != RectangleHandle::None) {
             const QRectF pageRect = pageSizePageRect(handleItem);
             if (d->pageSizeSelectedPage != handleItem->pageNumber()) {
                 d->pageSizeSelectedPage = handleItem->pageNumber();
@@ -5205,6 +4928,7 @@ void PageView::mousePressEvent(QMouseEvent *e)
             d->pageSizeHoverPage = handleItem->pageNumber();
             d->pageSizeHoverHandle = handle;
             d->pageSizeDragStartRect = pageRect;
+            d->pageSizeDragStart = eventPos;
             d->pageSizePreviewRect = d->pageSizeDragStartRect;
             d->pageSizeDragStartSize = d->document->pageSizeInPoints(handleItem->pageNumber());
             d->scroller->stop();
@@ -5224,22 +4948,22 @@ void PageView::mousePressEvent(QMouseEvent *e)
 
     if (e->button() == Qt::LeftButton && e->modifiers() == Qt::NoModifier && d->showNamedDestinations && d->document->canEditPdfLinks()) {
         PageViewItem *pageItem = pickItemOnPoint(eventPos.x(), eventPos.y());
-        PdfLinkHandle handle = PdfLinkHandle::None;
+        RectangleHandle handle = RectangleHandle::None;
         if (pageItem && pageItem->pageNumber() == d->selectedPdfLinkPage) {
             handle = pdfLinkHandleAt(pdfLinkContentRect(pageItem, d->selectedPdfLinkRect), eventPos);
         }
 
         const Okular::ObjectRect *linkObject = nullptr;
-        if (pageItem && handle == PdfLinkHandle::None) {
+        if (pageItem && handle == RectangleHandle::None) {
             linkObject = pageItem->page()->objectRect(Okular::ObjectRect::Action, pageItem->absToPageX(eventPos.x()), pageItem->absToPageY(eventPos.y()), pageItem->uncroppedWidth(), pageItem->uncroppedHeight());
         }
 
-        if (pageItem && (handle != PdfLinkHandle::None || linkObject)) {
+        if (pageItem && (handle != RectangleHandle::None || linkObject)) {
             if (linkObject) {
                 d->selectedPdfLinkPage = pageItem->pageNumber();
                 d->selectedPdfLinkOriginalRect = linkObject->region().boundingRect();
                 d->selectedPdfLinkRect = d->selectedPdfLinkOriginalRect;
-                handle = PdfLinkHandle::Move;
+                handle = RectangleHandle::Move;
             }
             d->pdfLinkDragHandle = handle;
             d->pdfLinkDragging = true;
@@ -5258,7 +4982,7 @@ void PageView::mousePressEvent(QMouseEvent *e)
             d->selectedPdfLinkPage = -1;
             d->selectedPdfLinkOriginalRect = QRectF();
             d->selectedPdfLinkRect = QRectF();
-            d->pdfLinkDragHandle = PdfLinkHandle::None;
+            d->pdfLinkDragHandle = RectangleHandle::None;
             d->pdfLinkDragging = false;
             viewport()->update();
         }
@@ -5553,13 +5277,13 @@ void PageView::mouseReleaseEvent(QMouseEvent *e)
     }
     if (isOcrTextEditing()) {
         if (e->button() == Qt::LeftButton && d->ocrWordDragging) {
-            const PdfLinkHandle releasedHandle = d->ocrWordDragHandle;
+            const RectangleHandle releasedHandle = d->ocrWordDragHandle;
             const bool changed = d->ocrWordDragBefore != d->ocrWords;
             d->ocrWordDragging = false;
-            d->ocrWordDragHandle = PdfLinkHandle::None;
+            d->ocrWordDragHandle = RectangleHandle::None;
             if (changed) {
                 Q_EMIT ocrTextLayerChangeRequested(d->ocrEditingPage, d->ocrWordDragBefore, d->ocrWords);
-            } else if (releasedHandle == PdfLinkHandle::Move && d->selectedOcrWord >= 0 && d->selectedOcrWord < d->ocrWords.size()) {
+            } else if (releasedHandle == RectangleHandle::Move && d->selectedOcrWord >= 0 && d->selectedOcrWord < d->ocrWords.size()) {
                 startOcrWordEditor(d->selectedOcrWord);
             }
             d->ocrWordDragBefore.clear();
@@ -5626,12 +5350,12 @@ void PageView::mouseReleaseEvent(QMouseEvent *e)
 
     if (leftButton && d->pageSizeDragging) {
         const int pageNumber = d->pageSizeDragPage;
-        const PdfLinkHandle handle = d->pageSizeDragHandle;
+        const RectangleHandle handle = d->pageSizeDragHandle;
         const QRectF startRect = d->pageSizeDragStartRect;
         const QRectF previewRect = d->pageSizePreviewRect;
         const QSizeF startSize = d->pageSizeDragStartSize;
         d->pageSizeDragging = false;
-        d->pageSizeDragHandle = PdfLinkHandle::None;
+        d->pageSizeDragHandle = RectangleHandle::None;
         d->pageSizeDragPage = -1;
         d->pageSizeDragStartRect = QRectF();
         d->pageSizePreviewRect = QRectF();
@@ -5647,10 +5371,10 @@ void PageView::mouseReleaseEvent(QMouseEvent *e)
             double topDelta = 0.0;
             double rightDelta = 0.0;
             double bottomDelta = 0.0;
-            const auto movesLeft = handle == PdfLinkHandle::Left || handle == PdfLinkHandle::TopLeft || handle == PdfLinkHandle::BottomLeft;
-            const auto movesRight = handle == PdfLinkHandle::Right || handle == PdfLinkHandle::TopRight || handle == PdfLinkHandle::BottomRight;
-            const auto movesTop = handle == PdfLinkHandle::Top || handle == PdfLinkHandle::TopLeft || handle == PdfLinkHandle::TopRight;
-            const auto movesBottom = handle == PdfLinkHandle::Bottom || handle == PdfLinkHandle::BottomLeft || handle == PdfLinkHandle::BottomRight;
+            const auto movesLeft = handle == RectangleHandle::Left || handle == RectangleHandle::TopLeft || handle == RectangleHandle::BottomLeft;
+            const auto movesRight = handle == RectangleHandle::Right || handle == RectangleHandle::TopRight || handle == RectangleHandle::BottomRight;
+            const auto movesTop = handle == RectangleHandle::Top || handle == RectangleHandle::TopLeft || handle == RectangleHandle::TopRight;
+            const auto movesBottom = handle == RectangleHandle::Bottom || handle == RectangleHandle::BottomLeft || handle == RectangleHandle::BottomRight;
             if (movesLeft) {
                 leftDelta = grew.width();
             } else if (movesRight) {
@@ -5675,7 +5399,7 @@ void PageView::mouseReleaseEvent(QMouseEvent *e)
         const QRectF oldRectangle = d->selectedPdfLinkOriginalRect;
         const QRectF newRectangle = d->selectedPdfLinkRect;
         d->pdfLinkDragging = false;
-        d->pdfLinkDragHandle = PdfLinkHandle::None;
+        d->pdfLinkDragHandle = RectangleHandle::None;
         d->selectedPdfLinkOriginalRect = newRectangle;
         viewport()->update();
         updateCursor();
@@ -6852,22 +6576,7 @@ void PageView::drawDocumentOnPainter(const QRect contentsRect, QPainter *p, bool
                 if (d->selectedOcrWord >= 0 && d->selectedOcrWord < d->ocrWords.size()) {
                     const QRectF rect = wordRect(d->ocrWords[d->selectedOcrWord].rectangle);
                     p->save();
-                    QPen selectionPen(QColor(0, 120, 212), 2.0);
-                    selectionPen.setCosmetic(true);
-                    p->setPen(selectionPen);
-                    p->setBrush(Qt::white);
-                    p->drawRect(rect);
-                    const std::array<QPointF, 8> handles {rect.topLeft(),
-                                                         QPointF(rect.center().x(), rect.top()),
-                                                         rect.topRight(),
-                                                         QPointF(rect.right(), rect.center().y()),
-                                                         rect.bottomRight(),
-                                                         QPointF(rect.center().x(), rect.bottom()),
-                                                         rect.bottomLeft(),
-                                                         QPointF(rect.left(), rect.center().y())};
-                    for (const QPointF &handle : handles) {
-                        p->drawRect(pdfLinkHandleRect(handle));
-                    }
+                    RectangleInteraction::draw(p, rect);
                     p->restore();
                 }
                 if (d->ocrWordEditor && item == sourceItem(d->ocrEditingPage)) {
@@ -7620,7 +7329,7 @@ void PageView::updatePageSizeHover(const QPointF &contentPoint)
         return;
     }
     int page = -1;
-    PdfLinkHandle handle = PdfLinkHandle::None;
+    RectangleHandle handle = RectangleHandle::None;
     // Handles first, and without requiring the pointer to be inside the page: a handle
     // sits on a border and reaches half of itself outside it, so the pointer can be
     // just outside the page and still on the handle.
@@ -7658,7 +7367,7 @@ void PageView::updatePageSizeHover(const QPointF &contentPoint)
 // code for links, OCR words and reading views sets it the same way.
 void PageView::updatePageSizeCursor()
 {
-    const bool onHandle = d->pageSizeHoverHandle != PdfLinkHandle::None;
+    const bool onHandle = d->pageSizeHoverHandle != RectangleHandle::None;
     if (onHandle) {
         const Qt::CursorShape shape = pdfLinkCursor(d->pageSizeHoverHandle);
         viewport()->setCursor(shape);
@@ -7714,18 +7423,18 @@ void PageView::updateCursor(const QPoint p)
 
         if (d->pageSizeHandlesEnabled) {
             updatePageSizeHover(QPointF(p));
-            if (d->pageSizeHoverHandle != PdfLinkHandle::None) {
+            if (d->pageSizeHoverHandle != RectangleHandle::None) {
                 return;
             }
-        } else if (d->pageSizeHoverPage >= 0 || d->pageSizeHoverHandle != PdfLinkHandle::None) {
+        } else if (d->pageSizeHoverPage >= 0 || d->pageSizeHoverHandle != RectangleHandle::None) {
             d->pageSizeHoverPage = -1;
-            d->pageSizeHoverHandle = PdfLinkHandle::None;
+            d->pageSizeHoverHandle = RectangleHandle::None;
             viewport()->update();
         }
 
         if (pageItem->pageNumber() == d->selectedPdfLinkPage) {
-            const PdfLinkHandle handle = pdfLinkHandleAt(pdfLinkContentRect(pageItem, d->selectedPdfLinkRect), p);
-            if (handle != PdfLinkHandle::None) {
+            const RectangleHandle handle = pdfLinkHandleAt(pdfLinkContentRect(pageItem, d->selectedPdfLinkRect), p);
+            if (handle != RectangleHandle::None) {
                 d->mouseOnRect = true;
                 setCursor(pdfLinkCursor(handle));
                 return;

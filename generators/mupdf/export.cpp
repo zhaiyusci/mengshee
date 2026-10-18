@@ -36,7 +36,6 @@ void flattenPage(fz_context *ctx, pdf_document *doc, pdf_obj *page, int &flatten
     if (!pdf_array_len(ctx, annots))
         return;
     QSet<pdf_obj *> baked;
-    QList<fz_rect> retainedInteractive;
     QByteArray drawing;
     const auto number = [](double x) { return QByteArray::number(x, 'g', 12); };
     const QSet<QByteArray> supported = {"FreeText", "Line", "Square", "Circle", "Polygon", "PolyLine", "Highlight", "Underline", "Squiggly", "StrikeOut", "Ink", "Stamp", "Text", "Caret"};
@@ -55,11 +54,10 @@ void flattenPage(fz_context *ctx, pdf_document *doc, pdf_obj *page, int &flatten
         if (type == "Popup")
             continue;
         const auto rect = pdf_dict_get_rect(ctx, annot, PDF_NAME(Rect));
-        if (type == "Link" || type == "Widget" || (flags & (1 | 2 | 32))) {
-            if (!(flags & (1 | 2 | 32)) && (type == "Link" || type == "Widget"))
-                retainedInteractive.append(rect);
+        // Interactive objects remain annotations after flattening. Their normal
+        // position above page contents is not a reason to reject overlapping notes.
+        if (type == "Link" || type == "Widget" || (flags & (1 | 2 | 32)))
             continue;
-        }
         if (!supported.contains(type))
             fz_throw(ctx, FZ_ERROR_ARGUMENT, "Unsupported visible annotation type: %s", type.constData());
         if (flags & (8 | 256))
@@ -69,9 +67,6 @@ void flattenPage(fz_context *ctx, pdf_document *doc, pdf_obj *page, int &flatten
         for (const char *key : {"IRT", "RT", "OC", "A", "AA", "StructParent", "ExData"})
             if (pdf_dict_gets(ctx, annot, key))
                 fz_throw(ctx, FZ_ERROR_ARGUMENT, "Annotation feature cannot be flattened: %s", key);
-        for (auto retained : retainedInteractive)
-            if (!fz_is_empty_rect(fz_intersect_rect(rect, retained)))
-                fz_throw(ctx, FZ_ERROR_ARGUMENT, "Flattening would change annotation stacking over a retained link or widget");
         auto *ap = normalAppearance(ctx, annot);
         if (!ap)
             fz_throw(ctx, FZ_ERROR_ARGUMENT, "A visible annotation has no usable appearance");
