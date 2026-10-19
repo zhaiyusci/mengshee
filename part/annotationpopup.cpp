@@ -1,3 +1,4 @@
+#include "core/annotationframe.h"
 /*
     SPDX-FileCopyrightText: 2006 Tobias Koenig <tokoe@kde.org>
 
@@ -441,6 +442,7 @@ void AnnotationPopup::addActionsToMenu(QMenu *menu)
         }
 
         if (onlyOne) {
+            addRotationActions(menu, pair);
             addLatexAnnotationActions(menu, pair);
             addTemplateAnnotationActions(menu, pair);
         }
@@ -514,6 +516,7 @@ void AnnotationPopup::addActionsToMenu(QMenu *menu)
                 connect(action, &QAction::triggered, menu, [this, pair] { doCopyAnnotationText(pair); });
             }
 
+            addRotationActions(menu, pair);
             addLatexAnnotationActions(menu, pair);
             addTemplateAnnotationActions(menu, pair);
 
@@ -585,6 +588,33 @@ void AnnotationPopup::doCopyAnnotationText(AnnotPagePair pair)
     if (!text.isEmpty()) {
         QClipboard *cb = QApplication::clipboard();
         cb->setText(text, QClipboard::Clipboard);
+    }
+}
+
+void AnnotationPopup::addRotationActions(QMenu *menu, AnnotPagePair pair)
+{
+    auto *annotation=pair.annotation;
+    const auto *text=dynamic_cast<const Okular::TextAnnotation *>(annotation);
+    if(annotation->subType()!=Okular::Annotation::AStamp && !(text && text->textType()==Okular::TextAnnotation::InPlace))return;
+    for(int angle:{-90,90}) {
+        auto *action=menu->addAction(angle<0 ? i18n("Rotate Annotation Left") : i18n("Rotate Annotation Right"));
+        action->setObjectName(angle<0 ? QStringLiteral("rotate_annotation_left") : QStringLiteral("rotate_annotation_right"));
+        action->setEnabled(mDocument->isAllowed(Okular::AllowNotes) && mDocument->canModifyPageAnnotation(annotation));
+        connect(action,&QAction::triggered,menu,[this,pair,angle] {
+            const auto *page=mDocument->page(pair.pageNumber);
+            if(!page)return;
+            auto *annotation=pair.annotation;
+            const QSizeF size(LatexNoteUtils::pageWidthInPoints(page),LatexNoteUtils::pageHeightInPoints(page));
+            const auto transform=Okular::AnnotationFrame::rotationAbout(annotation->boundingRectangle(),size,angle);
+            const auto bounds=Okular::AnnotationFrame::mapRect(annotation->boundingRectangle(),size,transform);
+            mDocument->prepareToModifyAnnotationProperties(annotation);
+            if(annotation->isLatexCallout())for(int i=0;i<3;++i)
+                annotation->setLatexCalloutPoint(Okular::AnnotationFrame::mapPoint(annotation->latexCalloutPoint(i),size,transform),i);
+            annotation->setBoundingRectangle(bounds);
+            annotation->setAppearanceRotation(annotation->appearanceRotation()+angle);
+            annotation->setFlags(annotation->flags() & ~Okular::Annotation::FixedRotation);
+            mDocument->modifyPageAnnotationProperties(pair.pageNumber,annotation);
+        });
     }
 }
 

@@ -723,7 +723,7 @@ void FlattenedPdfExportTest::latexStamp()
     stamp->setBoundingRectangle(Okular::NormalizedRect(0.2, 0.25, 0.8, 0.55));
     stamp->setContents(QStringLiteral("Rotated LaTeX final copy"));
     stamp->setOkularLatex(true);
-    QVERIFY(stamp->flags() & Okular::Annotation::FixedRotation);
+    QVERIFY(!(stamp->flags() & Okular::Annotation::FixedRotation));
     stamp->setLatexNoteType(Okular::Annotation::LatexNoteBoxed);
     stamp->setLatexAppearancePdfFileName(appearanceFile);
     stamp->setLatexLayoutWidth(120.0);
@@ -749,7 +749,7 @@ void FlattenedPdfExportTest::latexStamp()
     QCOMPARE(hash(m_source), originalHash);
     QCOMPARE(m_document->page(0)->annotations(), originalAnnotations);
     QVERIFY(stamp->isOkularLatex());
-    QVERIFY(stamp->flags() & Okular::Annotation::FixedRotation);
+    QVERIFY(!(stamp->flags() & Okular::Annotation::FixedRotation));
     QVERIFY(m_document->canUndo());
     QVERIFY(!m_document->canRedo());
     QCOMPARE(undoChanged.count(), 0);
@@ -774,7 +774,7 @@ void FlattenedPdfExportTest::latexStamp()
     const auto *restored = m_document->page(0)->annotation(stampName);
     QVERIFY(restored);
     QVERIFY(restored->isOkularLatex());
-    QVERIFY(restored->flags() & Okular::Annotation::FixedRotation);
+    QVERIFY(!(restored->flags() & Okular::Annotation::FixedRotation));
     QCOMPARE(hash(m_source), originalHash);
     exported.closeDocument();
 }

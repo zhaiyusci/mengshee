@@ -3887,12 +3887,13 @@ private:
 class LivePageRotationCommand : public QUndoCommand
 {
 public:
-    LivePageRotationCommand(Part *part, int pageNumber, int beforeRotation, int afterRotation)
+    LivePageRotationCommand(Part *part, int pageNumber, int beforeRotation, int afterRotation, bool followPage)
         : QUndoCommand(i18nc("Undo action", "Rotate Page"))
         , m_part(part)
         , m_pageNumber(pageNumber)
         , m_beforeRotation(beforeRotation)
         , m_afterRotation(afterRotation)
+        , m_followPage(followPage)
     {
     }
 
@@ -3913,7 +3914,7 @@ public:
 private:
     void apply(int rotation)
     {
-        if (m_part && !m_part->applyLivePageRotation(m_pageNumber, rotation)) {
+        if (m_part && !m_part->applyLivePageRotation(m_pageNumber, rotation, m_followPage)) {
             qWarning() << "Page rotation undo/redo failed";
         }
     }
@@ -3922,6 +3923,7 @@ private:
     int m_pageNumber = 0;
     int m_beforeRotation = 0;
     int m_afterRotation = 0;
+    bool m_followPage = true;
     bool m_firstRedo = true;
 };
 
@@ -6946,12 +6948,12 @@ bool Part::applyLiveNotePageAttachment(bool attach, int insertAfterPage, quint64
     return true;
 }
 
-bool Part::applyLivePageRotation(int pageNumber, int rotationDegrees)
+bool Part::applyLivePageRotation(int pageNumber, int rotationDegrees, bool followPage)
 {
     const QPointer<PageView> initiatingView = workspaceActivePageView();
     const DocumentViewport previousViewport = initiatingView ? initiatingView->documentViewport() : m_document->viewport();
     QString errorText;
-    if (!m_document->rotatePage(pageNumber, rotationDegrees, &errorText)) {
+    if (!m_document->rotatePageWithAnnotations(pageNumber, rotationDegrees, followPage, &errorText)) {
         qWarning() << "Could not rotate the page:" << errorText;
         return false;
     }
@@ -7927,7 +7929,7 @@ void Part::setPageRotation(int pageNumber, int rotationDegrees)
     }
 
     QString errorText;
-    if (!m_document->rotatePage(pageNumber, normalizedRotation, &errorText)) {
+    if (!m_document->rotatePageWithAnnotations(pageNumber, normalizedRotation, true, &errorText)) {
         if (errorText.isEmpty()) {
             KMessageBox::information(widget(), i18n("Could not rotate the page."));
         } else {
@@ -7936,7 +7938,7 @@ void Part::setPageRotation(int pageNumber, int rotationDegrees)
         return;
     }
 
-    m_document->pushUndoCommand(new LivePageRotationCommand(this, pageNumber, currentRotation, normalizedRotation));
+    m_document->pushUndoCommand(new LivePageRotationCommand(this, pageNumber, currentRotation, normalizedRotation, true));
     refreshTemplateNotes();
 
     if (m_pageView) {

@@ -23,8 +23,11 @@ public:
     void notifyRemoval(Okular::Annotation *, int) override;
     void load(pdf_page *, Okular::Page *);
     void clear();
+    void preparePageRotation(Okular::Page *page, bool followPage);
+    void finishPageRotation(Okular::Page *page, bool followPage);
 
 private:
+    void prepareAnnotationsRotation(const QList<Okular::Annotation *> &annotations, bool followPage);
     void loadOne(pdf_annot *, Okular::Page *, fz_rect, Okular::Annotation *&);
     void write(const Okular::Annotation *, pdf_annot *, bool, pdf_obj *preserved = nullptr);
     MuPDFGenerator *m_generator;

@@ -1169,6 +1169,7 @@ public:
 
     /** Assigns an explicit clockwise rotation to a 0-based page. */
     bool rotatePage(int pageNumber, int rotationDegrees, QString *errorText);
+    bool rotatePageWithAnnotations(int pageNumber, int rotationDegrees, bool followPage, QString *errorText);
 
     /**
      * Returns where a goto action points, resolved when it is needed: an action that

@@ -50,7 +50,7 @@ double pageWidthInPoints(const Okular::Page *page);
 double pageHeightInPoints(const Okular::Page *page);
 double rectWidthInPoints(const Okular::NormalizedRect &rect, const Okular::Page *page);
 double rectHeightInPoints(const Okular::NormalizedRect &rect, const Okular::Page *page);
-double annotationWidthInPoints(const Okular::Annotation *annotation, const Okular::Page *page);
+OKULARPART_EXPORT double annotationWidthInPoints(const Okular::Annotation *annotation, const Okular::Page *page);
 double layoutWidthForLatexTextVisibleWidth(double visibleWidthPoints, double padding);
 double layoutWidthForLatexFrame(const Okular::NormalizedRect &frame, const Okular::Page *page, double padding);
 double paddingForLatexAnnotation(const Okular::Annotation *annotation);

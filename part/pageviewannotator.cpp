@@ -298,7 +298,6 @@ public:
     {
         Okular::TextAnnotation *ta = new Okular::TextAnnotation();
         ann = ta;
-        ta->setFlags(ta->flags() | Okular::Annotation::FixedRotation);
         ta->setContents(m_annotElement.hasAttribute(QStringLiteral("contents")) ? m_annotElement.attribute(QStringLiteral("contents")) : content);
         ta->setTextType(Okular::TextAnnotation::InPlace);
         ta->setInplaceIntent(inplaceIntent);
@@ -432,7 +431,6 @@ public:
             }
             if (latexStamp) {
                 sa->setOkularLatex(true);
-                sa->setFlags(sa->flags() | Okular::Annotation::FixedRotation);
                 const bool orderedCallout = m_annotElement.attribute(QStringLiteral("orderedCallout")).toInt() != 0;
                 const bool latexCallout = orderedCallout || m_annotElement.attribute(QStringLiteral("latexCallout")).toInt() != 0;
                 sa->setLatexNoteType(orderedCallout ? Okular::Annotation::LatexNoteOrderedCallout

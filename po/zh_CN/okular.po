@@ -9204,3 +9204,12 @@ msgid ""
 msgstr ""
 "页面保留下/左角不变，因此已有内容位置不动，新增空间出现在其右侧与上方；"
 "尺寸改小只是隐藏落在可见框之外的内容，再放大即可恢复。"
+
+msgid "Rotate Notes and Images with Page"
+msgstr "注释和图片随页面旋转"
+
+msgid "Rotate Annotation Left"
+msgstr "向左旋转批注"
+
+msgid "Rotate Annotation Right"
+msgstr "向右旋转批注"

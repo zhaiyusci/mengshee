@@ -884,8 +884,8 @@ void Annotation::setOkularLatex(bool latex)
 {
     Q_D(Annotation);
     d->m_okularLatex = latex;
-    if (latex && subType() == AStamp) {
-        d->m_flags |= FixedRotation;
+    if (latex) {
+        d->m_flags &= ~FixedRotation;
     }
 }
 
@@ -1026,6 +1026,23 @@ NormalizedPoint Annotation::transformedLatexCalloutPoint(int index) const
 
     Q_D(const Annotation);
     return d->m_transformedLatexCalloutPoints[index];
+}
+
+int Annotation::appearanceRotation() const
+{
+    Q_D(const Annotation);
+    return d->m_appearanceRotation;
+}
+bool Annotation::hasAppearanceRotation() const
+{
+    Q_D(const Annotation);
+    return d->m_hasAppearanceRotation;
+}
+void Annotation::setAppearanceRotation(int degrees)
+{
+    Q_D(Annotation);
+    d->m_appearanceRotation = (degrees % 360 + 360) % 360;
+    d->m_hasAppearanceRotation = true;
 }
 
 void Annotation::setLatexLayoutWidth(double width)
@@ -1220,6 +1237,7 @@ void Annotation::store(QDomNode &annNode, QDomDocument &document) const
     if (storeLatexMetadata && d->m_latexCallout) {
         e.setAttribute(QStringLiteral("latexCallout"), QStringLiteral("1"));
     }
+    if(d->m_hasAppearanceRotation)e.setAttribute(QStringLiteral("appearanceRotation"), d->m_appearanceRotation);
     if (storeLatexMetadata && d->m_latexLayoutWidth > 0.0) {
         e.setAttribute(QStringLiteral("latexLayoutWidth"), QString::number(d->m_latexLayoutWidth, 'f', 3));
     }
@@ -1455,7 +1473,7 @@ void AnnotationPrivate::setAnnotationProperties(const QDomNode &node)
     if (e.hasAttribute(QStringLiteral("okularLatex"))) {
         m_okularLatex = e.attribute(QStringLiteral("okularLatex")).toInt() != 0;
         if (m_okularLatex) {
-            m_flags |= Annotation::FixedRotation;
+            m_flags &= ~Annotation::FixedRotation;
         }
     }
     if (e.hasAttribute(QStringLiteral("latexNoteType"))) {
@@ -1495,6 +1513,8 @@ void AnnotationPrivate::setAnnotationProperties(const QDomNode &node)
         m_numberedCalloutId = 0;
         m_numberedCalloutLabel.clear();
     }
+    m_hasAppearanceRotation = e.hasAttribute(QStringLiteral("appearanceRotation"));
+    m_appearanceRotation = (e.attribute(QStringLiteral("appearanceRotation")).toInt() % 360 + 360) % 360;
     if (e.hasAttribute(QStringLiteral("latexLayoutWidth"))) {
         bool ok = false;
         const double width = e.attribute(QStringLiteral("latexLayoutWidth")).toDouble(&ok);

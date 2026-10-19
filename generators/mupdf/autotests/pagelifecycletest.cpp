@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include <core/document.h>
+#include <core/annotations.h>
 #include <core/action.h>
 #include "settings_core.h"
 #include <core/generator.h>
@@ -97,6 +98,48 @@ private Q_SLOTS:
             QVERIFY2(document.insertPdfPage(2, file, page, true, &id, &error), qPrintable(error));
             QCOMPARE(document.renderToImage(3, 36, false, &error), expected);
             QVERIFY(document.detachPage(3, id, &error));
+        }
+        document.closeDocument();
+    }
+    void observersReleaseAnnotationsBeforePageDestruction() {
+        Okular::SettingsCore::instance(QStringLiteral("mupdf-page-lifecycle-test"));
+        QTemporaryDir directory;
+        const auto file = directory.filePath(QStringLiteral("rotation.pdf"));
+        { QPdfWriter writer(file); QPainter painter(&writer); painter.drawText(100, 100, QStringLiteral("Rotate")); }
+        Okular::Document document(nullptr);
+        QCOMPARE(document.openDocument(file, QUrl::fromLocalFile(file), QMimeDatabase().mimeTypeForName(QStringLiteral("application/pdf"))), Okular::Document::OpenSuccess);
+        struct TrackedStamp : Okular::StampAnnotation {
+            bool *destroyed;
+            explicit TrackedStamp(bool *flag) : destroyed(flag) {}
+            ~TrackedStamp() override { *destroyed = true; }
+        };
+        struct Observer : Okular::DocumentObserver {
+            bool *destroyed = nullptr;
+            bool notified = false;
+            bool aliveDuringSetup = false;
+            void notifySetup(const QList<Okular::Page *> &, int flags) override {
+                if (destroyed && (flags & DocumentChanged)) {
+                    notified = true;
+                    aliveDuringSetup = !*destroyed;
+                }
+            }
+        } observer;
+        document.addObserver(&observer);
+        const auto removeObserver = qScopeGuard([&] { document.removeObserver(&observer); });
+        QString error;
+        for (int rotation : {90, 180, 270, 0}) {
+            bool destroyed = false;
+            auto *stamp = new TrackedStamp(&destroyed);
+            stamp->setBoundingRectangle({.1, .1, .3, .2});
+            stamp->setStampIconName(QStringLiteral("Approved"));
+            document.addPageAnnotation(0, stamp);
+            observer.destroyed = &destroyed;
+            observer.notified = false;
+            QVERIFY2(document.rotatePage(0, rotation, &error), qPrintable(error));
+            observer.destroyed = nullptr;
+            QVERIFY(observer.notified);
+            QVERIFY2(observer.aliveDuringSetup, "Selected annotation was freed before observers could release it");
+            QVERIFY(destroyed);
         }
         document.closeDocument();
     }

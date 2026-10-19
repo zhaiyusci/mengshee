@@ -352,7 +352,7 @@ private:
     // helper follows the affected page, which is right for page editing and
     // wrong for a note the reader is looking at on an earlier page.
     bool applyLiveNotePageAttachment(bool attach, int insertAfterPage, quint64 editId);
-    bool applyLivePageRotation(int pageNumber, int rotationDegrees);
+    bool applyLivePageRotation(int pageNumber, int rotationDegrees, bool followPage);
     // Applies per-edge moves of a page's visible box (PDF points, unrotated axes)
     // for undo and redo.
     bool applyLivePageBox(int pageNumber, double x1Delta, double y1Delta, double x2Delta, double y2Delta);

@@ -266,7 +266,7 @@ void AnnotsPropertiesDialog::slotapply()
         bool appearanceUpdated = false;
         if (latexStampRenderStateChanged(latexRenderStateBefore, latexRenderStateAfter)) {
             const Okular::Page *page = m_document->page(m_page);
-            const double layoutWidth = LatexNoteUtils::layoutWidthForLatexFrame(stampAnnotation->boundingRectangle(), page, latexRenderStateAfter.padding);
+            const double layoutWidth = LatexNoteUtils::layoutWidthForLatexTextVisibleWidth(LatexNoteUtils::annotationWidthInPoints(stampAnnotation, page), latexRenderStateAfter.padding);
             stampAnnotation->setLatexLayoutWidth(layoutWidth);
             appearanceUpdated = LatexNoteUtils::updateLatexStampAnnotationAppearance(this,
                                                                                     m_document,

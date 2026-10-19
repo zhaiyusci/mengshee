@@ -10,10 +10,64 @@
 #include <QJsonObject>
 #include <QMutex>
 #include <QUuid>
+#include <algorithm>
+#include <cmath>
+#include <core/document.h>
 #include <core/page.h>
 
 namespace
 {
+// Use an origin-based wrapper. FreeText APs can have a nonzero BBox origin;
+// MuPDF's NoRotate transform assumes origin-based appearance coordinates.
+// Keep the original form intact, including its resources and matrix.
+void rotateStampAppearance(fz_context *ctx, pdf_annot *native, pdf_obj *ap, int angle)
+{
+    if (pdf_annot_type(ctx, native) != PDF_ANNOT_FREE_TEXT) {
+        fz_buffer *content = pdf_load_stream(ctx, ap);
+        fz_try(ctx)
+        {
+            pdf_set_annot_appearance(ctx, native, "N", nullptr, fz_concat(pdf_dict_get_matrix(ctx, ap, PDF_NAME(Matrix)), fz_rotate(angle)), pdf_dict_get_rect(ctx, ap, PDF_NAME(BBox)), pdf_dict_get(ctx, ap, PDF_NAME(Resources)), content);
+        }
+        fz_always(ctx)
+        {
+            fz_drop_buffer(ctx, content);
+        }
+        fz_catch(ctx)
+        {
+            fz_rethrow(ctx);
+        }
+        return;
+    }
+    pdf_obj *resources = nullptr;
+    pdf_obj *form = nullptr;
+    fz_buffer *content = nullptr;
+    fz_var(resources);
+    fz_var(form);
+    fz_var(content);
+    fz_try(ctx)
+    {
+        auto rotation = fz_rotate(angle);
+        const auto bounds = fz_transform_rect(pdf_dict_get_rect(ctx, ap, PDF_NAME(BBox)), fz_concat(pdf_dict_get_matrix(ctx, ap, PDF_NAME(Matrix)), rotation));
+        rotation = fz_concat(rotation, fz_translate(-bounds.x0, -bounds.y0));
+        resources = pdf_new_dict(ctx, pdf_annot_page(ctx, native)->doc, 1);
+        pdf_dict_puts(ctx, pdf_dict_put_dict(ctx, resources, PDF_NAME(XObject), 1), "Original", ap);
+        content = fz_new_buffer(ctx, 128);
+        fz_append_printf(ctx, content, "q %g %g %g %g %g %g cm /Original Do Q", rotation.a, rotation.b, rotation.c, rotation.d, rotation.e, rotation.f);
+        form = pdf_new_xobject(ctx, pdf_annot_page(ctx, native)->doc, fz_make_rect(0, 0, bounds.x1 - bounds.x0, bounds.y1 - bounds.y0), fz_identity, resources, content);
+        pdf_dict_put(ctx, pdf_dict_get(ctx, pdf_annot_obj(ctx, native), PDF_NAME(AP)), PDF_NAME(N), form);
+        pdf_set_annot_resynthesised(ctx, native);
+    }
+    fz_always(ctx)
+    {
+        pdf_drop_obj(ctx, form);
+        pdf_drop_obj(ctx, resources);
+        fz_drop_buffer(ctx, content);
+    }
+    fz_catch(ctx)
+    {
+        fz_rethrow(ctx);
+    }
+}
 struct AppearanceTransfer {
     QByteArray pdf;
 };
@@ -218,6 +272,55 @@ Q_NEVER_INLINE void MuPDFAnnotationProxy::loadOne(pdf_annot *native, Okular::Pag
         annotation->setFlags(flags);
         if (auto *stamp = dynamic_cast<Okular::StampAnnotation *>(annotation))
             MuPDFLatex::read(ctx, native, stamp, bounds);
+        if ((type == PDF_ANNOT_STAMP || type == PDF_ANNOT_FREE_TEXT) && (nativeFlags & PDF_ANNOT_IS_NO_ROTATE)) {
+            // Hit geometry starts in rotated page coordinates. Apply the same
+            // NoRotate compensation as MuPDF's appearance placement, around
+            // the PDF Rect's upper-left anchor, without changing the annotation.
+            fz_matrix pageMatrix;
+            pdf_page_transform(ctx, pdf_annot_page(ctx, native), nullptr, &pageMatrix);
+            const auto pdfRect = pdf_dict_get_rect(ctx, object, PDF_NAME(Rect));
+            const int angle = pdf_dict_get_inheritable_int(ctx, pdf_annot_page(ctx, native)->obj, PDF_NAME(Rotate));
+            auto compensation = fz_translate(-pdfRect.x0, -pdfRect.y1);
+            compensation = fz_concat(compensation, fz_rotate(angle));
+            compensation = fz_concat(compensation, fz_translate(pdfRect.x0, pdfRect.y1));
+            compensation = fz_concat(fz_concat(fz_invert_matrix(pageMatrix), compensation), pageMatrix);
+            const auto r = annotation->boundingRectangle();
+            const auto top = point({r.left, r.top}, bounds), bottom = point({r.right, r.bottom}, bounds);
+            const auto display = fz_transform_rect(fz_make_rect(top.x, top.y, bottom.x, bottom.y), compensation);
+            const auto lo = normalized({display.x0, display.y0}, bounds), hi = normalized({display.x1, display.y1}, bounds);
+            annotation->setBoundingRectangle({lo.x, lo.y, hi.x, hi.y});
+            if (annotation->isLatexCallout())
+                for (int i = 0; i < 3; ++i)
+                    annotation->setLatexCalloutPoint(normalized(fz_transform_point(point(annotation->latexCalloutPoint(i), bounds), compensation), bounds), i);
+        }
+        const int pageAngle=pdf_dict_get_inheritable_int(ctx,pdf_annot_page(ctx,native)->obj,PDF_NAME(Rotate));
+        int authored=0;
+        if(annotation->isOkularLatex())
+            authored=QJsonDocument::fromJson(textValue(ctx,object,"LatexNoteData").toUtf8()).object().value(QStringLiteral("rotation")).toInt();
+        else if(type==PDF_ANNOT_STAMP)
+            authored=pdf_to_int(ctx,pdf_dict_gets(ctx,object,"MengsheeStampRotation"));
+        else if(type==PDF_ANNOT_FREE_TEXT)
+            authored=pdf_dict_get_int(ctx,object,PDF_NAME(Rotate));
+        annotation->setAppearanceRotation((nativeFlags & PDF_ANNOT_IS_NO_ROTATE ? 0 : pageAngle)-authored);
+        if(type==PDF_ANNOT_FREE_TEXT && !pdf_dict_get(ctx,object,PDF_NAME(Rotate))) {
+            // Standard FreeText has no Rotate key. Inspect the painted text
+            // baseline in page display coordinates, including AP/Tm transforms.
+            fz_stext_page *textPage=nullptr;
+            fz_var(textPage);
+            fz_try(ctx) {
+                textPage=pdf_new_stext_page_from_annot(ctx,native,nullptr);
+                for(auto *block=textPage ? textPage->first_block : nullptr;block;block=block->next) {
+                    if(block->type!=FZ_STEXT_BLOCK_TEXT || !block->u.t.first_line)continue;
+                    const auto direction=block->u.t.first_line->dir;
+                    const double angle=std::atan2(direction.y,direction.x)*180.0/3.141592653589793;
+                    const int quarter=qRound(angle/90.0)*90;
+                    if(std::abs(angle-quarter)<0.1)annotation->setAppearanceRotation(quarter);
+                    break;
+                }
+            }
+            fz_always(ctx) {fz_drop_stext_page(ctx,textPage);}
+            fz_catch(ctx) { /* A broken appearance must not prevent opening the page. */ }
+        }
         m_annotations.insert(annotation, pdf_keep_annot(ctx, native));
         target->addAnnotation(annotation);
         annotation = nullptr;
@@ -228,7 +331,14 @@ void MuPDFAnnotationProxy::write(const Okular::Annotation *annotation, pdf_annot
 {
     auto *ctx = m_generator->m_context;
     auto *object = pdf_annot_obj(ctx, native);
+    // Local display appearances are not visible in the persistent object dictionary.
+    // Preserve the existing-AP contract for imported FreeText and template notes.
+    const bool transientFreeText = pdf_annot_type(ctx, native) == PDF_ANNOT_FREE_TEXT
+        && !annotation->isTemplateNote() && !pdf_dict_get(ctx, object, PDF_NAME(AP));
     const fz_rect box = pdf_bound_page(ctx, pdf_annot_page(ctx, native), FZ_CROP_BOX);
+    const int authored=(pdf_dict_get_inheritable_int(ctx,pdf_annot_page(ctx,native)->obj,PDF_NAME(Rotate))-annotation->appearanceRotation()+360)%360;
+    if(pdf_annot_type(ctx,native)==PDF_ANNOT_FREE_TEXT)
+        pdf_dict_put_int(ctx,object,PDF_NAME(Rotate),authored);
     const auto rect = annotation->boundingRectangle();
     const auto a = point({rect.left, rect.top}, box), b = point({rect.right, rect.bottom}, box);
     if (pdf_annot_has_rect(ctx, native))
@@ -253,7 +363,7 @@ void MuPDFAnnotationProxy::write(const Okular::Annotation *annotation, pdf_annot
     pdf_set_annot_flags(ctx, native, flags);
     // Rect/flag setters request MuPDF resynthesis even for drag-only updates.
     // Reinstall the custom LaTeX AP before the next render can synthesize a stamp.
-    if (appearance || annotation->isOkularLatex()) {
+    if (appearance || annotation->isOkularLatex() || annotation->subType() == Okular::Annotation::AStamp) {
         const QColor color = annotation->style().color();
         const float components[] = {float(color.redF()), float(color.greenF()), float(color.blueF())};
         pdf_set_annot_color(ctx, native, color.isValid() ? 3 : 0, components);
@@ -304,7 +414,7 @@ void MuPDFAnnotationProxy::write(const Okular::Annotation *annotation, pdf_annot
         }
         if (const auto *stamp = dynamic_cast<const Okular::StampAnnotation *>(annotation)) {
             if (stamp->isOkularLatex()) {
-                MuPDFLatex::write(ctx, m_generator->m_document, native, stamp, preserved);
+                MuPDFLatex::write(ctx, m_generator->m_document, native, stamp, preserved, m_generator->document() ? int(m_generator->document()->rotation()) * 90 : 0);
             } else if (!stamp->stampImagePath().isEmpty() && QFileInfo::exists(stamp->stampImagePath())) {
                 fz_image *image = nullptr;
                 fz_var(image);
@@ -314,6 +424,12 @@ void MuPDFAnnotationProxy::write(const Okular::Annotation *annotation, pdf_annot
                     image = fz_new_image_from_file(ctx, path.constData());
                     pdf_set_annot_stamp_image(ctx, native, image);
                     pdf_update_annot(ctx, native);
+                    // Author the image upright in the current view. This matrix
+                    // is part of the AP, so later page rotations still apply.
+                    auto *ap = pdf_dict_getp(ctx, object, "AP/N");
+                    const int angle = authored;
+                    pdf_dict_puts_drop(ctx, object, "MengsheeStampRotation", pdf_new_int(ctx, angle));
+                    pdf_dict_put_matrix(ctx, ap, PDF_NAME(Matrix), fz_rotate(angle));
                 }
                 fz_always(ctx)
                 {
@@ -326,12 +442,13 @@ void MuPDFAnnotationProxy::write(const Okular::Annotation *annotation, pdf_annot
             } else if (preserved) {
                 auto *ap = pdf_dict_put_dict(ctx, object, PDF_NAME(AP), 1);
                 pdf_dict_put(ctx, ap, PDF_NAME(N), preserved);
+                pdf_set_annot_resynthesised(ctx, native);
             } else {
                 const auto name = stamp->stampIconName().toUtf8();
                 pdf_set_annot_icon_name(ctx, native, name.constData());
                 pdf_update_annot(ctx, native);
             }
-        } else
+        } else if (!transientFreeText)
             pdf_update_annot(ctx, native);
     }
     if (annotation->isOkularLatex())
@@ -341,6 +458,14 @@ void MuPDFAnnotationProxy::write(const Okular::Annotation *annotation, pdf_annot
     stored.appendChild(root);
     Okular::AnnotationUtils::storeAnnotation(annotation, root, stored);
     putText(ctx, object, "MengsheeAnnotation", stored.toString(-1));
+    if (transientFreeText) {
+        // Property setters request persistent synthesis. Clear that request so
+        // MuPDF's missing-AP path builds only a local-xref display appearance.
+        pdf_clean_obj(ctx, object);
+        pdf_set_annot_resynthesised(ctx, native);
+        pdf_update_annot(ctx, native);
+    }
+
 }
 
 std::shared_ptr<void> MuPDFAnnotationProxy::annotationAppearance(const Okular::Annotation *annotation) const
@@ -399,6 +524,13 @@ void MuPDFAnnotationProxy::notifyAddition(Okular::Annotation *annotation, int pa
     fz_try(ctx)
     {
         native = pdf_create_annot(ctx, m_generator->m_pages.at(page), typeFor(annotation));
+        if(!annotation->hasAppearanceRotation())
+            annotation->setAppearanceRotation(m_generator->document() ? -int(m_generator->document()->rotation())*90 : 0);
+        if (pdf_annot_type(ctx, native) == PDF_ANNOT_FREE_TEXT) {
+            const int angle = pdf_dict_get_inheritable_int(ctx, pdf_annot_page(ctx, native)->obj, PDF_NAME(Rotate))
+                + (m_generator->document() ? int(m_generator->document()->rotation()) * 90 : 0);
+            pdf_dict_put_int(ctx, pdf_annot_obj(ctx, native), PDF_NAME(Rotate), angle % 360);
+        }
         if (annotation->uniqueName().isEmpty())
             annotation->setUniqueName(QUuid::createUuid().toString(QUuid::WithoutBraces));
         if (const auto *transfer = static_cast<const AppearanceTransfer *>(annotation->nativeData())) {
@@ -441,6 +573,18 @@ void MuPDFAnnotationProxy::notifyModification(const Okular::Annotation *annotati
     {
         auto *native = m_annotations.value(annotation);
         if (native) {
+            // Normalize the current displayed AP before editing its rectangle;
+            // otherwise the native NoRotate anchor would be applied a second time.
+            prepareAnnotationsRotation({const_cast<Okular::Annotation *>(annotation)}, true);
+            pdf_dict_dels(ctx,pdf_annot_obj(ctx,native),"MengsheeRotationAnchor");
+            auto *object=pdf_annot_obj(ctx,native);
+            if(annotation->subType()==Okular::Annotation::AStamp && !annotation->isOkularLatex()) {
+                const int oldAngle=pdf_to_int(ctx,pdf_dict_gets(ctx,object,"MengsheeStampRotation"));
+                const int newAngle=(pdf_dict_get_inheritable_int(ctx,pdf_annot_page(ctx,native)->obj,PDF_NAME(Rotate))-annotation->appearanceRotation()+360)%360;
+                auto *ap=pdf_dict_getp(ctx,object,"AP/N");
+                if(oldAngle!=newAngle && pdf_is_stream(ctx,ap))rotateStampAppearance(ctx,native,ap,newAngle-oldAngle);
+                pdf_dict_puts_drop(ctx,object,"MengsheeStampRotation",pdf_new_int(ctx,newAngle));
+            }
             preserved = pdf_keep_obj(ctx, pdf_dict_getp(ctx, pdf_annot_obj(ctx, native), "AP/N"));
             write(annotation, native, appearance, preserved);
         }
@@ -473,5 +617,179 @@ void MuPDFAnnotationProxy::notifyRemoval(Okular::Annotation *annotation, int)
     fz_catch(ctx)
     {
         m_generator->m_editError = QString::fromUtf8(fz_caught_message(ctx));
+    }
+}
+
+void MuPDFAnnotationProxy::preparePageRotation(Okular::Page *page, bool followPage)
+{
+    prepareAnnotationsRotation(page->annotations(), followPage);
+    auto *ctx = m_generator->m_context;
+    for (auto *model : page->annotations()) {
+        auto *native = m_annotations.value(model);
+        const auto *text = dynamic_cast<const Okular::TextAnnotation *>(model);
+        if (!native || (model->subType() != Okular::Annotation::AStamp && !(text && text->textType() == Okular::TextAnnotation::InPlace)))
+            continue;
+        auto *object = pdf_annot_obj(ctx, native);
+        if (followPage) {
+            pdf_dict_dels(ctx, object, "MengsheeRotationAnchor");
+            continue;
+        }
+        if (pdf_dict_gets(ctx, object, "MengsheeRotationAnchor"))
+            continue;
+        const auto bounds = pdf_bound_annot(ctx, native);
+        fz_matrix matrix;
+        pdf_page_transform(ctx, pdf_annot_page(ctx, native), nullptr, &matrix);
+        const auto center = fz_transform_point({(bounds.x0 + bounds.x1) / 2, (bounds.y0 + bounds.y1) / 2}, fz_invert_matrix(matrix));
+        auto *anchor = pdf_new_array(ctx, m_generator->m_document, 2);
+        pdf_dict_puts_drop(ctx, object, "MengsheeRotationAnchor", anchor);
+        pdf_array_push_real(ctx, anchor, center.x);
+        pdf_array_push_real(ctx, anchor, center.y);
+    }
+}
+void MuPDFAnnotationProxy::prepareAnnotationsRotation(const QList<Okular::Annotation *> &annotations, bool followPage)
+{
+    auto *ctx = m_generator->m_context;
+    for (auto *model : annotations) {
+        auto *native = m_annotations.value(model);
+        const auto *text = dynamic_cast<const Okular::TextAnnotation *>(model);
+        const bool freeText = text && text->textType() == Okular::TextAnnotation::InPlace;
+        if (!native || (model->subType() != Okular::Annotation::AStamp && !freeText))
+            continue;
+        auto *object = pdf_annot_obj(ctx, native);
+        const int flags = pdf_annot_flags(ctx, native);
+        const bool fixed = flags & PDF_ANNOT_IS_NO_ROTATE;
+        if (fixed == !followPage) {
+            if (fixed && freeText) {
+                auto *ap = pdf_dict_getp(ctx, object, "AP/N");
+                const auto bounds = pdf_dict_get_rect(ctx, ap, PDF_NAME(BBox));
+                if (pdf_is_stream(ctx, ap) && (bounds.x0 != 0 || bounds.y0 != 0))
+                    rotateStampAppearance(ctx, native, ap, 0);
+            }
+            continue;
+        }
+        const auto display = pdf_bound_annot(ctx, native);
+        fz_matrix pageMatrix;
+        pdf_page_transform(ctx, pdf_annot_page(ctx, native), nullptr, &pageMatrix);
+        const auto inverse = fz_invert_matrix(pageMatrix);
+        const int pageAngle = pdf_dict_get_inheritable_int(ctx, pdf_annot_page(ctx, native)->obj, PDF_NAME(Rotate));
+        const int adjustment = followPage ? pageAngle : -pageAngle;
+        auto rect = fz_transform_rect(display, inverse);
+        if (!followPage) {
+            const auto anchor = fz_transform_point({display.x0, display.y0}, inverse);
+            const float unit = std::sqrt(std::abs(pageMatrix.a * pageMatrix.d - pageMatrix.b * pageMatrix.c));
+            rect = fz_make_rect(anchor.x, anchor.y - (display.y1 - display.y0) / unit, anchor.x + (display.x1 - display.x0) / unit, anchor.y);
+        }
+        auto *ap = pdf_dict_getp(ctx, object, "AP/N");
+        if (pdf_is_stream(ctx, ap))
+            rotateStampAppearance(ctx, native, ap, adjustment);
+        if (freeText)
+            pdf_dict_put_int(ctx, object, PDF_NAME(Rotate), (pdf_dict_get_int(ctx, object, PDF_NAME(Rotate)) + adjustment + 720) % 360);
+        pdf_dict_put_rect(ctx, object, PDF_NAME(Rect), rect);
+        pdf_dict_put_int(ctx, object, PDF_NAME(F), followPage ? flags & ~PDF_ANNOT_IS_NO_ROTATE : flags | PDF_ANNOT_IS_NO_ROTATE);
+        pdf_set_annot_resynthesised(ctx, native);
+        auto data = QJsonDocument::fromJson(textValue(ctx, object, "LatexNoteData").toUtf8()).object();
+        if (!data.isEmpty()) {
+            const int angle = (data.value(QStringLiteral("rotation")).toInt() + adjustment + 720) % 360;
+            data.insert(QStringLiteral("rotation"), angle);
+            if (model->isLatexCallout()) {
+                const auto bounds = pdf_bound_page(ctx, pdf_annot_page(ctx, native), FZ_CROP_BOX);
+                double w = bounds.x1 - bounds.x0, h = bounds.y1 - bounds.y0;
+                // Map current display geometry back through the new NoRotate
+                // compensation, then into the note's authored page axes.
+                auto transform = fz_identity;
+                if (!followPage) {
+                    auto correction = fz_translate(-rect.x0, -rect.y1);
+                    correction = fz_concat(correction, fz_rotate(pageAngle));
+                    correction = fz_concat(correction, fz_translate(rect.x0, rect.y1));
+                    transform = fz_invert_matrix(fz_concat(fz_concat(inverse, correction), pageMatrix));
+                }
+                const int delta = (angle - pageAngle + 360) % 360;
+                const auto mapPoint = [&](Okular::NormalizedPoint p) {
+                    p = normalized(fz_transform_point(point(p, bounds), transform), bounds);
+                    if (delta == 90)
+                        return Okular::NormalizedPoint(1 - p.y, p.x);
+                    if (delta == 180)
+                        return Okular::NormalizedPoint(1 - p.x, 1 - p.y);
+                    if (delta == 270)
+                        return Okular::NormalizedPoint(p.y, 1 - p.x);
+                    return p;
+                };
+                if (delta % 180)
+                    std::swap(w, h);
+                const auto box = model->boundingRectangle();
+                const auto a = mapPoint({box.left, box.top}), b = mapPoint({box.right, box.bottom});
+                auto callout = data.value(QStringLiteral("callout")).toObject();
+                callout.insert(QStringLiteral("boxRectPt"), QJsonArray {std::min(a.x, b.x) * w, (1 - std::max(a.y, b.y)) * h, std::max(a.x, b.x) * w, (1 - std::min(a.y, b.y)) * h});
+                QJsonArray points;
+                for (int i = 0; i < 3; ++i) {
+                    auto p = mapPoint(model->latexCalloutPoint(i));
+                    points.append(QJsonArray {p.x, p.y});
+                }
+                callout.insert(QStringLiteral("pointsNorm"), points);
+                data.insert(QStringLiteral("callout"), callout);
+            }
+            putText(ctx, object, "LatexNoteData", QString::fromUtf8(QJsonDocument(data).toJson(QJsonDocument::Compact)));
+        }
+        auto *imageAngle = pdf_dict_gets(ctx, object, "MengsheeStampRotation");
+        if (imageAngle)
+            pdf_dict_puts_drop(ctx, object, "MengsheeStampRotation", pdf_new_int(ctx, (pdf_to_int(ctx, imageAngle) + adjustment + 720) % 360));
+    }
+}
+
+void MuPDFAnnotationProxy::finishPageRotation(Okular::Page *page, bool followPage)
+{
+    if (followPage)
+        return;
+    auto *ctx = m_generator->m_context;
+    for (auto *model : page->annotations()) {
+        auto *native = m_annotations.value(model);
+        if (!native)
+            continue;
+        auto *object = pdf_annot_obj(ctx, native);
+        auto *anchor = pdf_dict_gets(ctx, object, "MengsheeRotationAnchor");
+        if (pdf_array_len(ctx, anchor) != 2)
+            continue;
+        fz_matrix matrix;
+        pdf_page_transform(ctx, pdf_annot_page(ctx, native), nullptr, &matrix);
+        const auto pageBox = pdf_bound_page(ctx, pdf_annot_page(ctx, native), FZ_CROP_BOX);
+        const auto display = pdf_bound_annot(ctx, native);
+        auto center = fz_transform_point({pdf_array_get_real(ctx, anchor, 0), pdf_array_get_real(ctx, anchor, 1)}, matrix);
+        const float width = display.x1 - display.x0, height = display.y1 - display.y0;
+        // Keep the rotated center, moving inward only when the unchanged-size
+        // note would cross a page edge. The PDF anchor preserves reversibility.
+        center.x = width <= pageBox.x1 - pageBox.x0 ? std::clamp(center.x, pageBox.x0 + width / 2, pageBox.x1 - width / 2) : (pageBox.x0 + pageBox.x1) / 2;
+        center.y = height <= pageBox.y1 - pageBox.y0 ? std::clamp(center.y, pageBox.y0 + height / 2, pageBox.y1 - height / 2) : (pageBox.y0 + pageBox.y1) / 2;
+        const auto inverse = fz_invert_matrix(matrix);
+        const auto oldCenter = fz_transform_point({(display.x0 + display.x1) / 2, (display.y0 + display.y1) / 2}, inverse);
+        const auto newCenter = fz_transform_point(center, inverse);
+        const float dx = newCenter.x - oldCenter.x, dy = newCenter.y - oldCenter.y;
+        auto rect = pdf_dict_get_rect(ctx, object, PDF_NAME(Rect));
+        rect.x0 += dx;
+        rect.x1 += dx;
+        rect.y0 += dy;
+        rect.y1 += dy;
+        pdf_dict_put_rect(ctx, object, PDF_NAME(Rect), rect);
+        auto data = QJsonDocument::fromJson(textValue(ctx, object, "LatexNoteData").toUtf8()).object();
+        auto callout = data.value(QStringLiteral("callout")).toObject();
+        if (!callout.isEmpty()) {
+            const int angle = data.value(QStringLiteral("rotation")).toInt();
+            const float unit = std::sqrt(std::abs(matrix.a * matrix.d - matrix.b * matrix.c));
+            const auto shift = fz_transform_vector({dx * unit, dy * unit}, fz_rotate(-angle));
+            auto box = callout.value(QStringLiteral("boxRectPt")).toArray();
+            if (box.size() == 4)
+                callout.insert(QStringLiteral("boxRectPt"), QJsonArray {box[0].toDouble() + shift.x, box[1].toDouble() + shift.y, box[2].toDouble() + shift.x, box[3].toDouble() + shift.y});
+            double w = pageBox.x1 - pageBox.x0, h = pageBox.y1 - pageBox.y0;
+            const int pageAngle = pdf_dict_get_inheritable_int(ctx, pdf_annot_page(ctx, native)->obj, PDF_NAME(Rotate));
+            if ((angle - pageAngle) % 180)
+                std::swap(w, h);
+            QJsonArray points;
+            for (auto value : callout.value(QStringLiteral("pointsNorm")).toArray()) {
+                auto point = value.toArray();
+                points.append(QJsonArray {point[0].toDouble() + shift.x / w, point[1].toDouble() - shift.y / h});
+            }
+            callout.insert(QStringLiteral("pointsNorm"), points);
+            data.insert(QStringLiteral("callout"), callout);
+            putText(ctx, object, "LatexNoteData", QString::fromUtf8(QJsonDocument(data).toJson(QJsonDocument::Compact)));
+        }
     }
 }

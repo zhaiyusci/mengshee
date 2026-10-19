@@ -280,6 +280,12 @@ public:
 
     /** Assigns an explicit clockwise rotation and returns its replacement model page. */
     virtual bool rotatePageInDocument(Page *page, int pageNumber, int rotationDegrees, Page **replacementPage, QString *errorText) = 0;
+    virtual bool rotatePageWithAnnotationsInDocument(Page *page, int pageNumber, int rotationDegrees, bool followPage, Page **replacementPage, QString *errorText)
+    {
+        Q_UNUSED(followPage);
+        return rotatePageInDocument(page, pageNumber, rotationDegrees, replacementPage, errorText);
+    }
+
 
     /**
      * Returns whether this generator can change the visible size of one page.

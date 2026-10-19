@@ -18,5 +18,5 @@ struct Options {
 QByteArray appearanceStream(const QRectF &, const Options &, int, const QString &);
 QRectF orderedCalloutBadgeRect(const QRectF &, int, const QString &);
 void read(fz_context *, pdf_annot *, Okular::StampAnnotation *, fz_rect);
-void write(fz_context *, pdf_document *, pdf_annot *, const Okular::StampAnnotation *, pdf_obj *preserved);
+void write(fz_context *, pdf_document *, pdf_annot *, const Okular::StampAnnotation *, pdf_obj *preserved, int viewRotation = 0);
 }

@@ -56,6 +56,130 @@ Optional fields:
 : May be present as a normal stamp name, but it is not part of the LaTeX note
 identity. New files should not require `/Name /latex-notes`.
 
+## Page and Annotation Orientation
+
+Page rotation changes the PDF page `/Rotate`; it does not bake the page rotation
+into page content or existing annotation appearances. Annotations follow the
+page, including their frames and callout leaders. There is no follow-page toggle;
+previous saved UI preferences do not affect this behavior. Undo/redo restores
+the same page and annotation geometry.
+
+New notes do not set `NoRotate`. An explicit page rotation normalizes existing
+stamp and FreeText `NoRotate` flags while preserving their current appearance
+before applying the page turn. This is not a file-open migration. Painted bounds
+and hit regions must stay aligned regardless of imported flags.
+
+The interaction model is writing on a sheet of paper: create content upright in
+the current view, then keep it attached to the page. Turning the page turns all
+existing content together; independently turning a note changes only that note's
+orientation relative to the page. Moving, selecting and resizing use the same
+content-to-page-to-view transform as painting.
+
+A new note or image is authored upright relative to the current page view,
+including its native PDF page rotation and temporary reader view rotation.
+Creating it must not change the page orientation. Temporary reader rotation is
+not written to the PDF page. Saving and reopening must preserve appearance,
+position and editing direction without the original image or temporary LaTeX PDF.
+
+### LaTeX stamp appearance and editable direction
+
+A LaTeX note remains a `/Stamp`. Its self-contained `/AP /N` encodes its visible
+orientation through standard appearance transformations. Do not depend on an
+annotation-level `/Rotate` entry for stamps. Other readers need only the AP to
+display the note; they need not understand LaTeX or its private metadata.
+
+`/LatexNoteData.rotation` separately preserves the direction needed to regenerate
+that AP. It is a required authored angle, normalized to 0, 90, 180 or 270 degrees.
+In the current coordinate convention, let P be the native page's clockwise
+`/Rotate` angle and A the note's clockwise direction in native displayed-page
+axes (before temporary reader rotation). Then:
+
+`rotation = (P - A) mod 360`.
+
+The AP uses this angle as a rotation in PDF's y-up coordinate system; a positive
+PDF-space angle is counterclockwise. Do not interpret it as an additional page
+rotation. For example, an upright note created on a page with `/Rotate 90` has
+`rotation: 90`; this compensates for the page's clockwise rotation. A later page
+turn changes P and the displayed A together, leaving the authored rotation intact.
+
+Changing text, font, colors or layout width must reuse this stored authored angle
+when rebuilding the AP. Do not recompute it from the current viewing direction or
+reset it to zero: editing a few characters must never turn the note. Independent
+note rotation updates both the AP and private rotation consistently; page rotation
+alone updates neither for a note already following the page. Undo/redo and
+save/reopen preserve both representations.
+
+`callout.pointsNorm` and `callout.boxRectPt` are expressed in that authored
+orientation; loading and editing transform them to/from current native page axes.
+Frames, leaders and numbered labels use the same transform as the note content.
+Image stamps likewise store their visible orientation in AP; the current
+implementation retains `/MengsheeStampRotation` as editing metadata when rebuilding
+an image appearance, not as a field other readers must interpret.
+
+This change does not migrate annotations produced by older versions. No legacy
+rotation-flag conversion is performed when opening a document.
+
+Regression coverage must include creation at 0/90/180/270 degrees, a subsequent
+page rotation, and saving/reopening, for both LaTeX and image stamps. Left then
+right (or right then left) must restore the previous orientation and appearance;
+four consecutive quarter-turns must also restore them. Tests must also edit text
+and rebuild AP after page rotation and independent note rotation, checking that
+the baseline direction and local layout width remain unchanged. Relative rotation actions
+must use the page's current native orientation, including after reopening.
+
+## Content, Page, and View Coordinates
+
+Content has its own layout axes: x follows the text baseline (or image rows),
+y follows the lines of text (or image columns). Layout width controls wrapping;
+layout height controls the available frame. Both are physical point distances.
+Annotation placement maps these axes into page space; page display then maps
+page space into the viewport. For column vectors:
+
+`p_view = M_page_to_view * M_content_to_page * p_content`.
+
+Pointer deltas are mapped back through the inverse linear transforms; translation
+must not affect a delta. Never rotate normalized x/y distances before converting
+them to physical page points, since page width and height may differ.
+
+The current UI offers independent left/right quarter-turns around the annotation
+frame center for LaTeX notes, callouts, image stamps and FreeText. The frame and
+callout leader geometry use the same transform. Left then right is an identity.
+The shared AnnotationFrame helper defines physical size and point/rectangle
+transformations. The model appearanceRotation is clockwise in native displayed
+page axes, before temporary reader rotation. It is not another PDF page Rotate.
+At 90/270 degrees, vertical frame resizing changes layout width; horizontal
+resizing changes layout height. LaTeX recompilation is needed only when local
+layout width changes (or its source appearance must be reconstructed).
+
+LaTeX APs and `/LatexNoteData.rotation` encode the content direction defined above.
+Image stamps encode equivalent orientation in their AP and editing metadata.
+Saving/reopening must preserve this without source images or temporary TeX PDFs.
+
+### Standard FreeText annotations
+
+FreeText uses standard Rect, DA and Contents entries, with AP optional under
+this authoring policy. When present, AP determines the painted result, including
+baseline orientation; DA describes default text format.
+The annotation-level Rotate used by MuPDF/Adobe is an implementation extension,
+not the standard page Rotate or a standardized FreeText field. Mengshee persists
+Rotate for subsequent text layout. For ordinary FreeText with
+no existing AP, MuPDF generates a transient display appearance in its local xref;
+that generated AP must not be persisted on save, including after content edits,
+resizing or rotation. This retains the former Poppler transient-appearance policy
+while adding the de facto Rotate field supported by Acrobat, PDF.js and MuPDF.
+Readers that ignore Rotate may display such annotations in a different direction.
+
+Imported existing APs are preserved on open/save; explicit edits may regenerate
+those APs through MuPDF. Template notes retain their separate self-contained AP
+contract. LaTeX and image stamps always keep their APs.
+At creation, compensate for the current page/view direction; later page turns do
+not change the authored direction relative to the page. Editing text or resizing
+preserves Rotate and uses MuPDF's text layout, not LaTeX.
+Do not replace FreeText with a LaTeX stamp or require LaTeX metadata to display it.
+
+References: [ISO 32000-2 corrections, 12.5.5 and 12.5.6.6](https://pdf-issues.pdfa.org/32000-2-2020/clause12.html),
+[PDF Association FreeText dictionary model](https://github.com/pdf-association/arlington-pdf-model/blob/master/tsv/latest/AnnotFreeText.tsv).
+
 ## Identity Rule
 
 A PDF annotation is an Okular LaTeX note when:
@@ -76,6 +200,7 @@ Minimal schema:
 ```json
 {
   "version": 20260610,
+  "rotation": 0,
   "type": "plain",
   "layout": {
     "widthPt": 0,
@@ -184,7 +309,7 @@ A plain note is unboxed rendered LaTeX content.
   /Subtype /Stamp
   /Rect [100 500 220 530]
   /Contents (E = mc^2)
-  /LatexNoteData ({"version":20260610,"type":"plain","layout":{"widthPt":0,"paddingPt":3},"style":{"textColor":"#ff000000","fontSizePt":0}})
+  /LatexNoteData ({"version":20260610,"rotation":0,"type":"plain","layout":{"widthPt":0,"paddingPt":3},"style":{"textColor":"#ff000000","fontSizePt":0}})
   /AP << /N 21 0 R >>
 >>
 ```
@@ -194,6 +319,7 @@ Plain-note JSON:
 ```json
 {
   "version": 20260610,
+  "rotation": 0,
   "type": "plain",
   "layout": {
     "widthPt": 0,
@@ -218,7 +344,7 @@ style is stored in JSON.
   /Subtype /Stamp
   /Rect [100 500 260 550]
   /Contents (\int_a^b f(x)\,dx)
-  /LatexNoteData ({"version":20260610,"type":"boxed","layout":{"widthPt":140,"paddingPt":3},"style":{"textColor":"#ff000000","fontSizePt":0,"fillColor":"#ffffff00","borderColor":"#ff000000","borderWidthPt":1}})
+  /LatexNoteData ({"version":20260610,"rotation":0,"type":"boxed","layout":{"widthPt":140,"paddingPt":3},"style":{"textColor":"#ff000000","fontSizePt":0,"fillColor":"#ffffff00","borderColor":"#ff000000","borderWidthPt":1}})
   /AP << /N 31 0 R >>
 >>
 ```
@@ -228,6 +354,7 @@ Boxed-note JSON:
 ```json
 {
   "version": 20260610,
+  "rotation": 0,
   "type": "boxed",
   "layout": {
     "widthPt": 140,
@@ -259,6 +386,7 @@ Callout JSON:
 ```json
 {
   "version": 20260610,
+  "rotation": 0,
   "type": "callout",
   "layout": {
     "widthPt": 100,

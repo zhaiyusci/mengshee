@@ -1,3 +1,4 @@
+#include "core/annotationframe.h"
 #include "rectangleinteraction.h"
 /*
     SPDX-FileCopyrightText: 2017 Tobias Deiminger <haxtibal@t-online.de>
@@ -463,7 +464,7 @@ static double latexAnnotationLayoutWidth(const Okular::Annotation *annotation, c
         if (std::isfinite(layoutWidthPoints) && layoutWidthPoints > 0.0) {
             return layoutWidthPoints;
         }
-        return LatexNoteUtils::layoutWidthForLatexTextVisibleWidth(LatexNoteUtils::rectWidthInPoints(stampAnnotation->boundingRectangle(), page), LatexNoteUtils::paddingForLatexAnnotation(stampAnnotation));
+        return LatexNoteUtils::layoutWidthForLatexTextVisibleWidth(Okular::AnnotationFrame::localSize(stampAnnotation->boundingRectangle(),QSizeF(LatexNoteUtils::pageWidthInPoints(page),LatexNoteUtils::pageHeightInPoints(page)),stampAnnotation->appearanceRotation()).width(), LatexNoteUtils::paddingForLatexAnnotation(stampAnnotation));
     }
 
     return 0.0;
@@ -545,8 +546,11 @@ prepareLatexResizeUpdate(Okular::Document *document, int pageNumber, Okular::Ann
     update->resizedRect = resizedRect;
     update->handle = handle;
     update->rotatedHandle = rotateHandleForPage(handle, rotation);
-    update->adjustsLayoutWidth = handleAdjustsLayoutWidth(update->rotatedHandle);
-    update->visibleWidthPoints = LatexNoteUtils::rectWidthInPoints(resizedRect, page);
+    const QSizeF pageSize(LatexNoteUtils::pageWidthInPoints(page),LatexNoteUtils::pageHeightInPoints(page));
+    const auto oldSize=Okular::AnnotationFrame::localSize(annotation->boundingRectangle(),pageSize,annotation->appearanceRotation());
+    const auto newSize=Okular::AnnotationFrame::localSize(resizedRect,pageSize,annotation->appearanceRotation());
+    update->adjustsLayoutWidth = qAbs(newSize.width()-oldSize.width()) > 0.001;
+    update->visibleWidthPoints = newSize.width();
     update->pdfFileName = annotation->latexAppearancePdfFileName();
     update->pdfSize = GuiUtils::pdfPageSizeInPoints(update->pdfFileName);
     update->layoutWidthPoints = latexAnnotationLayoutWidth(annotation, page);
@@ -554,7 +558,7 @@ prepareLatexResizeUpdate(Okular::Document *document, int pageNumber, Okular::Ann
     update->callout = annotation->isLatexCallout();
 
     if (!std::isfinite(update->layoutWidthPoints) || update->layoutWidthPoints <= 0.0) {
-        update->layoutWidthPoints = LatexNoteUtils::layoutWidthForLatexTextVisibleWidth(LatexNoteUtils::rectWidthInPoints(annotation->boundingRectangle(), page), LatexNoteUtils::paddingForLatexAnnotation(annotation));
+        update->layoutWidthPoints = LatexNoteUtils::layoutWidthForLatexTextVisibleWidth(LatexNoteUtils::annotationWidthInPoints(annotation,page), LatexNoteUtils::paddingForLatexAnnotation(annotation));
     }
     if (!std::isfinite(update->layoutWidthPoints) || update->layoutWidthPoints <= 0.0) {
         return false;
@@ -642,7 +646,6 @@ static bool applyLatexResizeUpdate(Okular::Document *document, const LatexResize
         stampAnnotation->style().setWidth(boxed ? qMax(0.0, stampAnnotation->style().width()) : 0.0);
     }
     annotation->setOkularLatex(true);
-    annotation->setFlags(annotation->flags() | Okular::Annotation::FixedRotation);
     annotation->setLatexAppearancePdfFileName(pdfFileName);
     annotation->setLatexLayoutWidth(update.layoutWidthPoints);
     // Use the same geometry operation as a FreeText callout resize: preserve

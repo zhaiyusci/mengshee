@@ -1,3 +1,4 @@
+#include "core/annotationframe.h"
 /*
     SPDX-License-Identifier: GPL-2.0-or-later
 */
@@ -213,7 +214,7 @@ QSizeF pageSizeInPoints(const Okular::Page *page)
     const QSizeF dpi = Okular::Utils::realDpi(nullptr);
     const double dpiX = dpi.width() > 0.0 && std::isfinite(dpi.width()) ? dpi.width() : 72.0;
     const double dpiY = dpi.height() > 0.0 && std::isfinite(dpi.height()) ? dpi.height() : 72.0;
-    return QSizeF(page->width() * 72.0 / dpiX, page->height() * 72.0 / dpiY);
+    return Okular::AnnotationFrame::pageSize(page,QSizeF(dpiX,dpiY));
 }
 }
 
@@ -338,7 +339,7 @@ double rectHeightInPoints(const Okular::NormalizedRect &rect, const Okular::Page
 
 double annotationWidthInPoints(const Okular::Annotation *annotation, const Okular::Page *page)
 {
-    return annotation ? rectWidthInPoints(annotation->boundingRectangle(), page) : 0.0;
+    return annotation && page ? Okular::AnnotationFrame::localSize(annotation->boundingRectangle(),pageSizeInPoints(page),annotation->appearanceRotation()).width() : 0.0;
 }
 
 double layoutWidthForLatexTextVisibleWidth(double visibleWidthPoints, double padding)
@@ -504,7 +505,7 @@ bool applyRenderedLatexStampAnnotationAppearance(QWidget *parent,
     showRenderWarning(parent, rendered.warning);
     if (rendered.pdfFileName == stampAnnotation->latexAppearancePdfFileName() && updatedRect == stampAnnotation->boundingRectangle() && qAbs(stampAnnotation->latexLayoutWidth() - layoutWidthPoints) < 1e-3 &&
         stampAnnotation->isOkularLatex() && stampAnnotation->latexTextColor() == textColor && stampAnnotation->latexFillColor() == fillColor &&
-        stampAnnotation->latexBorderColor() == borderColor && qAbs(stampAnnotation->style().width() - targetBorderWidth) < 1e-6 && (stampAnnotation->flags() & Okular::Annotation::FixedRotation)) {
+        stampAnnotation->latexBorderColor() == borderColor && qAbs(stampAnnotation->style().width() - targetBorderWidth) < 1e-6 && !(stampAnnotation->flags() & Okular::Annotation::FixedRotation)) {
         if (prepareModification) {
             return true;
         }
@@ -514,7 +515,6 @@ bool applyRenderedLatexStampAnnotationAppearance(QWidget *parent,
         document->prepareToModifyAnnotationProperties(stampAnnotation);
     }
     stampAnnotation->setOkularLatex(true);
-    stampAnnotation->setFlags(stampAnnotation->flags() | Okular::Annotation::FixedRotation);
     stampAnnotation->setLatexNoteType(stampAnnotation->isOrderedCallout() ? Okular::Annotation::LatexNoteOrderedCallout
         : (stampAnnotation->isLatexCallout() ? Okular::Annotation::LatexNoteCallout : (boxed ? Okular::Annotation::LatexNoteBoxed : Okular::Annotation::LatexNotePlain)));
     stampAnnotation->setStampIconName(QStringLiteral("latex-notes"));

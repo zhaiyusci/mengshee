@@ -2657,7 +2657,6 @@ void DocumentPrivate::publishPageTopologyChange(Page *retiredPage)
         }
         m_pixmapRequestsMutex.unlock();
     }
-    delete retiredPage;
     if (!undoReferencesValid) {
         QMetaObject::invokeMethod(m_parent, [this] { m_undoStack->clear(); }, Qt::QueuedConnection);
     }
@@ -2677,6 +2676,10 @@ void DocumentPrivate::publishPageTopologyChange(Page *retiredPage)
     for (DocumentObserver *observer : std::as_const(m_observers)) {
         observer->notifySetup(m_pagesVector, DocumentObserver::DocumentChanged);
     }
+    // PageView's selection and annotation editors still reference the old page
+    // during notifySetup. Let every observer release those references before
+    // destroying its annotations (reset() can query their virtual geometry).
+    delete retiredPage;
 }
 
 int DocumentPrivate::findFieldPageNumber(Okular::FormField *field)
@@ -6856,6 +6859,23 @@ bool Document::rotatePage(int pageNumber, int rotationDegrees, QString *errorTex
     Page *retiredPage = d->m_pagesVector.at(pageNumber);
     Page *replacementPage = nullptr;
     if (!pageInsertion->rotatePageInDocument(retiredPage, pageNumber, rotationDegrees, &replacementPage, errorText) || !replacementPage) {
+        return false;
+    }
+    d->m_pagesVector[pageNumber] = replacementPage;
+    d->publishPageTopologyChange(retiredPage);
+    return true;
+}
+
+bool Document::rotatePageWithAnnotations(int pageNumber, int rotationDegrees, bool followPage, QString *errorText)
+{
+    auto pageInsertion = dynamic_cast<PageInsertionInterface *>(d->m_generator);
+    if (!pageInsertion || pageNumber < 0 || pageNumber >= d->m_pagesVector.size()) {
+        return false;
+    }
+    d->clearAndWaitForRequests();
+    Page *retiredPage = d->m_pagesVector.at(pageNumber);
+    Page *replacementPage = nullptr;
+    if (!pageInsertion->rotatePageWithAnnotationsInDocument(retiredPage, pageNumber, rotationDegrees, followPage, &replacementPage, errorText) || !replacementPage) {
         return false;
     }
     d->m_pagesVector[pageNumber] = replacementPage;

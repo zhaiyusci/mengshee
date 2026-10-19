@@ -4003,7 +4003,7 @@ void PartTest::testLatexNoteOnRotatedPage()
     annotation->setBoundingRectangle(Okular::NormalizedRect(0.2, 0.2, 0.5, 0.3));
     annotation->setContents(QStringLiteral("Rotated LaTeX note"));
     annotation->setOkularLatex(true);
-    QVERIFY(annotation->flags() & Okular::Annotation::FixedRotation);
+    QVERIFY(!(annotation->flags() & Okular::Annotation::FixedRotation));
     annotation->setLatexNoteType(Okular::Annotation::LatexNoteBoxed);
     const QString appearanceFile = tempDir.filePath(QStringLiteral("latex-default-note.pdf"));
     QVERIFY(QFile::copy(QStringLiteral(":/mengshee/data/latex-default-note.pdf"), appearanceFile));
@@ -4029,7 +4029,7 @@ void PartTest::testLatexNoteOnRotatedPage()
     const Okular::Annotation *reopenedAnnotation = reopenedPage->annotation(annotationName);
     QVERIFY(reopenedAnnotation);
     QVERIFY(reopenedAnnotation->isOkularLatex());
-    QVERIFY(reopenedAnnotation->flags() & Okular::Annotation::FixedRotation);
+    QVERIFY(!(reopenedAnnotation->flags() & Okular::Annotation::FixedRotation));
 }
 
 void PartTest::testLatexAppearanceResizeHistory_data()

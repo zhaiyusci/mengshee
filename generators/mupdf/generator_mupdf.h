@@ -71,6 +71,7 @@ public:
     bool canMovePageInDocument() const override;
     bool movePageInDocument(int sourcePageNumber, int destinationPageNumber, QString *errorText) override;
     bool canRotatePage() const override;
+    bool rotatePageWithAnnotationsInDocument(Okular::Page *page, int pageNumber, int rotationDegrees, bool followPage, Okular::Page **replacementPage, QString *errorText) override;
     bool rotatePageInDocument(Okular::Page *page, int pageNumber, int rotationDegrees, Okular::Page **replacementPage, QString *errorText) override;
     bool canSetPageSize() const override;
     bool adjustPageBoxInDocument(Okular::Page *page, int pageNumber, double x1Delta, double y1Delta, double x2Delta, double y2Delta, Okular::Page **replacementPage, QString *errorText) override;

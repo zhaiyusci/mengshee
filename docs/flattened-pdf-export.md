@@ -31,9 +31,10 @@ Highlight/Underline/Squiggly/StrikeOut, Ink and Stamp. Valid supplied Text/Caret
 appearances can also be used when their flags/behavior are supported. Missing
 normal appearances for standard supported types are generated on the snapshot
 using Poppler's vector appearance generators, never by rasterizing the page.
-State dictionaries must explicitly select an appearance with `/AS`. The NoRotate
-flag used by LaTeX notes is resolved against the current native page rotation and
-baked into the appearance placement in the copy.
+State dictionaries must explicitly select an appearance with `/AS`. New LaTeX notes and image stamps follow page rotation through their appearance
+matrices; they do not use NoRotate. For annotations that explicitly carry
+NoRotate, flattening resolves that flag against the current native page rotation
+and bakes it into the appearance placement in the copy.
 
 Export fails with an error rather than silently losing unsupported content:
 

@@ -75,6 +75,8 @@ public:
     NormalizedPoint m_latexCalloutPoints[3];
     NormalizedPoint m_transformedLatexCalloutPoints[3];
     double m_latexLayoutWidth = 0.0;
+    int m_appearanceRotation = 0;
+    bool m_hasAppearanceRotation = false;
     double m_latexPadding = LatexNoteGeometry::defaultPaddingPoints();
     double m_latexFontSize = 0.0;
     QColor m_latexTextColor;

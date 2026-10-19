@@ -109,7 +109,9 @@ Okular::Document::OpenResult MuPDFGenerator::finishOpen(QList<Okular::Page *> &p
                 fz_matrix matrix;
                 pdf_page_obj_transform(m_context, pdf_lookup_page_obj(m_context, m_document, i), &box, &matrix);
                 box = fz_transform_rect(box, matrix);
-                auto *page = new Okular::Page(i, (box.x1 - box.x0) * dpi().width() / 72.0, (box.y1 - box.y0) * dpi().height() / 72.0, Okular::Rotation0);
+                const int degrees = pdf_dict_get_inheritable_int(m_context, pdf_lookup_page_obj(m_context, m_document, i), PDF_NAME(Rotate));
+                const auto orientation = static_cast<Okular::Rotation>(((degrees % 360 + 360) % 360) / 90);
+                auto *page = new Okular::Page(i, (box.x1 - box.x0) * dpi().width() / 72.0, (box.y1 - box.y0) * dpi().height() / 72.0, orientation);
                 pages.append(page);
                 auto *native = pdf_load_page(m_context, m_document, i);
                 m_pages.append(native);

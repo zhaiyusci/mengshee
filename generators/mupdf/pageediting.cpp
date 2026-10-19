@@ -39,8 +39,13 @@ bool MuPDFGenerator::operation(const std::function<void()> &body, QString *error
 Okular::Page *MuPDFGenerator::createPage(int index)
 {
     auto *native = pdf_load_page(m_context, m_document, index);
+    // pdf_load_page may return the cached page; its link rectangles were
+    // computed with the previous page transform, unlike annotation geometry.
+    pdf_sync_links(m_context, native);
     const auto box = pdf_bound_page(m_context, native, FZ_CROP_BOX);
-    auto *page = new Okular::Page(index, (box.x1 - box.x0) * dpi().width() / 72.0, (box.y1 - box.y0) * dpi().height() / 72.0, Okular::Rotation0);
+    const int degrees = pdf_dict_get_inheritable_int(m_context, native->obj, PDF_NAME(Rotate));
+    const auto orientation = static_cast<Okular::Rotation>(((degrees % 360 + 360) % 360) / 90);
+    auto *page = new Okular::Page(index, (box.x1 - box.x0) * dpi().width() / 72.0, (box.y1 - box.y0) * dpi().height() / 72.0, orientation);
     if (index < m_pages.size() && m_pages[index])
         fz_drop_page(m_context, reinterpret_cast<fz_page *>(m_pages[index]));
     if (index >= m_pages.size())
@@ -213,6 +218,16 @@ bool MuPDFGenerator::rotatePageInDocument(Okular::Page *, int index, int rotatio
             *page = createPage(index);
         },
         error);
+}
+bool MuPDFGenerator::rotatePageWithAnnotationsInDocument(Okular::Page *previous, int index, int rotation, bool followPage, Okular::Page **page, QString *error)
+{
+    if (!page || !previous || rotation % 90) return false;
+    return operation([&] {
+        m_annotations->preparePageRotation(previous, followPage);
+        pdf_dict_put_int(m_context, pdf_lookup_page_obj(m_context, m_document, index), PDF_NAME(Rotate), (rotation % 360 + 360) % 360);
+        m_annotations->finishPageRotation(previous, followPage);
+        *page = createPage(index);
+    }, error);
 }
 bool MuPDFGenerator::adjustPageBoxInDocument(Okular::Page *, int index, double x0, double y0, double x1, double y1, Okular::Page **page, QString *error)
 {

@@ -11,6 +11,21 @@ namespace MuPDFLatex
 {
 namespace
 {
+Okular::NormalizedPoint rotatePoint(Okular::NormalizedPoint p, int angle)
+{
+    switch ((angle % 360 + 360) % 360) {
+    case 90: return {1 - p.y, p.x};
+    case 180: return {1 - p.x, 1 - p.y};
+    case 270: return {p.y, 1 - p.x};
+    default: return p;
+    }
+}
+Okular::NormalizedRect rotateRect(const Okular::NormalizedRect &r, int angle)
+{
+    const auto a = rotatePoint({r.left, r.top}, angle);
+    const auto b = rotatePoint({r.right, r.bottom}, angle);
+    return {std::min(a.x, b.x), std::min(a.y, b.y), std::max(a.x, b.x), std::max(a.y, b.y)};
+}
 QRectF qtRect(fz_rect r)
 {
     return QRectF(QPointF(r.x0, r.y0), QPointF(r.x1, r.y1));
@@ -57,32 +72,40 @@ void read(fz_context *ctx, pdf_annot *native, Okular::StampAnnotation *annotatio
     annotation->setLatexFillColor(QColor(style.value(QStringLiteral("fillColor")).toString()));
     annotation->setLatexBorderColor(QColor(style.value(QStringLiteral("borderColor")).toString()));
     annotation->style().setWidth(style.value(QStringLiteral("borderWidthPt")).toDouble());
+    const int pageRotation = pdf_dict_get_inheritable_int(ctx, pdf_annot_page(ctx, native)->obj, PDF_NAME(Rotate));
+    const int delta = pageRotation - root.value(QStringLiteral("rotation")).toInt();
     const auto callout = root.value(QStringLiteral("callout")).toObject();
     const auto points = callout.value(QStringLiteral("pointsNorm")).toArray();
     if (points.size() == 3)
         for (int i = 0; i < 3; ++i) {
             const auto xy = points[i].toArray();
             if (xy.size() == 2)
-                annotation->setLatexCalloutPoint({xy[0].toDouble(), xy[1].toDouble()}, i);
+                annotation->setLatexCalloutPoint(rotatePoint({xy[0].toDouble(), xy[1].toDouble()}, delta), i);
         }
     const auto box = callout.value(QStringLiteral("boxRectPt")).toArray();
     if (annotation->isLatexCallout() && box.size() == 4) {
-        const double w = bounds.x1 - bounds.x0, h = bounds.y1 - bounds.y0;
-        annotation->setBoundingRectangle({box[0].toDouble() / w, 1 - box[3].toDouble() / h, box[2].toDouble() / w, 1 - box[1].toDouble() / h});
+        double w = bounds.x1 - bounds.x0, h = bounds.y1 - bounds.y0;
+        if (delta % 180) std::swap(w, h);
+        annotation->setBoundingRectangle(rotateRect({box[0].toDouble() / w, 1 - box[3].toDouble() / h, box[2].toDouble() / w, 1 - box[1].toDouble() / h}, delta));
     }
 }
 
-void write(fz_context *ctx, pdf_document *doc, pdf_annot *native, const Okular::StampAnnotation *annotation, pdf_obj *preserved)
+void write(fz_context *ctx, pdf_document *doc, pdf_annot *native, const Okular::StampAnnotation *annotation, pdf_obj *preserved, int viewRotation)
 {
     const fz_rect bounds = pdf_bound_page(ctx, pdf_annot_page(ctx, native), FZ_CROP_BOX);
-    const double w = bounds.x1 - bounds.x0, h = bounds.y1 - bounds.y0;
-    const auto r = annotation->boundingRectangle();
+    const int pageRotation = pdf_dict_get_inheritable_int(ctx, pdf_annot_page(ctx, native)->obj, PDF_NAME(Rotate));
+    const auto previous = QJsonDocument::fromJson(value(ctx, pdf_annot_obj(ctx, native), "LatexNoteData").toUtf8()).object();
+    const int angle = (pageRotation - annotation->appearanceRotation() + 360) % 360;
+    const int delta = angle - pageRotation;
+    double w = bounds.x1 - bounds.x0, h = bounds.y1 - bounds.y0;
+    if (delta % 180) std::swap(w, h);
+    const auto r = rotateRect(annotation->boundingRectangle(), delta);
     const QRectF frame(QPointF(r.left * w, (1 - r.bottom) * h), QPointF(r.right * w, (1 - r.top) * h));
     QRectF outer = frame;
     QVector<QPointF> leader;
     if (annotation->isLatexCallout()) {
         for (int i = 0; i < 3; ++i) {
-            auto p = annotation->latexCalloutPoint(i);
+            auto p = rotatePoint(annotation->latexCalloutPoint(i), delta);
             leader.append({p.x * w, (1 - p.y) * h});
             outer = outer.united(QRectF(leader.last() - QPointF(8, 8), QSizeF(16, 16)));
         }
@@ -163,8 +186,10 @@ void write(fz_context *ctx, pdf_document *doc, pdf_annot *native, const Okular::
         pdf_dict_put_name(ctx, font, PDF_NAME(BaseFont), "Helvetica-Bold");
         pdf_dict_put_name(ctx, font, PDF_NAME(Encoding), "WinAnsiEncoding");
         content = fz_new_buffer_from_copied_data(ctx, reinterpret_cast<const unsigned char *>(bytes.constData()), bytes.size());
-        pdf_set_annot_rect(ctx, native, fz_make_rect(outer.left(), h - outer.bottom(), outer.right(), h - outer.top()));
-        pdf_set_annot_appearance(ctx, native, "N", nullptr, fz_identity, fz_make_rect(0, 0, outer.width(), outer.height()), resources, content);
+        const auto nativeRect = rotateRect({outer.left() / w, 1 - outer.bottom() / h, outer.right() / w, 1 - outer.top() / h}, -delta);
+        pdf_set_annot_rect(ctx, native, fz_make_rect(nativeRect.left * (bounds.x1 - bounds.x0), nativeRect.top * (bounds.y1 - bounds.y0),
+                                                  nativeRect.right * (bounds.x1 - bounds.x0), nativeRect.bottom * (bounds.y1 - bounds.y0)));
+        pdf_set_annot_appearance(ctx, native, "N", nullptr, fz_rotate(angle), fz_make_rect(0, 0, outer.width(), outer.height()), resources, content);
     }
     fz_always(ctx)
     {
@@ -182,10 +207,11 @@ void write(fz_context *ctx, pdf_document *doc, pdf_annot *native, const Okular::
     QJsonObject layout {{QStringLiteral("widthPt"), annotation->latexLayoutWidth()}, {QStringLiteral("paddingPt"), annotation->latexPadding()}};
     QJsonObject style {{QStringLiteral("fontSizePt"), annotation->latexFontSize()},
                        {QStringLiteral("textColor"), annotation->latexTextColor().name(QColor::HexArgb)},
-                       {QStringLiteral("fillColor"), annotation->latexFillColor().name(QColor::HexArgb)},
+                       {QStringLiteral("fillColor"), (annotation->latexFillColor().isValid() ? annotation->latexFillColor() : QColor(Qt::transparent)).name(QColor::HexArgb)},
                        {QStringLiteral("borderColor"), annotation->latexBorderColor().name(QColor::HexArgb)},
                        {QStringLiteral("borderWidthPt"), annotation->style().width()}};
     QJsonObject root {{QStringLiteral("version"), 20260610},
+                      {QStringLiteral("rotation"), angle},
                       {QStringLiteral("type"),
                        annotation->isNumberedCallout()                                         ? QStringLiteral("numbered-callout")
                            : annotation->isLatexCallout()                                      ? QStringLiteral("callout")
@@ -201,7 +227,7 @@ void write(fz_context *ctx, pdf_document *doc, pdf_annot *native, const Okular::
     if (annotation->isLatexCallout()) {
         QJsonArray points;
         for (int i = 0; i < 3; ++i) {
-            auto p = annotation->latexCalloutPoint(i);
+            auto p = rotatePoint(annotation->latexCalloutPoint(i), delta);
             points.append(QJsonArray {p.x, p.y});
         }
         root.insert(QStringLiteral("callout"), QJsonObject {{QStringLiteral("pointsNorm"), points}, {QStringLiteral("boxRectPt"), QJsonArray {frame.left(), frame.top(), frame.right(), frame.bottom()}}});

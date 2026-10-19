@@ -803,6 +803,11 @@ public:
      */
     void setLatexLayoutWidth(double width);
 
+    /** Clockwise content orientation in the native page's displayed axes. */
+    int appearanceRotation() const;
+    bool hasAppearanceRotation() const;
+    void setAppearanceRotation(int degrees);
+
     /**
      * Returns the LaTeX layout width in PDF points.
      *
