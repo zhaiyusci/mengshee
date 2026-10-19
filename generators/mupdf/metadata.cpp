@@ -44,7 +44,7 @@ bool MuPDFGenerator::validateNumberedCalloutLabel(const QString &label, QString 
 QString MuPDFGenerator::numberedCalloutNumberingJson() const
 {
     QString result;
-    const_cast<MuPDFGenerator *>(this)->operation([&] { result = string(m_context, pdf_dict_getp(m_context, pdf_trailer(m_context, m_document), "Root/MengsheeNumberedCalloutNumbering")); }, nullptr);
+    const_cast<MuPDFGenerator *>(this)->readOperation([&] { result = string(m_context, pdf_dict_getp(m_context, pdf_trailer(m_context, m_document), "Root/MengsheeNumberedCalloutNumbering")); }, nullptr);
     return result;
 }
 bool MuPDFGenerator::setNumberedCalloutNumberingJson(const QString &json, QString *error)
@@ -67,7 +67,7 @@ bool MuPDFGenerator::setNumberedCalloutNumberingJson(const QString &json, QStrin
 QList<Okular::ReadingView> MuPDFGenerator::readingViews(int index, QString *error) const
 {
     QList<Okular::ReadingView> result;
-    const bool ok = const_cast<MuPDFGenerator *>(this)->operation(
+    const bool ok = const_cast<MuPDFGenerator *>(this)->readOperation(
         [&] {
             auto *metadata = views(m_context, m_document, index);
             if (!metadata)
@@ -152,7 +152,7 @@ bool MuPDFGenerator::setReadingViews(int index, const QList<Okular::ReadingView>
 QString MuPDFGenerator::readingViewPageToken(int index) const
 {
     QString token;
-    const_cast<MuPDFGenerator *>(this)->operation([&] { token = string(m_context, pdf_dict_gets(m_context, views(m_context, m_document, index), "PageId")); }, nullptr);
+    const_cast<MuPDFGenerator *>(this)->readOperation([&] { token = string(m_context, pdf_dict_gets(m_context, views(m_context, m_document, index), "PageId")); }, nullptr);
     return token;
 }
 int MuPDFGenerator::readingViewPageForToken(const QString &token) const

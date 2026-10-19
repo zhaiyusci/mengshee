@@ -200,7 +200,7 @@ public:
     /** Duplicates one page in the open document without writing it. */
     virtual bool duplicatePageInDocument(int pageNumber, bool resolveDestinationConflicts, Page **insertedPage, quint64 *editId, QString *errorText) = 0;
 
-    /** Imports one page into the open document without writing it. */
+    /** Imports one page without writing it. pageToInsert is one-based; insertAfterPageNumber is zero-based (-1 prepends). */
     virtual bool insertPdfPageInDocument(int insertAfterPageNumber,
                                          const QString &insertedFileName,
                                          int pageToInsert,
@@ -298,6 +298,9 @@ public:
 /**
  * Optional interface implemented by PDF generators that can edit named
  * destinations and link annotations in a copied document.
+ * Numeric link destinations and setNamedDestination use one-based page numbers.
+ * A nonempty destination name overrides the numeric destination.
+ * Page objects and refreshPageLinks use zero-based indices.
  */
 class OKULARCORE_EXPORT PdfLinkEditingInterface
 {
@@ -306,7 +309,7 @@ public:
 
     virtual bool canEditPdfLinks() const = 0;
 
-    /** Updates the currently open document without writing or reopening it. */
+    /** Updates the currently open document without writing or reopening it. pageNumber is one-based. */
     virtual bool setNamedDestination(const QString &name, int pageNumber, double normalizedX, double normalizedY, QString *errorText) = 0;
 
     /** Renames a destination in the currently open document and updates exact references. */
@@ -1093,6 +1096,12 @@ public:
      * @since 1.4
      */
     bool shouldAbortRender() const;
+
+    /** Request cancellation, notifying the active backend immediately. Thread-safe. */
+    void abortRender();
+    /** Install/remove a short non-reentrant cancellation callback. Removal waits
+     * for an in-flight callback; captured state can be freed afterwards. */
+    void setRenderAbortCallback(std::function<void()> callback);
 
 private:
     Q_DISABLE_COPY(PixmapRequest)

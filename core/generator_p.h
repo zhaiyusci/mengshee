@@ -94,6 +94,8 @@ public:
     Page *mPage;
     NormalizedRect mNormalizedRect;
     QAtomicInt mShouldAbortRender;
+    QMutex mAbortMutex;
+    std::function<void()> mAbortCallback;
     QImage mResultImage;
 };
 

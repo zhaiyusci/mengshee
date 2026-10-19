@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+#include "context.h"
 #include "runtimehelpers.h"
 #include <mupdf/fitz.h>
 #include <mupdf/pdf.h>
 QSizeF MengsheePdfRuntime::firstPageSize(const QString &pdfFileName)
 {
-    fz_context *context = fz_new_context(nullptr, nullptr, FZ_STORE_DEFAULT);
+    fz_context *context = MengsheePdfRuntime::createContext();
     if (!context) return {};
     pdf_document *document = nullptr;
     fz_var(document);

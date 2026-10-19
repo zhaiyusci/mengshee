@@ -7,7 +7,7 @@ if(BUILD_MOBILE)
 endif()
 # Keep the engine and its embedded resources in one DLL. Both the plugin and
 # the UI's PDF helpers use this runtime rather than linking MuPDF statically.
-add_library(mengshee_pdf_runtime SHARED ${mupdf_backend_sources} pdfpagebounds.cpp runtimehelpers.cpp systemfonts.cpp)
+add_library(mengshee_pdf_runtime SHARED ${mupdf_backend_sources} pdfpagebounds.cpp runtimehelpers.cpp systemfonts.cpp context.cpp)
 generate_export_header(mengshee_pdf_runtime)
 set_target_properties(mengshee_pdf_runtime PROPERTIES OUTPUT_NAME MengsheePdfRuntime)
 target_include_directories(mengshee_pdf_runtime PUBLIC "${CMAKE_CURRENT_BINARY_DIR}" "${MuPDF_INCLUDE_DIR}")
@@ -41,3 +41,14 @@ if(HAVE_TESSERACT)
         endif()
     endforeach()
 endif()
+
+# Opt-in benchmark: exercise the production shared runtime without a second MuPDF copy.
+add_executable(mupdf_render_benchmark EXCLUDE_FROM_ALL autotests/renderbenchmark.cpp)
+target_link_libraries(mupdf_render_benchmark PRIVATE mengshee_pdf_runtime okularcore Qt6::Widgets)
+if(WIN32)
+    target_link_libraries(mupdf_render_benchmark PRIVATE psapi)
+endif()
+
+add_executable(mupdf_page_lifecycle_test EXCLUDE_FROM_ALL autotests/pagelifecycletest.cpp)
+target_link_libraries(mupdf_page_lifecycle_test PRIVATE okularcore Qt6::Widgets Qt6::Test)
+add_dependencies(mupdf_page_lifecycle_test okularGenerator_mupdf)

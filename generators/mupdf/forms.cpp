@@ -22,7 +22,7 @@ public:
         if (initializing)
             body(generator->m_context, generator->m_document, widget);
         else
-            generator->operation([&] { body(generator->m_context, generator->m_document, widget); }, nullptr);
+            generator->readOperation([&] { body(generator->m_context, generator->m_document, widget); }, nullptr);
     }
     void write(const std::function<void(fz_context *, pdf_document *, pdf_annot *)> &body)
     {

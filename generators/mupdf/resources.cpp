@@ -6,7 +6,7 @@
 Okular::FontInfo::List MuPDFGenerator::fontsForPage(int index)
 {
     Okular::FontInfo::List result;
-    operation(
+    readOperation(
         [&] {
             QSet<pdf_obj *> seenResources, seenFonts;
             std::function<void(pdf_obj *, int)> visit = [&](pdf_obj *resources, int depth) {
@@ -71,7 +71,7 @@ QByteArray MuPDFGenerator::requestFontData(const Okular::FontInfo &font)
     fz_var(buffer);
     if (font.nativeId().toInt() <= 0)
         return result;
-    operation(
+    readOperation(
         [&] {
             fz_try(m_context)
             {
@@ -203,7 +203,7 @@ const QList<Okular::EmbeddedFile *> *MuPDFGenerator::embeddedFiles() const
 Okular::Generator::PageLayout MuPDFGenerator::defaultPageLayout() const
 {
     PageLayout result = NoLayout;
-    const_cast<MuPDFGenerator *>(this)->operation(
+    const_cast<MuPDFGenerator *>(this)->readOperation(
         [&] {
             const QByteArray layout = pdf_to_name(m_context, pdf_dict_getp(m_context, pdf_trailer(m_context, m_document), "Root/PageLayout"));
             if (layout == "SinglePage" || layout == "OneColumn")
@@ -219,7 +219,7 @@ Okular::Generator::PageLayout MuPDFGenerator::defaultPageLayout() const
 bool MuPDFGenerator::defaultPageContinuous() const
 {
     bool result = false;
-    const_cast<MuPDFGenerator *>(this)->operation(
+    const_cast<MuPDFGenerator *>(this)->readOperation(
         [&] {
             const QByteArray layout = pdf_to_name(m_context, pdf_dict_getp(m_context, pdf_trailer(m_context, m_document), "Root/PageLayout"));
             result = layout == "OneColumn" || layout.startsWith("TwoColumn");

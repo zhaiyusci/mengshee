@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+#include "context.h"
 #include "systemfonts.h"
 #include "../poppler/pdfpagebounds.h"
 #include <QFile>
@@ -19,8 +20,7 @@ Result expandAppearance(const std::string &input, const std::string &output, dou
         result.message = "Invalid padding or output already exists.";
         return result;
     }
-    fz_context *ctx = fz_new_context(nullptr, nullptr, FZ_STORE_DEFAULT);
-    MengsheePdfRuntime::installSystemFonts(ctx);
+    fz_context *ctx = MengsheePdfRuntime::createContext();
     if (!ctx) {
         result.error = Error::LimitExceeded;
         result.message = "Could not create MuPDF context.";

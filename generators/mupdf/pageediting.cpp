@@ -10,7 +10,7 @@
 #include <cmath>
 #include <core/page.h>
 
-bool MuPDFGenerator::operation(const std::function<void()> &body, QString *error)
+bool MuPDFGenerator::operation(const std::function<void()> &body, QString *error, bool changesDocument)
 {
     QMutexLocker lock(userMutex());
     if (error)
@@ -20,6 +20,10 @@ bool MuPDFGenerator::operation(const std::function<void()> &body, QString *error
             *error = QStringLiteral("No PDF document is open.");
         return false;
     }
+    // Invalidate before the operation: even a failed edit may change PDF objects.
+    // This also invalidates separately cached annotation appearances.
+    if (changesDocument)
+        clearDisplayList();
     fz_try(m_context)
     {
         body();
@@ -303,7 +307,11 @@ bool MuPDFGenerator::insertPdfPageInDocument(int after, const QString &path, int
 {
     if (!page || !id)
         return false;
-    const QList<int> indices {index};
+    if (index < 1) {
+        if (error) *error = QStringLiteral("Invalid source page number.");
+        return false;
+    }
+    const QList<int> indices {index - 1};
     QList<pdf_obj *> imported;
     QString importError;
     pdf_obj *copy = nullptr;

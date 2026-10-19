@@ -3,6 +3,7 @@
 #include "../../poppler/pdfpagebounds.h"
 #include "../generator_mupdf.h"
 #include <QSignalSpy>
+#include <QPainter>
 #include <QTemporaryDir>
 #include <QTest>
 #include <QUuid>
@@ -61,6 +62,140 @@ private Q_SLOTS:
         fz_drop_buffer(ctx, buffer);
         pdf_drop_document(ctx, doc);
         fz_drop_context(ctx);
+    }
+    void renderCancellationCallback()
+    {
+        Okular::PixmapRequest request(nullptr, 0, 300, 200, 1, 0, Okular::PixmapRequest::NoFeature);
+        int calls = 0;
+        request.setRenderAbortCallback([&] { ++calls; });
+        request.abortRender();
+        request.abortRender();
+        QCOMPARE(calls, 1);
+        QVERIFY(request.shouldAbortRender());
+        request.setRenderAbortCallback({});
+        request.setRenderAbortCallback([&] { ++calls; });
+        QCOMPARE(calls, 2); // Cancellation before callback registration is not lost.
+        request.setRenderAbortCallback({});
+
+        Okular::PixmapRequest concurrent(nullptr, 0, 300, 200, 1, 0, Okular::PixmapRequest::NoFeature);
+        std::promise<void> entered, release;
+        auto released = release.get_future().share();
+        concurrent.setRenderAbortCallback([&] { entered.set_value(); released.wait(); });
+        auto aborting = std::async(std::launch::async, [&] { concurrent.abortRender(); });
+        entered.get_future().wait();
+        auto detaching = std::async(std::launch::async, [&] { concurrent.setRenderAbortCallback({}); });
+        const auto status = detaching.wait_for(std::chrono::milliseconds(10));
+        release.set_value();
+        aborting.get();
+        detaching.get();
+        QCOMPARE(status, std::future_status::timeout);
+    }
+    void concurrentPreviewRendering()
+    {
+        MuPDFGenerator backend(nullptr, {});
+        QList<Okular::Page *> pages;
+        QCOMPARE(backend.loadDocumentWithPassword(sample(), pages, {}), Okular::Document::OpenSuccess);
+        QString error;
+        const auto renderer = backend.createPrintPreviewRenderer(&error);
+        QVERIFY2(bool(renderer), qPrintable(error));
+        const auto expected = backend.renderToImage(0, 72, true);
+        auto worker = std::async(std::launch::async, [renderer] {
+            QList<QImage> images;
+            for (int i = 0; i < 12; ++i) images.append(renderer(0, QSize(300, 200)).image);
+            return images;
+        });
+        for (int i = 0; i < 12; ++i)
+            QCOMPARE(backend.renderToImage(0, 72, true), expected);
+        for (const auto &image : worker.get())
+            QCOMPARE(image, expected);
+        qDeleteAll(pages);
+    }
+    void tileRendering_data()
+    {
+        QTest::addColumn<int>("rotation");
+        QTest::addColumn<int>("dpr");
+        for (int rotation : {0, 90, 180, 270})
+            for (int dpr : {1, 2})
+                QTest::newRow(qPrintable(QStringLiteral("%1-dpr%2").arg(rotation).arg(dpr))) << rotation << dpr;
+    }
+    void tileRendering()
+    {
+        QFETCH(int, rotation);
+        QFETCH(int, dpr);
+        const auto input = m_directory.filePath(QStringLiteral("tiles.pdf"));
+        auto *ctx = fz_new_context(nullptr, nullptr, FZ_STORE_DEFAULT);
+        auto *doc = pdf_open_document(ctx, sample().toUtf8().constData());
+        auto *object = pdf_lookup_page_obj(ctx, doc, 0);
+        pdf_dict_put_int(ctx, object, PDF_NAME(Rotate), rotation);
+        pdf_dict_put_int(ctx, object, PDF_NAME(UserUnit), 2);
+        pdf_dict_put_rect(ctx, object, PDF_NAME(CropBox), fz_make_rect(10, 10, 280, 190));
+        pdf_save_document(ctx, doc, input.toUtf8().constData(), &pdf_default_write_options);
+        pdf_drop_document(ctx, doc);
+        fz_drop_context(ctx);
+        MuPDFGenerator backend(nullptr, {});
+        QList<Okular::Page *> pages;
+        QCOMPARE(backend.loadDocumentWithPassword(input, pages, {}), Okular::Document::OpenSuccess);
+        QVERIFY(backend.hasFeature(Okular::Generator::TiledRendering));
+        Okular::TextAnnotation note;
+        note.setTextType(Okular::TextAnnotation::InPlace);
+        note.setContents(QStringLiteral("Tile boundary"));
+        note.setBoundingRectangle({.2, .2, .8, .8});
+        note.style().setColor(Qt::red);
+        backend.annotationProxy()->notifyAddition(&note, 0);
+        const int width = rotation % 180 ? 360 : 540;
+        const int height = rotation % 180 ? 540 : 360;
+        const auto checkTiles = [&] {
+            Okular::PixmapRequest full(nullptr, 0, width, height, dpr, 0, Okular::PixmapRequest::NoFeature);
+            const auto image = backend.image(&full);
+            QVERIFY(!image.isNull());
+            for (const auto &rect : {Okular::NormalizedRect(0, 0, .5, .5), Okular::NormalizedRect(.5, 0, 1, .5),
+                                     Okular::NormalizedRect(0, .5, .5, 1), Okular::NormalizedRect(.5, .5, 1, 1),
+                                     Okular::NormalizedRect(.137, .219, .731, .847)}) {
+                Okular::PixmapRequest tile(nullptr, 0, width, height, dpr, 0, Okular::PixmapRequest::NoFeature);
+                tile.setTile(true);
+                tile.setNormalizedRect(rect);
+                const auto result = backend.image(&tile);
+                const auto pixels = rect.geometry(full.width(), full.height());
+                QImage expected(pixels.size(), image.format());
+                expected.fill(Qt::white);
+                { QPainter painter(&expected); painter.drawImage(-pixels.topLeft(), image); }
+                QCOMPARE(result, expected);
+            }
+        };
+        checkTiles();
+        note.setBoundingRectangle({.35, .1, .9, .6});
+        note.setContents(QStringLiteral("Moved annotation"));
+        backend.annotationProxy()->notifyModification(&note, 0, true);
+        checkTiles();
+        qDeleteAll(pages);
+    }
+    void hugePageTileAndCacheInvalidation()
+    {
+        MuPDFGenerator backend(nullptr, {});
+        QList<Okular::Page *> pages;
+        QCOMPARE(backend.loadDocumentWithPassword(sample(), pages, {}), Okular::Document::OpenSuccess);
+        Okular::PixmapRequest full(nullptr, 0, 100000, 100000, 1, 0, Okular::PixmapRequest::NoFeature);
+        QVERIFY(backend.image(&full).isNull());
+        Okular::PixmapRequest tile(nullptr, 0, 100000, 100000, 1, 0, Okular::PixmapRequest::NoFeature);
+        tile.setTile(true);
+        tile.setNormalizedRect({.1, .2, .105, .205});
+        const auto result = backend.image(&tile);
+        QCOMPARE(result.size(), tile.normalizedRect().geometry(tile.width(), tile.height()).size());
+        QVERIFY(result.sizeInBytes() < 1024 * 1024);
+        const auto before = backend.renderToImage(0, 72, true);
+        QString error;
+        Okular::Page *blank = nullptr;
+        quint64 edit = 0;
+        QVERIFY(backend.insertBlankPageInDocument(-1, 300, 200, &blank, &edit, &error));
+        pages.prepend(blank);
+        const auto after = backend.renderToImage(0, 72, true);
+        QVERIFY(after != before);
+        QImage white(after.size(), after.format());
+        white.fill(Qt::white);
+        QCOMPARE(after, white);
+        QVERIFY(backend.movePageInDocument(0, 1, &error));
+        QCOMPARE(backend.renderToImage(0, 72, true), before);
+        qDeleteAll(pages);
     }
     void bundledCjkFallback()
     {
@@ -539,7 +674,7 @@ private Q_SLOTS:
         QList<Okular::Page *> pages;
         QCOMPARE(backend.loadDocumentWithPassword(sample(), pages, {}), Okular::Document::OpenSuccess);
         QString error;
-        QVERIFY2(backend.setNamedDestination(QStringLiteral("target"), 0, .2, .3, &error), qPrintable(error));
+        QVERIFY2(backend.setNamedDestination(QStringLiteral("target"), 1, .2, .3, &error), qPrintable(error));
         QVERIFY2(backend.createInternalLink(pages[0], .1, .1, .4, .2, QStringLiteral("target"), 0, .2, .3, &error), qPrintable(error));
         QVERIFY2(backend.renameNamedDestination(QStringLiteral("target"), QStringLiteral("renamed"), &error), qPrintable(error));
         const auto destinations = backend.metaData(QStringLiteral("NamedViewports"), {}).toList();
@@ -871,7 +1006,7 @@ private Q_SLOTS:
         QList<Okular::Page *> pages;
         QString error;
         QCOMPARE(backend.loadDocumentWithPassword(sample(), pages, {}), Okular::Document::OpenSuccess);
-        QVERIFY(backend.setNamedDestination(QStringLiteral("target"), 0, .1, .2, &error));
+        QVERIFY(backend.setNamedDestination(QStringLiteral("target"), 1, .1, .2, &error));
         QVERIFY(backend.createInternalLink(pages[0], .1, .1, .2, .2, QStringLiteral("target"), 0, .1, .2, &error));
         const auto source = m_directory.filePath(QStringLiteral("import-source.pdf"));
         QVERIFY2(backend.save(source, Okular::SaveInterface::SaveChanges, &error), qPrintable(error));

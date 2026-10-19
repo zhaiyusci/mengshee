@@ -168,7 +168,14 @@ private:
     friend class MuPDFFormAccess;
     friend class MuPDFEmbeddedFile;
     Okular::Document::OpenResult finishOpen(QList<Okular::Page *> &, const QString &);
-    QImage render(int page, int width, int height, bool annotations, QString *error);
+    QImage render(int page, int width, int height, bool annotations, QString *error, const QRect &region = {}, fz_cookie *cookie = nullptr);
+    void clearDisplayList();
+    fz_display_list *pageDisplayList(int number, pdf_page *page, fz_cookie *cookie);
+    void clearAnnotationLists();
+    QHash<pdf_obj *, fz_display_list *> m_annotationLists;
+    // Keep only the most recently rendered page, not every visited page.
+    fz_display_list *m_displayList = nullptr;
+    int m_displayListPage = -1;
     fz_context *m_context = nullptr;
     pdf_document *m_document = nullptr;
     QByteArray m_data;
@@ -178,11 +185,12 @@ private:
     QHash<quint64, pdf_obj *> m_detached;
     quint64 m_nextEdit = 1;
     Okular::Page *createPage(int index);
-    bool operation(const std::function<void()> &body, QString *error);
+    bool operation(const std::function<void()> &body, QString *error, bool changesDocument = true);
+    bool readOperation(const std::function<void()> &body, QString *error) { return operation(body, error, false); }
     pdf_obj *linkDestination(const QString &, int, double, double, bool remote = false);
     bool updateLink(Okular::Page *, const QRectF &, bool create, const char *kind, const QString &, int, double, double, QString *, const QString &remoteName = {}, Okular::PdfLinkAppearance appearance = {});
     void loadLinks(pdf_page *native, Okular::Page *page);
-    void renderAnnotations(pdf_page *, fz_pixmap *, fz_matrix);
+    void renderAnnotations(pdf_page *, fz_pixmap *, fz_matrix, fz_cookie *);
     void reportAnnotationError(const QString &);
     bool m_annotationWarningShown = false;
     void loadForms(pdf_page *, Okular::Page *);

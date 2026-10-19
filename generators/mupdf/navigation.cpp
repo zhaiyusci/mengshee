@@ -26,7 +26,14 @@ Okular::DocumentViewport viewport(fz_context *ctx, pdf_document *doc, const char
     return result;
 }
 }
-void MuPDFGenerator::renderAnnotations(pdf_page *page, fz_pixmap *pixmap, fz_matrix transform)
+void MuPDFGenerator::clearAnnotationLists()
+{
+    for (auto *list : std::as_const(m_annotationLists))
+        fz_drop_display_list(m_context, list);
+    m_annotationLists.clear();
+}
+
+void MuPDFGenerator::renderAnnotations(pdf_page *page, fz_pixmap *pixmap, fz_matrix transform, fz_cookie *cookie)
 {
     // MuPDF excludes Link annotations from its annotation list. Preserve PDF
     // stacking order while explicitly painting their optional appearances.
@@ -38,47 +45,7 @@ void MuPDFGenerator::renderAnnotations(pdf_page *page, fz_pixmap *pixmap, fz_mat
     auto *annots = pdf_dict_get(m_context, page->obj, PDF_NAME(Annots));
     const auto paintOne = [&](pdf_obj *object, fz_device *device) {
         if (auto *a = native.value(pdf_resolve_indirect(m_context, object))) {
-            // Parse each appearance into its own list before touching the page's
-            // draw device. A broken appearance cannot leave clipping state behind.
-            fz_display_list *list = nullptr;
-            fz_device *recording = nullptr;
-            bool ready = false;
-            fz_var(list);
-            fz_var(recording);
-            fz_var(ready);
-            fz_try(m_context)
-            {
-                list = fz_new_display_list(m_context, pdf_bound_page(m_context, page, FZ_CROP_BOX));
-                recording = fz_new_list_device(m_context, list);
-                pdf_run_annot(m_context, a, recording, fz_identity, nullptr);
-                fz_close_device(m_context, recording);
-                ready = true;
-            }
-            fz_always(m_context)
-            {
-                fz_drop_device(m_context, recording);
-            }
-            fz_catch(m_context)
-            {
-                fz_drop_display_list(m_context, list);
-                list = nullptr;
-                fz_rethrow_if(m_context, FZ_ERROR_SYSTEM);
-                reportAnnotationError(QString::fromUtf8(fz_caught_message(m_context)));
-            }
-            if (ready) {
-                fz_try(m_context)
-                {
-                    fz_run_display_list(m_context, list, device, fz_identity, fz_infinite_rect, nullptr);
-                }
-                fz_always(m_context)
-                {
-                    fz_drop_display_list(m_context, list);
-                }
-                fz_catch(m_context)
-                {
-                    fz_rethrow(m_context);
-                }
-            }
+            pdf_run_annot(m_context, a, device, fz_identity, cookie);
             return;
         }
         if (!pdf_name_eq(m_context, pdf_dict_get(m_context, object, PDF_NAME(Subtype)), PDF_NAME(Link)))
@@ -127,24 +94,51 @@ void MuPDFGenerator::renderAnnotations(pdf_page *page, fz_pixmap *pixmap, fz_mat
             fz_rethrow(m_context);
         }
     };
+    const auto scissor = fz_expand_rect(fz_rect_from_irect(fz_pixmap_bbox(m_context, pixmap)), 1);
     for (int i = 0; i < pdf_array_len(m_context, annots); ++i) {
-        // A separate device prevents a failed annotation from leaking graphics
-        // state into the page contents or subsequent annotations.
+        if (cookie && cookie->abort)
+            break;
+        auto *object = pdf_resolve_indirect(m_context, pdf_array_get(m_context, annots, i));
+        if (!m_annotationLists.contains(object)) {
+            // Record each appearance independently. A broken one never reaches
+            // the draw device and cannot leave graphics state behind.
+            fz_display_list *list = nullptr;
+            fz_device *recording = nullptr;
+            fz_var(list);
+            fz_var(recording);
+            fz_try(m_context) {
+                list = fz_new_display_list(m_context, pdf_bound_page(m_context, page, FZ_CROP_BOX));
+                recording = fz_new_list_device(m_context, list);
+                paintOne(object, recording);
+                fz_close_device(m_context, recording);
+                if (cookie && cookie->abort)
+                    fz_throw(m_context, FZ_ERROR_ABORT, "Render cancelled");
+            }
+            fz_always(m_context) { fz_drop_device(m_context, recording); }
+            fz_catch(m_context) {
+                fz_drop_display_list(m_context, list);
+                list = nullptr;
+                fz_rethrow_if(m_context, FZ_ERROR_SYSTEM);
+                fz_rethrow_if(m_context, FZ_ERROR_ABORT);
+                reportAnnotationError(QString::fromUtf8(fz_caught_message(m_context)));
+            }
+            // Cache even failed appearances until the next edit.
+            m_annotationLists.insert(object, list);
+        }
+        auto *list = m_annotationLists.value(object);
+        if (!list)
+            continue;
         fz_device *device = nullptr;
         fz_var(device);
-        fz_try(m_context)
-        {
-            device = fz_new_draw_device(m_context, transform, pixmap);
-            paintOne(pdf_array_get(m_context, annots, i), device);
+        fz_try(m_context) {
+            device = fz_new_draw_device(m_context, fz_identity, pixmap);
+            fz_run_display_list(m_context, list, device, transform, scissor, cookie);
             fz_close_device(m_context, device);
         }
-        fz_always(m_context)
-        {
-            fz_drop_device(m_context, device);
-        }
-        fz_catch(m_context)
-        {
+        fz_always(m_context) { fz_drop_device(m_context, device); }
+        fz_catch(m_context) {
             fz_rethrow_if(m_context, FZ_ERROR_SYSTEM);
+            fz_rethrow_if(m_context, FZ_ERROR_ABORT);
             reportAnnotationError(QString::fromUtf8(fz_caught_message(m_context)));
         }
     }
@@ -337,7 +331,7 @@ QVariant MuPDFGenerator::metaData(const QString &key, const QVariant &option) co
 {
     if (key == QLatin1String("NamedViewports")) {
         QVariantList result;
-        const_cast<MuPDFGenerator *>(this)->operation(
+        const_cast<MuPDFGenerator *>(this)->readOperation(
             [&] {
                 QStringList names;
                 const auto collect = [&](pdf_obj *dict) {
@@ -362,13 +356,13 @@ QVariant MuPDFGenerator::metaData(const QString &key, const QVariant &option) co
     }
     if (key == QLatin1String("DocumentTitle")) {
         QString title;
-        const_cast<MuPDFGenerator *>(this)->operation([&] { title = QString::fromUtf8(pdf_to_text_string(m_context, pdf_dict_getp(m_context, pdf_trailer(m_context, m_document), "Info/Title"))); }, nullptr);
+        const_cast<MuPDFGenerator *>(this)->readOperation([&] { title = QString::fromUtf8(pdf_to_text_string(m_context, pdf_dict_getp(m_context, pdf_trailer(m_context, m_document), "Info/Title"))); }, nullptr);
         return title;
     }
     if (key == QLatin1String("NamedViewport")) {
         QString result;
         const auto name = (QStringLiteral("#nameddest=") + QString::fromLatin1(QUrl::toPercentEncoding(option.toString()))).toUtf8();
-        const_cast<MuPDFGenerator *>(this)->operation([&] { result = viewport(m_context, m_document, name.constData()).toString(); }, nullptr);
+        const_cast<MuPDFGenerator *>(this)->readOperation([&] { result = viewport(m_context, m_document, name.constData()).toString(); }, nullptr);
         return result;
     }
     return Generator::metaData(key, option);

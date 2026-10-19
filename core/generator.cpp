@@ -138,6 +138,12 @@ void GeneratorPrivate::textpageGenerationFinished()
     QMutexLocker locker(threadsLock());
     mTextPageReady = true;
 
+    // Wake topology changes waiting for this queued completion, including an
+    // aborted extraction with no text result. The slot finishes before the loop returns.
+    if (m_document && m_document->m_closingLoop) {
+        m_document->m_closingLoop->quit();
+    }
+
     if (m_closing) {
         delete mTextPageGenerationThread->textPage();
         if (mPixmapReady) {
@@ -729,6 +735,21 @@ void PixmapRequest::setPartialUpdatesWanted(bool partialUpdatesWanted)
 bool PixmapRequest::partialUpdatesWanted() const
 {
     return d->mPartialUpdatesWanted;
+}
+
+void PixmapRequest::abortRender()
+{
+    QMutexLocker lock(&d->mAbortMutex);
+    if (d->mShouldAbortRender.fetchAndStoreOrdered(1) == 0 && d->mAbortCallback)
+        d->mAbortCallback();
+}
+
+void PixmapRequest::setRenderAbortCallback(std::function<void()> callback)
+{
+    QMutexLocker lock(&d->mAbortMutex);
+    d->mAbortCallback = std::move(callback);
+    if (d->mShouldAbortRender.loadAcquire() && d->mAbortCallback)
+        d->mAbortCallback();
 }
 
 bool PixmapRequest::shouldAbortRender() const

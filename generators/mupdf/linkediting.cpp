@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "generator_mupdf.h"
 #include <cmath>
+#include <QMutex>
 #include <core/numberedcalloutgeometry_p.h>
 #include <core/page.h>
 
@@ -132,15 +133,22 @@ pdf_obj *MuPDFGenerator::linkDestination(const QString &name, int index, double 
     pdf_array_push(m_context, dest, PDF_NULL);
     return dest;
 }
-bool MuPDFGenerator::setNamedDestination(const QString &name, int index, double x, double y, QString *error)
+bool MuPDFGenerator::setNamedDestination(const QString &name, int pageNumber, double x, double y, QString *error)
 {
     if (name.isEmpty())
         return false;
+    {
+        QMutexLocker lock(userMutex());
+        if (pageNumber < 1 || pageNumber > m_pages.size()) {
+            if (error) *error = QStringLiteral("Invalid destination page number.");
+            return false;
+        }
+    }
     const auto key = name.toUtf8();
     return operation(
         [&] {
             auto *dict = destinations(m_context, m_document);
-            pdf_dict_puts_drop(m_context, dict, key.constData(), linkDestination({}, index, x, y));
+            pdf_dict_puts_drop(m_context, dict, key.constData(), linkDestination({}, pageNumber - 1, x, y));
         },
         error);
 }
@@ -198,6 +206,18 @@ bool MuPDFGenerator::updateLink(Okular::Page *page, const QRectF &rect, bool cre
         return false;
     if (!page)
         return false;
+    const bool remote = qstrcmp(kind, "GoToR") == 0;
+    const bool uri = qstrcmp(kind, "URI") == 0;
+    const auto &destinationName = remote ? remoteName : target;
+    // Convert the one-based API boundary, preserving named destinations' numeric sentinel.
+    {
+        QMutexLocker lock(userMutex());
+        if (!uri && destinationName.isEmpty() && (index < 1 || (!remote && index > m_pages.size()))) {
+            if (error) *error = QStringLiteral("Invalid destination page number.");
+            return false;
+        }
+    }
+    const int destinationIndex = !uri && destinationName.isEmpty() ? index - 1 : 0;
     const auto bytes = target.toUtf8();
     const bool ok = operation(
         [&] {
@@ -225,10 +245,9 @@ bool MuPDFGenerator::updateLink(Okular::Page *page, const QRectF &rect, bool cre
             if (qstrcmp(kind, "URI") == 0)
                 pdf_dict_put_text_string(m_context, action, PDF_NAME(URI), bytes.constData());
             else {
-                const bool remote = qstrcmp(kind, "GoToR") == 0;
                 if (remote)
                     pdf_dict_put_text_string(m_context, action, PDF_NAME(F), bytes.constData());
-                pdf_dict_put_drop(m_context, action, PDF_NAME(D), linkDestination(remote ? remoteName : target, index, x, y, remote));
+                pdf_dict_put_drop(m_context, action, PDF_NAME(D), linkDestination(destinationName, destinationIndex, x, y, remote));
             }
             applyAppearance(m_context, m_document, link, appearance);
         },

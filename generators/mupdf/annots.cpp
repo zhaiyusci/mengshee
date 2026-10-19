@@ -386,6 +386,7 @@ std::shared_ptr<void> MuPDFAnnotationProxy::annotationAppearance(const Okular::A
 void MuPDFAnnotationProxy::notifyAddition(Okular::Annotation *annotation, int page)
 {
     QMutexLocker lock(m_generator->userMutex());
+    m_generator->clearAnnotationLists();
     auto *ctx = m_generator->m_context;
     pdf_annot *native = nullptr;
     pdf_document *source = nullptr;
@@ -432,6 +433,7 @@ void MuPDFAnnotationProxy::notifyAddition(Okular::Annotation *annotation, int pa
 void MuPDFAnnotationProxy::notifyModification(const Okular::Annotation *annotation, int, bool appearance)
 {
     QMutexLocker lock(m_generator->userMutex());
+    m_generator->clearAnnotationLists();
     auto *ctx = m_generator->m_context;
     pdf_obj *preserved = nullptr;
     fz_var(preserved);
@@ -456,6 +458,7 @@ void MuPDFAnnotationProxy::notifyModification(const Okular::Annotation *annotati
 void MuPDFAnnotationProxy::notifyRemoval(Okular::Annotation *annotation, int)
 {
     QMutexLocker lock(m_generator->userMutex());
+    m_generator->clearAnnotationLists();
     auto *ctx = m_generator->m_context;
     fz_try(ctx)
     {

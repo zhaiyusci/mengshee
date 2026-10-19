@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+#include "context.h"
 #include "systemfonts.h"
 #include "generator_mupdf.h"
 #include "annots.h"
@@ -9,6 +10,7 @@
 #include <QPainter>
 #include <QPrinter>
 #include <QSaveFile>
+#include <QScopeGuard>
 #include <QTemporaryDir>
 #include <QTemporaryFile>
 #include <QtMath>
@@ -20,13 +22,13 @@
 MuPDFGenerator::MuPDFGenerator(QObject *parent, const QVariantList &args)
     : Generator(parent, args)
 {
-    m_context = fz_new_context(nullptr, nullptr, FZ_STORE_DEFAULT);
-    MengsheePdfRuntime::installSystemFonts(m_context);
+    m_context = MengsheePdfRuntime::createContext();
     m_annotations = std::make_unique<MuPDFAnnotationProxy>(this);
     setFeature(TextExtraction);
     setFeature(ReadRawData);
     setFeature(SwapBackingFile);
     setFeature(Threaded);
+    setFeature(TiledRendering);
     setFeature(PrintNative);
 }
 
@@ -38,6 +40,7 @@ MuPDFGenerator::~MuPDFGenerator()
 
 bool MuPDFGenerator::doCloseDocument()
 {
+    clearDisplayList();
     qDeleteAll(m_embeddedFiles);
     m_embeddedFiles.clear();
     m_embeddedLoaded = false;
@@ -131,9 +134,47 @@ Okular::Document::OpenResult MuPDFGenerator::finishOpen(QList<Okular::Page *> &p
     return Okular::Document::OpenSuccess;
 }
 
-QImage MuPDFGenerator::render(int number, int width, int height, bool annotations, QString *error)
+void MuPDFGenerator::clearDisplayList()
 {
-    if (!m_document || width <= 0 || height <= 0 || qint64(width) * height > 100000000) {
+    clearAnnotationLists();
+    fz_drop_display_list(m_context, m_displayList);
+    m_displayList = nullptr;
+    m_displayListPage = -1;
+}
+
+fz_display_list *MuPDFGenerator::pageDisplayList(int number, pdf_page *page, fz_cookie *cookie)
+{
+    if (m_displayList && m_displayListPage == number)
+        return m_displayList;
+    clearDisplayList();
+    fz_display_list *list = nullptr;
+    fz_device *device = nullptr;
+    fz_var(list);
+    fz_var(device);
+    fz_try(m_context) {
+        list = fz_new_display_list(m_context, pdf_bound_page(m_context, page, FZ_CROP_BOX));
+        device = fz_new_list_device(m_context, list);
+        pdf_run_page_contents(m_context, page, device, fz_identity, cookie);
+        if (cookie && cookie->abort)
+            fz_throw(m_context, FZ_ERROR_ABORT, "Render cancelled");
+        fz_close_device(m_context, device);
+    }
+    fz_always(m_context) { fz_drop_device(m_context, device); }
+    fz_catch(m_context) {
+        fz_drop_display_list(m_context, list);
+        fz_rethrow(m_context);
+    }
+    m_displayList = list;
+    m_displayListPage = number;
+    return list;
+}
+
+QImage MuPDFGenerator::render(int number, int width, int height, bool annotations, QString *error, const QRect &region, fz_cookie *cookie)
+{
+    // NormalizedRect::geometry includes the final pixel at the right/bottom
+    // edge. Preserve that size: TilesManager uses it when placing the tile.
+    const QRect target = region.isNull() ? QRect(0, 0, width, height) : region;
+    if (!m_document || width <= 0 || height <= 0 || target.isEmpty() || target.x() < 0 || target.y() < 0 || target.right() > width || target.bottom() > height || qint64(target.width()) * target.height() > 100000000) {
         if (error)
             *error = QStringLiteral("Invalid or oversized PDF render request.");
         return {};
@@ -149,15 +190,24 @@ QImage MuPDFGenerator::render(int number, int width, int height, bool annotation
     {
         page = pdf_load_page(m_context, m_document, number);
         const fz_rect bounds = pdf_bound_page(m_context, page, FZ_CROP_BOX);
-        const fz_matrix transform = fz_scale(width / (bounds.x1 - bounds.x0), height / (bounds.y1 - bounds.y0));
-        pixmap = fz_new_pixmap_with_bbox(m_context, fz_device_rgb(m_context), fz_make_irect(0, 0, width, height), nullptr, 0);
+        const fz_matrix transform = fz_concat(fz_translate(-bounds.x0, -bounds.y0),
+                                               fz_scale(width / (bounds.x1 - bounds.x0), height / (bounds.y1 - bounds.y0)));
+        const auto bbox = fz_make_irect(target.x(), target.y(), target.x() + target.width(), target.y() + target.height());
+        auto *list = pageDisplayList(number, page, cookie);
+        pixmap = fz_new_pixmap_with_bbox(m_context, fz_device_rgb(m_context), bbox, nullptr, 0);
         fz_clear_pixmap_with_value(m_context, pixmap, 255);
-        device = fz_new_draw_device(m_context, transform, pixmap);
-        pdf_run_page_contents(m_context, page, device, fz_identity, nullptr);
+        device = fz_new_draw_device(m_context, fz_identity, pixmap);
+        // Device-space scissor skips offscreen list commands; the pixmap itself
+        // only allocates the requested tile. Expand culling slightly for AA edges.
+        fz_run_display_list(m_context, list, device, transform, fz_expand_rect(fz_rect_from_irect(bbox), 1), cookie);
         fz_close_device(m_context, device);
+        if (cookie && cookie->abort)
+            fz_throw(m_context, FZ_ERROR_ABORT, "Render cancelled");
         if (annotations)
-            renderAnnotations(page, pixmap, transform);
-        result = QImage(fz_pixmap_samples(m_context, pixmap), width, height, fz_pixmap_stride(m_context, pixmap), QImage::Format_RGB888).copy();
+            renderAnnotations(page, pixmap, transform, cookie);
+        if (cookie && cookie->abort)
+            fz_throw(m_context, FZ_ERROR_ABORT, "Render cancelled");
+        result = QImage(fz_pixmap_samples(m_context, pixmap), target.width(), target.height(), fz_pixmap_stride(m_context, pixmap), QImage::Format_RGB888).copy();
     }
     fz_always(m_context)
     {
@@ -177,7 +227,19 @@ QImage MuPDFGenerator::render(int number, int width, int height, bool annotation
 QImage MuPDFGenerator::image(Okular::PixmapRequest *request)
 {
     QMutexLocker lock(userMutex());
-    return render(request->pageNumber(), request->width(), request->height(), true, nullptr);
+    if (request->shouldAbortRender())
+        return {};
+    QRect region;
+    if (request->isTile()) {
+        region = request->normalizedRect().geometry(request->width(), request->height());
+        if (region.isEmpty())
+            return {};
+    }
+    fz_cookie cookie{};
+    request->setRenderAbortCallback([&cookie] { cookie.abort = 1; });
+    const auto detach = qScopeGuard([request] { request->setRenderAbortCallback({}); });
+    auto result = render(request->pageNumber(), request->width(), request->height(), true, nullptr, region, &cookie);
+    return request->shouldAbortRender() ? QImage() : result;
 }
 
 QImage MuPDFGenerator::renderToImage(int page, int dpi, bool annotations, QString *error)
@@ -238,7 +300,7 @@ Okular::DocumentInfo MuPDFGenerator::generateDocumentInfo(const QSet<Okular::Doc
 {
     Okular::DocumentInfo info;
     info.set(Okular::DocumentInfo::MimeType, QStringLiteral("application/pdf"));
-    const_cast<MuPDFGenerator *>(this)->operation(
+    const_cast<MuPDFGenerator *>(this)->readOperation(
         [&] {
             const std::pair<Okular::DocumentInfo::Key, const char *> keys[] = {{Okular::DocumentInfo::Title, "Title"},
                                                                                {Okular::DocumentInfo::Author, "Author"},
@@ -274,7 +336,7 @@ bool MuPDFGenerator::isAllowed(Okular::Permission permission) const
         break;
     }
     bool allowed = false;
-    const_cast<MuPDFGenerator *>(this)->operation([&] { allowed = pdf_has_permission(m_context, m_document, native); }, nullptr);
+    const_cast<MuPDFGenerator *>(this)->readOperation([&] { allowed = pdf_has_permission(m_context, m_document, native); }, nullptr);
     return allowed;
 }
 

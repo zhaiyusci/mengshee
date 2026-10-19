@@ -6819,8 +6819,9 @@ void Part::addNotePage(PageView *sourceView, int pageNumber, const Okular::Norma
 
     // 2. Name the new page.
     if (!applyLiveNamedDestination(destinationName, destination, &errorText)) {
+        const QString destinationError = errorText;
         m_document->detachPage(insertAfterPageNumber + 1, editId, &errorText);
-        KMessageBox::information(widget(), i18n("Could not add the note page destination."));
+        KMessageBox::information(widget(), i18n("Could not add the note page destination.") + (destinationError.isEmpty() ? QString() : QStringLiteral("\n") + destinationError));
         return;
     }
 

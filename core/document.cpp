@@ -1733,7 +1733,7 @@ void DocumentPrivate::refreshPixmaps(int pageNumber)
                 cancelRenderingBecauseOf(request, nullptr);
                 // cancelRenderingBecauseOf normally lets a finished image be
                 // published. Here even that image predates the document edit.
-                request->d->mShouldAbortRender = 1;
+                request->abortRender();
             }
         }
         m_pixmapRequestsMutex.unlock();
@@ -2596,11 +2596,13 @@ void DocumentPrivate::clearAndWaitForRequests()
     bool startEventLoop = false;
     do {
         m_pixmapRequestsMutex.lock();
-        startEventLoop = !m_executingPixmapRequests.empty();
+        // Text extraction has its own queued completion and retains a Page pointer.
+        // Drain it too before page replacement/removal, even if rasterization ended.
+        startEventLoop = !m_executingPixmapRequests.empty() || !m_generator->canGenerateTextPage();
 
         if (m_generator->hasFeature(Generator::SupportsCancelling)) {
             for (PixmapRequest *executingRequest : std::as_const(m_executingPixmapRequests)) {
-                executingRequest->d->mShouldAbortRender = 1;
+                executingRequest->abortRender();
             }
 
             if (m_generator->d_ptr->mTextPageGenerationThread) {
@@ -2619,10 +2621,14 @@ void DocumentPrivate::clearAndWaitForRequests()
 
 void DocumentPrivate::publishPageTopologyChange(Page *retiredPage)
 {
+    // FIFO entries are page indices; insertions/removals invalidate those indices.
+    m_allocatedTextPagesFifo.clear();
     for (int pageIndex = 0; pageIndex < m_pagesVector.size(); ++pageIndex) {
         Page *page = m_pagesVector.at(pageIndex);
         page->d->m_number = pageIndex;
         page->d->m_doc = this;
+        if (page->hasTextPage())
+            m_allocatedTextPagesFifo.append(pageIndex);
     }
 
     bool undoReferencesValid = true;
@@ -3913,7 +3919,7 @@ bool DocumentPrivate::cancelRenderingBecauseOf(PixmapRequest *executingRequest, 
         return false;
     }
 
-    executingRequest->d->mShouldAbortRender = 1;
+    executingRequest->abortRender();
 
     if (m_generator->d_ptr->mTextPageGenerationThread && m_generator->d_ptr->mTextPageGenerationThread->page() == executingRequest->page()) {
         m_generator->d_ptr->mTextPageGenerationThread->abortExtraction();

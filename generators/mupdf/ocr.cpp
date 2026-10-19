@@ -41,7 +41,7 @@ bool MuPDFGenerator::readOcrTextLayer(int index, QList<Okular::OcrTextWord> *wor
         return false;
     words->clear();
     QString stored;
-    if (!operation(
+    if (!readOperation(
             [&] {
                 if (index < 0 || index >= m_pages.size())
                     fz_throw(m_context, FZ_ERROR_ARGUMENT, "Invalid OCR page index");
@@ -68,7 +68,7 @@ bool MuPDFGenerator::readOcrTextLayer(int index, QList<Okular::OcrTextWord> *wor
     }
     fz_stext_page *text = nullptr;
     fz_var(text);
-    return operation(
+    return readOperation(
         [&] {
             fz_stext_options options = {};
             options.flags = FZ_STEXT_COLLECT_STYLES;
