@@ -8,11 +8,15 @@
 #define MENGSHEEPRINTDIALOG_H
 
 #include <QDialog>
+#include <QCache>
+#include <QFutureWatcher>
+#include "core/printpreviewrenderer.h"
 #include <QList>
 #include <QPageLayout>
 #include <QPageSize>
 #include <QPrinter>
 
+class QTimer;
 class QCheckBox;
 class QButtonGroup;
 class QComboBox;
@@ -45,6 +49,8 @@ class MengsheePrintDialog : public QDialog
 public:
     MengsheePrintDialog(QPrinter *printer, int documentPageCount, int currentPage, QPageLayout::Orientation documentOrientation, bool hasPageSelection, QWidget *printOptionsWidget, QWidget *parent = nullptr);
 
+    void setPreviewRenderer(PrintPreviewRenderer renderer, const QString &selectedPages, const QString &error = {});
+
 Q_SIGNALS:
     void paintRequested(QPrinter *printer);
 
@@ -64,6 +70,8 @@ private Q_SLOTS:
 
 private:
     void accept() override;
+    void startPreviewRender();
+    void paintPreview(QPrinter *printer);
     void buildUi();
     void populatePrinters();
     void populatePageSizes();
@@ -86,7 +94,17 @@ private:
     int m_previewSheetCount = 1;
     QPageLayout::Orientation m_documentOrientation;
     bool m_hasPageSelection;
-    bool m_previewUpdatePending = false;
+    QTimer *m_previewTimer = nullptr;
+    QFutureWatcher<PrintPreviewImage> *m_previewWatcher = nullptr;
+    PrintPreviewRenderer m_previewRenderer;
+    QCache<QString, QImage> m_previewCache {64 * 1024}; // KiB, bounded per dialog.
+    QImage m_previewImage;
+    QString m_selectedPages;
+    QString m_previewError;
+    quint64 m_previewRevision = 0;
+    quint64 m_runningRevision = 0;
+    bool m_previewRunning = false;
+    bool m_asyncPreview = false;
     bool m_settingsValid = false;
     QWidget *m_printOptionsWidget;
     QList<QPageSize> m_pageSizes;

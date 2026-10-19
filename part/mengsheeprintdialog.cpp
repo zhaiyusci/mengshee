@@ -37,6 +37,7 @@
 #include <QStackedWidget>
 #include <QStyle>
 #include <QTimer>
+#include <QtConcurrentRun>
 #include <QToolButton>
 #include <QVBoxLayout>
 
@@ -48,7 +49,7 @@ using namespace Okular;
 
 namespace
 {
-constexpr int previewResolutionDpi = 300;
+constexpr int previewResolutionDpi = 72;
 }
 
 MengsheePrintDialog::MengsheePrintDialog(QPrinter *printer, int documentPageCount, int currentPage, QPageLayout::Orientation documentOrientation, bool hasPageSelection, QWidget *printOptionsWidget, QWidget *parent)
@@ -67,6 +68,11 @@ MengsheePrintDialog::MengsheePrintDialog(QPrinter *printer, int documentPageCoun
     resize(980, 680);
     setMinimumSize(820, 580);
 
+    m_previewTimer = new QTimer(this);
+    m_previewTimer->setSingleShot(true);
+    m_previewTimer->setInterval(120);
+    connect(m_previewTimer, &QTimer::timeout, this, &MengsheePrintDialog::startPreviewRender);
+    m_previewWatcher = new QFutureWatcher<PrintPreviewImage>(this);
     buildUi();
     populatePrinters();
     printerChanged();
@@ -106,7 +112,7 @@ void MengsheePrintDialog::buildUi()
     m_copiesSpin = new QSpinBox(printerGroup);
     m_copiesSpin->setObjectName(QStringLiteral("copiesSpin"));
     m_copiesSpin->setRange(1, 999);
-    m_copiesSpin->setValue(qMax(1, m_printer->copyCount()));
+    m_copiesSpin->setValue(1);
     printerLayout->addWidget(m_copiesSpin, 1, 1);
     m_grayscaleCheck = new QCheckBox(i18n("Print in grayscale"), printerGroup);
     m_grayscaleCheck->setObjectName(QStringLiteral("grayscaleCheck"));
@@ -344,7 +350,7 @@ void MengsheePrintDialog::buildUi()
     mainLayout->addWidget(m_buttonBox);
 
     connect(m_printerCombo, &QComboBox::currentIndexChanged, this, &MengsheePrintDialog::printerChanged);
-    connect(m_copiesSpin, &QSpinBox::valueChanged, this, &MengsheePrintDialog::schedulePreviewUpdate);
+    // Copies affect the print job only; accept() reads the current value.
     connect(m_grayscaleCheck, &QCheckBox::toggled, this, &MengsheePrintDialog::schedulePreviewUpdate);
     connect(m_duplexCheck, &QCheckBox::toggled, this, [this](bool checked) {
         m_duplexBindingCombo->setEnabled(checked && m_duplexCheck->isEnabled());
@@ -372,19 +378,7 @@ void MengsheePrintDialog::buildUi()
     connect(m_pageSlider, &QSlider::valueChanged, this, &MengsheePrintDialog::previewPageChanged);
     connect(m_previousPageButton, &QPushButton::clicked, this, &MengsheePrintDialog::previousPreviewPage);
     connect(m_nextPageButton, &QPushButton::clicked, this, &MengsheePrintDialog::nextPreviewPage);
-    connect(m_previewWidget, &QPrintPreviewWidget::paintRequested, this, [this](QPrinter *printer) {
-        // PDF pages are rasterized by the Windows print backend. ScreenResolution
-        // (normally 96 DPI) makes that raster visibly jagged in the preview.
-        printer->setResolution(previewResolutionDpi);
-        printer->setDocName(m_printer->docName());
-        applyCommonSettings(*printer);
-        // Preserve the actual printer's printable margins in the preview.
-        printer->setPageLayout(m_printer->pageLayout());
-        applyPrintRange(*printer, true);
-        syncLayoutProperties(true);
-        Q_EMIT paintRequested(printer);
-        syncLayoutProperties(false);
-    });
+    connect(m_previewWidget, &QPrintPreviewWidget::paintRequested, this, &MengsheePrintDialog::paintPreview);
 }
 
 void MengsheePrintDialog::populatePrinters()
@@ -551,22 +545,110 @@ void MengsheePrintDialog::layoutSettingsChanged()
     schedulePreviewUpdate();
 }
 
+void MengsheePrintDialog::setPreviewRenderer(PrintPreviewRenderer renderer, const QString &selectedPages, const QString &error)
+{
+    m_previewRenderer = std::move(renderer);
+    m_selectedPages = selectedPages;
+    m_previewError = error;
+    m_asyncPreview = bool(m_previewRenderer) || !error.isEmpty();
+    schedulePreviewUpdate();
+}
+
 void MengsheePrintDialog::schedulePreviewUpdate()
 {
-    if (m_previewUpdatePending || !m_previewWidget) {
+    ++m_previewRevision; // Invalidate immediately, including during the debounce.
+    m_previewTimer->start();
+}
+
+void MengsheePrintDialog::paintPreview(QPrinter *printer)
+{
+    printer->setResolution(previewResolutionDpi);
+    printer->setDocName(m_printer->docName());
+    applyCommonSettings(*printer);
+    printer->setCopyCount(1);
+    printer->setPageLayout(m_printer->pageLayout());
+    if (!m_asyncPreview) {
+        applyPrintRange(*printer, true);
+        syncLayoutProperties(true);
+        Q_EMIT paintRequested(printer);
+        syncLayoutProperties(false);
         return;
     }
-    m_previewUpdatePending = true;
-    QTimer::singleShot(0, this, [this]() {
-        m_previewUpdatePending = false;
-        applyCommonSettings(*m_printer);
+    // Replaying the ready bitmap is the only preview painting done on the UI
+    // thread. No document rendering or live QPrinter access happens in a worker.
+    QPainter painter(printer);
+    if (!m_previewImage.isNull()) {
+        const auto image = m_grayscaleCheck->isChecked() ? m_previewImage.convertToFormat(QImage::Format_Grayscale8) : m_previewImage;
+        const QRect area = printer->pageLayout().paintRectPixels(printer->resolution());
+        QSize size = image.size();
+        size.scale(area.size(), Qt::KeepAspectRatio);
+        painter.drawImage(QRect(area.center() - QPoint(size.width() / 2, size.height() / 2), size), image);
+    }
+}
+
+void MengsheePrintDialog::startPreviewRender()
+{
+    applyCommonSettings(*m_printer);
+    if (!m_asyncPreview) {
         syncLayoutProperties(false);
         m_previewWidget->updatePreview();
-        if (m_printOptionsWidget) {
+        if (m_printOptionsWidget)
             m_previewSheetCount = qMax(1, m_printOptionsWidget->property(PrintLayout::previewSheetCountProperty).toInt());
-        }
         updatePreviewNavigation();
+        return;
+    }
+    if (!m_previewRenderer) {
+        m_previewDescription->setText(m_previewError);
+        return;
+    }
+    if (m_rangePagesRadio->isChecked() && !pageRangeIsValid()) {
+        m_previewImage = {};
+        m_previewWidget->updatePreview();
+        return;
+    }
+    QPageRanges ranges;
+    if (m_currentPageRadio->isChecked()) ranges.addPage(m_currentDocumentPage);
+    else if (m_rangePagesRadio->isChecked()) ranges = QPageRanges::fromString(m_pageRangeEdit->text());
+    else if (m_selectedPagesRadio->isChecked()) ranges = QPageRanges::fromString(m_selectedPages);
+    else ranges.addRange(1, m_documentPageCount);
+    QList<int> pages;
+    for (const auto &range : ranges.toRangeList())
+        for (int page = qMax(1, range.from); page <= qMin(m_documentPageCount, range.to); ++page) pages.append(page - 1);
+    m_previewSheetCount = qMax(1, pages.size());
+    updatePreviewNavigation();
+    if (pages.isEmpty()) return;
+    const int page = pages[m_printer->pageOrder() == QPrinter::LastPageFirst ? pages.size() - m_previewSheet : m_previewSheet - 1];
+    const qreal scale = m_previewWidget->devicePixelRatioF();
+    const QSize pixels(qBound(64, qRound(m_previewWidget->width() * scale * 1.5), 2048), qBound(64, qRound(m_previewWidget->height() * scale * 1.5), 2048));
+    const QString key = QStringLiteral("%1:%2:%3").arg(page).arg(pixels.width()).arg(pixels.height());
+    if (const auto *cached = m_previewCache.object(key)) {
+        m_previewImage = *cached;
+        m_previewWidget->updatePreview();
+        return;
+    }
+    m_previewDescription->setText(i18n("Generating preview…"));
+    if (m_previewRunning) return; // Only one job; the newest request follows it.
+    m_previewRunning = true;
+    m_runningRevision = m_previewRevision;
+    disconnect(m_previewWatcher, nullptr, this, nullptr);
+    connect(m_previewWatcher, &QFutureWatcher<PrintPreviewImage>::finished, this, [this, key]() {
+        m_previewRunning = false;
+        const auto result = m_previewWatcher->result();
+        if (!result.image.isNull())
+            m_previewCache.insert(key, new QImage(result.image), qMax(1, int(result.image.sizeInBytes() / 1024)));
+        if (m_runningRevision != m_previewRevision) {
+            if (!m_previewTimer->isActive()) m_previewTimer->start();
+            return;
+        }
+        m_previewImage = result.image;
+        m_previewWidget->updatePreview();
+        updatePreviewNavigation();
+        if (!result.error.isEmpty()) m_previewDescription->setText(result.error);
     });
+    // Values only: closing the dialog disconnects completion without waiting for
+    // a render or exposing widgets/the live document to the worker.
+    const auto renderer = m_previewRenderer;
+    m_previewWatcher->setFuture(QtConcurrent::run([renderer, page, pixels]() { return renderer(page, pixels); }));
 }
 
 void MengsheePrintDialog::previewPageChanged(int page)

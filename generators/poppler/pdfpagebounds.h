@@ -4,6 +4,12 @@
 #ifndef PDF_PAGE_BOUNDS_H
 #define PDF_PAGE_BOUNDS_H
 #include <string>
+#ifdef MENGSHEE_USE_MUPDF
+#include "mengshee_pdf_runtime_export.h"
+#define PDF_PAGE_BOUNDS_EXPORT MENGSHEE_PDF_RUNTIME_EXPORT
+#else
+#define PDF_PAGE_BOUNDS_EXPORT
+#endif
 
 // Source-level helper for this pinned Poppler Core, not a public library ABI.
 namespace PdfPageBounds {
@@ -44,6 +50,6 @@ struct Result
 // Input is read-only and must not be concurrently changed. UTF-8 output path
 // MUST be new. A sibling temporary PDF is verified then atomically published
 // with a no-replace hard link (filesystem hard-link support required).
-Result expandAppearance(const std::string &utf8Input, const std::string &utf8Output, double padding = 1.0);
+PDF_PAGE_BOUNDS_EXPORT Result expandAppearance(const std::string &utf8Input, const std::string &utf8Output, double padding = 1.0);
 }
 #endif

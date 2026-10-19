@@ -66,7 +66,7 @@ try {
     $unexpectedWorkspaceModules = $modules | Where-Object {
         $_ -like "$windowsBuildRoot\*" -and $_ -notlike "$StageRoot\*"
     }
-    $pdfModules = $modules | Where-Object { $_ -match "okularGenerator|poppler|okularpart" } | Sort-Object
+    $pdfModules = $modules | Where-Object { $_ -match "okularGenerator|poppler|okularpart|MengsheePdfRuntime" } | Sort-Object
 
     [pscustomobject]@{
         ProcessId = $process.Id
@@ -86,6 +86,7 @@ try {
     $requiredPdfModules = @(Join-Path $StageRoot "bin\plugins\kf6\parts\okularpart.dll")
     if (Test-Path -LiteralPath $pdfGenerator) {
         $requiredPdfModules += $pdfGenerator
+        $requiredPdfModules += Join-Path $StageRoot "bin\MengsheePdfRuntime.dll"
         if ($modules | Where-Object { $_ -match '\\poppler[^\\]*\.dll$|okularGenerator_poppler\.dll$' }) {
             throw "MuPDF runtime loaded a stale Poppler module."
         }

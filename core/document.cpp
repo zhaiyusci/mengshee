@@ -6066,6 +6066,16 @@ bool Document::supportsPrintToFile() const
     return d->m_generator ? d->m_generator->hasFeature(Generator::PrintToFile) : false;
 }
 
+PrintPreviewRenderer Document::createPrintPreviewRenderer(QString *error)
+{
+    if (!isAllowed(AllowPrint)) {
+        if (error) *error = QStringLiteral("Printing this document is not allowed.");
+        return {};
+    }
+    auto *preview = dynamic_cast<PrintPreviewInterface *>(d->m_generator);
+    return preview ? preview->createPrintPreviewRenderer(error) : PrintPreviewRenderer();
+}
+
 Document::PrintError Document::print(QPrinter &printer)
 {
     if (const Okular::Action *action = d->m_generator->additionalDocumentAction(PrintDocumentStart)) {

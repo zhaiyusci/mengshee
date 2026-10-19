@@ -15,6 +15,7 @@
 #include "global.h"
 #include "okularcore_export.h"
 #include "pagesize.h"
+#include "printpreviewrenderer.h"
 #include "readingview.h"
 #include "readingvieweditinginterface.h"
 #include "signatureutils.h"
@@ -1018,6 +1019,7 @@ public:
      * Prints the document to the given @p printer.
      */
     Document::PrintError print(QPrinter &printer);
+    PrintPreviewRenderer createPrintPreviewRenderer(QString *error = nullptr);
 
     /// @since 22.04
     static QString printErrorString(PrintError error);

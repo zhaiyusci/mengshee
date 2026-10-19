@@ -41,7 +41,7 @@ DisableDirPage=no
 DisableProgramGroupPage=yes
 OutputDir={#OutputDir}
 OutputBaseFilename=Mengshee-{#AppVersion}-Setup
-Compression=lzma2
+Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
 SetupIconFile={#AppIconFile}
@@ -71,6 +71,14 @@ Source: "{#SourceDir}\*"; DestDir: "{app}"; Components: core; Flags: ignoreversi
 Source: "{#StemTeXSupportDir}\*"; DestDir: "{app}"; Components: stemtexsupport; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [InstallDelete]
+#if FileExists(AddBackslash(SourceDir) + "bin\plugins\okular_generators\okularGenerator_mupdf.dll")
+; An upgrade must not leave the former PDF plugin eligible for loading.
+Type: files; Name: "{app}\bin\plugins\okular_generators\okularGenerator_poppler.dll"
+Type: files; Name: "{app}\bin\tesseract55.dll"
+Type: files; Name: "{app}\bin\leptonica-1.87.0.dll"
+Type: files; Name: "{app}\bin\poppler.dll"
+Type: files; Name: "{app}\bin\poppler-qt6.dll"
+#endif
 Type: filesandordirs; Name: "{app}\StemTeX\runtime\texmf-dist"
 
 [Icons]

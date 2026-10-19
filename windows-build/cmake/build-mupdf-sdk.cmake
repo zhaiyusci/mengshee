@@ -29,10 +29,23 @@ execute_process(COMMAND "${MSBUILD}" "${_source}/platform/win32/bin2coff.vcxproj
 if(NOT _result EQUAL 0)
     message(FATAL_ERROR "MuPDF font embedding tool failed (${_result})")
 endif()
+# Keep the full Droid CJK fallback, but omit the much larger Source Han collection.
+# Inject only our font-table option, without modifying the pinned upstream checkout.
+set(_font_options "${_output}/mengshee-font-options.targets")
+file(WRITE "${_font_options}" [=[
+<Project>
+  <ItemDefinitionGroup Condition="'$(MSBuildProjectName)' == 'libmupdf'">
+    <ClCompile>
+      <PreprocessorDefinitions>TOFU_CJK_LANG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+  </ItemDefinitionGroup>
+</Project>
+]=])
 execute_process(COMMAND "${MSBUILD}" "${_source}/platform/win32/mupdf.sln"
     /t:libmupdf "/m:${JOBS}" /v:minimal /nologo
-    /p:Configuration=Release /p:Platform=x64 "/p:PlatformToolset=${PLATFORM_TOOLSET}"
+    /p:Configuration=Release /p:Platform=x64 /p:PreferredToolArchitecture=x64 "/p:PlatformToolset=${PLATFORM_TOOLSET}"
     "/p:OutDir=${_output}"
+    "/p:ForceImportBeforeCppTargets=${_font_options}"
     RESULT_VARIABLE _result)
 if(NOT _result EQUAL 0)
     message(FATAL_ERROR "MuPDF SDK build failed (${_result})")

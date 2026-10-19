@@ -6,6 +6,7 @@
 #include <QTemporaryDir>
 #include <QTest>
 #include <QUuid>
+#include <future>
 #include <core/annotations.h>
 #include <core/form.h>
 #include <core/latexnotegeometry.h>
@@ -60,6 +61,95 @@ private Q_SLOTS:
         fz_drop_buffer(ctx, buffer);
         pdf_drop_document(ctx, doc);
         fz_drop_context(ctx);
+    }
+    void bundledCjkFallback()
+    {
+#ifndef Q_OS_WIN
+        QSKIP("Windows SDK font configuration");
+#else
+        auto *ctx = fz_new_context(nullptr, nullptr, FZ_STORE_DEFAULT);
+        int size = 0, subfont = 0;
+        const auto *data = fz_lookup_cjk_font(ctx, FZ_ADOBE_GB, &size, &subfont);
+        QVERIFY(data && size > 0);
+        auto *font = fz_new_font_from_memory(ctx, nullptr, data, size, subfont, 1);
+        QVERIFY(QByteArray(fz_font_name(ctx, font)).contains("Droid"));
+        for (auto c : QStringLiteral("中文繁體あいう한글"))
+            QVERIFY(fz_encode_character(ctx, font, c.unicode()) > 0);
+        fz_drop_font(ctx, font);
+        fz_drop_context(ctx);
+#endif
+    }
+    void unembeddedChineseUsesWindowsFont()
+    {
+#ifndef Q_OS_WIN
+        QSKIP("Windows system font integration");
+#else
+        const QString systemFont = qEnvironmentVariable("WINDIR") + QStringLiteral("/Fonts/simsun.ttc");
+        if (!QFile::exists(systemFont))
+            QSKIP("SimSun is not installed on this machine");
+        const QString text = QStringLiteral("中文测试汉字繁體");
+        const auto unembedded = m_directory.filePath(QStringLiteral("unembedded-chinese.pdf"));
+        const auto embedded = m_directory.filePath(QStringLiteral("embedded-chinese.pdf"));
+        auto *ctx = fz_new_context(nullptr, nullptr, FZ_STORE_DEFAULT);
+        auto *font = fz_new_font_from_file(ctx, "SimSun", systemFont.toUtf8().constData(), 0, 1);
+        for (bool embed : {false, true}) {
+            auto *doc = pdf_create_document(ctx);
+            auto *resources = pdf_new_dict(ctx, doc, 1);
+            auto *fonts = pdf_dict_put_dict(ctx, resources, PDF_NAME(Font), 1);
+            if (embed) {
+                pdf_dict_puts_drop(ctx, fonts, "F0", pdf_add_cid_font(ctx, doc, font));
+            } else {
+                // Adobe's standard Chinese font name, deliberately no FontFile stream.
+                const char dictionary[] = "<< /Type /Font /Subtype /Type0 /BaseFont /STSong-Light "
+                    "/Encoding /UniGB-UCS2-H /DescendantFonts [ << /Type /Font /Subtype /CIDFontType0 "
+                    "/BaseFont /STSong-Light /CIDSystemInfo << /Registry (Adobe) /Ordering (GB1) /Supplement 4 >> "
+                    "/DW 1000 /FontDescriptor << /Type /FontDescriptor /FontName /STSong-Light /Flags 6 "
+                    "/FontBBox [0 -200 1000 900] /Ascent 900 /Descent -200 /CapHeight 700 /ItalicAngle 0 /StemV 80 >> >> ] >>";
+                auto *stream = fz_open_memory(ctx, reinterpret_cast<const unsigned char *>(dictionary), sizeof(dictionary) - 1);
+                pdf_lexbuf lex;
+                pdf_lexbuf_init(ctx, &lex, PDF_LEXBUF_SMALL);
+                pdf_lex(ctx, stream, &lex); // consume the opening dictionary token
+                pdf_dict_puts_drop(ctx, fonts, "F0", pdf_parse_dict(ctx, doc, stream, &lex));
+                pdf_lexbuf_fin(ctx, &lex);
+                fz_drop_stream(ctx, stream);
+            }
+            QByteArray hex;
+            for (auto c : text) {
+                const int glyph = fz_encode_character(ctx, font, c.unicode());
+                QVERIFY(glyph > 0);
+                hex += QByteArray::number(embed ? glyph : c.unicode(), 16).rightJustified(4, '0');
+            }
+            const QByteArray content = QByteArray("BT /F0 24 Tf 30 100 Td <") + hex + "> Tj ET";
+            auto *buffer = fz_new_buffer_from_copied_data(ctx, reinterpret_cast<const unsigned char *>(content.constData()), content.size());
+            auto *page = pdf_add_page(ctx, doc, fz_make_rect(0, 0, 300, 160), 0, resources, buffer);
+            pdf_insert_page(ctx, doc, -1, page);
+            pdf_save_document(ctx, doc, (embed ? embedded : unembedded).toUtf8().constData(), &pdf_default_write_options);
+            pdf_drop_obj(ctx, page);
+            fz_drop_buffer(ctx, buffer);
+            pdf_drop_obj(ctx, resources);
+            pdf_drop_document(ctx, doc);
+        }
+        fz_drop_font(ctx, font);
+        fz_drop_context(ctx);
+        MuPDFGenerator actual(nullptr, {}), reference(nullptr, {});
+        QList<Okular::Page *> pages, referencePages;
+        QCOMPARE(actual.loadDocumentWithPassword(unembedded, pages, {}), Okular::Document::OpenSuccess);
+        QCOMPARE(reference.loadDocumentWithPassword(embedded, referencePages, {}), Okular::Document::OpenSuccess);
+        const auto image = actual.renderToImage(0, 144, false);
+        QVERIFY(!image.isNull());
+        // The same SimSun glyphs must render identically whether embedded or resolved from Windows.
+        QCOMPARE(image, reference.renderToImage(0, 144, false));
+        QString error;
+        const auto saved = m_directory.filePath(QStringLiteral("unembedded-chinese-saved.pdf"));
+        QVERIFY2(actual.save(saved, Okular::SaveInterface::SaveChanges, &error), qPrintable(error));
+        MuPDFGenerator reopened(nullptr, {});
+        QList<Okular::Page *> reopenedPages;
+        QCOMPARE(reopened.loadDocumentWithPassword(saved, reopenedPages, {}), Okular::Document::OpenSuccess);
+        QCOMPARE(reopened.renderToImage(0, 144, false), image);
+        qDeleteAll(pages);
+        qDeleteAll(referencePages);
+        qDeleteAll(reopenedPages);
+#endif
     }
     void pagePhysicalUnits_data()
     {
@@ -602,6 +692,87 @@ private Q_SLOTS:
         QCOMPARE(reopened.renderToImage(0, 72, true), labelled);
         QCOMPARE(reopened.generateDocumentSynopsis()->firstChildElement().firstChildElement().tagName(), QStringLiteral("Note"));
         QCOMPARE(reopened.generateDocumentSynopsis()->firstChildElement().firstChildElement().attribute(QStringLiteral("ViewportName")), QStringLiteral("mnote-1-1"));
+        qDeleteAll(pages);
+        qDeleteAll(fresh);
+    }
+    void printPreviewSnapshotSurvivesSourceClose()
+    {
+        Okular::PrintPreviewRenderer renderer;
+        QImage expected;
+        {
+            MuPDFGenerator backend(nullptr, {});
+            QList<Okular::Page *> pages;
+            QCOMPARE(backend.loadDocumentWithPassword(sample(), pages, {}), Okular::Document::OpenSuccess);
+            Okular::StampAnnotation note;
+            note.setOkularLatex(true);
+            note.setLatexNoteType(Okular::Annotation::LatexNoteBoxed);
+            note.setLatexAppearancePdfFileName(sample());
+            note.setBoundingRectangle({.1, .3, .9, .9});
+            backend.annotationProxy()->notifyAddition(&note, 0);
+            expected = backend.renderToImage(0, 72, true);
+            QString error;
+            renderer = backend.createPrintPreviewRenderer(&error);
+            QVERIFY2(bool(renderer), qPrintable(error));
+            qDeleteAll(pages);
+        }
+        const auto full = std::async(std::launch::async, [renderer] { return renderer(0, QSize(2048,2048)); }).get();
+        QVERIFY2(full.error.isEmpty(), qPrintable(full.error));
+        QCOMPARE(full.image, expected);
+        const auto reduced = renderer(0, QSize(150,100));
+        QCOMPARE(reduced.image.size(), QSize(150,100));
+    }
+    void rotatedPageResize_data()
+    {
+        QTest::addColumn<int>("rotation");
+        QTest::addColumn<int>("edge");
+        QTest::addColumn<int>("unit");
+        for (int rotation : {0, 90, 180, 270})
+            for (int edge = 0; edge < 4; ++edge)
+                for (int unit : {1, 2})
+                    QTest::newRow(qPrintable(QStringLiteral("rotation-%1-edge-%2-unit-%3").arg(rotation).arg(edge).arg(unit))) << rotation << edge << unit;
+    }
+    void rotatedPageResize()
+    {
+        QFETCH(int, rotation);
+        QFETCH(int, edge);
+        QFETCH(int, unit);
+        const auto input = m_directory.filePath(QStringLiteral("resize-input.pdf"));
+        auto *ctx = fz_new_context(nullptr, nullptr, FZ_STORE_DEFAULT);
+        auto *doc = pdf_open_document(ctx, sample().toUtf8().constData());
+        auto *object = pdf_lookup_page_obj(ctx, doc, 0);
+        pdf_dict_put_int(ctx, object, PDF_NAME(UserUnit), unit);
+        pdf_dict_put_rect(ctx, object, PDF_NAME(CropBox), fz_make_rect(10, 10, 280, 190));
+        pdf_save_document(ctx, doc, input.toUtf8().constData(), &pdf_default_write_options);
+        pdf_drop_document(ctx, doc);
+        fz_drop_context(ctx);
+        MuPDFGenerator backend(nullptr, {});
+        QList<Okular::Page *> pages;
+        QString error;
+        QCOMPARE(backend.loadDocumentWithPassword(input, pages, {}), Okular::Document::OpenSuccess);
+        Okular::Page *rotated = nullptr;
+        QVERIFY2(backend.rotatePageInDocument(pages[0], 0, rotation, &rotated, &error), qPrintable(error));
+        delete pages[0];
+        pages[0] = rotated;
+        const auto before = backend.renderToImage(0, 72, true);
+        const double x0 = edge == 0 ? -20 : 0, y0 = edge == 3 ? -20 : 0;
+        const double x1 = edge == 2 ? 20 : 0, y1 = edge == 1 ? 20 : 0;
+        Okular::Page *resized = nullptr;
+        QVERIFY2(backend.adjustPageBoxInDocument(pages[0], 0, x0, y0, x1, y1, &resized, &error), qPrintable(error));
+        delete pages[0];
+        pages[0] = resized;
+        const auto after = backend.renderToImage(0, 72, true);
+        QCOMPARE(after.size(), before.size() + QSize(edge % 2 == 0 ? 20 : 0, edge % 2 == 1 ? 20 : 0));
+        QCOMPARE(after.copy(edge == 0 ? 20 : 0, edge == 1 ? 20 : 0, before.width(), before.height()), before);
+        const auto output = m_directory.filePath(QStringLiteral("resize-output.pdf"));
+        QVERIFY2(backend.save(output, Okular::SaveInterface::SaveChanges, &error), qPrintable(error));
+        MuPDFGenerator reopened(nullptr, {});
+        QList<Okular::Page *> fresh;
+        QCOMPARE(reopened.loadDocumentWithPassword(output, fresh, {}), Okular::Document::OpenSuccess);
+        QCOMPARE(reopened.renderToImage(0, 72, true), after);
+        Okular::Page *restored = nullptr;
+        QVERIFY2(backend.adjustPageBoxInDocument(pages[0], 0, -x0, -y0, -x1, -y1, &restored, &error), qPrintable(error));
+        QCOMPARE(backend.renderToImage(0, 72, true), before);
+        delete restored;
         qDeleteAll(pages);
         qDeleteAll(fresh);
     }

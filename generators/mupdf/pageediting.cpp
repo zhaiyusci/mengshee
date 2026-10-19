@@ -217,14 +217,21 @@ bool MuPDFGenerator::adjustPageBoxInDocument(Okular::Page *, int index, double x
     return operation(
         [&] {
             auto *object = pdf_lookup_page_obj(m_context, m_document, index);
-            auto *box = pdf_dict_get_inheritable(m_context, object, PDF_NAME(CropBox));
-            if (!box)
-                box = pdf_dict_get_inheritable(m_context, object, PDF_NAME(MediaBox));
-            auto bounds = pdf_to_rect(m_context, box);
-            bounds.x0 += x0;
-            bounds.y0 += y0;
-            bounds.x1 += x1;
-            bounds.y1 += y1;
+            // The generator exposes dimensions after native /Rotate and /UserUnit.
+            // Deltas arrive in those axes (lower-left origin), whereas PDF boxes
+            // use unrotated user space. Convert the edited display box back using
+            // the original page transform, including crop origin and unit scale.
+            fz_rect media;
+            fz_matrix transform;
+            pdf_page_transform(m_context, m_pages[index], &media, &transform);
+            auto display = pdf_bound_page(m_context, m_pages[index], FZ_CROP_BOX);
+            display.x0 += x0;
+            display.y0 -= y1;
+            display.x1 += x1;
+            display.y1 -= y0;
+            if (!fz_is_valid_rect(display) || fz_is_empty_rect(display) || fz_is_infinite_rect(display))
+                fz_throw(m_context, FZ_ERROR_ARGUMENT, "Invalid page dimensions");
+            const auto bounds = fz_transform_rect(display, fz_invert_matrix(transform));
             if (!fz_is_valid_rect(bounds) || fz_is_empty_rect(bounds) || fz_is_infinite_rect(bounds))
                 fz_throw(m_context, FZ_ERROR_ARGUMENT, "Invalid page dimensions");
             pdf_dict_put_rect(m_context, object, PDF_NAME(CropBox), bounds);

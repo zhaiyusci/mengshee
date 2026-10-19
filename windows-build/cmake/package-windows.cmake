@@ -199,8 +199,6 @@ foreach(_required IN ITEMS
     "bin/data/mengshee/pics/annotation-latex-note.svg"
     "bin/data/mengshee/tessdata/eng.traineddata"
     "bin/Qt6Concurrent.dll"
-    "bin/leptonica-1.87.0.dll"
-    "bin/tesseract55.dll"
     "bin/data/locale/zh_CN/LC_MESSAGES/okular.mo"
     "bin/data/locale/zh_CN/LC_MESSAGES/kconfigwidgets6.mo"
     "bin/data/locale/zh_CN/LC_MESSAGES/kxmlgui6.mo"
@@ -209,12 +207,17 @@ foreach(_required IN ITEMS
 endforeach()
 
 if(EXISTS "${STAGE_ROOT}/bin/plugins/okular_generators/okularGenerator_mupdf.dll")
+    mengshee_validate_file("${STAGE_ROOT}" "bin/MengsheePdfRuntime.dll")
+    # Older install trees may still contain the former dynamically linked OCR engine.
+    file(REMOVE "${STAGE_ROOT}/bin/tesseract55.dll" "${STAGE_ROOT}/bin/leptonica-1.87.0.dll")
     if(EXISTS "${STAGE_ROOT}/bin/poppler.dll" OR EXISTS "${STAGE_ROOT}/bin/plugins/okular_generators/okularGenerator_poppler.dll")
         message(FATAL_ERROR "MuPDF stage contains a stale Poppler runtime")
     endif()
     file(MAKE_DIRECTORY "${STAGE_ROOT}/share/licenses/mupdf")
     file(COPY "${SOURCE_ROOT}/external/mupdf/COPYING" DESTINATION "${STAGE_ROOT}/share/licenses/mupdf")
 else()
+    mengshee_validate_file("${STAGE_ROOT}" "bin/tesseract55.dll")
+    mengshee_validate_file("${STAGE_ROOT}" "bin/leptonica-1.87.0.dll")
     mengshee_validate_file("${STAGE_ROOT}" "share/poppler/cMap/Adobe-GB1/UniGB-UTF16-H")
     mengshee_validate_file("${STAGE_ROOT}" "share/poppler/cidToUnicode/Adobe-GB1")
 endif()

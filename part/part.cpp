@@ -8886,6 +8886,9 @@ void Part::slotPrint()
 #ifdef Q_OS_WIN
     const int currentPrintPage = qMax(1, workspaceActivePageNumber() + 1);
     MengsheePrintDialog printDialog(&printer, m_document->pages(), currentPrintPage, m_document->orientation(), !m_document->bookmarkedPageRange().isEmpty(), printConfigWidget, widget());
+    QString previewError;
+    auto previewRenderer = m_document->createPrintPreviewRenderer(&previewError);
+    printDialog.setPreviewRenderer(std::move(previewRenderer), m_document->bookmarkedPageRange(), previewError);
     connect(&printDialog, &MengsheePrintDialog::paintRequested, this, [this](QPrinter *previewPrinter) { doPrint(*previewPrinter); });
 
     if (printDialog.exec() == QDialog::Accepted) {

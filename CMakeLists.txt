@@ -397,9 +397,15 @@ endif()
 
 add_executable(rectangleinteraction_test EXCLUDE_FROM_ALL autotests/rectangleinteractiontest.cpp)
 target_link_libraries(rectangleinteraction_test PRIVATE Qt6::Test Qt6::Gui)
+add_executable(printpreview_test EXCLUDE_FROM_ALL autotests/printpreviewtest.cpp part/mengsheeprintdialog.cpp)
+target_include_directories(printpreview_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+target_link_libraries(printpreview_test PRIVATE okularcore Qt6::Test Qt6::Widgets Qt6::PrintSupport Qt6::Concurrent KF6::I18n)
+
 if(BUILD_TESTING)
     set_target_properties(rectangleinteraction_test PROPERTIES EXCLUDE_FROM_ALL FALSE)
     add_test(NAME rectangleinteraction_test COMMAND rectangleinteraction_test)
+    set_target_properties(printpreview_test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+    add_test(NAME printpreview_test COMMAND printpreview_test)
 endif()
 
 if(KF6DocTools_FOUND)
@@ -486,6 +492,7 @@ install( FILES
            core/tile.h
            core/utils.h
            core/fileprinter.h
+           core/printpreviewrenderer.h
            core/printoptionswidget.h
            core/observer.h
            ${CMAKE_CURRENT_BINARY_DIR}/core/version.h
@@ -683,7 +690,7 @@ kconfig_add_kcfg_files(okularpart_SRCS GENERATE_MOC conf/settings.kcfgc)
 add_library(okularpart SHARED ${okularpart_SRCS})
 if(MENGSHEE_PDF_BACKEND STREQUAL "MuPDF")
     target_compile_definitions(okularpart PRIVATE MENGSHEE_USE_MUPDF=1)
-    target_link_libraries(okularpart MuPDF::MuPDF)
+    target_link_libraries(okularpart mengshee_pdf_runtime)
 else()
     target_link_libraries(okularpart Poppler::Qt6)
 endif()

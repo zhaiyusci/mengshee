@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+#include "systemfonts.h"
 #include "generator_mupdf.h"
 #include "annots.h"
 #include "pageimport.h"
@@ -15,12 +16,12 @@
 #include <core/page.h>
 #include <core/textpage.h>
 
-K_PLUGIN_CLASS_WITH_JSON(MuPDFGenerator, "libokularGenerator_mupdf.json")
 
 MuPDFGenerator::MuPDFGenerator(QObject *parent, const QVariantList &args)
     : Generator(parent, args)
 {
     m_context = fz_new_context(nullptr, nullptr, FZ_STORE_DEFAULT);
+    MengsheePdfRuntime::installSystemFonts(m_context);
     m_annotations = std::make_unique<MuPDFAnnotationProxy>(this);
     setFeature(TextExtraction);
     setFeature(ReadRawData);
@@ -303,6 +304,61 @@ Okular::Document::PrintError MuPDFGenerator::print(QPrinter &printer)
     return Okular::Document::NoPrintError;
 }
 
+Okular::PrintPreviewRenderer MuPDFGenerator::createPrintPreviewRenderer(QString *error)
+{
+    QMutexLocker lock(userMutex());
+    QByteArray snapshot;
+    fz_buffer *buffer = nullptr;
+    fz_output *output = nullptr;
+    fz_var(buffer);
+    fz_var(output);
+    fz_try(m_context) {
+        buffer = fz_new_buffer(m_context, 0);
+        output = fz_new_output_with_buffer(m_context, buffer);
+        auto options = pdf_default_write_options;
+        options.do_encrypt = PDF_ENCRYPT_NONE;
+        pdf_write_document(m_context, m_document, output, &options);
+        fz_close_output(m_context, output);
+        unsigned char *bytes = nullptr;
+        const auto length = fz_buffer_storage(m_context, buffer, &bytes);
+        snapshot = QByteArray(reinterpret_cast<const char *>(bytes), length);
+    }
+    fz_always(m_context) {
+        fz_drop_output(m_context, output);
+        fz_drop_buffer(m_context, buffer);
+    }
+    fz_catch(m_context) {
+        if (error) *error = QString::fromUtf8(fz_caught_message(m_context));
+        return {};
+    }
+    return [snapshot](int page, QSize maximumPixels) -> Okular::PrintPreviewImage {
+        // A worker owns its context and document. Open only the requested page;
+        // loading every page's annotation model is unnecessary for preview.
+        MuPDFGenerator worker(nullptr, {});
+        worker.m_data = snapshot;
+        auto *ctx = worker.m_context;
+        fz_stream *stream = nullptr;
+        fz_var(stream);
+        fz_rect bounds = fz_empty_rect;
+        fz_try(ctx) {
+            stream = fz_open_memory(ctx, reinterpret_cast<const unsigned char *>(snapshot.constData()), snapshot.size());
+            worker.m_document = pdf_open_document_with_stream(ctx, stream);
+            fz_matrix transform;
+            pdf_page_obj_transform(ctx, pdf_lookup_page_obj(ctx, worker.m_document, page), &bounds, &transform);
+            bounds = fz_transform_rect(bounds, transform);
+        }
+        fz_always(ctx) { fz_drop_stream(ctx, stream); }
+        fz_catch(ctx) { return {{}, QString::fromUtf8(fz_caught_message(ctx))}; }
+        maximumPixels = maximumPixels.boundedTo(QSize(2048, 2048)).expandedTo(QSize(1, 1));
+        QSize pixels(qCeil(bounds.x1 - bounds.x0), qCeil(bounds.y1 - bounds.y0));
+        // Preview at no more than 72 DPI, reducing further for a small pane.
+        pixels.scale(maximumPixels.boundedTo(pixels), Qt::KeepAspectRatio);
+        Okular::PrintPreviewImage result;
+        result.image = worker.render(page, qMax(1, pixels.width()), qMax(1, pixels.height()), true, &result.error);
+        return result;
+    };
+}
+
 bool MuPDFGenerator::supportsOption(SaveOption option) const
 {
     return option == SaveChanges;
@@ -362,7 +418,6 @@ bool MuPDFGenerator::save(const QString &path, SaveOptions, QString *error)
     return true;
 }
 
-#include "generator_mupdf.moc"
 
 MuPDFGenerator::SwapBackingFileResult MuPDFGenerator::swapBackingFile(const QString &path, QList<Okular::Page *> &pages)
 {

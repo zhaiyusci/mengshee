@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #pragma once
 
+#include "mengshee_pdf_runtime_export.h"
 #include <core/generator.h>
 #include <core/numberedcalloutnumberinginterface.h>
 #include <core/readingvieweditinginterface.h>
@@ -11,7 +12,7 @@
 
 class MuPDFAnnotationProxy;
 
-class MuPDFGenerator : public Okular::Generator,
+class MENGSHEE_PDF_RUNTIME_EXPORT MuPDFGenerator : public Okular::Generator, public Okular::PrintPreviewInterface,
                        public Okular::SaveInterface,
                        public Okular::PageInsertionInterface,
                        public Okular::ReadingViewEditingInterface,
@@ -44,6 +45,7 @@ public:
     QVariant metaData(const QString &key, const QVariant &option) const override;
     bool isAllowed(Okular::Permission permission) const override;
     Okular::Document::PrintError print(QPrinter &printer) override;
+    Okular::PrintPreviewRenderer createPrintPreviewRenderer(QString *error) override;
     QImage image(Okular::PixmapRequest *) override;
     bool canRenderToImage() const override
     {
