@@ -116,7 +116,12 @@ message(STATUS "  Version     : ${VERSION}")
 
 mengshee_validate_file("${INSTALL_PREFIX}" "bin/mengshee.exe")
 mengshee_sync_tree("${INSTALL_PREFIX}/bin" "${STAGE_ROOT}/bin" "${STAGE_ROOT}")
-file(REMOVE "${STAGE_ROOT}/bin/vc_redist.x64.exe")
+# Keep development-only artifacts out of the distributed runtime.
+file(GLOB_RECURSE _debug_artifacts "${STAGE_ROOT}/bin/*.pdb" "${STAGE_ROOT}/bin/*.ilk")
+if(_debug_artifacts)
+    file(REMOVE ${_debug_artifacts})
+endif()
+file(REMOVE "${STAGE_ROOT}/bin/vc_redist.x64.exe" "${STAGE_ROOT}/bin/Mengshee-Test.cmd")
 
 # These fonts belong to the mandatory core component, never StemTeX support.
 include("${CMAKE_CURRENT_LIST_DIR}/pdf-base14-fonts.cmake")
