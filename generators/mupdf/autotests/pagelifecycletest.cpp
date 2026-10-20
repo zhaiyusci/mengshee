@@ -16,6 +16,28 @@
 class PageLifecycleTest : public QObject {
     Q_OBJECT
 private Q_SLOTS:
+    void tiledZoomRequestsNewResolution() {
+        Okular::SettingsCore::instance(QStringLiteral("mupdf-page-lifecycle-test"));
+        QTemporaryDir directory;
+        const auto file = directory.filePath(QStringLiteral("zoom.pdf"));
+        { QPdfWriter writer(file); QPainter painter(&writer); painter.drawText(100, 100, QStringLiteral("Sharp text")); }
+        Okular::Document document(nullptr);
+        QCOMPARE(document.openDocument(file, QUrl::fromLocalFile(file), QMimeDatabase().mimeTypeForName(QStringLiteral("application/pdf"))), Okular::Document::OpenSuccess);
+        Okular::DocumentObserver observer;
+        document.addObserver(&observer);
+        const auto cleanup = qScopeGuard([&] { document.removeObserver(&observer); });
+        const Okular::NormalizedRect visible(.01, .01, .02, .02);
+        // A small visible region of a large raster forces the tiled path even
+        // on high-DPI monitors, without allocating a whole-page bitmap.
+        for (int size : {20000, 30000, 15000}) {
+            auto *request = new Okular::PixmapRequest(&observer, 0, size, size, 1.0, 1, Okular::PixmapRequest::Asynchronous);
+            request->setNormalizedRect(visible);
+            request->setTile(document.page(0)->hasTilesManager(&observer));
+            document.requestPixmaps({request});
+            QTRY_VERIFY_WITH_TIMEOUT(document.page(0)->hasPixmap(&observer, size, size, visible), 10000);
+            QVERIFY(document.page(0)->hasTilesManager(&observer));
+        }
+    }
     void pageNumberBoundaries() {
         Okular::SettingsCore::instance(QStringLiteral("mupdf-page-lifecycle-test"));
         QTemporaryDir directory;

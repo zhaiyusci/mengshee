@@ -3994,12 +3994,15 @@ void Document::requestPixmaps(const QList<PixmapRequest *> &requests, PixmapRequ
         request->d->mPage = d->m_pagesVector.value(request->pageNumber());
 
         if (request->isTile()) {
-            // Change the current request rect so that only invalid tiles are
-            // requested. Also make sure the rect is tile-aligned.
+            // Cache validity belongs to its raster size. A tile rendered before
+            // a zoom change cannot satisfy a request at the new resolution.
+            // Do not resize the manager here: an older request may still run.
+            auto *manager = request->d->tilesManager();
+            const bool sizeChanged = manager->width() != request->width() || manager->height() != request->height();
             NormalizedRect tilesRect;
-            const QList<Tile> tiles = request->d->tilesManager()->tilesAt(request->normalizedRect(), TilesManager::TerminalTile);
+            const QList<Tile> tiles = manager->tilesAt(request->normalizedRect(), TilesManager::TerminalTile);
             for (const Tile &tile : tiles) {
-                if (!tile.isValid()) {
+                if (sizeChanged || !tile.isValid()) {
                     if (tilesRect.isNull()) {
                         tilesRect = tile.rect();
                     } else {
