@@ -14,26 +14,30 @@
 #include <QCheckBox>
 #include <QColorDialog>
 #include <QComboBox>
+#include <QContextMenuEvent>
 #include <QDialog>
-#include <QDir>
-#include <QPointer>
 #include <QDialogButtonBox>
+#include <QDir>
 #include <QDomDocument>
 #include <QDoubleSpinBox>
 #include <QFileDialog>
 #include <QFileInfo>
-#include <QFormLayout>
 #include <QFont>
+#include <QFormLayout>
 #include <QHash>
 #include <QLabel>
 #include <QLineEdit>
-#include <QPushButton>
 #include <QMenu>
+#include <QMouseEvent>
 #include <QPainter>
 #include <QPainterPath>
 #include <QPen>
+#include <QPointer>
+#include <QPushButton>
 #include <QStandardPaths>
 #include <QStringList>
+#include <QTimer>
+#include <QToolButton>
 #include <QVBoxLayout>
 #include <QWidget>
 
@@ -136,7 +140,6 @@ public:
         , aExportNumberedCallouts(nullptr)
         , aAddTemplateNote(nullptr)
         , aAddToQuickTools(nullptr)
-        , aContinuousMode(nullptr)
         , aConstrainRatioAndAngle(nullptr)
         , aWidth(nullptr)
         , aColor(nullptr)
@@ -225,7 +228,6 @@ public:
     QAction *aExportNumberedCallouts;
     QAction *aAddTemplateNote;
     QAction *aAddToQuickTools;
-    KToggleAction *aContinuousMode;
     KToggleAction *aConstrainRatioAndAngle;
     KSelectAction *aWidth;
     KSelectAction *aColor;
@@ -414,7 +416,9 @@ void AnnotationActionHandlerPrivate::parseTool(int toolId)
         return;
     }
 
-    QDomElement toolElement = annotator->builtinTool(toolId);
+    QDomElement toolElement = annotator->activeTool();
+    if (toolElement.isNull())
+        toolElement = annotator->builtinTool(toolId);
     QString annotType = toolElement.attribute(QStringLiteral("type"));
     QDomElement engineElement = toolElement.firstChildElement(QStringLiteral("engine"));
     QDomElement annElement = engineElement.firstChildElement(QStringLiteral("annotation"));
@@ -464,7 +468,7 @@ void AnnotationActionHandlerPrivate::parseTool(int toolId)
     }
 
     currentFontName = normalizedPdfBase14FontName(annElement.attribute(QStringLiteral("fontName"), QStringLiteral("Helvetica")));
-    currentFontPointSize = annElement.attribute(QStringLiteral("fontSize"), QStringLiteral("10")).toDouble();
+    currentFontPointSize = annElement.attribute(latexStamp ? QStringLiteral("latexFontSize") : QStringLiteral("fontSize"), QStringLiteral("10")).toDouble();
     if (currentFontPointSize <= 0) {
         currentFontPointSize = 10.0;
     }
@@ -496,7 +500,7 @@ void AnnotationActionHandlerPrivate::parseTool(int toolId)
     }
 
     // if the tool is a custom stamp, insert a new action in the stamp list
-    if (annotType == QStringLiteral("stamp")) {
+    if (annotType == QStringLiteral("stamp") && toolElement.attribute(QStringLiteral("defaultsKey")) != QLatin1String("image-note")) {
         const QString stampImagePath = annElement.attribute(QStringLiteral("imagePath"));
         maybeUpdateCustomStampAction(stampImagePath.isEmpty() ? annElement.attribute(QStringLiteral("icon")) : stampImagePath);
     }
@@ -799,25 +803,23 @@ void AnnotationActionHandlerPrivate::slotSelectCustomStamp()
         return;
     }
 
-    slotStampToolSelected(customStampFile);
+    // An image is content for this insertion, not a reusable stamp preset.
+    selectedBuiltinTool = annotator->selectStampTool(customStampFile);
+    if (selectedBuiltinTool != -1) {
+        parseTool(selectedBuiltinTool);
+    }
 }
 
 void AnnotationActionHandlerPrivate::slotAddLatexNote(bool boxed, bool callout, bool ordered)
 {
     const QString latexInput = QStringLiteral("\\LaTeX");
-    QColor textColor = currentTextColor.isValid() && currentTextColor.alpha() != 0 ? currentTextColor : Qt::black;
-    QColor fillColor = (boxed || callout) ? currentInnerColor : Qt::transparent;
-    if ((boxed || callout) && (!fillColor.isValid() || fillColor.alpha() == 0)) {
-        fillColor = callout ? Qt::white : Qt::yellow;
-    }
-    QColor borderColor = (boxed || callout) ? currentColor : Qt::transparent;
-    if ((boxed || callout) && (!borderColor.isValid() || borderColor.alpha() == 0)) {
-        borderColor = textColor;
-    }
+    const QColor textColor = Qt::black;
+    const QColor fillColor = (boxed || callout) ? (callout ? Qt::white : Qt::yellow) : Qt::transparent;
+    const QColor borderColor = (boxed || callout) ? Qt::black : Qt::transparent;
 
     selectedBuiltinTool = annotator->selectLatexStampTool(LatexNoteUtils::defaultLatexAppearancePdfFileName(), latexInput, boxed, textColor, fillColor, borderColor, callout, ordered);
     if (selectedBuiltinTool != -1) {
-        updateConfigActions(callout ? QStringLiteral("note-callout") : (boxed ? QStringLiteral("note-inline") : QStringLiteral("typewriter")));
+        parseTool(selectedBuiltinTool);
     }
 }
 
@@ -915,6 +917,7 @@ void AnnotationActionHandlerPrivate::slotNumberedCalloutFormat()
 void AnnotationActionHandlerPrivate::slotAddTemplateNote()
 {
     selectedBuiltinTool = annotator->selectTemplateTextTool(TemplateNoteUtils::defaultPageNumberTemplateData(), QStringLiteral("1 / 1"));
+    parseTool(selectedBuiltinTool);
     if (selectedBuiltinTool != -1) {
         updateConfigActions(QStringLiteral("note-inline"));
     }
@@ -1011,6 +1014,7 @@ AnnotationActionHandler::AnnotationActionHandler(PageViewAnnotator *parent, KAct
     , d(new AnnotationActionHandlerPrivate(this))
 {
     d->annotator = parent;
+    qApp->installEventFilter(this);
 
     // Text markup actions
     KToggleAction *aHighlighter = new KToggleAction(d->mengsheeIcon(QStringLiteral("annotation-highlight.svg")), i18nc("@action:intoolbar Annotation tool", "Highlighter"), this);
@@ -1178,9 +1182,6 @@ AnnotationActionHandler::AnnotationActionHandler(PageViewAnnotator *parent, KAct
     d->aAddToQuickTools = new QAction(d->mengsheeIcon(QStringLiteral("annotation-favorite.svg")), i18nc("@action:intoolbar Add current annotation tool to the quick annotations list", "Add to Quick Annotations"), this);
 
     // Pin action
-    d->aContinuousMode = new KToggleAction(d->mengsheeIcon(QStringLiteral("annotation-pin.svg")), i18nc("@action:intoolbar When checked keep the current annotation tool active after use", "Keep Active"), this);
-    d->aContinuousMode->setToolTip(i18nc("@info:tooltip", "Keep the annotation tool active after use"));
-    d->aContinuousMode->setChecked(d->annotator->continuousMode());
 
     // Constrain angle action
     d->aConstrainRatioAndAngle =
@@ -1213,7 +1214,6 @@ AnnotationActionHandler::AnnotationActionHandler(PageViewAnnotator *parent, KAct
     }
 
     connect(d->aAddToQuickTools, &QAction::triggered, d->annotator, &PageViewAnnotator::addToQuickAnnotations);
-    connect(d->aContinuousMode, &QAction::toggled, d->annotator, &PageViewAnnotator::setContinuousMode);
     connect(d->aConstrainRatioAndAngle, &QAction::toggled, d->annotator, &PageViewAnnotator::setConstrainRatioAndAngle);
     connect(d->aAdvancedSettings, &QAction::triggered, d->annotator, &PageViewAnnotator::slotAdvancedSettings);
     connect(d->aFont, &QAction::triggered, std::bind(&AnnotationActionHandlerPrivate::slotSelectAnnotationFont, d));
@@ -1269,7 +1269,6 @@ AnnotationActionHandler::AnnotationActionHandler(PageViewAnnotator *parent, KAct
     ac->addAction(QStringLiteral("annotation_add_template_note"), d->aAddTemplateNote);
     ac->addAction(QStringLiteral("annotation_favorites"), d->aQuickTools);
     ac->addAction(QStringLiteral("annotation_bookmark"), d->aAddToQuickTools);
-    ac->addAction(QStringLiteral("annotation_settings_pin"), d->aContinuousMode);
     ac->addAction(QStringLiteral("annotation_constrain_ratio_angle"), d->aConstrainRatioAndAngle);
     ac->addAction(QStringLiteral("annotation_settings_width"), d->aWidth);
     ac->addAction(QStringLiteral("annotation_settings_color"), d->aColor);
@@ -1310,6 +1309,67 @@ void AnnotationActionHandler::reparseQuickToolsConfig()
     d->populateQuickAnnotations();
 }
 
+bool AnnotationActionHandler::eventFilter(QObject *watched, QEvent *event)
+{
+    const bool mousePress = event->type() == QEvent::MouseButtonPress;
+    const bool mouseRelease = event->type() == QEvent::MouseButtonRelease;
+    const bool contextMenu = event->type() == QEvent::ContextMenu;
+    if (!mousePress && !mouseRelease && !contextMenu)
+        return QObject::eventFilter(watched, event);
+    if ((mousePress || mouseRelease) && static_cast<QMouseEvent *>(event)->button() != Qt::RightButton)
+        return false;
+    QAction *action = nullptr;
+    if (auto *button = qobject_cast<QToolButton *>(watched))
+        action = button->defaultAction();
+    else if (auto *menu = qobject_cast<QMenu *>(watched))
+        action = menu->actionAt(contextMenu ? static_cast<QContextMenuEvent *>(event)->pos() : static_cast<QMouseEvent *>(event)->position().toPoint());
+    if (!action || !action->isEnabled())
+        return false;
+    if (auto *menu = qobject_cast<ToggleActionMenu *>(action))
+        action = menu->defaultAction();
+    const bool builtin = d->builtinToolForAction.contains(action);
+    const bool quick = d->quickToolForAction.contains(action);
+    const bool latex = action == d->aAddLatexNote || action == d->aAddLatexInlineNote || action == d->aAddLatexCallout || action == d->aAddOrderedCallout;
+    const bool stamp = action == d->aSelectCustomStamp || d->aStamp->menu()->actions().contains(action);
+    if (!builtin && !quick && !latex && !stamp && action != d->aAddTemplateNote)
+        return false;
+    // The application toolbars suppress native context menus. Handle the actual
+    // right click before that policy, and consume its synthetic menu event so
+    // one click opens exactly one dialog. Keyboard context menus still work.
+    if (mousePress || (contextMenu && static_cast<QContextMenuEvent *>(event)->reason() == QContextMenuEvent::Mouse)) {
+        event->accept();
+        return true;
+    }
+    // Do not trigger the action: markup actions can modify a text selection and
+    // the image action opens a file picker. Right click only edits defaults.
+    const QPointer<QAction> target(action);
+    if (auto *menu = qobject_cast<QMenu *>(watched))
+        menu->close();
+    QTimer::singleShot(0, this, [this, target, builtin, quick, latex, stamp]() {
+        if (!target)
+            return;
+        const int previousId = d->selectedBuiltinTool;
+        d->annotator->editToolDefaults([&]() {
+            if (builtin)
+                d->selectTool(d->builtinToolForAction.value(target));
+            else if (quick)
+                d->annotator->selectQuickTool(d->quickToolForAction.value(target));
+            else if (latex)
+                d->slotAddLatexNote(target != d->aAddLatexNote, target == d->aAddLatexCallout || target == d->aAddOrderedCallout, target == d->aAddOrderedCallout);
+            else if (target == d->aSelectCustomStamp || target == d->aCustomStamp)
+                d->annotator->selectStampTool(QString(), true);
+            else if (stamp)
+                d->annotator->selectBuiltinToolByType(QStringLiteral("stamp"), QString(), PageViewAnnotator::ShowTip::No);
+            else
+                d->slotAddTemplateNote();
+        });
+        d->selectedBuiltinTool = previousId;
+        d->parseTool(previousId);
+    });
+    event->accept();
+    return true;
+}
+
 void AnnotationActionHandler::setToolsEnabled(bool on)
 {
     const QList<QAction *> tools = d->agTools->actions();
@@ -1329,7 +1389,6 @@ void AnnotationActionHandler::setToolsEnabled(bool on)
     d->aExportNumberedCallouts->setEnabled(document && document->isOpened());
     d->aNumberedCalloutFormat->setEnabled(document && document->canEditNumberedCalloutNumbering());
     d->aAddTemplateNote->setEnabled(on);
-    d->aContinuousMode->setEnabled(on);
 }
 
 void AnnotationActionHandler::setTextToolsEnabled(bool on)

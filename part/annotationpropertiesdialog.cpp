@@ -97,13 +97,16 @@ AnnotsPropertiesDialog::AnnotsPropertiesDialog(QWidget *parent, Okular::Document
 {
     setFaceType(Tabbed);
     m_annot = ann;
-    const bool canEditAnnotations = m_document->canModifyPageAnnotation(ann);
+    const bool canEditAnnotations = !m_document || m_document->canModifyPageAnnotation(ann);
     setCaptionTextbyAnnotType();
     if (canEditAnnotations) {
         setStandardButtons(QDialogButtonBox::Ok | QDialogButtonBox::Apply | QDialogButtonBox::Cancel);
         button(QDialogButtonBox::Apply)->setEnabled(false);
         connect(button(QDialogButtonBox::Apply), &QPushButton::clicked, this, &AnnotsPropertiesDialog::slotapply);
-        connect(button(QDialogButtonBox::Ok), &QPushButton::clicked, this, &AnnotsPropertiesDialog::slotapply);
+        if (m_document)
+            connect(button(QDialogButtonBox::Ok), &QPushButton::clicked, this, &AnnotsPropertiesDialog::slotapply);
+        else
+            connect(this, &QDialog::accepted, this, &AnnotsPropertiesDialog::slotapply);
     } else {
         setStandardButtons(QDialogButtonBox::Close);
         button(QDialogButtonBox::Close)->setDefault(true);
@@ -118,6 +121,21 @@ AnnotsPropertiesDialog::AnnotsPropertiesDialog(QWidget *parent, Okular::Document
     appearanceWidget->setEnabled(canEditAnnotations);
     addPage(appearanceWidget, i18n("&Appearance"));
     // END tab1
+
+    if (!m_document) {
+        setWindowTitle(i18n("Default annotation style"));
+        // Image insertion chooses its source per insertion, not as a style.
+        if (ann->subType() == Okular::Annotation::AStamp && static_cast<Okular::StampAnnotation *>(ann)->stampIconName() == QLatin1String("Image")) {
+            for (auto *selector : appearanceWidget->findChildren<PixmapPreviewSelector *>()) {
+                if (auto *form = qobject_cast<QFormLayout *>(selector->parentWidget()->layout()))
+                    form->setRowVisible(selector, false);
+            }
+        }
+        setStandardButtons(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
+        connect(m_annotWidget, &AnnotationWidget::dataChanged, this, &AnnotsPropertiesDialog::setModified);
+        resize(sizeHint());
+        return;
+    }
 
     // BEGIN tab 2
     QFrame *page = new QFrame(this);
@@ -236,15 +254,20 @@ void AnnotsPropertiesDialog::setCaptionTextbyAnnotType()
 
 void AnnotsPropertiesDialog::setModified()
 {
-    if (!m_document->canModifyPageAnnotation(m_annot)) {
+    if (m_document && !m_document->canModifyPageAnnotation(m_annot)) {
         return;
     }
     modified = true;
-    button(QDialogButtonBox::Apply)->setEnabled(true);
+    if (m_document)
+        button(QDialogButtonBox::Apply)->setEnabled(true);
 }
 
 void AnnotsPropertiesDialog::slotapply()
 {
+    if (!m_document) {
+        m_annotWidget->applyChanges();
+        return;
+    }
     if (!modified || !m_document->canModifyPageAnnotation(m_annot)) {
         return;
     }

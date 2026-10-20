@@ -49,10 +49,10 @@ QByteArray appearanceStream(const QRectF &sourceBox, const Options &options, int
     const bool fill = options.fillColor.isValid() && options.fillColor.alpha() != 0;
     QByteArray out("/GS0 gs\n");
 
-    // Same three-point leader and open-arrow geometry used by existing notes.
+    // Match MuPDF FreeText OpenArrow geometry, including short leaders.
     // It is outside the source-only clip, including zero-width frame borders.
     if (options.leaderLine.size() == 3 && visibleBorder) {
-        const double width = std::max(1.0, options.borderWidth);
+        const double width = std::max(0.0, options.borderWidth);
         const QPointF p1 = options.leaderLine[0], p2 = options.leaderLine[1], p3 = options.leaderLine[2];
         out += "q\n";
         color(out, border, false);
@@ -63,9 +63,10 @@ QByteArray appearanceStream(const QRectF &sourceBox, const Options &options, int
         out += "S\n";
         const double length = std::hypot(p2.x() - p1.x(), p2.y() - p1.y());
         if (length > 0.0) {
-            const double size = std::min(std::max(6.0, 6.0 * width), length / 2.0);
+            const double scale = std::max(1.0, width);
+            const double size = 8.8 * scale;
             const double ux = (p2.x() - p1.x()) / length, uy = (p2.y() - p1.y()) / length;
-            const double wing = size / std::sqrt(3.0);
+            const double wing = 4.5 * scale;
             point(out, QPointF(p1.x() + size * ux + wing * uy, p1.y() + size * uy - wing * ux), "m");
             point(out, p1, "l");
             point(out, QPointF(p1.x() + size * ux - wing * uy, p1.y() + size * uy + wing * ux), "l");

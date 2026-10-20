@@ -56,19 +56,193 @@ class LatexRotationTest : public QObject
         return total <= quint64(actual.width() * actual.height());
     }
 private Q_SLOTS:
+    void freeTextSurvivesNeighbourEdit()
+    {
+        QTemporaryDir dir;
+        const auto source = dir.filePath(QStringLiteral("page.pdf"));
+        {
+            QPdfWriter writer(source);
+            writer.setResolution(72);
+            writer.setPageSize(QPageSize(QSizeF(300, 300), QPageSize::Point));
+            writer.setPageMargins(QMarginsF());
+            QPainter painter(&writer);
+            painter.fillRect(0, 0, 300, 300, Qt::white);
+        }
+        const auto appearance = dir.filePath(QStringLiteral("appearance.pdf"));
+        {
+            QPdfWriter writer(appearance);
+            writer.setResolution(72);
+            QPainter painter(&writer);
+            painter.drawText(30, 30, QStringLiteral("Latex"));
+        }
+        MuPDFGenerator backend(nullptr, {});
+        QList<Okular::Page *> pages;
+        QCOMPARE(backend.loadDocumentWithPassword(source, pages, {}), Okular::Document::OpenSuccess);
+        Okular::TextAnnotation text;
+        text.setTextType(Okular::TextAnnotation::InPlace);
+        text.setContents(QStringLiteral("Keep this text visible"));
+        text.setBoundingRectangle({.1, .1, .8, .25});
+        text.setTextFontName(QStringLiteral("Helvetica"));
+        text.setTextFontPointSize(14);
+        text.setTextColor(Qt::black);
+        backend.annotationProxy()->notifyAddition(&text, 0);
+        Okular::TextAnnotation second;
+        second.setTextType(Okular::TextAnnotation::InPlace);
+        second.setContents(QStringLiteral("Second text must also remain visible"));
+        second.setBoundingRectangle({.1, .3, .9, .45});
+        second.setTextColor(Qt::black);
+        backend.annotationProxy()->notifyAddition(&second, 0);
+        const auto before = backend.renderToImage(0, 72, true).copy(0, 0, 300, 150);
+        QVERIFY(before != backend.renderToImage(0, 72, false).copy(0, 0, 300, 150));
+        Okular::StampAnnotation latex;
+        latex.setOkularLatex(true);
+        latex.setLatexAppearancePdfFileName(appearance);
+        latex.setBoundingRectangle({.1, .5, .6, .8});
+        backend.annotationProxy()->notifyAddition(&latex, 0);
+        for (int i = 0; i < 3; ++i) {
+            latex.setContents(QString::number(i));
+            backend.annotationProxy()->notifyModification(&latex, 0, true);
+            QCOMPARE(backend.renderToImage(0, 72, true).copy(0, 0, 300, 150), before);
+        }
+        QString error;
+        const auto saved = dir.filePath(QStringLiteral("saved.pdf"));
+        QVERIFY(backend.save(saved, Okular::SaveInterface::SaveChanges, &error));
+        verifyFreeTextStorage(saved, false, 0);
+        MuPDFGenerator reopened(nullptr, {});
+        QList<Okular::Page *> fresh;
+        QCOMPARE(reopened.loadDocumentWithPassword(saved, fresh, {}), Okular::Document::OpenSuccess);
+        QCOMPARE(reopened.renderToImage(0, 72, true).copy(0, 0, 300, 150), before);
+        auto *edited = fresh[0]->annotations().last();
+        for (int i = 0; i < 3; ++i) {
+            edited->setContents(QString::number(i));
+            reopened.annotationProxy()->notifyModification(edited, 0, true);
+            QCOMPARE(reopened.renderToImage(0, 72, true).copy(0, 0, 300, 150), before);
+        }
+        qDeleteAll(fresh);
+        qDeleteAll(pages);
+    }
+    void matchingCalloutArrows_data()
+    {
+        QTest::addColumn<double>("width");
+        QTest::addColumn<bool>("shortLeader");
+        for (double width : {0.5, 1.0, 3.0})
+            for (bool shortLeader : {false, true})
+                QTest::newRow(qPrintable(QStringLiteral("%1-%2").arg(width).arg(shortLeader))) << width << shortLeader;
+    }
+    void matchingCalloutArrows()
+    {
+        QFETCH(double, width);
+        QFETCH(bool, shortLeader);
+        QTemporaryDir dir;
+        const auto source = dir.filePath(QStringLiteral("blank.pdf"));
+        { QPdfWriter writer(source); writer.setResolution(72); writer.setPageSize(QPageSize(QSizeF(300,300),QPageSize::Point)); writer.setPageMargins(QMarginsF()); QPainter painter(&writer); painter.fillRect(0,0,300,300,Qt::white); }
+        MuPDFGenerator backend(nullptr, {}); QList<Okular::Page *> pages;
+        QCOMPARE(backend.loadDocumentWithPassword(source,pages,{}),Okular::Document::OpenSuccess);
+        Okular::TextAnnotation text;
+        text.setTextType(Okular::TextAnnotation::InPlace); text.setInplaceIntent(Okular::TextAnnotation::Callout);
+        text.setBoundingRectangle({.65,.1,.95,.4}); text.style().setWidth(width); text.setTextColor(Qt::black);
+        const Okular::NormalizedPoint points[] = {{.2,.7},{shortLeader ? .21 : .5,.7},{.65,.3}};
+        for(int i=0;i<3;++i) text.setInplaceCallout(points[i],i);
+        backend.annotationProxy()->notifyAddition(&text,0);
+        const auto ordinary=backend.renderToImage(0,144,true).copy(20,320,220,200);
+        backend.annotationProxy()->notifyRemoval(&text,0);
+        Okular::StampAnnotation latex;
+        latex.setOkularLatex(true); latex.setLatexNoteType(Okular::Annotation::LatexNoteCallout);
+        latex.setLatexAppearancePdfFileName(source); latex.setBoundingRectangle(text.boundingRectangle());
+        latex.style().setWidth(width); latex.setLatexBorderColor(Qt::black);
+        for(int i=0;i<3;++i) latex.setLatexCalloutPoint(points[i],i);
+        backend.annotationProxy()->notifyAddition(&latex,0);
+        QVERIFY(samePixels(backend.renderToImage(0,144,true).copy(20,320,220,200),ordinary));
+        qDeleteAll(pages);
+    }
+    void plainCalloutLeader_data()
+    {
+        QTest::addColumn<int>("angle");
+        for (int angle : {0, 90, 180, 270})
+            QTest::newRow(qPrintable(QString::number(angle))) << angle;
+    }
+    void plainCalloutLeader()
+    {
+        QTemporaryDir dir;
+        const auto source = dir.filePath(QStringLiteral("page.pdf"));
+        {
+            QPdfWriter writer(source);
+            writer.setResolution(72);
+            writer.setPageSize(QPageSize(QSizeF(300, 300), QPageSize::Point));
+            writer.setPageMargins(QMarginsF());
+            QPainter painter(&writer);
+            painter.fillRect(0, 0, 300, 300, Qt::white);
+        }
+        MuPDFGenerator backend(nullptr, {});
+        QList<Okular::Page *> pages;
+        QCOMPARE(backend.loadDocumentWithPassword(source, pages, {}), Okular::Document::OpenSuccess);
+        QFETCH(int, angle);
+        QString rotationError;
+        Okular::Page *rotated = nullptr;
+        QVERIFY(backend.rotatePageInDocument(pages[0], 0, angle, &rotated, &rotationError));
+        delete pages[0];
+        pages[0] = rotated;
+        Okular::TextAnnotation text;
+        text.setTextType(Okular::TextAnnotation::InPlace);
+        text.setInplaceIntent(Okular::TextAnnotation::Callout);
+        text.setContents(QStringLiteral("Callout"));
+        text.setTextColor(Qt::black);
+        text.setBoundingRectangle({.5, .2, .9, .4});
+        text.setInplaceCallout({.1, .7}, 0);
+        text.setInplaceCallout({.3, .3}, 1);
+        text.setInplaceCallout({.5, .3}, 2);
+        backend.annotationProxy()->notifyAddition(&text, 0);
+        const auto image = backend.renderToImage(0, 72, true);
+        QVERIFY(image.copy(20, 80, 120, 140) != backend.renderToImage(0, 72, false).copy(20, 80, 120, 140));
+        QString error;
+        const auto saved = dir.filePath(QStringLiteral("saved.pdf"));
+        QVERIFY(backend.save(saved, Okular::SaveInterface::SaveChanges, &error));
+        verifyFreeTextStorage(saved, false, angle);
+        MuPDFGenerator reopened(nullptr, {});
+        QList<Okular::Page *> fresh;
+        QCOMPARE(reopened.loadDocumentWithPassword(saved, fresh, {}), Okular::Document::OpenSuccess);
+        QVERIFY(samePixels(reopened.renderToImage(0, 72, true), image));
+        auto *loaded = dynamic_cast<Okular::TextAnnotation *>(fresh[0]->annotations()[0]);
+        QVERIFY(loaded);
+        QCOMPARE(loaded->inplaceIntent(), Okular::TextAnnotation::Callout);
+        const auto originalRect = text.boundingRectangle(), loadedRect = loaded->boundingRectangle();
+        QVERIFY2(qAbs(originalRect.left - loadedRect.left) < .001, qPrintable(QStringLiteral("expected %1 actual %2").arg(originalRect.left).arg(loadedRect.left)));
+        QVERIFY(qAbs(originalRect.top - loadedRect.top) < .001);
+        auto movedRect = loadedRect;
+        movedRect.left += .05;
+        movedRect.right += .05;
+        movedRect.top += .05;
+        movedRect.bottom += .05;
+        loaded->setBoundingRectangle(movedRect);
+        for (int i = 0; i < 3; ++i) {
+            auto point = loaded->inplaceCallout(i);
+            point.x += .05;
+            point.y += .05;
+            loaded->setInplaceCallout(point, i);
+        }
+        reopened.annotationProxy()->notifyModification(loaded, 0, false);
+        QImage expected(image.size(), image.format());
+        expected.fill(Qt::white);
+        {
+            QPainter painter(&expected);
+            painter.drawImage(15, 15, image);
+        }
+        QVERIFY(samePixels(reopened.renderToImage(0, 72, true), expected));
+        qDeleteAll(fresh);
+        qDeleteAll(pages);
+    }
     void standardFreeTextBaseline()
     {
         QTemporaryDir dir;
         const QByteArray stream("BT /F1 12 Tf 1 0 0 1 4 30 Tm (Baseline) Tj ET");
-        QList<QByteArray> objects {
-            "<< /Type /Catalog /Pages 2 0 R >>",
-            "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 400] /Resources <<>> /Annots [4 0 R] >>",
-            "<< /Type /Annot /Subtype /FreeText /Rect [60 80 120 200] /DA (/Helv 12 Tf 0 g) /Contents (Baseline) /F 4 /AP << /N 5 0 R >> >>",
-            "<< /Type /XObject /Subtype /Form /BBox [0 0 120 60] /Matrix [0 1 -1 0 0 0] /Resources << /Font << /F1 6 0 R >> >> /Length "+QByteArray::number(stream.size())+" >>\nstream\n"+stream+"\nendstream",
-            "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"
-        };
-        QByteArray pdf("%PDF-1.7\n");QList<int> offsets;
+        QList<QByteArray> objects {"<< /Type /Catalog /Pages 2 0 R >>",
+                                   "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+                                   "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 400] /Resources <<>> /Annots [4 0 R] >>",
+                                   "<< /Type /Annot /Subtype /FreeText /Rect [60 80 120 200] /DA (/Helv 12 Tf 0 g) /Contents (Baseline) /F 4 /AP << /N 5 0 R >> >>",
+                                   "<< /Type /XObject /Subtype /Form /BBox [0 0 120 60] /Matrix [0 1 -1 0 0 0] /Resources << /Font << /F1 6 0 R >> >> /Length " + QByteArray::number(stream.size()) + " >>\nstream\n" + stream + "\nendstream",
+                                   "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"};
+        QByteArray pdf("%PDF-1.7\n");
+        QList<int> offsets;
         for(int i=0;i<objects.size();++i) {offsets.append(pdf.size());pdf+=QByteArray::number(i+1)+" 0 obj\n"+objects[i]+"\nendobj\n";}
         const int xref=pdf.size();pdf+="xref\n0 7\n0000000000 65535 f \n";
         for(int offset:offsets)pdf+=QByteArray::number(offset).rightJustified(10,'0')+" 00000 n \n";

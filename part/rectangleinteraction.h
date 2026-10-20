@@ -113,6 +113,31 @@ public:
             initial.setBottom(qBound(initial.top() + minHeight, initial.bottom() + second.y(), bottom));
         return initial;
     }
+    // Scale about the opposite corner, or the opposite edge's midpoint.
+    // A single scale factor also preserves physical aspect ratio when callers
+    // use normalized page coordinates or rotate the page by quarter turns.
+    static QRectF dragProportional(const QRectF &initial, Handle handle, QPointF delta, QSizeF minimum, const QRectF &bounds = {})
+    {
+        if (!initial.isValid() || handle == Handle::None || handle == Handle::Move)
+            return drag(initial, handle, {}, delta, minimum, bounds);
+        const bool horizontal = hasEdge(handle, Handle::Left) || hasEdge(handle, Handle::Right);
+        const bool vertical = hasEdge(handle, Handle::Top) || hasEdge(handle, Handle::Bottom);
+        const QPointF anchor(hasEdge(handle, Handle::Left) ? initial.right() : hasEdge(handle, Handle::Right) ? initial.left() : initial.center().x(),
+                             hasEdge(handle, Handle::Top) ? initial.bottom() : hasEdge(handle, Handle::Bottom) ? initial.top() : initial.center().y());
+        const qreal dx = (hasEdge(handle, Handle::Left) ? -delta.x() : delta.x()) / initial.width();
+        const qreal dy = (hasEdge(handle, Handle::Top) ? -delta.y() : delta.y()) / initial.height();
+        qreal scale = 1 + (horizontal && (!vertical || qAbs(dx) >= qAbs(dy)) ? dx : dy);
+        const qreal minScale = qMin(qreal(1), qMax(minimum.width() / initial.width(), minimum.height() / initial.height()));
+        qreal maxScale = std::numeric_limits<qreal>::max();
+        if (bounds.isValid()) {
+            if (anchor.x() > initial.left()) maxScale = qMin(maxScale, (anchor.x() - bounds.left()) / (anchor.x() - initial.left()));
+            if (anchor.x() < initial.right()) maxScale = qMin(maxScale, (bounds.right() - anchor.x()) / (initial.right() - anchor.x()));
+            if (anchor.y() > initial.top()) maxScale = qMin(maxScale, (anchor.y() - bounds.top()) / (anchor.y() - initial.top()));
+            if (anchor.y() < initial.bottom()) maxScale = qMin(maxScale, (bounds.bottom() - anchor.y()) / (initial.bottom() - anchor.y()));
+        }
+        scale = qBound(qMin(minScale, maxScale), scale, maxScale);
+        return QRectF(anchor + (initial.topLeft() - anchor) * scale, initial.size() * scale);
+    }
     static QColor color()
     {
         return QColor(0, 120, 212);

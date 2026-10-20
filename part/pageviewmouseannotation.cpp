@@ -1446,7 +1446,10 @@ void MouseAnnotation::performCommand(const QPoint newPos)
         QSizeF minimum(4.0 / pageViewItemRect.width(), 4.0 / pageViewItemRect.height());
         const auto rotation = m_focusedAnnotation.pageViewItem->page()->rotation();
         if (rotation == Okular::Rotation90 || rotation == Okular::Rotation270) minimum.transpose();
-        const auto resized = RectangleInteraction::drag(toRectF(initial), handle, {}, normalizedRotatedMouseDelta, minimum, QRectF(0, 0, 1, 1));
+        const bool proportional = m_focusedAnnotation.annotation->subType() == Okular::Annotation::AStamp && !latex;
+        const auto resized = proportional
+            ? RectangleInteraction::dragProportional(toRectF(initial), handle, normalizedRotatedMouseDelta, minimum, QRectF(0, 0, 1, 1))
+            : RectangleInteraction::drag(toRectF(initial), handle, {}, normalizedRotatedMouseDelta, minimum, QRectF(0, 0, 1, 1));
         m_previewBoundingRect = toNormalizedRect(resized);
         m_hasPreviewBoundingRect = true;
         if (latex) {

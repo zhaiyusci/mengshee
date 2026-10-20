@@ -41,6 +41,9 @@ public:
     void setTextToolsEnabled(bool on);
     void deselectAllAnnotationActions();
 
+protected:
+    bool eventFilter(QObject *watched, QEvent *event) override;
+
 private:
     class AnnotationActionHandlerPrivate *d;
 };

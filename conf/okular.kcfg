@@ -164,9 +164,6 @@
     <default code="true">quickAnnotationTools</default>
     <emit signal="quickAnnotationToolsChanged" />
   </entry>
-  <entry key="AnnotationContinuousMode" type="Bool">
-   <default>true</default>
-  </entry>
   <entry key="QuickAnnotationDefaultAction" type="UInt">
    <default>0</default>
   </entry>

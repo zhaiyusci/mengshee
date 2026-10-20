@@ -18,12 +18,13 @@
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QFont>
-#include <QInputDialog>
 #include <QImageReader>
+#include <QInputDialog>
 #include <QList>
 #include <QLoggingCategory>
 #include <QPainter>
 #include <QPainterPath>
+#include <QScopedValueRollback>
 #include <QSet>
 #include <QVariant>
 
@@ -57,6 +58,33 @@
 #include "settings.h"
 #include "signaturepartutils.h"
 #include "templatenoteutils.h"
+
+namespace
+{
+// Persist style only: document content, image paths and temporary AP files never
+// belong to a tool's defaults. Each special tool has its own stable identity.
+const QStringList specialStyleAttributes = {QStringLiteral("color"),
+                                            QStringLiteral("borderColor"),
+                                            QStringLiteral("textColor"),
+                                            QStringLiteral("width"),
+                                            QStringLiteral("opacity"),
+                                            QStringLiteral("fontName"),
+                                            QStringLiteral("fontSize"),
+                                            QStringLiteral("align"),
+                                            QStringLiteral("latexPadding"),
+                                            QStringLiteral("latexFontSize")};
+void restoreSpecialToolStyle(QDomElement tool, const QString &key)
+{
+    tool.setAttribute(QStringLiteral("defaultsKey"), key);
+    const KConfigGroup group(Okular::Settings::self()->config(), QStringLiteral("AnnotationToolDefaults/") + key);
+    auto annotation = tool.firstChildElement(QStringLiteral("engine")).firstChildElement(QStringLiteral("annotation"));
+    annotation.setAttribute(QStringLiteral("opacity"), QStringLiteral("1"));
+    for (const auto &attribute : specialStyleAttributes) {
+        if (group.hasKey(attribute))
+            annotation.setAttribute(attribute, group.readEntry(attribute, QString()));
+    }
+}
+}
 
 /** @short PickPointEngine */
 class PickPointEngine : public AnnotatorEngine
@@ -441,11 +469,11 @@ public:
                     textColor = Qt::black;
                 }
                 QColor fillColor = boxedLatexStamp ? (m_annotElement.hasAttribute(QStringLiteral("color")) ? QColor(m_annotElement.attribute(QStringLiteral("color"))) : Qt::yellow) : Qt::transparent;
-                if (boxedLatexStamp && (!fillColor.isValid() || fillColor.alpha() == 0)) {
+                if (boxedLatexStamp && !fillColor.isValid()) {
                     fillColor = Qt::yellow;
                 }
                 QColor borderColor = boxedLatexStamp ? (m_annotElement.hasAttribute(QStringLiteral("borderColor")) ? QColor(m_annotElement.attribute(QStringLiteral("borderColor"))) : textColor) : Qt::transparent;
-                if (boxedLatexStamp && (!borderColor.isValid() || borderColor.alpha() == 0)) {
+                if (boxedLatexStamp && !borderColor.isValid()) {
                     borderColor = textColor;
                 }
                 sa->setLatexTextColor(textColor);
@@ -1578,7 +1606,6 @@ PageViewAnnotator::PageViewAnnotator(PageView *parent, Okular::Document *storage
     , m_builtinToolsDefinition(nullptr)
     , m_quickToolsDefinition(nullptr)
     , m_transientToolsDefinition(nullptr)
-    , m_continuousMode(true)
     , m_constrainRatioAndAngle(false)
     , m_signatureMode(false)
     , m_lastToolsDefinition(nullptr)
@@ -1594,7 +1621,6 @@ PageViewAnnotator::PageViewAnnotator(PageView *parent, Okular::Document *storage
 
 void PageViewAnnotator::reparseConfig()
 {
-    m_continuousMode = Okular::Settings::annotationContinuousMode();
 
     if (Okular::Settings::identityAuthor().isEmpty()) {
         detachAnnotation();
@@ -1894,10 +1920,9 @@ QRect PageViewAnnotator::performRouteMouseOrTabletEvent(const AnnotatorEngine::E
                 setSignatureMode(false);
                 selectBuiltinTool(-1, ShowTip::No);
             }
-            m_continuousMode = false;
         }
 
-        if (m_continuousMode && !detachAfterCreation && currentToolSupportsContinuousCreation()) {
+        if (!detachAfterCreation && currentToolSupportsContinuousCreation()) {
             selectLastTool();
         } else {
             detachAnnotation();
@@ -2021,7 +2046,7 @@ void PageViewAnnotator::selectQuickTool(int toolId)
 void PageViewAnnotator::selectTool(AnnotationTools *toolsDefinition, int toolId, ShowTip showTip)
 {
     // ask for Author's name if not already set
-    if (toolId > 0 && !ensureAnnotationAuthor()) {
+    if (toolId > 0 && !m_editingToolDefaults && !ensureAnnotationAuthor()) {
         detachAnnotation();
         return;
     }
@@ -2124,18 +2149,25 @@ void PageViewAnnotator::selectTool(AnnotationTools *toolsDefinition, int toolId,
 void PageViewAnnotator::selectLastTool()
 {
     selectTool(m_lastToolsDefinition, m_lastToolId, ShowTip::No);
+    if (m_actionHandler)
+        m_actionHandler->reparseBuiltinToolsConfig();
 }
 
-int PageViewAnnotator::selectStampTool(const QString &stampSymbol)
+int PageViewAnnotator::selectStampTool(const QString &stampSymbol, bool imageDefaults)
 {
     const int stampToolId = m_builtinToolsDefinition->findToolId(QStringLiteral("stamp"));
-    QDomElement toolElement = builtinTool(stampToolId);
+    const bool imageNote = imageDefaults || (QFileInfo(stampSymbol).exists() && QFileInfo(stampSymbol).isFile());
+    if (imageNote) {
+        if (!m_transientToolsDefinition)
+            m_transientToolsDefinition = new AnnotationTools();
+        m_transientToolsDefinition->setTools(m_builtinToolsDefinition->toStringList());
+    }
+    QDomElement toolElement = imageNote ? m_transientToolsDefinition->tool(stampToolId) : builtinTool(stampToolId);
     if (toolElement.isNull()) {
         return -1;
     }
     QDomElement engineElement = toolElement.firstChildElement(QStringLiteral("engine"));
     QDomElement annotationElement = engineElement.firstChildElement(QStringLiteral("annotation"));
-    const bool imageNote = QFileInfo(stampSymbol).exists() && QFileInfo(stampSymbol).isFile();
     engineElement.setAttribute(QStringLiteral("hoverIcon"), stampSymbol);
     annotationElement.setAttribute(QStringLiteral("icon"), imageNote ? QStringLiteral("Image") : stampSymbol);
     if (imageNote) {
@@ -2155,8 +2187,13 @@ int PageViewAnnotator::selectStampTool(const QString &stampSymbol)
     annotationElement.removeAttribute(QStringLiteral("latexLayoutWidth"));
     annotationElement.removeAttribute(QStringLiteral("latexDefaultLayoutWidth"));
     annotationElement.removeAttribute(QStringLiteral("templateNoteData"));
-    saveBuiltinAnnotationTools();
-    selectBuiltinTool(stampToolId, ShowTip::Yes);
+    if (imageNote) {
+        restoreSpecialToolStyle(toolElement, QStringLiteral("image-note"));
+        selectTool(m_transientToolsDefinition, stampToolId, ShowTip::Yes);
+    } else {
+        saveBuiltinAnnotationTools();
+        selectBuiltinTool(stampToolId, ShowTip::Yes);
+    }
     return stampToolId;
 }
 
@@ -2233,6 +2270,7 @@ int PageViewAnnotator::selectLatexStampTool(const QString &pdfAppearanceFile, co
         annotationElement.setAttribute(QStringLiteral("color"), QStringLiteral("#00ffffff"));
         annotationElement.setAttribute(QStringLiteral("borderColor"), QStringLiteral("#00000000"));
     }
+    restoreSpecialToolStyle(toolElement, ordered ? QStringLiteral("latex-numbered-callout") : callout ? QStringLiteral("latex-callout") : boxed ? QStringLiteral("latex-inline") : QStringLiteral("latex-note"));
     selectTool(m_transientToolsDefinition, toolId, ShowTip::Yes);
     return toolId;
 }
@@ -2277,6 +2315,7 @@ int PageViewAnnotator::selectTemplateTextTool(const QString &templateData, const
     annotationElement.removeAttribute(QStringLiteral("latexLayoutWidth"));
     annotationElement.removeAttribute(QStringLiteral("latexDefaultLayoutWidth"));
 
+    restoreSpecialToolStyle(toolElement, QStringLiteral("template-note"));
     selectTool(m_transientToolsDefinition, toolId, ShowTip::Yes);
     return toolId;
 }
@@ -2601,18 +2640,6 @@ void PageViewAnnotator::setupActions(KActionCollection *ac)
     }
 }
 
-bool PageViewAnnotator::continuousMode()
-{
-    return m_continuousMode;
-}
-
-void PageViewAnnotator::setContinuousMode(bool enabled)
-{
-    m_continuousMode = enabled;
-    Okular::Settings::setAnnotationContinuousMode(enabled);
-    Okular::Settings::self()->save();
-}
-
 bool PageViewAnnotator::constrainRatioAndAngleActive()
 {
     return m_constrainRatioAndAngle;
@@ -2651,6 +2678,33 @@ void PageViewAnnotator::saveBuiltinAnnotationTools()
     Okular::Settings::self()->save();
 }
 
+QDomElement PageViewAnnotator::activeTool()
+{
+    return m_lastToolsDefinition ? m_lastToolsDefinition->tool(m_lastToolId) : QDomElement();
+}
+
+void PageViewAnnotator::saveCurrentAnnotationTool()
+{
+    const auto tool = activeTool();
+    const QString key = tool.attribute(QStringLiteral("defaultsKey"));
+    if (!key.isEmpty()) {
+        KConfigGroup group(Okular::Settings::self()->config(), QStringLiteral("AnnotationToolDefaults/") + key);
+        const auto annotation = currentAnnotationElement();
+        for (const auto &attribute : specialStyleAttributes) {
+            if (annotation.hasAttribute(attribute))
+                group.writeEntry(attribute, annotation.attribute(attribute));
+            else
+                group.deleteEntry(attribute);
+        }
+        group.sync();
+    } else if (m_lastToolsDefinition == m_quickToolsDefinition) {
+        Okular::Settings::setQuickAnnotationTools(m_quickToolsDefinition->toStringList());
+        Okular::Settings::self()->save();
+    } else {
+        saveBuiltinAnnotationTools();
+    }
+}
+
 QDomElement PageViewAnnotator::builtinTool(int toolId)
 {
     return m_builtinToolsDefinition->tool(toolId);
@@ -2676,19 +2730,17 @@ bool PageViewAnnotator::currentToolSupportsContinuousCreation()
 {
     const QDomElement annotationElement = currentAnnotationElement();
     const QString annotationType = annotationElement.attribute(QStringLiteral("type"));
-    if (annotationType == QLatin1String("FreeText") || annotationType == QLatin1String("Typewriter") || annotationType == QLatin1String("Callout") || annotationType == QLatin1String("Text")) {
-        return false;
-    }
-    if (annotationElement.attribute(QStringLiteral("okularLatex")).toInt() != 0 || annotationElement.hasAttribute(QStringLiteral("templateNoteData"))) {
-        return false;
-    }
-    return true;
+    // Markup and drawing tools remain active; inserting content is one-shot.
+    return annotationType == QLatin1String("Highlight") || annotationType == QLatin1String("Underline")
+        || annotationType == QLatin1String("Squiggly") || annotationType == QLatin1String("StrikeOut")
+        || annotationType == QLatin1String("Ink") || annotationType == QLatin1String("Line")
+        || annotationType == QLatin1String("GeomSquare") || annotationType == QLatin1String("GeomCircle");
 }
 
 void PageViewAnnotator::setAnnotationWidth(double width)
 {
     currentAnnotationElement().setAttribute(QStringLiteral("width"), QString::number(width));
-    saveBuiltinAnnotationTools();
+    saveCurrentAnnotationTool();
     selectLastTool();
 }
 
@@ -2705,7 +2757,7 @@ void PageViewAnnotator::setAnnotationColor(const QColor &color)
     } else {
         annotationElement.setAttribute(QStringLiteral("color"), color.name(QColor::HexRgb));
     }
-    saveBuiltinAnnotationTools();
+    saveCurrentAnnotationTool();
     selectLastTool();
 }
 
@@ -2716,7 +2768,7 @@ void PageViewAnnotator::setAnnotationInnerColor(const QColor &color)
     if (annotType == QLatin1String("FreeText") || annotType == QLatin1String("Callout")
         || (annotType == QLatin1String("Stamp") && annotationElement.attribute(QStringLiteral("okularLatex")).toInt() != 0)) {
         annotationElement.setAttribute(QStringLiteral("color"), color.name(QColor::HexArgb));
-        saveBuiltinAnnotationTools();
+        saveCurrentAnnotationTool();
         selectLastTool();
         return;
     }
@@ -2725,21 +2777,21 @@ void PageViewAnnotator::setAnnotationInnerColor(const QColor &color)
     } else {
         annotationElement.setAttribute(QStringLiteral("innerColor"), color.name(QColor::HexRgb));
     }
-    saveBuiltinAnnotationTools();
+    saveCurrentAnnotationTool();
     selectLastTool();
 }
 
 void PageViewAnnotator::setAnnotationTextColor(const QColor &color)
 {
     currentAnnotationElement().setAttribute(QStringLiteral("textColor"), color.name(QColor::HexRgb));
-    saveBuiltinAnnotationTools();
+    saveCurrentAnnotationTool();
     selectLastTool();
 }
 
 void PageViewAnnotator::setAnnotationOpacity(double opacity)
 {
     currentAnnotationElement().setAttribute(QStringLiteral("opacity"), QString::number(opacity));
-    saveBuiltinAnnotationTools();
+    saveCurrentAnnotationTool();
     selectLastTool();
 }
 
@@ -2749,7 +2801,9 @@ void PageViewAnnotator::setAnnotationFont(const QFont &font)
     annotationElement.removeAttribute(QStringLiteral("font"));
     annotationElement.setAttribute(QStringLiteral("fontName"), QStringLiteral("Helvetica"));
     annotationElement.setAttribute(QStringLiteral("fontSize"), QString::number(font.pointSizeF() > 0 ? font.pointSizeF() : 10.0));
-    saveBuiltinAnnotationTools();
+    if (annotationElement.attribute(QStringLiteral("okularLatex")).toInt())
+        annotationElement.setAttribute(QStringLiteral("latexFontSize"), annotationElement.attribute(QStringLiteral("fontSize")));
+    saveCurrentAnnotationTool();
     selectLastTool();
 }
 
@@ -2759,7 +2813,9 @@ void PageViewAnnotator::setAnnotationFontName(const QString &fontName, double po
     annotationElement.removeAttribute(QStringLiteral("font"));
     annotationElement.setAttribute(QStringLiteral("fontName"), fontName);
     annotationElement.setAttribute(QStringLiteral("fontSize"), QString::number(pointSize));
-    saveBuiltinAnnotationTools();
+    if (annotationElement.attribute(QStringLiteral("okularLatex")).toInt())
+        annotationElement.setAttribute(QStringLiteral("latexFontSize"), annotationElement.attribute(QStringLiteral("fontSize")));
+    saveCurrentAnnotationTool();
     selectLastTool();
 }
 
@@ -2787,19 +2843,50 @@ void PageViewAnnotator::addToQuickAnnotations()
     Okular::Settings::self()->save();
 }
 
+void PageViewAnnotator::editToolDefaults(const std::function<void()> &selectToolForDefaults)
+{
+    const QScopedValueRollback<bool> editingDefaults(m_editingToolDefaults, true);
+    auto *previousTools = m_lastToolsDefinition;
+    const int previousId = m_lastToolId;
+    const QStringList previousTransient = previousTools && previousTools == m_transientToolsDefinition ? previousTools->toStringList() : QStringList();
+    selectToolForDefaults();
+    slotAdvancedSettings();
+    if (!previousTransient.isEmpty()) {
+        m_transientToolsDefinition->setTools(previousTransient);
+        const auto previous = m_transientToolsDefinition->tool(previousId);
+        const QString key = previous.attribute(QStringLiteral("defaultsKey"));
+        if (!key.isEmpty())
+            restoreSpecialToolStyle(previous, key);
+    }
+    selectTool(previousTools, previousId, ShowTip::No);
+}
+
 void PageViewAnnotator::slotAdvancedSettings()
 {
-    QDomElement toolElement = m_builtinToolsDefinition->tool(m_lastToolId);
-
-    EditAnnotToolDialog t(nullptr, toolElement, true);
-    if (t.exec() != QDialog::Accepted) {
+    QDomElement toolElement = activeTool();
+    if (toolElement.isNull())
         return;
+    EditAnnotToolDialog editor(m_pageView, toolElement, true);
+    if (!editor.editDefaultProperties())
+        return;
+    const auto updated = editor.toolXml().documentElement();
+    if (!toolElement.attribute(QStringLiteral("defaultsKey")).isEmpty()) {
+        auto annotation = currentAnnotationElement();
+        const auto style = updated.firstChildElement(QStringLiteral("engine")).firstChildElement(QStringLiteral("annotation"));
+        for (const auto &attribute : specialStyleAttributes) {
+            if (style.hasAttribute(attribute))
+                annotation.setAttribute(attribute, style.attribute(attribute));
+            else if (attribute == QLatin1String("opacity"))
+                annotation.setAttribute(attribute, QStringLiteral("1"));
+            else if (attribute == QLatin1String("align"))
+                annotation.setAttribute(attribute, QStringLiteral("0"));
+            else
+                annotation.removeAttribute(attribute);
+        }
+    } else {
+        m_lastToolsDefinition->updateTool(updated, m_lastToolId);
     }
-
-    QDomElement toolElementUpdated = t.toolXml().documentElement();
-    int toolId = toolElement.attribute(QStringLiteral("id")).toInt();
-    m_builtinToolsDefinition->updateTool(toolElementUpdated, toolId);
-    saveBuiltinAnnotationTools();
+    saveCurrentAnnotationTool();
     selectLastTool();
 }
 

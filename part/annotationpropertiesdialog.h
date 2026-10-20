@@ -24,6 +24,7 @@ class AnnotsPropertiesDialog : public KPageDialog
 {
     Q_OBJECT
 public:
+    // A null document edits a detached tool-default annotation, without document side effects.
     AnnotsPropertiesDialog(QWidget *parent, Okular::Document *document, int docpage, Okular::Annotation *ann);
     ~AnnotsPropertiesDialog() override;
 

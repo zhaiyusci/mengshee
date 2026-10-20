@@ -107,7 +107,9 @@ void write(fz_context *ctx, pdf_document *doc, pdf_annot *native, const Okular::
         for (int i = 0; i < 3; ++i) {
             auto p = rotatePoint(annotation->latexCalloutPoint(i), delta);
             leader.append({p.x * w, (1 - p.y) * h});
-            outer = outer.united(QRectF(leader.last() - QPointF(8, 8), QSizeF(16, 16)));
+            // Include the complete OpenArrow and its stroke at any line width.
+            const double margin = std::hypot(8.8, 4.5) * std::max(1.0, annotation->style().width()) + std::max(0.0, annotation->style().width());
+            outer = outer.united(QRectF(leader.last() - QPointF(margin, margin), QSizeF(2 * margin, 2 * margin)));
         }
     }
     if (annotation->isNumberedCallout())

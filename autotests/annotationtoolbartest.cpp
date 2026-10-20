@@ -617,13 +617,11 @@ void AnnotationToolBarTest::testAnnotationToolBar()
     QAction *aQuickTools = part->actionCollection()->action(QStringLiteral("annotation_favorites"));
     QAction *aAddToQuickTools = part->actionCollection()->action(QStringLiteral("annotation_bookmark"));
     QAction *aAdvancedSettings = part->actionCollection()->action(QStringLiteral("annotation_settings_advanced"));
-    QAction *aContinuousMode = part->actionCollection()->action(QStringLiteral("annotation_settings_pin"));
     QVERIFY(aQuickTools->isEnabled());
     QVERIFY(mainToolBar->actions().contains(aQuickTools));
     QVERIFY(!annToolBar->actions().contains(aQuickTools));
     QVERIFY(!aAddToQuickTools->isEnabled());
     QVERIFY(!aAdvancedSettings->isEnabled());
-    QVERIFY(aContinuousMode->isEnabled());
 
     // Ensure that the 'Quick Annotations' action is correctly populated
     // (at least the 'Configure Annotations...' action must be present)
@@ -651,7 +649,6 @@ void AnnotationToolBarTest::testAnnotationToolBar()
         QCOMPARE(advancedToolBar->geometry().top(), annToolBar->geometry().top());
         QCOMPARE(advancedToolBar->contextMenuPolicy(), Qt::PreventContextMenu);
         QVERIFY(!advancedToolBar->toggleViewAction()->isVisible());
-        QVERIFY(aContinuousMode->isEnabled());
     }
     mode->actions().at(0)->trigger();
     QTRY_VERIFY(annToolBar->isVisible());
@@ -670,10 +667,9 @@ void AnnotationToolBarTest::testAnnotationToolBar()
     int mouseX = 350;
     int mouseY = 100;
     QCOMPARE(simulateAddPopupAnnotation(part, mouseX, mouseY), true);
-    QTRY_COMPARE(aMouseNormal->isChecked(), false);
+    QTRY_COMPARE(aMouseNormal->isChecked(), true);
 
-    // Click again the same annotation action to disable it
-    aPopupNote->trigger();
+    // After inserting a note, another click must not insert a second one.
     mouseY = 150;
     QCOMPARE(simulateAddPopupAnnotation(part, mouseX, mouseY), false);
     QTRY_COMPARE(aMouseNormal->isChecked(), true);
@@ -682,7 +678,7 @@ void AnnotationToolBarTest::testAnnotationToolBar()
     QTest::keyClick(part->widget(), Qt::Key_7, Qt::AltModifier);
     mouseY = 200;
     QCOMPARE(simulateAddPopupAnnotation(part, mouseX, mouseY), true);
-    QTRY_COMPARE(aMouseNormal->isChecked(), false);
+    QTRY_COMPARE(aMouseNormal->isChecked(), true);
 
     // Click Esc to disable all annotations
     QTest::keyClick(pageView(part), Qt::Key_Escape);
@@ -693,14 +689,10 @@ void AnnotationToolBarTest::testAnnotationToolBar()
     // Trigger the action using a quick annotation shortcut
     QTest::keyClick(part->widget(), Qt::Key_6);
     QCOMPARE(simulateAddPopupAnnotation(part, mouseX, mouseY), true);
-    QTRY_COMPARE(aMouseNormal->isChecked(), false);
+    QTRY_COMPARE(aMouseNormal->isChecked(), true);
 
-    // Test pin/continuous mode action
-    QVERIFY(aContinuousMode->isEnabled());
-    QCOMPARE(simulateAddPopupAnnotation(part, mouseX, mouseY), true);
-    QCOMPARE(simulateAddPopupAnnotation(part, mouseX, mouseY), true);
-    aContinuousMode->trigger();
-    QCOMPARE(simulateAddPopupAnnotation(part, mouseX, mouseY), true);
+    // Content insertion tools are one-shot, with no global pin override.
+    QVERIFY(!part->actionCollection()->action(QStringLiteral("annotation_settings_pin")));
     QCOMPARE(simulateAddPopupAnnotation(part, mouseX, mouseY), false);
 
     // Test adding a tool to the quick tool list using the bookmark action

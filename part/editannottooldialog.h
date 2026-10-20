@@ -32,6 +32,7 @@ public:
     ~EditAnnotToolDialog() override;
     QString name() const;
     QDomDocument toolXml() const;
+    bool editDefaultProperties();
 
 private:
     void createStubAnnotation();

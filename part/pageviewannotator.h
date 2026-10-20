@@ -9,6 +9,7 @@
 
 #include <QObject>
 #include <QPointer>
+#include <functional>
 #include <qdom.h>
 
 #include <KActionCollection>
@@ -97,8 +98,6 @@ public:
 
     // methods related to the annotation actions
     void setupActions(KActionCollection *ac);
-    // @return Is continuous mode active (pin annotation)?
-    bool continuousMode();
     /**
      * State of constrain ratio and angle action.
      * While annotating, this value is XOR-ed with the Shift modifier.
@@ -115,7 +114,7 @@ public:
     // selects a builtin tool by its semantic XML type/name instead of a numeric id
     int selectBuiltinToolByType(const QString &toolType, const QString &toolName, ShowTip showTip);
     // selects a stamp tool and sets the stamp symbol
-    int selectStampTool(const QString &stampSymbol);
+    int selectStampTool(const QString &stampSymbol, bool imageDefaults = false);
     // selects a Stamp tool backed by a rendered LaTeX appearance
     int selectLatexStampTool(const QString &pdfAppearanceFile, const QString &contents, bool boxed, const QColor &textColor, const QColor &fillColor, const QColor &borderColor, bool callout = false, bool ordered = false);
     // selects a FreeText tool backed by Mengshee template note metadata
@@ -132,6 +131,8 @@ public:
 
     // returns the builtin annotation tool with the given Id
     QDomElement builtinTool(int toolId);
+    QDomElement activeTool();
+    void editToolDefaults(const std::function<void()> &selectToolForDefaults);
     // returns the quick annotation tool with the given Id
     QDomElement quickTool(int toolId);
 
@@ -145,7 +146,6 @@ public:
     void setAnnotationFontName(const QString &fontName, double pointSize);
 
 public Q_SLOTS:
-    void setContinuousMode(bool enabled);
     /**
      * State of constrain ratio and angle action.
      * While annotating, this value is XOR-ed with the Shift modifier.
@@ -172,6 +172,7 @@ private:
     void reparseQuickToolsConfig();
     // save the builtin annotation tools to Okular settings
     void saveBuiltinAnnotationTools();
+    void saveCurrentAnnotationTool();
     bool ensureAnnotationAuthor();
     bool applyTextMarkupAnnotationForSelection(const QDomElement &toolElement);
     // selects the active tool
@@ -190,9 +191,9 @@ private:
     AnnotationTools *m_builtinToolsDefinition;
     AnnotationTools *m_quickToolsDefinition;
     AnnotationTools *m_transientToolsDefinition;
-    bool m_continuousMode;
     bool m_constrainRatioAndAngle;
     bool m_signatureMode;
+    bool m_editingToolDefaults = false;
 
     // creation related variables
     AnnotationTools *m_lastToolsDefinition;

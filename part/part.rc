@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <!DOCTYPE gui SYSTEM "kpartgui.dtd">
-<gui name="okular_part" version="91">
+<gui name="okular_part" version="93">
 <MenuBar>
   <Menu name="file"><text>&amp;File</text>
     <Action name="get_new_stuff" group="file_open"/>
@@ -85,6 +85,9 @@
     <Action name="mouse_tableselect"/>
     <Action name="mouse_magnifier"/>
     <Separator/>
+    <Menu name="annotation_tools"><text>Annotation Tools</text>
+      <Action name="annotation_bookmark"/>
+    </Menu>
     <Action name="add_digital_signature"/>
     <Menu name="editing_mode_tools"><text>Mode Tools</text>
       <Action name="annotation_add_ordered_callout"/>
@@ -197,17 +200,6 @@
   <Action name="annotation_add_latex_callout"/>
   <Action name="annotation_add_template_note"/>
   <Action name="annotation_add_note_page"/>
-  <Separator/>
-  <Action name="annotation_settings_width"/>
-  <Action name="annotation_settings_color"/>
-  <Action name="annotation_settings_inner_color"/>
-  <Action name="annotation_settings_text_color"/>
-  <Action name="annotation_settings_opacity"/>
-  <Action name="annotation_settings_font"/>
-  <Action name="annotation_settings_advanced"/>
-  <Separator/>
-  <Action name="annotation_bookmark"/>
-  <Action name="annotation_settings_pin"/>
 </ToolBar>
 <ToolBar name="quickAnnotationToolBar" iconText="icononly" newline="true" hidden="true" position="right" iconSize="32"><text>Quick Annotation Toolbar</text>
     <Action name="quick_annotation_action_bar"/>

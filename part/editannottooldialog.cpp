@@ -24,6 +24,7 @@
 #include <QStackedWidget>
 #include <QVBoxLayout>
 
+#include "annotationpropertiesdialog.h"
 #include "annotationwidgets.h"
 #include "core/annotations.h"
 #include "pageviewannotator.h"
@@ -112,6 +113,12 @@ EditAnnotToolDialog::~EditAnnotToolDialog()
 {
     delete m_stubann;
     delete m_annotationWidget;
+}
+
+bool EditAnnotToolDialog::editDefaultProperties()
+{
+    AnnotsPropertiesDialog dialog(parentWidget(), nullptr, -1, m_stubann);
+    return dialog.exec() == QDialog::Accepted;
 }
 
 QString EditAnnotToolDialog::name() const
@@ -269,6 +276,15 @@ QDomDocument EditAnnotToolDialog::toolXml() const
         engineElement.setAttribute(QStringLiteral("block"), QStringLiteral("true"));
         annotationElement.setAttribute(QStringLiteral("type"), QStringLiteral("Stamp"));
         annotationElement.setAttribute(QStringLiteral("icon"), stampIconName);
+        if (sa->isOkularLatex()) {
+            annotationElement.setAttribute(QStringLiteral("color"), sa->latexFillColor().name(QColor::HexArgb));
+            annotationElement.setAttribute(QStringLiteral("borderColor"), sa->latexBorderColor().name(QColor::HexArgb));
+            annotationElement.setAttribute(QStringLiteral("textColor"), sa->latexTextColor().name(QColor::HexArgb));
+            annotationElement.setAttribute(QStringLiteral("width"), width);
+            annotationElement.setAttribute(QStringLiteral("latexPadding"), QString::number(sa->latexPadding()));
+            annotationElement.setAttribute(QStringLiteral("latexFontSize"), QString::number(sa->latexFontSize()));
+        }
+
         if (!stampImagePath.isEmpty()) {
             annotationElement.setAttribute(QStringLiteral("imagePath"), stampImagePath);
         }
@@ -500,6 +516,19 @@ void EditAnnotToolDialog::loadTool(const QDomElement &toolElement)
         Okular::StampAnnotation *sa = static_cast<Okular::StampAnnotation *>(m_stubann);
         sa->setStampIconName(annotationElement.attribute(QStringLiteral("icon")));
         sa->setStampImagePath(annotationElement.attribute(QStringLiteral("imagePath")));
+        if (annotationElement.attribute(QStringLiteral("okularLatex")).toInt()) {
+            sa->setOkularLatex(true);
+            sa->setLatexNoteType(annotationElement.attribute(QStringLiteral("orderedCallout")).toInt()     ? Okular::Annotation::LatexNoteOrderedCallout
+                                     : annotationElement.attribute(QStringLiteral("latexCallout")).toInt() ? Okular::Annotation::LatexNoteCallout
+                                     : annotationElement.attribute(QStringLiteral("latexBoxed")).toInt()   ? Okular::Annotation::LatexNoteBoxed
+                                                                                                           : Okular::Annotation::LatexNotePlain);
+            sa->setLatexTextColor(QColor(annotationElement.attribute(QStringLiteral("textColor"))));
+            sa->setLatexFillColor(QColor(annotationElement.attribute(QStringLiteral("color"))));
+            sa->setLatexBorderColor(QColor(annotationElement.attribute(QStringLiteral("borderColor"))));
+            sa->setLatexPadding(annotationElement.attribute(QStringLiteral("latexPadding"), QStringLiteral("3")).toDouble());
+            sa->setLatexFontSize(annotationElement.attribute(QStringLiteral("latexFontSize")).toDouble());
+        }
+
     } else if (annotType == QLatin1String("straight-line")) {
         setToolType(ToolStraightLine);
         Okular::LineAnnotation *la = static_cast<Okular::LineAnnotation *>(m_stubann);

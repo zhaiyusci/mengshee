@@ -561,23 +561,26 @@ void StampAnnotationWidget::createStyleWidget(QFormLayout *formlayout)
         if (m_stampAnn->latexNoteType() != Okular::Annotation::LatexNotePlain) {
             m_latexFillColorBn = new KColorButton(widget);
             QColor fillColor = m_stampAnn->latexFillColor();
-            if (!fillColor.isValid() || fillColor.alpha() == 0) {
+            if (!fillColor.isValid()) {
                 fillColor = Qt::yellow;
             }
+            m_latexFillColorBn->setAlphaChannelEnabled(true);
             m_latexFillColorBn->setColor(fillColor);
             formlayout->addRow(i18n("&Color:"), m_latexFillColorBn);
             connect(m_latexFillColorBn, &KColorButton::changed, this, &AnnotationWidget::dataChanged);
 
             m_latexBorderColorBn = new KColorButton(widget);
             QColor borderColor = m_stampAnn->latexBorderColor();
-            if (!borderColor.isValid() || borderColor.alpha() == 0) {
+            if (!borderColor.isValid()) {
                 borderColor = textColor;
             }
+            m_latexBorderColorBn->setAlphaChannelEnabled(true);
             m_latexBorderColorBn->setColor(borderColor);
             formlayout->addRow(i18n("Border &color:"), m_latexBorderColorBn);
             connect(m_latexBorderColorBn, &KColorButton::changed, this, &AnnotationWidget::dataChanged);
 
             m_latexBorderWidth = new QDoubleSpinBox(widget);
+            m_latexBorderWidth->setObjectName(QStringLiteral("annotationBorderWidth"));
             m_latexBorderWidth->setRange(0.0, 100.0);
             m_latexBorderWidth->setDecimals(1);
             m_latexBorderWidth->setSingleStep(0.5);

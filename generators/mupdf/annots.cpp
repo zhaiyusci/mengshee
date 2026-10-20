@@ -240,6 +240,20 @@ Q_NEVER_INLINE void MuPDFAnnotationProxy::loadOne(pdf_annot *native, Okular::Pag
     }
     if (annotation) {
         const auto rect = pdf_annot_has_rect(ctx, native) ? pdf_annot_rect(ctx, native) : pdf_bound_annot(ctx, native);
+        if (auto *text = dynamic_cast<Okular::TextAnnotation *>(annotation); text && type == PDF_ANNOT_FREE_TEXT && pdf_name_eq(ctx, pdf_dict_get(ctx, object, PDF_NAME(IT)), PDF_NAME(FreeTextCallout))) {
+            fz_matrix pageMatrix;
+            pdf_page_transform(ctx, pdf_annot_page(ctx, native), nullptr, &pageMatrix);
+            auto *cl = pdf_dict_get(ctx, object, PDF_NAME(CL));
+            const int count = pdf_array_len(ctx, cl) / 2;
+            if (count == 2 || count == 3) {
+                text->setInplaceIntent(Okular::TextAnnotation::Callout);
+                for (int i = 0; i < 3; ++i) {
+                    const int j = std::min(i, count - 1);
+                    const fz_point point = {pdf_array_get_real(ctx, cl, 2 * j), pdf_array_get_real(ctx, cl, 2 * j + 1)};
+                    text->setInplaceCallout(normalized(fz_transform_point(point, pageMatrix), bounds), i);
+                }
+            }
+        }
         const auto a = normalized({rect.x0, rect.y0}, bounds), b = normalized({rect.x1, rect.y1}, bounds);
         annotation->setBoundingRectangle({a.x, a.y, b.x, b.y});
         annotation->setContents(QString::fromUtf8(pdf_annot_contents(ctx, native)));
@@ -370,6 +384,33 @@ void MuPDFAnnotationProxy::write(const Okular::Annotation *annotation, pdf_annot
         pdf_set_annot_opacity(ctx, native, annotation->style().opacity());
         if (pdf_annot_has_border(ctx, native))
             pdf_set_annot_border_width(ctx, native, annotation->style().width());
+    }
+    if (const auto *text = dynamic_cast<const Okular::TextAnnotation *>(annotation); text && text->textType() == Okular::TextAnnotation::InPlace) {
+        // FreeText callout geometry is separate from its text frame.
+        // Store CL in PDF user space and RD relative to the full Rect.
+        // The model's rectangle continues to describe only the box.
+        if (text->inplaceIntent() == Okular::TextAnnotation::Callout) {
+            fz_matrix pageMatrix;
+            pdf_page_transform(ctx, pdf_annot_page(ctx, native), nullptr, &pageMatrix);
+            const auto toPdf = fz_invert_matrix(pageMatrix);
+            const auto textBox = fz_transform_rect(fz_make_rect(a.x, a.y, b.x, b.y), toPdf);
+            auto fullBox = textBox;
+            auto *cl = pdf_dict_put_array(ctx, object, PDF_NAME(CL), 6);
+            for (int i = 0; i < 3; ++i) {
+                const auto p = fz_transform_point(point(text->inplaceCallout(i), box), toPdf);
+                pdf_array_push_real(ctx, cl, p.x);
+                pdf_array_push_real(ctx, cl, p.y);
+                fullBox = fz_include_point_in_rect(fullBox, p);
+            }
+            pdf_dict_put_name(ctx, object, PDF_NAME(IT), "FreeTextCallout");
+            pdf_dict_put_name(ctx, object, PDF_NAME(LE), "OpenArrow");
+            pdf_dict_put_rect(ctx, object, PDF_NAME(Rect), fullBox);
+            auto *rd = pdf_dict_put_array(ctx, object, PDF_NAME(RD), 4);
+            for (float inset : {textBox.x0 - fullBox.x0, textBox.y0 - fullBox.y0, fullBox.x1 - textBox.x1, fullBox.y1 - textBox.y1})
+                pdf_array_push_real(ctx, rd, inset);
+        }
+    }
+    if (appearance || annotation->isOkularLatex() || annotation->subType() == Okular::Annotation::AStamp) {
         if (const auto *text = dynamic_cast<const Okular::TextAnnotation *>(annotation)) {
             if (text->textType() == Okular::TextAnnotation::InPlace) {
                 const QColor color = text->textColor().isValid() ? text->textColor() : QColor(Qt::black);

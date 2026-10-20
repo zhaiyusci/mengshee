@@ -35,6 +35,20 @@ void MuPDFGenerator::clearAnnotationLists()
 
 void MuPDFGenerator::renderAnnotations(pdf_page *page, fz_pixmap *pixmap, fz_matrix transform, fz_cookie *cookie)
 {
+    // Editing any persistent PDF object discards MuPDF's document-wide local
+    // xref, including display-only FreeText APs. Rebuild them before recording
+    // annotation lists, otherwise an empty appearance stays cached until reload.
+    fz_try(m_context)
+    {
+        if (pdf_update_page(m_context, page))
+            clearAnnotationLists();
+    }
+    fz_catch(m_context)
+    {
+        fz_rethrow_if(m_context, FZ_ERROR_SYSTEM);
+        fz_rethrow_if(m_context, FZ_ERROR_ABORT);
+        reportAnnotationError(QString::fromUtf8(fz_caught_message(m_context)));
+    }
     // MuPDF excludes Link annotations from its annotation list. Preserve PDF
     // stacking order while explicitly painting their optional appearances.
     QHash<pdf_obj *, pdf_annot *> native;

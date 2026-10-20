@@ -395,6 +395,10 @@ if(BUILD_TESTING)
    add_subdirectory( autotests )
 endif()
 
+add_executable(annotationtooldefaults_test EXCLUDE_FROM_ALL autotests/annotationtooldefaultstest.cpp)
+target_compile_definitions(annotationtooldefaults_test PRIVATE ANNOTATION_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/part/data/")
+target_link_libraries(annotationtooldefaults_test PRIVATE okularpart okularcore Qt6::Widgets Qt6::Test KF6::ConfigCore KF6::Parts KF6::XmlGui)
+
 add_executable(rectangleinteraction_test EXCLUDE_FROM_ALL autotests/rectangleinteractiontest.cpp)
 target_link_libraries(rectangleinteraction_test PRIVATE Qt6::Test Qt6::Gui)
 add_executable(printpreview_test EXCLUDE_FROM_ALL autotests/printpreviewtest.cpp part/mengsheeprintdialog.cpp)
@@ -402,6 +406,8 @@ target_include_directories(printpreview_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR
 target_link_libraries(printpreview_test PRIVATE okularcore Qt6::Test Qt6::Widgets Qt6::PrintSupport Qt6::Concurrent KF6::I18n)
 
 if(BUILD_TESTING)
+    set_target_properties(annotationtooldefaults_test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+    add_test(NAME annotationtooldefaults_test COMMAND annotationtooldefaults_test)
     set_target_properties(rectangleinteraction_test PROPERTIES EXCLUDE_FROM_ALL FALSE)
     add_test(NAME rectangleinteraction_test COMMAND rectangleinteraction_test)
     set_target_properties(printpreview_test PROPERTIES EXCLUDE_FROM_ALL FALSE)
