@@ -20,7 +20,6 @@ annotated document displayed in Sumatra PDF and Adobe Acrobat.
 They retain their original pixels and proportions; each links to its full-size
 image. No placeholders or fabricated application interfaces remain.
 
-See [SCREENSHOTS.md](SCREENSHOTS.md) for provenance and placement.
 Screenshots use bounded display widths to keep the page compact; every image
 links to its original resolution. The Sumatra PDF and Adobe Acrobat images illustrate portability,
 not flattened exports.
@@ -48,4 +47,3 @@ Files:
 - `styles.css`: responsive layout, typography, focus and print styles.
 - `assets/`: the six user-provided PNG screenshots, plus the application logo
   and favicon copied from `icons/256-apps-mengshee.png` and `icons/mengshee.ico`.
-- `SCREENSHOTS.md`: image provenance and placement notes in Chinese.

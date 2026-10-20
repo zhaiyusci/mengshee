@@ -1,10 +1,7 @@
 # Mengshee Windows Build
 
-> MuPDF migration branch: the default backend is now MuPDF. See
-> [MuPDF build and migration status](../docs/mupdf-backend.md) for the current
-> in-repository workspace, build commands, and remaining feature gaps. The
-> historical Poppler instructions below apply only with
-> `-DMENGSHEE_PDF_BACKEND=Poppler`.
+> The default PDF backend is MuPDF. Historical Poppler-specific instructions
+> apply only when building with `-DMENGSHEE_PDF_BACKEND=Poppler`.
 
 This directory contains the Windows standalone SDK, runtime deployment, staging,
 and installer scripts for this Mengshee checkout.
