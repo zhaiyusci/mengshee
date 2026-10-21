@@ -56,6 +56,66 @@ class LatexRotationTest : public QObject
         return total <= quint64(actual.width() * actual.height());
     }
 private Q_SLOTS:
+    void linkBorders_data()
+    {
+        QTest::addColumn<QByteArray>("attributes");
+        QTest::addColumn<bool>("visible");
+        QTest::newRow("solid") << QByteArray("/Border [0 0 2] /C [0 1 0]") << true;
+        QTest::newRow("rounded") << QByteArray("/Border [5 5 2] /C [0 1 0]") << true;
+        QTest::newRow("dashed") << QByteArray("/Border [0 0 2 [4 3]] /C [0 1 0]") << true;
+        QTest::newRow("bs-precedence") << QByteArray("/Border [0 0 0] /BS << /W 2 /S /D /D [4 3] >> /C [0 1 0]") << true;
+        QTest::newRow("underline") << QByteArray("/BS << /W 2 /S /U >> /C [0 1 0]") << true;
+        QTest::newRow("zero") << QByteArray("/Border [0 0 0] /C [0 1 0]") << false;
+        QTest::newRow("bs-zero") << QByteArray("/Border [0 0 2] /BS << /W 0 >> /C [0 1 0]") << false;
+        QTest::newRow("transparent") << QByteArray("/Border [0 0 2] /C []") << false;
+        QTest::newRow("hidden") << QByteArray("/Border [0 0 2] /C [0 1 0] /F 2") << false;
+        // An explicit blank AP overrides a visible border declaration.
+        QTest::newRow("appearance-precedence") << QByteArray("/Border [0 0 2] /C [0 1 0] /AP << /N 5 0 R >>") << false;
+    }
+    void linkBorders()
+    {
+        QFETCH(QByteArray, attributes); QFETCH(bool, visible);
+        QTemporaryDir dir;
+        const auto source=dir.filePath(QStringLiteral("links.pdf"));
+        QList<QByteArray> objects {
+            "<< /Type /Catalog /Pages 2 0 R >>",
+            "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 300] /Resources <<>> /Annots [4 0 R] >>",
+            "<< /Type /Annot /Subtype /Link /Rect [30 40 90 80] /A << /S /URI /URI (https://example.com) >> "+attributes+" >>",
+            "<< /Type /XObject /Subtype /Form /BBox [0 0 60 40] /Resources <<>> /Length 0 >>\nstream\n\nendstream"
+        };
+        QByteArray bytes("%PDF-1.7\n"); QList<int> offsets;
+        for(int i=0;i<objects.size();++i) { offsets.append(bytes.size()); bytes+=QByteArray::number(i+1)+" 0 obj\n"+objects[i]+"\nendobj\n"; }
+        const int xref=bytes.size(); bytes+="xref\n0 6\n0000000000 65535 f \n";
+        for(int offset:offsets) bytes+=QByteArray::number(offset).rightJustified(10,'0')+" 00000 n \n";
+        bytes+="trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n"+QByteArray::number(xref)+"\n%%EOF\n";
+        QFile file(source); QVERIFY(file.open(QIODevice::WriteOnly)); file.write(bytes); file.close();
+        MuPDFGenerator backend(nullptr,{}); QList<Okular::Page *> pages;
+        QCOMPARE(backend.loadDocumentWithPassword(source,pages,{}),Okular::Document::OpenSuccess);
+        const auto original=backend.renderToImage(0,72,true);
+        QCOMPARE(original!=backend.renderToImage(0,72,false),visible);
+        if(visible) {
+            int green=0;
+            for(int y=0;y<300;++y) for(int x=0;x<300;++x) { auto c=original.pixelColor(x,y); if(c.green()>200 && c.red()<100 && c.blue()<100) ++green; }
+            QVERIFY(green>20);
+        }
+        for(int angle:{90,180,270,0}) {
+            QString error; Okular::Page *next=nullptr;
+            QVERIFY(backend.rotatePageInDocument(pages[0],0,angle,&next,&error)); delete pages[0]; pages[0]=next;
+            QVERIFY(samePixels(backend.renderToImage(0,72,true),original.transformed(QTransform().rotate(angle))));
+        }
+        qDeleteAll(pages);
+    }
+    void inspectExternalLinks()
+    {
+        const QString source=qEnvironmentVariable("MENGSHEE_LINK_TEST_PDF");
+        if(source.isEmpty()) QSKIP("Optional external PDF visual check");
+        MuPDFGenerator backend(nullptr,{}); QList<Okular::Page *> pages;
+        QCOMPARE(backend.loadDocumentWithPassword(source,pages,{}),Okular::Document::OpenSuccess);
+        QVERIFY(pages.size()>1);
+        QVERIFY(backend.renderToImage(1,85,true).save(qEnvironmentVariable("MENGSHEE_LINK_TEST_PNG")));
+        qDeleteAll(pages);
+    }
     void freeTextSurvivesNeighbourEdit()
     {
         QTemporaryDir dir;

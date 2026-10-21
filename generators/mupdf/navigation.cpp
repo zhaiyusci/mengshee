@@ -5,10 +5,69 @@
 #include <QUrl>
 #include <QUrlQuery>
 #include <cmath>
+#include <algorithm>
 #include <core/page.h>
 
 namespace
 {
+// Link annotations are excluded from MuPDF's annotation list. When no AP is
+// supplied, paint their declared border without adding an appearance to the PDF.
+void paintLinkBorder(fz_context *ctx, pdf_page *page, pdf_obj *object, fz_device *device)
+{
+    const auto rect = pdf_dict_get_rect(ctx, object, PDF_NAME(Rect));
+    if (!fz_is_valid_rect(rect) || fz_is_empty_rect(rect)) return;
+    auto *border = pdf_dict_get(ctx, object, PDF_NAME(Border));
+    auto *bs = pdf_dict_get(ctx, object, PDF_NAME(BS));
+    const bool styled = pdf_is_dict(ctx, bs);
+    const float width = styled ? pdf_dict_get_real_default(ctx, bs, PDF_NAME(W), 1)
+        : pdf_is_array(ctx, border) ? pdf_array_get_real(ctx, border, 2) : 1;
+    if (!std::isfinite(width) || width <= 0) return;
+    auto *colorObject = pdf_dict_get(ctx, object, PDF_NAME(C));
+    const int n = pdf_array_len(ctx, colorObject);
+    if (pdf_is_array(ctx, colorObject) && n == 0) return;
+    float color[4] = {};
+    for (int i = 0; i < std::min(n, 4); ++i) color[i] = pdf_array_get_real(ctx, colorObject, i);
+    auto *space = n == 4 ? fz_device_cmyk(ctx) : n == 3 ? fz_device_rgb(ctx) : fz_device_gray(ctx);
+    const bool underline = styled && pdf_name_eq(ctx, pdf_dict_get(ctx, bs, PDF_NAME(S)), PDF_NAME(U));
+    const bool dashed = styled && pdf_name_eq(ctx, pdf_dict_get(ctx, bs, PDF_NAME(S)), PDF_NAME(D));
+    auto *dash = styled ? (dashed ? pdf_dict_get(ctx, bs, PDF_NAME(D)) : nullptr) : pdf_array_get(ctx, border, 3);
+    const int dashCount = pdf_array_len(ctx, dash);
+    const int count = dashed && !dash ? 1 : dashCount;
+    fz_path *path = nullptr;
+    fz_stroke_state *stroke = nullptr;
+    fz_var(path); fz_var(stroke);
+    fz_try(ctx) {
+        path = fz_new_path(ctx);
+        stroke = fz_new_stroke_state_with_dash_len(ctx, count);
+        stroke->linewidth = width;
+        stroke->dash_len = count;
+        for (int i = 0; i < count; ++i) stroke->dash_list[i] = dash ? pdf_array_get_real(ctx, dash, i) : 3;
+        if (underline) {
+            fz_moveto(ctx,path,rect.x0,rect.y0); fz_lineto(ctx,path,rect.x1,rect.y0);
+        } else {
+            const float rx = styled ? 0 : std::clamp(pdf_array_get_real(ctx,border,0),0.0f,(rect.x1-rect.x0)/2);
+            const float ry = styled ? 0 : std::clamp(pdf_array_get_real(ctx,border,1),0.0f,(rect.y1-rect.y0)/2);
+            if (rx == 0 || ry == 0) fz_rectto(ctx,path,rect.x0,rect.y0,rect.x1,rect.y1);
+            else {
+                constexpr float k = 0.55228475f;
+                fz_moveto(ctx,path,rect.x0+rx,rect.y0); fz_lineto(ctx,path,rect.x1-rx,rect.y0);
+                fz_curveto(ctx,path,rect.x1-rx+k*rx,rect.y0,rect.x1,rect.y0+ry-k*ry,rect.x1,rect.y0+ry);
+                fz_lineto(ctx,path,rect.x1,rect.y1-ry);
+                fz_curveto(ctx,path,rect.x1,rect.y1-ry+k*ry,rect.x1-rx+k*rx,rect.y1,rect.x1-rx,rect.y1);
+                fz_lineto(ctx,path,rect.x0+rx,rect.y1);
+                fz_curveto(ctx,path,rect.x0+rx-k*rx,rect.y1,rect.x0,rect.y1-ry+k*ry,rect.x0,rect.y1-ry);
+                fz_lineto(ctx,path,rect.x0,rect.y0+ry);
+                fz_curveto(ctx,path,rect.x0,rect.y0+ry-k*ry,rect.x0+rx-k*rx,rect.y0,rect.x0+rx,rect.y0);
+                fz_closepath(ctx,path);
+            }
+        }
+        fz_matrix matrix;
+        pdf_page_transform(ctx,page,nullptr,&matrix);
+        fz_stroke_path(ctx,device,path,stroke,matrix,space,color,1,fz_default_color_params);
+    }
+    fz_always(ctx) { fz_drop_path(ctx,path); fz_drop_stroke_state(ctx,stroke); }
+    fz_catch(ctx) { fz_rethrow(ctx); }
+}
 Okular::DocumentViewport viewport(fz_context *ctx, pdf_document *doc, const char *uri)
 {
     const auto dest = fz_resolve_link_dest(ctx, reinterpret_cast<fz_document *>(doc), uri);
@@ -69,8 +128,10 @@ void MuPDFGenerator::renderAnnotations(pdf_page *page, fz_pixmap *pixmap, fz_mat
         auto *ap = pdf_dict_getp(m_context, object, "AP/N");
         if (pdf_is_dict(m_context, ap) && !pdf_is_stream(m_context, ap))
             ap = pdf_dict_get(m_context, ap, pdf_dict_get(m_context, object, PDF_NAME(AS)));
-        if (!pdf_is_stream(m_context, ap))
+        if (!pdf_is_stream(m_context, ap)) {
+            paintLinkBorder(m_context, page, object, device);
             return;
+        }
         const auto rect = pdf_dict_get_rect(m_context, object, PDF_NAME(Rect));
         const auto box = fz_transform_rect(pdf_dict_get_rect(m_context, ap, PDF_NAME(BBox)), pdf_dict_get_matrix(m_context, ap, PDF_NAME(Matrix)));
         if (fz_is_empty_rect(box) || !fz_is_valid_rect(box))
