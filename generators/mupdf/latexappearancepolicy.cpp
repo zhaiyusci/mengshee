@@ -39,9 +39,10 @@ QByteArray appearanceStream(const QRectF &sourceBox, const Options &options, int
     const QSizeF outer = options.outerSize.isValid() ? options.outerSize : sourceBox.size();
     const bool framed = options.frameRect.isValid();
     const QRectF frame = framed ? options.frameRect : QRectF(QPointF(0, 0), sourceBox.size());
+    const QRectF layout = options.sourceLayoutBox.isValid() ? options.sourceLayoutBox : sourceBox;
     QPointF offset = options.contentOffset;
     if (framed && options.alignContentToFrameTopLeft) {
-        offset = QPointF(frame.x() + options.contentFrameInset, frame.y() + frame.height() - options.contentFrameInset - sourceBox.height());
+        offset = QPointF(frame.x() + options.contentFrameInset, frame.y() + frame.height() - options.contentFrameInset - layout.height());
     }
     const QColor border = options.borderColor.isValid() ? options.borderColor : QColor(Qt::black);
     const bool visibleBorder = border.alpha() != 0;
@@ -97,7 +98,7 @@ QByteArray appearanceStream(const QRectF &sourceBox, const Options &options, int
             boxPath(out, inner, 6);
             out += "W n\n";
         }
-        out += "1 0 0 1 " + number(offset.x() - sourceBox.x()) + ' ' + number(offset.y() - sourceBox.y()) + " cm\n/Fm0 Do\nQ\n";
+        out += "1 0 0 1 " + number(offset.x() - layout.x()) + ' ' + number(offset.y() - layout.y()) + " cm\n/Fm0 Do\nQ\n";
     }
 
     if (orderedNumber > 0) {

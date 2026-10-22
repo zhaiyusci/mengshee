@@ -306,7 +306,9 @@ public:
             return LatexRenderer::LatexFailed;
         }
 
-        const double widthPt = std::isfinite(maxWidth) && maxWidth > 0.0 ? maxWidth : 360.0;
+        // The SDK width is a TeX point (1/72.27 inch), whereas annotation
+        // geometry and layout.widthPt use PDF points (1/72 inch).
+        const double widthPt = (std::isfinite(maxWidth) && maxWidth > 0.0 ? maxWidth : 360.0) * (72.27 / 72.0);
         const QByteArray snippet = LatexSource::prepareSnippet(latexSource, textColor).toUtf8();
 
         struct RenderState {

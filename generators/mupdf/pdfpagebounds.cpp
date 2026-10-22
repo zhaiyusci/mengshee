@@ -92,6 +92,12 @@ Result expandAppearance(const std::string &input, const std::string &output, dou
         const auto pdfbox = fz_make_rect(0, 0, expanded.x1 - expanded.x0, expanded.y1 - expanded.y0);
         pdf_dict_put_rect(ctx, object, PDF_NAME(MediaBox), pdfbox);
         pdf_dict_put_rect(ctx, object, PDF_NAME(CropBox), pdfbox);
+        // Keep layout coordinates separate from the conservative paint bounds.
+        // Repeated expansion must preserve the original layout frame.
+        auto *layoutObject = pdf_dict_gets(ctx, object, "MengsheeLayoutBox");
+        auto layout = layoutObject ? pdf_to_rect(ctx, layoutObject) : logical;
+        layout = fz_transform_rect(layout, fz_translate(-expanded.x0, -expanded.y0));
+        pdf_dict_puts_drop(ctx, object, "MengsheeLayoutBox", pdf_new_rect(ctx, doc, layout));
         pdf_dict_del(ctx, object, PDF_NAME(Annots));
         pdf_dict_del(ctx, pdf_dict_get(ctx, pdf_trailer(ctx, doc), PDF_NAME(Root)), PDF_NAME(AcroForm));
         pdf_write_options options = pdf_default_write_options;

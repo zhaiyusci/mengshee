@@ -18,6 +18,11 @@ QSizeF MengsheePdfRuntime::firstPageSize(const QString &pdfFileName)
             fz_matrix matrix;
             pdf_page_obj_transform(context, pdf_lookup_page_obj(context, document, 0), &box, &matrix);
             box = fz_transform_rect(box, matrix);
+            if (auto *layout = pdf_dict_gets(context, pdf_lookup_page_obj(context, document, 0), "MengsheeLayoutBox")) {
+                const auto logical = pdf_to_rect(context, layout);
+                if (fz_is_valid_rect(logical) && !fz_is_empty_rect(logical) && !fz_is_infinite_rect(logical))
+                    box = fz_transform_rect(logical, matrix);
+            }
             size = QSizeF(box.x1 - box.x0, box.y1 - box.y0);
         }
     }

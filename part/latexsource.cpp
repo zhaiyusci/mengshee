@@ -92,7 +92,11 @@ QString prepareSnippet(const QString &source, const QColor &textColor)
     // The bundled minimal profile has neither package, so fall back to the
     // driver's colour stack there. Remember that choice before reading source.
     // Missing glyphs must fail visibly instead of producing a successful blank AP.
-    const QString prefix = QStringLiteral("\\begingroup%\n"
+    // preview reads its border after closing the snippet's groups, so this
+    // assignment must be global. The annotation owns the padding; a profile's
+    // preview border must not silently enlarge the requested layout width.
+    const QString prefix = QStringLiteral("\\ifdefined\\PreviewBorder\\global\\PreviewBorder=0pt\\relax\\fi%\n"
+                                          "\\begingroup%\n"
                                           "\\tracinglostchars=3\\relax%\n"
                                           "\\expandafter\\let\\csname mengshee@note@endcolor\\endcsname\\relax%\n"
                                           "\\ifdefined\\color%\n"

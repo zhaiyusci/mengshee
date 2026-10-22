@@ -11,6 +11,7 @@ struct Options {
     bool alignContentToFrameTopLeft = true;
     double contentFrameInset = 0;
     QRectF frameRect;
+    QRectF sourceLayoutBox;
     double borderWidth = 0;
     QColor fillColor, borderColor;
     QVector<QPointF> leaderLine;

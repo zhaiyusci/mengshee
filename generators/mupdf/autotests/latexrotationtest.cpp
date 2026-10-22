@@ -1,6 +1,8 @@
 #include <core/annotationframe.h>
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "../generator_mupdf.h"
+#include "../../poppler/pdfpagebounds.h"
+#include "../runtimehelpers.h"
 #include "settings_core.h"
 #include <QMimeDatabase>
 #include <QPainter>
@@ -56,6 +58,97 @@ class LatexRotationTest : public QObject
         return total <= quint64(actual.width() * actual.height());
     }
 private Q_SLOTS:
+    void latexPadding_data()
+    {
+        QTest::addColumn<double>("border");
+        QTest::addColumn<bool>("expand");
+        for(double border:{0.0,1.0,4.0}) for(bool expand:{false,true})
+            QTest::newRow(qPrintable(QStringLiteral("%1-expanded-%2").arg(border).arg(expand))) << border << expand;
+    }
+    void latexPadding()
+    {
+        QFETCH(double,border);
+        QFETCH(bool,expand);
+        QTemporaryDir dir;
+        const auto pageFile=dir.filePath(QStringLiteral("page.pdf"));
+        auto source=dir.filePath(QStringLiteral("content.pdf"));
+        for(bool content:{false,true}) {
+            QPdfWriter writer(content?source:pageFile); writer.setResolution(72);
+            writer.setPageSize(QPageSize(content?QSizeF(108,28):QSizeF(300,300),QPageSize::Point)); writer.setPageMargins(QMarginsF());
+            QPainter painter(&writer); painter.fillRect(content?QRect(0,0,108,28):QRect(0,0,300,300),content?Qt::blue:Qt::white);
+        }
+        if(expand) {
+            const auto expanded=dir.filePath(QStringLiteral("expanded.pdf"));
+            QVERIFY(PdfPageBounds::expandAppearance(source.toUtf8().toStdString(),expanded.toUtf8().toStdString(),1.0).ok);
+            source=dir.filePath(QStringLiteral("expanded-twice.pdf"));
+            QVERIFY(PdfPageBounds::expandAppearance(expanded.toUtf8().toStdString(),source.toUtf8().toStdString(),2.0).ok);
+            QCOMPARE(MengsheePdfRuntime::firstPageSize(source),QSizeF(108,28));
+        }
+        MuPDFGenerator backend(nullptr,{}); QList<Okular::Page *> pages;
+        QCOMPARE(backend.loadDocumentWithPassword(pageFile,pages,{}),Okular::Document::OpenSuccess);
+        Okular::StampAnnotation note;
+        note.setOkularLatex(true); note.setLatexNoteType(Okular::Annotation::LatexNoteBoxed);
+        note.setBoundingRectangle({.1,.2,.5,1.0/3}); note.setLatexPadding(6); note.setLatexLayoutWidth(108);
+        note.style().setWidth(border); note.setLatexBorderColor(Qt::red); note.setLatexFillColor(Qt::yellow);
+        note.setLatexAppearancePdfFileName(source);
+        backend.annotationProxy()->notifyAddition(&note,0);
+        const auto image=backend.renderToImage(0,72,true);
+        QRect ink;
+        for(int y=0;y<image.height();++y) for(int x=0;x<image.width();++x) {
+            const auto color=image.pixelColor(x,y);
+            if(color.blue()>200 && color.red()<50 && color.green()<50) ink=ink.united(QRect(x,y,1,1));
+        }
+        // A 120x40 frame and 108x28 source leave six points on every side,
+        // independently of the border width. No source scaling is allowed.
+        QCOMPARE(ink,QRect(36,66,108,28));
+        QString error; const auto saved=dir.filePath(QStringLiteral("saved.pdf"));
+        QVERIFY(backend.save(saved,Okular::SaveInterface::SaveChanges,&error));
+        MuPDFGenerator reopened(nullptr,{}); QList<Okular::Page *> fresh;
+        QCOMPARE(reopened.loadDocumentWithPassword(saved,fresh,{}),Okular::Document::OpenSuccess);
+        QVERIFY(samePixels(reopened.renderToImage(0,72,true),image));
+        qDeleteAll(fresh); qDeleteAll(pages);
+    }
+    void latexPaddingExample()
+    {
+        const QString source=qEnvironmentVariable("MENGSHEE_PADDING_SOURCE_PDF");
+        const QString output=qEnvironmentVariable("MENGSHEE_PADDING_OUTPUT");
+        if(source.isEmpty() || output.isEmpty()) QSKIP("Optional LaTeX padding visual fixture");
+        QTemporaryDir dir;
+        const auto expanded=dir.filePath(QStringLiteral("content.pdf"));
+        const auto expansion=PdfPageBounds::expandAppearance(source.toUtf8().toStdString(),expanded.toUtf8().toStdString(),1.0);
+        QVERIFY(expansion.ok);
+        MuPDFGenerator contentBackend(nullptr,{}); QList<Okular::Page *> contentPages;
+        QCOMPARE(contentBackend.loadDocumentWithPassword(expanded,contentPages,{}),Okular::Document::OpenSuccess);
+        const double width=qEnvironmentVariable("MENGSHEE_PADDING_WIDTH",QStringLiteral("300")).toDouble(), height=MengsheePdfRuntime::firstPageSize(expanded).height();
+        // Do not fit the frame to the generated source: that hides discrepancies
+        // between the requested paragraph width and its physical PDF extent.
+        QVERIFY(qAbs(expansion.logicalBounds.x2-expansion.logicalBounds.x1-width)<0.02);
+        const auto blank=dir.filePath(QStringLiteral("blank.pdf"));
+        const double pageWidth=width+60, pageHeight=3*(height+60);
+        {
+            QPdfWriter writer(blank); writer.setResolution(72);
+            writer.setPageSize(QPageSize(QSizeF(pageWidth,pageHeight),QPageSize::Point)); writer.setPageMargins(QMarginsF());
+            QPainter painter(&writer); painter.fillRect(QRectF(0,0,pageWidth,pageHeight),Qt::white);
+            for(int i=0;i<3;++i) painter.drawText(QPointF(24,i*(height+60)+18),QStringLiteral("Padding: 6 pt; border: %1 pt").arg(i==2?4:i));
+        }
+        MuPDFGenerator backend(nullptr,{}); QList<Okular::Page *> pages;
+        QCOMPARE(backend.loadDocumentWithPassword(blank,pages,{}),Okular::Document::OpenSuccess);
+        for(int i=0;i<3;++i) {
+            Okular::StampAnnotation note;
+            note.setOkularLatex(true); note.setLatexNoteType(Okular::Annotation::LatexNoteBoxed);
+            const double top=i*(height+60)+28;
+            note.setBoundingRectangle({24/pageWidth,top/pageHeight,(24+width+12)/pageWidth,(top+height+12)/pageHeight});
+            note.setLatexPadding(6); note.setLatexLayoutWidth(width);
+            note.setContents(qEnvironmentVariable("MENGSHEE_PADDING_TEXT"));
+            note.style().setWidth(i==2?4:i); note.setLatexBorderColor(Qt::red); note.setLatexFillColor(Qt::yellow);
+            note.setLatexAppearancePdfFileName(expanded);
+            backend.annotationProxy()->notifyAddition(&note,0);
+        }
+        QString error;
+        QVERIFY(backend.save(output+QStringLiteral(".pdf"),Okular::SaveInterface::SaveChanges,&error));
+        QVERIFY(backend.renderToImage(0,144,true).save(output+QStringLiteral(".png")));
+        qDeleteAll(pages); qDeleteAll(contentPages);
+    }
     void linkBorders_data()
     {
         QTest::addColumn<QByteArray>("attributes");

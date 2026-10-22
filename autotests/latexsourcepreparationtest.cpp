@@ -152,7 +152,8 @@ void LatexSourcePreparationTest::snippet()
     const QString original = source;
     QString specialRgb = rgb;
     specialRgb.replace(QLatin1Char(','), QLatin1Char(' '));
-    const QString expectedPrefix = QStringLiteral("\\begingroup%\n"
+    const QString expectedPrefix = QStringLiteral("\\ifdefined\\PreviewBorder\\global\\PreviewBorder=0pt\\relax\\fi%\n"
+                                                 "\\begingroup%\n"
                                                  "\\tracinglostchars=3\\relax%\n"
                                                  "\\expandafter\\let\\csname mengshee@note@endcolor\\endcsname\\relax%\n"
                                                  "\\ifdefined\\color%\n"
@@ -190,7 +191,10 @@ void LatexSourcePreparationTest::logicalBoxStructure()
         const QString allocation = name == QLatin1String("top") ? QStringLiteral("\\newdimen") : QStringLiteral("\\newbox");
         QVERIFY(prepared.contains(QStringLiteral("\\ifcsname mengshee@note@%1\\endcsname\\else\\expandafter%2\\csname mengshee@note@%1\\endcsname\\fi").arg(name, allocation)));
     }
-    QVERIFY(!prepared.contains(QStringLiteral("\\global")));
+    // preview reads this dimension after the snippet group has ended. All
+    // content/register assignments remain local; only its border is global.
+    QCOMPARE(prepared.count(QStringLiteral("\\global")),1);
+    QVERIFY(prepared.contains(QStringLiteral("\\global\\PreviewBorder=0pt")));
     const QString sourceClose = QStringLiteral("\\par%\n\\ifnum\\lastnodetype=1\\relax\\aftergroup\\aftergroup\\aftergroup\\MengsheeNoteLastLine\\fi%\n\\endgroup}");
     QVERIFY(prepared.contains(sourceClose));
     QVERIFY(prepared.indexOf(QStringLiteral("\\setbox\\MengsheeNoteScratch")) < prepared.lastIndexOf(QStringLiteral("\\MengsheeNoteDepth%\n")));

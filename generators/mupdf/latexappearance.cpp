@@ -117,7 +117,11 @@ void write(fz_context *ctx, pdf_document *doc, pdf_annot *native, const Okular::
     Options options;
     options.outerSize = outer.size();
     options.frameRect = frame.translated(-outer.topLeft());
-    options.contentFrameInset = std::max(0.0, annotation->latexPadding()) + std::max(0.0, annotation->style().width());
+    // Padding is measured from the frame, just as in the reflow width and
+    // visual-size calculations. Adding the stroke here shifts content right
+    // and down without reducing its width, consuming the opposite padding.
+    options.contentFrameInset = std::isfinite(annotation->latexPadding()) && annotation->latexPadding() >= 0
+        ? annotation->latexPadding() : Okular::LatexNoteGeometry::defaultPaddingPoints();
     options.fillColor = annotation->latexFillColor();
     options.borderColor = annotation->latexBorderColor().isValid() ? annotation->latexBorderColor() : QColor(Qt::black);
     options.borderWidth = annotation->style().width();
@@ -161,6 +165,8 @@ void write(fz_context *ctx, pdf_document *doc, pdf_annot *native, const Okular::
                 part = nullptr;
             }
             raw = pdf_new_xobject(ctx, doc, sourceBox, fz_identity, sourceResources, content);
+            if (auto *layout = pdf_dict_gets(ctx, sourcePage, "MengsheeLayoutBox"))
+                pdf_dict_puts_drop(ctx, raw, "MengsheeLayoutBox", pdf_graft_object(ctx, doc, layout));
             fz_drop_buffer(ctx, content);
             content = nullptr;
         } else {
@@ -171,6 +177,8 @@ void write(fz_context *ctx, pdf_document *doc, pdf_annot *native, const Okular::
                 fz_throw(ctx, FZ_ERROR_FORMAT, "LaTeX annotation has no source appearance");
         }
         const auto sourceBox = qtRect(pdf_dict_get_rect(ctx, raw, PDF_NAME(BBox)));
+        if (auto *layout = pdf_dict_gets(ctx, raw, "MengsheeLayoutBox"))
+            options.sourceLayoutBox = qtRect(pdf_to_rect(ctx, layout));
         const auto bytes = appearanceStream(sourceBox, options, annotation->orderedCalloutNumber(), annotation->numberedCalloutLabel());
         resources = pdf_new_dict(ctx, doc, 3);
         auto *forms = pdf_dict_put_dict(ctx, resources, PDF_NAME(XObject), 1);

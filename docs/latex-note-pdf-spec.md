@@ -261,10 +261,18 @@ See [Numbered Callouts](ordered-callouts.md).
 `layout.widthPt`
 : Optional number in PDF points. `0` or absence means natural width. A positive
 value is the TeX paragraph width used for reflow.
+The unit is a PDF point (1/72 inch), not a TeX point (1/72.27 inch).
+Renderer adapters must convert units and disable the profile's preview border;
+preview margins must not be added to the requested paragraph width or padding.
 
 `layout.paddingPt`
 : Optional non-negative number in PDF points. Defaults to `3`. It is applied
 independently on every side between the annotation frame and LaTeX content.
+Positioning and reflow use the logical typesetting box, not glyph outlines or
+an expanded paint bounding box. Expanding the source PDF to retain overhangs
+must preserve that logical origin and size. Mengshee's source appearance Form
+may retain this box in its private `MengsheeLayoutBox` entry; it does not change
+the standard `BBox` used for painting and clipping.
 
 `style.textColor`
 : Optional CSS-style ARGB hex string, `#aarrggbb`. Defaults to opaque black.

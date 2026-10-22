@@ -21,8 +21,8 @@ bool expandInPlace(const QString &pdfFileName, QString &error)
         return false;
     }
     const QString output = staging.filePath(QStringLiteral("appearance.pdf"));
-    // This is the existing preview-border allowance, not a replacement for
-    // logical line metrics. The native helper unions rather than tight-crops.
+    // Preserve painted overhangs with a safety allowance. The source's logical
+    // layout frame is retained separately, so expansion cannot change padding.
     const auto result = PdfPageBounds::expandAppearance(pdfFileName.toUtf8().toStdString(), output.toUtf8().toStdString(), 1.0);
     if (!result.ok) {
         error = i18n("Could not preserve the LaTeX note's logical and painted bounds: %1", QString::fromUtf8(result.message.c_str()));
