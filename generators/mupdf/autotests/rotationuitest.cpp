@@ -1,6 +1,11 @@
 #include "../../../part/latexnoteutils.h"
 #include "../../../part/annotationpopup.h"
 #include <QMenu>
+#include <QClipboard>
+#include <QMimeData>
+#include <QTimer>
+#include <KActionCollection>
+#include "../../../part/pageview.h"
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "../../../part/part.h"
 #include <KConfigGroup>
@@ -20,6 +25,85 @@ class PartTest : public QObject
 {
     Q_OBJECT
 private Q_SLOTS:
+    void clipboardImageNote_data()
+    {
+        QTest::addColumn<bool>("fileUrl");
+        QTest::newRow("bitmap") << false;
+        QTest::newRow("local-image-file") << true;
+    }
+    void clipboardImageNote()
+    {
+        QFETCH(bool,fileUrl);
+        QStandardPaths::setTestModeEnabled(true);
+        QCoreApplication::setApplicationName(QStringLiteral("mengshee-clipboard-ui-test"));
+        QTemporaryDir directory;
+        const auto file=directory.filePath(QStringLiteral("page.pdf"));
+        {
+            QPdfWriter writer(file);
+            QPainter painter(&writer);
+            painter.fillRect(0,0,200,200,Qt::white);
+        }
+        Part part(nullptr,{});
+        part.widget()->resize(800,600);
+        part.widget()->show();
+        QVERIFY(part.openUrl(QUrl::fromLocalFile(file)));
+        QTRY_COMPARE(part.m_document->pages(),1u);
+        auto *action=part.actionCollection()->action(QStringLiteral("annotation_add_image_note"));
+        QVERIFY(action);
+        QTRY_VERIFY(action->isEnabled());
+        QApplication::clipboard()->setText(QStringLiteral("not an image"));
+        bool disabled=false;
+        QTimer::singleShot(0,[&]() {
+            auto *menu=qobject_cast<QMenu *>(QApplication::activePopupWidget());
+            if(!menu) return;
+            for(auto *item:menu->actions()) if(item->objectName()==QStringLiteral("image_note_from_clipboard"))
+                disabled=!item->isEnabled();
+            menu->close();
+        });
+        action->trigger();
+        QVERIFY(disabled);
+        QCOMPARE(part.m_document->page(0)->annotations().size(),0);
+        QImage image(80,40,QImage::Format_ARGB32);
+        image.fill(Qt::transparent);
+        { QPainter painter(&image); painter.fillRect(0,0,40,40,Qt::red); }
+        if(fileUrl) {
+            const auto imageFile=directory.filePath(QStringLiteral("clipboard.png"));
+            QVERIFY(image.save(imageFile));
+            auto *mime=new QMimeData;
+            mime->setUrls({QUrl::fromLocalFile(imageFile)});
+            QApplication::clipboard()->setMimeData(mime);
+        } else {
+            QApplication::clipboard()->setImage(image);
+        }
+        bool selected=false;
+        QTimer::singleShot(0,[&]() {
+            auto *menu=qobject_cast<QMenu *>(QApplication::activePopupWidget());
+            if(!menu) return;
+            for(auto *item:menu->actions()) if(item->objectName()==QStringLiteral("image_note_from_clipboard")) {
+                selected=item->isEnabled();
+                QTest::mouseClick(menu,Qt::LeftButton,Qt::NoModifier,menu->actionGeometry(item).center());
+                return;
+            }
+            menu->close();
+        });
+        action->trigger();
+        QVERIFY(selected);
+        QApplication::clipboard()->clear();
+        QTest::qWait(100);
+        auto *viewport=part.m_pageView->viewport();
+        QTest::mouseClick(viewport,Qt::LeftButton,Qt::NoModifier,viewport->rect().center());
+        QTRY_COMPARE(part.m_document->page(0)->annotations().size(),1);
+        auto *stamp=dynamic_cast<StampAnnotation *>(part.m_document->page(0)->annotations().first());
+        QVERIFY(stamp);
+        const QImage stored(stamp->stampImagePath());
+        QCOMPARE(stored.size(),image.size());
+        QCOMPARE(stored.pixelColor(60,20),QColor(Qt::transparent));
+        QCOMPARE(stored.pixelColor(20,20),QColor(Qt::red));
+        part.m_document->undo();
+        QCOMPARE(part.m_document->page(0)->annotations().size(),0);
+        part.m_document->redo();
+        QCOMPARE(part.m_document->page(0)->annotations().size(),1);
+    }
     void rotationMenu()
     {
         QStandardPaths::setTestModeEnabled(true);

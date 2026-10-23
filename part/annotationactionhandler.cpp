@@ -12,9 +12,11 @@
 #include <QApplication>
 #include <QBitmap>
 #include <QCheckBox>
+#include <QClipboard>
 #include <QColorDialog>
 #include <QComboBox>
 #include <QContextMenuEvent>
+#include <QCursor>
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QDir>
@@ -25,9 +27,11 @@
 #include <QFont>
 #include <QFormLayout>
 #include <QHash>
+#include <QImageReader>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMenu>
+#include <QMimeData>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPainterPath>
@@ -37,6 +41,8 @@
 #include <QStandardPaths>
 #include <QStringList>
 #include <QTimer>
+#include <QTemporaryDir>
+#include <QUuid>
 #include <QToolButton>
 #include <QVBoxLayout>
 #include <QWidget>
@@ -789,10 +795,44 @@ void AnnotationActionHandlerPrivate::slotStampToolSelected(const QString &stamp)
 
 void AnnotationActionHandlerPrivate::slotSelectCustomStamp()
 {
-    const QString customStampFile = QFileDialog::getOpenFileName(nullptr,
+    // Snapshot the clipboard before opening the menu: a later clipboard change
+    // must not silently replace the image the user chose to insert.
+    QImage clipboardImage = QApplication::clipboard()->image();
+    if (clipboardImage.isNull()) {
+        const auto *mime = QApplication::clipboard()->mimeData();
+        const auto urls = mime ? mime->urls() : QList<QUrl>();
+        if (urls.size() == 1 && urls.first().isLocalFile()) {
+            QImageReader reader(urls.first().toLocalFile());
+            reader.setAutoTransform(true);
+            clipboardImage = reader.read();
+        }
+    }
+    QMenu sourceMenu;
+    auto *fromFile = sourceMenu.addAction(QIcon::fromTheme(QStringLiteral("document-open")), i18n("Insert Image from File…"));
+    auto *fromClipboard = sourceMenu.addAction(QIcon::fromTheme(QStringLiteral("edit-paste")), i18n("Insert Image from Clipboard"));
+    fromFile->setObjectName(QStringLiteral("image_note_from_file"));
+    fromClipboard->setObjectName(QStringLiteral("image_note_from_clipboard"));
+    fromClipboard->setEnabled(!clipboardImage.isNull());
+    const auto *choice = sourceMenu.exec(QCursor::pos());
+    if (!choice)
+        return;
+
+    QString customStampFile;
+    if (choice == fromClipboard) {
+        // Keep source files for the application session, including undo/redo and
+        // edits after the originating view has closed. PNG preserves alpha.
+        static QTemporaryDir clipboardImages(QDir::tempPath() + QStringLiteral("/mengshee-clipboard-images-XXXXXX"));
+        customStampFile = clipboardImages.filePath(QUuid::createUuid().toString(QUuid::WithoutBraces) + QStringLiteral(".png"));
+        if (!clipboardImages.isValid() || !clipboardImage.save(customStampFile, "PNG")) {
+            KMessageBox::error(nullptr, i18n("Could not prepare the clipboard image."));
+            return;
+        }
+    } else if (choice == fromFile) {
+        customStampFile = QFileDialog::getOpenFileName(nullptr,
                                                                  i18nc("@title:window file chooser", "Select Image Note"),
                                                                  QString(),
-                                                                 i18n("*.ico *.png *.xpm *.svg *.svgz | Icon Files (*.ico *.png *.xpm *.svg *.svgz)"));
+                                                                 i18n("*.png *.jpg *.jpeg *.bmp *.gif *.webp *.tif *.tiff *.ico *.xpm *.svg *.svgz | Image Files"));
+    }
     if (customStampFile.isEmpty()) {
         return;
     }

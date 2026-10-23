@@ -8367,6 +8367,18 @@ msgctxt "@title:window file chooser"
 msgid "Select Image Note"
 msgstr "选择图片批注"
 
+msgid "Insert Image from File…"
+msgstr "从文件插入图片…"
+
+msgid "Insert Image from Clipboard"
+msgstr "从剪贴板插入图片"
+
+msgid "Could not prepare the clipboard image."
+msgstr "无法读取或保存剪贴板图片。"
+
+msgid "*.png *.jpg *.jpeg *.bmp *.gif *.webp *.tif *.tiff *.ico *.xpm *.svg *.svgz | Image Files"
+msgstr "*.png *.jpg *.jpeg *.bmp *.gif *.webp *.tif *.tiff *.ico *.xpm *.svg *.svgz | 图片文件"
+
 #: 
 msgctxt "@title:window"
 msgid "Select annotation font"
