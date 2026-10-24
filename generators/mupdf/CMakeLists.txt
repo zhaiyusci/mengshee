@@ -7,7 +7,7 @@ if(BUILD_MOBILE)
 endif()
 # Keep the engine and its embedded resources in one DLL. Both the plugin and
 # the UI's PDF helpers use this runtime rather than linking MuPDF statically.
-add_library(mengshee_pdf_runtime SHARED ${mupdf_backend_sources} pdfpagebounds.cpp runtimehelpers.cpp systemfonts.cpp context.cpp)
+add_library(mengshee_pdf_runtime SHARED ${mupdf_backend_sources} printing.cpp vectorprintdevice.cpp pdfpagebounds.cpp runtimehelpers.cpp systemfonts.cpp context.cpp)
 generate_export_header(mengshee_pdf_runtime)
 set_target_properties(mengshee_pdf_runtime PROPERTIES OUTPUT_NAME MengsheePdfRuntime)
 target_include_directories(mengshee_pdf_runtime PUBLIC "${CMAKE_CURRENT_BINARY_DIR}" "${MuPDF_INCLUDE_DIR}")
@@ -44,6 +44,13 @@ endif()
 
 # Opt-in benchmark: exercise the production shared runtime without a second MuPDF copy.
 add_executable(mupdf_render_benchmark EXCLUDE_FROM_ALL autotests/renderbenchmark.cpp)
+add_executable(mupdf_print_test EXCLUDE_FROM_ALL autotests/printtest.cpp)
+target_link_libraries(mupdf_print_test PRIVATE mengshee_pdf_runtime MuPDF::MuPDF okularcore Qt6::Widgets Qt6::PrintSupport Qt6::Test)
+if(BUILD_TESTING)
+    set_target_properties(mupdf_print_test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+    add_test(NAME mupdf_print_test COMMAND mupdf_print_test)
+    set_tests_properties(mupdf_print_test PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+endif()
 target_link_libraries(mupdf_render_benchmark PRIVATE mengshee_pdf_runtime okularcore Qt6::Widgets)
 if(WIN32)
     target_link_libraries(mupdf_render_benchmark PRIVATE psapi)

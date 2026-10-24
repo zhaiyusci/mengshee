@@ -191,6 +191,7 @@ private:
     pdf_obj *linkDestination(const QString &, int, double, double, bool remote = false);
     bool updateLink(Okular::Page *, const QRectF &, bool create, const char *kind, const QString &, int, double, double, QString *, const QString &remoteName = {}, Okular::PdfLinkAppearance appearance = {});
     void loadLinks(pdf_page *native, Okular::Page *page);
+    void renderLinkAppearance(pdf_page *, pdf_obj *, fz_device *, bool printing);
     void renderAnnotations(pdf_page *, fz_pixmap *, fz_matrix, fz_cookie *);
     void reportAnnotationError(const QString &);
     bool m_annotationWarningShown = false;

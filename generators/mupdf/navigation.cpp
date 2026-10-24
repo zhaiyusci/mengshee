@@ -92,39 +92,13 @@ void MuPDFGenerator::clearAnnotationLists()
     m_annotationLists.clear();
 }
 
-void MuPDFGenerator::renderAnnotations(pdf_page *page, fz_pixmap *pixmap, fz_matrix transform, fz_cookie *cookie)
+void MuPDFGenerator::renderLinkAppearance(pdf_page *page, pdf_obj *object, fz_device *device, bool printing)
 {
-    // Editing any persistent PDF object discards MuPDF's document-wide local
-    // xref, including display-only FreeText APs. Rebuild them before recording
-    // annotation lists, otherwise an empty appearance stays cached until reload.
-    fz_try(m_context)
-    {
-        if (pdf_update_page(m_context, page))
-            clearAnnotationLists();
-    }
-    fz_catch(m_context)
-    {
-        fz_rethrow_if(m_context, FZ_ERROR_SYSTEM);
-        fz_rethrow_if(m_context, FZ_ERROR_ABORT);
-        reportAnnotationError(QString::fromUtf8(fz_caught_message(m_context)));
-    }
-    // MuPDF excludes Link annotations from its annotation list. Preserve PDF
-    // stacking order while explicitly painting their optional appearances.
-    QHash<pdf_obj *, pdf_annot *> native;
-    for (auto *a = pdf_first_annot(m_context, page); a; a = pdf_next_annot(m_context, a))
-        native.insert(pdf_resolve_indirect(m_context, pdf_annot_obj(m_context, a)), a);
-    for (auto *a = pdf_first_widget(m_context, page); a; a = pdf_next_widget(m_context, a))
-        native.insert(pdf_resolve_indirect(m_context, pdf_annot_obj(m_context, a)), a);
-    auto *annots = pdf_dict_get(m_context, page->obj, PDF_NAME(Annots));
-    const auto paintOne = [&](pdf_obj *object, fz_device *device) {
-        if (auto *a = native.value(pdf_resolve_indirect(m_context, object))) {
-            pdf_run_annot(m_context, a, device, fz_identity, cookie);
-            return;
-        }
         if (!pdf_name_eq(m_context, pdf_dict_get(m_context, object, PDF_NAME(Subtype)), PDF_NAME(Link)))
             return;
-        if (pdf_dict_get_int(m_context, object, PDF_NAME(F)) & (PDF_ANNOT_IS_HIDDEN | PDF_ANNOT_IS_INVISIBLE | PDF_ANNOT_IS_NO_VIEW))
-            return;
+        const int flags = pdf_dict_get_int(m_context, object, PDF_NAME(F));
+        if (flags & (PDF_ANNOT_IS_HIDDEN | PDF_ANNOT_IS_INVISIBLE)) return;
+        if (printing ? !(flags & PDF_ANNOT_IS_PRINT) : (flags & PDF_ANNOT_IS_NO_VIEW)) return;
         auto *ap = pdf_dict_getp(m_context, object, "AP/N");
         if (pdf_is_dict(m_context, ap) && !pdf_is_stream(m_context, ap))
             ap = pdf_dict_get(m_context, ap, pdf_dict_get(m_context, object, PDF_NAME(AS)));
@@ -154,7 +128,7 @@ void MuPDFGenerator::renderAnnotations(pdf_page *page, fz_pixmap *pixmap, fz_mat
             pdf_dict_puts(m_context, xobjects, "LinkAppearance", ap);
             const char bytes[] = "q /LinkAppearance Do Q";
             buffer = fz_new_buffer_from_copied_data(m_context, reinterpret_cast<const unsigned char *>(bytes), sizeof(bytes) - 1);
-            processor = pdf_new_run_processor(m_context, m_document, device, fz_concat(placement, pageMatrix), -1, "View", nullptr, nullptr, nullptr, nullptr, nullptr);
+            processor = pdf_new_run_processor(m_context, m_document, device, fz_concat(placement, pageMatrix), -1, printing ? "Print" : "View", nullptr, nullptr, nullptr, nullptr, nullptr);
             pdf_process_glyph(m_context, processor, m_document, resources, buffer);
             pdf_close_processor(m_context, processor);
         }
@@ -168,6 +142,38 @@ void MuPDFGenerator::renderAnnotations(pdf_page *page, fz_pixmap *pixmap, fz_mat
         {
             fz_rethrow(m_context);
         }
+}
+
+void MuPDFGenerator::renderAnnotations(pdf_page *page, fz_pixmap *pixmap, fz_matrix transform, fz_cookie *cookie)
+{
+    // Editing any persistent PDF object discards MuPDF's document-wide local
+    // xref, including display-only FreeText APs. Rebuild them before recording
+    // annotation lists, otherwise an empty appearance stays cached until reload.
+    fz_try(m_context)
+    {
+        if (pdf_update_page(m_context, page))
+            clearAnnotationLists();
+    }
+    fz_catch(m_context)
+    {
+        fz_rethrow_if(m_context, FZ_ERROR_SYSTEM);
+        fz_rethrow_if(m_context, FZ_ERROR_ABORT);
+        reportAnnotationError(QString::fromUtf8(fz_caught_message(m_context)));
+    }
+    // MuPDF excludes Link annotations from its annotation list. Preserve PDF
+    // stacking order while explicitly painting their optional appearances.
+    QHash<pdf_obj *, pdf_annot *> native;
+    for (auto *a = pdf_first_annot(m_context, page); a; a = pdf_next_annot(m_context, a))
+        native.insert(pdf_resolve_indirect(m_context, pdf_annot_obj(m_context, a)), a);
+    for (auto *a = pdf_first_widget(m_context, page); a; a = pdf_next_widget(m_context, a))
+        native.insert(pdf_resolve_indirect(m_context, pdf_annot_obj(m_context, a)), a);
+    auto *annots = pdf_dict_get(m_context, page->obj, PDF_NAME(Annots));
+    const auto paintOne = [&](pdf_obj *object, fz_device *device) {
+        if (auto *a = native.value(pdf_resolve_indirect(m_context, object))) {
+            pdf_run_annot(m_context, a, device, fz_identity, cookie);
+            return;
+        }
+        renderLinkAppearance(page, object, device, false);
     };
     const auto scissor = fz_expand_rect(fz_rect_from_irect(fz_pixmap_bbox(m_context, pixmap)), 1);
     for (int i = 0; i < pdf_array_len(m_context, annots); ++i) {

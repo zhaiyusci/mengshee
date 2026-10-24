@@ -342,32 +342,6 @@ bool MuPDFGenerator::isAllowed(Okular::Permission permission) const
     return allowed;
 }
 
-Okular::Document::PrintError MuPDFGenerator::print(QPrinter &printer)
-{
-    if (!isAllowed(Okular::AllowPrint))
-        return Okular::Document::UnknownPrintError;
-    QPainter painter;
-    if (!painter.begin(&printer))
-        return Okular::Document::InvalidPrinterStatePrintError;
-    const int first = printer.fromPage() > 0 ? printer.fromPage() - 1 : 0;
-    const int last = printer.toPage() > 0 ? std::min(printer.toPage(), int(m_pages.size())) - 1 : m_pages.size() - 1;
-    for (int i = first; i <= last; ++i) {
-        if (i != first && !printer.newPage())
-            return Okular::Document::UnknownPrintError;
-        const int index = printer.pageOrder() == QPrinter::LastPageFirst ? last - (i - first) : i;
-        QString error;
-        const auto image = renderToImage(index, std::min(printer.resolution(), 300), true, &error);
-        if (image.isNull())
-            return Okular::Document::UnknownPrintError;
-        const QRect area = printer.pageLayout().paintRectPixels(printer.resolution());
-        QSize size = image.size();
-        size.scale(area.size(), Qt::KeepAspectRatio);
-        painter.drawImage(QRect(area.center() - QPoint(size.width() / 2, size.height() / 2), size), image);
-    }
-    painter.end();
-    return Okular::Document::NoPrintError;
-}
-
 Okular::PrintPreviewRenderer MuPDFGenerator::createPrintPreviewRenderer(QString *error)
 {
     QMutexLocker lock(userMutex());
