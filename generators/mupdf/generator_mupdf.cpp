@@ -426,6 +426,26 @@ bool MuPDFGenerator::save(const QString &path, SaveOptions, QString *error)
     options.do_compress = 1;
     fz_try(m_context)
     {
+        // Acrobat's FreeText fallback ignores otherwise valid multi-line DA
+        // strings. Normalize ordinary graphics/text-state tokens on save,
+        // including annotations that have not been edited in this session.
+        for (int page = 0; page < pdf_count_pages(m_context, m_document); ++page) {
+            auto *annots = pdf_dict_get(m_context, pdf_lookup_page_obj(m_context, m_document, page), PDF_NAME(Annots));
+            for (int i = 0; i < pdf_array_len(m_context, annots); ++i) {
+                auto *annot = pdf_array_get(m_context, annots, i);
+                if (!pdf_name_eq(m_context, pdf_dict_get(m_context, annot, PDF_NAME(Subtype)), PDF_NAME(FreeText))) continue;
+                auto *da = pdf_dict_get(m_context, annot, PDF_NAME(DA));
+                if (!pdf_is_string(m_context, da)) continue;
+                const QByteArray original(pdf_to_str_buf(m_context, da), pdf_to_str_len(m_context, da));
+                // Do not rewrite embedded strings or comments as plain tokens.
+                if (original.contains('(') || original.contains('<') || original.contains('%')) continue;
+                QByteArray normalized = original;
+                for (char &c : normalized)
+                    if (c == '\r' || c == '\n' || c == '\t' || c == '\f' || c == '\0') c = ' ';
+                if (normalized != original)
+                    pdf_dict_put_string(m_context, annot, PDF_NAME(DA), normalized.constData(), normalized.size());
+            }
+        }
         pdf_save_document(m_context, m_document, name.constData(), &options);
     }
     fz_catch(m_context)

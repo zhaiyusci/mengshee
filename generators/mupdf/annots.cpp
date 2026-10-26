@@ -239,6 +239,24 @@ Q_NEVER_INLINE void MuPDFAnnotationProxy::loadOne(pdf_annot *native, Okular::Pag
         }
     }
     if (annotation) {
+        if (auto *text = dynamic_cast<Okular::TextAnnotation *>(annotation); text && type == PDF_ANNOT_FREE_TEXT) {
+            text->setTextType(Okular::TextAnnotation::InPlace);
+            const auto intent = pdf_dict_get(ctx, object, PDF_NAME(IT));
+            text->setInplaceIntent(pdf_name_eq(ctx, intent, PDF_NAME(FreeTextTypeWriter)) ? Okular::TextAnnotation::TypeWriter
+                : pdf_name_eq(ctx, intent, PDF_NAME(FreeTextCallout)) ? Okular::TextAnnotation::Callout : Okular::TextAnnotation::Unknown);
+            text->setInplaceAlignment(pdf_annot_quadding(ctx, native));
+            if (pdf_annot_has_default_appearance(ctx, native)) {
+                char font[256] = {};
+                float size = 0, color[4] = {};
+                int components = 0;
+                pdf_parse_default_appearance_unmapped(ctx, pdf_dict_get_text_string(ctx, object, PDF_NAME(DA)), font, sizeof(font), &size, &components, color);
+                text->setTextFontName(QString::fromUtf8(font));
+                text->setTextFontPointSize(size);
+                if (components == 1) text->setTextColor(QColor::fromRgbF(color[0], color[0], color[0]));
+                else if (components == 3) text->setTextColor(QColor::fromRgbF(color[0], color[1], color[2]));
+                else if (components == 4) text->setTextColor(QColor::fromCmykF(color[0], color[1], color[2], color[3]));
+            }
+        }
         const auto rect = pdf_annot_has_rect(ctx, native) ? pdf_annot_rect(ctx, native) : pdf_bound_annot(ctx, native);
         if (auto *text = dynamic_cast<Okular::TextAnnotation *>(annotation); text && type == PDF_ANNOT_FREE_TEXT && pdf_name_eq(ctx, pdf_dict_get(ctx, object, PDF_NAME(IT)), PDF_NAME(FreeTextCallout))) {
             fz_matrix pageMatrix;
@@ -415,9 +433,12 @@ void MuPDFAnnotationProxy::write(const Okular::Annotation *annotation, pdf_annot
             if (text->textType() == Okular::TextAnnotation::InPlace) {
                 const QColor color = text->textColor().isValid() ? text->textColor() : QColor(Qt::black);
                 const float rgb[] = {float(color.redF()), float(color.greenF()), float(color.blueF())};
-                const QByteArray font = text->hasTextFont() ? text->textFontName().toUtf8() : QByteArray("Helv");
-                pdf_set_annot_default_appearance(ctx, native, font.constData(), text->hasTextFont() ? text->textFontPointSize() : 12, 3, rgb);
+                // hasTextFont() describes a legacy QFont, not the PDF font fields.
+                const QByteArray font = text->textFontName().isEmpty() ? QByteArray("Helv") : text->textFontName().toUtf8();
+                pdf_set_annot_default_appearance(ctx, native, font.constData(), text->textFontPointSize(), 3, rgb);
                 pdf_set_annot_quadding(ctx, native, text->inplaceAlignment());
+                if (text->inplaceIntent() == Okular::TextAnnotation::TypeWriter)
+                    pdf_dict_put_name(ctx, object, PDF_NAME(IT), "FreeTextTypeWriter");
             }
             putText(ctx, object, "TemplateNoteData", text->templateNoteData());
         }

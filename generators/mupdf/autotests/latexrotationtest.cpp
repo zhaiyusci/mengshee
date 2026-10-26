@@ -58,6 +58,73 @@ class LatexRotationTest : public QObject
         return total <= quint64(actual.width() * actual.height());
     }
 private Q_SLOTS:
+    void importedTypewriter()
+    {
+        const auto path = qEnvironmentVariable("MENGSHEE_TEST_TYPEWRITER_PDF");
+        if (path.isEmpty()) QSKIP("Optional external FreeText import regression");
+        MuPDFGenerator backend(nullptr, {});
+        QList<Okular::Page *> pages;
+        QCOMPARE(backend.loadDocumentWithPassword(path, pages, {}), Okular::Document::OpenSuccess);
+        int count = 0;
+        for (auto *page : pages) {
+            for (auto *annotation : page->annotations()) {
+                auto *text = dynamic_cast<Okular::TextAnnotation *>(annotation);
+                if (!text || text->textType() != Okular::TextAnnotation::InPlace) continue;
+                QCOMPARE(text->inplaceIntent(), Okular::TextAnnotation::TypeWriter);
+                QCOMPARE(text->textFontName(), QStringLiteral("Helvetica"));
+                QCOMPARE(text->textFontPointSize(), 6.0);
+                QCOMPARE(text->textColor(), QColor(Qt::red));
+                ++count;
+            }
+        }
+        QCOMPARE(count, 3);
+        Okular::TextAnnotation added;
+        added.setTextType(Okular::TextAnnotation::InPlace);
+        added.setInplaceIntent(Okular::TextAnnotation::TypeWriter);
+        added.setContents(QStringLiteral("New typewriter regression"));
+        added.setBoundingRectangle({.1, .1, .5, .2});
+        added.setTextFontName(QStringLiteral("Helvetica"));
+        added.setTextFontPointSize(6);
+        added.setTextColor(Qt::red);
+        backend.annotationProxy()->notifyAddition(&added, 0);
+        QTemporaryDir dir;
+        const auto saved = dir.filePath(QStringLiteral("saved.pdf"));
+        QString error;
+        QVERIFY(backend.save(saved, Okular::SaveInterface::SaveChanges, &error));
+        verifyFreeTextStorage(saved, false, 0);
+        // Verify both the newly authored note and untouched imported notes.
+        auto *ctx = fz_new_context(nullptr, nullptr, FZ_STORE_DEFAULT);
+        auto *pdf = pdf_open_document(ctx, saved.toUtf8().constData());
+        int checked = 0;
+        for (int page = 0; page < pdf_count_pages(ctx, pdf); ++page) {
+            auto *annots = pdf_dict_get(ctx, pdf_lookup_page_obj(ctx, pdf, page), PDF_NAME(Annots));
+            for (int i = 0; i < pdf_array_len(ctx, annots); ++i) {
+                auto *annot = pdf_array_get(ctx, annots, i);
+                if (!pdf_name_eq(ctx, pdf_dict_get(ctx, annot, PDF_NAME(Subtype)), PDF_NAME(FreeText))) continue;
+                const QByteArray da(pdf_dict_get_text_string(ctx, annot, PDF_NAME(DA)));
+                QVERIFY(!da.contains('\n'));
+                QVERIFY(!da.contains('\r'));
+                QVERIFY(!pdf_dict_get(ctx, annot, PDF_NAME(AP)));
+                ++checked;
+            }
+        }
+        pdf_drop_document(ctx, pdf);
+        fz_drop_context(ctx);
+        QCOMPARE(checked, 4);
+        const auto output = qEnvironmentVariable("MENGSHEE_TEST_TYPEWRITER_OUTPUT");
+        if (!output.isEmpty()) QVERIFY(QFile::copy(saved, output));
+        MuPDFGenerator reopened(nullptr, {});
+        QList<Okular::Page *> fresh;
+        QCOMPARE(reopened.loadDocumentWithPassword(saved, fresh, {}), Okular::Document::OpenSuccess);
+        auto *loaded = dynamic_cast<Okular::TextAnnotation *>(fresh[0]->annotation(added.uniqueName()));
+        QVERIFY(loaded);
+        QCOMPARE(loaded->inplaceIntent(), Okular::TextAnnotation::TypeWriter);
+        QCOMPARE(loaded->textFontName(), QStringLiteral("Helvetica"));
+        QCOMPARE(loaded->textFontPointSize(), 6.0);
+        QCOMPARE(loaded->textColor(), QColor(Qt::red));
+        qDeleteAll(fresh);
+        qDeleteAll(pages);
+    }
     void latexPadding_data()
     {
         QTest::addColumn<double>("border");
@@ -239,6 +306,23 @@ private Q_SLOTS:
         text.setTextFontPointSize(14);
         text.setTextColor(Qt::black);
         backend.annotationProxy()->notifyAddition(&text, 0);
+        // Ignore subpixel border/placement differences between initial synthesis
+        // and editing. Measure the painted text, not the frame's antialiasing.
+        const auto inkCount = [&backend]() {
+            const auto image = backend.renderToImage(0, 72, true).copy(32, 32, 205, 40);
+            int count = 0;
+            for (int y = 0; y < image.height(); ++y)
+                for (int x = 0; x < image.width(); ++x)
+                    if (qGray(image.pixel(x, y)) < 128) ++count;
+            return count;
+        };
+        const int smallText = inkCount();
+        text.setTextFontPointSize(28);
+        backend.annotationProxy()->notifyModification(&text, 0, true);
+        QVERIFY(inkCount() > smallText * 1.3);
+        text.setTextFontPointSize(14);
+        backend.annotationProxy()->notifyModification(&text, 0, true);
+        QVERIFY(qAbs(inkCount() - smallText) < smallText * .1);
         Okular::TextAnnotation second;
         second.setTextType(Okular::TextAnnotation::InPlace);
         second.setContents(QStringLiteral("Second text must also remain visible"));
