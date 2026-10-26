@@ -70,8 +70,8 @@ else()
     endif()
     if(NOT DEFINED STEMTEX_INSTALLER_SHA256 OR "${STEMTEX_INSTALLER_SHA256}" STREQUAL "")
         # SHA-256 of StemTeX-<version>-Setup.exe, published with the release.
-        if(STEMTEX_VERSION STREQUAL "0.14.0")
-            set(STEMTEX_INSTALLER_SHA256 "1db233faade079417ac59233662e842f45045c4c12ca6996288550d3aa49b634")
+        if(STEMTEX_VERSION STREQUAL "0.15.0")
+            set(STEMTEX_INSTALLER_SHA256 "04132c27d6427f24dd30f9d26b922e43047963c1a5ccf9e71bdb6d7d35912a8f")
         endif()
     endif()
 

@@ -86,78 +86,30 @@ QString prepareSnippet(const QString &source, const QColor &textColor)
     const QString red = QString::number(color.redF(), 'f', 6);
     const QString green = QString::number(color.greenF(), 'f', 6);
     const QString blue = QString::number(color.blueF(), 'f', 6);
-    // Set the foreground while still in vertical mode, before the leading
-    // display guard. Prefer xcolor/color when present: a bare DVI special does
-    // not update their current-colour state (e.g. \\color{.} or \\colorlet).
-    // The bundled minimal profile has neither package, so fall back to the
-    // driver's colour stack there. Remember that choice before reading source.
-    // Missing glyphs must fail visibly instead of producing a successful blank AP.
-    // preview reads its border after closing the snippet's groups, so this
-    // assignment must be global. The annotation owns the padding; a profile's
-    // preview border must not silently enlarge the requested layout width.
-    const QString prefix = QStringLiteral("\\ifdefined\\PreviewBorder\\global\\PreviewBorder=0pt\\relax\\fi%\n"
-                                          "\\begingroup%\n"
-                                          "\\tracinglostchars=3\\relax%\n"
-                                          "\\expandafter\\let\\csname mengshee@note@endcolor\\endcsname\\relax%\n"
-                                          "\\ifdefined\\color%\n"
-                                          "\\color[rgb]{%1,%2,%3}%\n"
-                                          "\\else%\n"
-                                          "\\special{color push rgb %1 %2 %3}%\n"
-                                          "\\expandafter\\def\\csname mengshee@note@endcolor\\endcsname{\\special{color pop}}%\n"
-                                          "\\fi%\n")
-                               .arg(red, green, blue);
-    // Keep author whitespace/comments untouched; '%' belongs to the wrapper
-    // and prevents a new interword space when the source has no final newline.
-    // A trailing unpaired backslash must see an end-of-line, not turn our '%'
-    // into an authored \\% command (e.g. while editing an unfinished command).
-    qsizetype backslashes = 0;
-    for (qsizetype i = source.size(); i > 0 && source.at(i - 1) == QLatin1Char('\\'); --i) {
-        ++backslashes;
-    }
-    const QString boundary = backslashes % 2 ? QStringLiteral("\n") : QStringLiteral("%\n");
+    // StemTeX 0.15 owns the logical block height. Set colour on entry to
+    // the first paragraph so a leading DVI colour special does not hide the
+    // first measurable line from its ascent calculation. Restore everypar
+    // immediately, preserving authored colour changes in later paragraphs.
+    const QString prefix = QStringLiteral(
+        "\\ifdefined\\PreviewBorder\\global\\PreviewBorder=0pt\\relax\\fi%\n"
+        "\\tracinglostchars=3\\relax%\n"
+        "\\ifdefined\\MengsheeNotePopColor\\else\\gdef\\MengsheeNotePopColor{\\special{color pop}}\\fi%\n"
+        "\\ifdefined\\color%\n"
+        "\\expandafter\\let\\expandafter\\MengsheeNoteSetColor\\csname set@color\\endcsname%\n"
+        "\\expandafter\\let\\csname set@color\\endcsname\\relax%\n"
+        "\\color[rgb]{%1,%2,%3}%\n"
+        "\\expandafter\\let\\csname set@color\\endcsname\\MengsheeNoteSetColor%\n"
+        "\\def\\MengsheeNoteStartColor{\\csname set@color\\endcsname}%\n"
+        "\\else\\def\\MengsheeNoteStartColor{\\special{color push rgb %1 %2 %3}\\aftergroup\\MengsheeNotePopColor}\\fi%\n"
+        "\\expandafter\\def\\expandafter\\MengsheeNoteEveryPar\\expandafter{\\the\\everypar}%\n"
+        "\\everypar{\\everypar\\expandafter{\\MengsheeNoteEveryPar}\\MengsheeNoteStartColor%\n"
+        "\\MengsheeNoteEveryPar}%\n").arg(red, green, blue);
+    // The host setup precedes the source, so retain the literal-display width
+    // guard here. Do not add a second vbox, strut, or height/depth correction.
     const QString preparedSource = prepareLeadingDisplay(source);
-    const bool leadingDisplay = preparedSource != source;
-    // Allocate private registers once per worker, not once per render. All box
-    // assignments and helper aliases remain local to the outer snippet group.
-    const QString boxPrefix = QStringLiteral(
-        "\\ifcsname mengshee@note@box\\endcsname\\else\\expandafter\\newbox\\csname mengshee@note@box\\endcsname\\fi%\n"
-        "\\ifcsname mengshee@note@scratch\\endcsname\\else\\expandafter\\newbox\\csname mengshee@note@scratch\\endcsname\\fi%\n"
-        "\\ifcsname mengshee@note@top\\endcsname\\else\\expandafter\\newdimen\\csname mengshee@note@top\\endcsname\\fi%\n"
-        "\\expandafter\\let\\expandafter\\MengsheeNoteBox\\csname mengshee@note@box\\endcsname%\n"
-        "\\expandafter\\let\\expandafter\\MengsheeNoteScratch\\csname mengshee@note@scratch\\endcsname%\n"
-        "\\expandafter\\let\\expandafter\\MengsheeNoteTop\\csname mengshee@note@top\\endcsname%\n"
-        "\\let\\MengsheeNoteDepth\\relax%\n"
-        "\\def\\MengsheeNoteLastLine{\\def\\MengsheeNoteDepth{\\ifdim\\dp\\MengsheeNoteBox<\\dp\\strutbox\\relax\\dp\\MengsheeNoteBox=\\dp\\strutbox\\relax\\fi}}%\n"
-        "\\setbox\\MengsheeNoteBox=\\vbox{\\begingroup%\n");
-    // Test the final node BEFORE the source group's aftergroup colour-pop
-    // whatsits. Two levels of aftergroup record a local depth action after the
-    // source group AND the vbox have closed; colour pops stay inside the box.
-    // Apply that action after top-edge repacking, which otherwise loses an
-    // artificially extended depth when unboxing the original natural list.
-    // A display's trailing glue is not a text line. Inserting an hmode strut
-    // there would instead create a real, unwanted empty trailing paragraph.
-    const QString boxSuffix = QStringLiteral(
-        "\\par%\n"
-        "\\ifnum\\lastnodetype=1\\relax\\aftergroup\\aftergroup\\aftergroup\\MengsheeNoteLastLine\\fi%\n"
-        "\\endgroup}%\n");
-    QString topEdge;
-    if (!leadingDisplay) {
-        // vtop exposes the first node's measured height. Only a positive first
-        // box/rule height is measurable here; leave authored leading glue,
-        // specials and macro-owned layout alone rather than guessing a line.
-        // Use a real kern: merely changing a vbox's reported height does not
-        // move its internal ink away from the top in DVI output.
-        topEdge = QStringLiteral(
-            "\\setbox\\MengsheeNoteScratch=\\vtop{\\unvcopy\\MengsheeNoteBox}%\n"
-            "\\ifdim\\ht\\MengsheeNoteScratch>0pt\\relax%\n"
-            "\\MengsheeNoteTop=\\ht\\strutbox\\relax%\n"
-            "\\advance\\MengsheeNoteTop by -\\ht\\MengsheeNoteScratch\\relax%\n"
-            "\\ifdim\\MengsheeNoteTop>0pt\\relax%\n"
-            "\\setbox\\MengsheeNoteBox=\\vbox{\\kern\\MengsheeNoteTop\\relax\\unvbox\\MengsheeNoteBox}%\n"
-            "\\fi\\fi%\n");
-    }
-    return prefix + boxPrefix + preparedSource + boundary + boxSuffix + topEdge
-        + QStringLiteral("\\MengsheeNoteDepth%\n\\box\\MengsheeNoteBox%\n\\csname mengshee@note@endcolor\\endcsname%\n\\endgroup");
+    qsizetype backslashes = 0;
+    for (qsizetype i = source.size(); i > 0 && source.at(i - 1) == QLatin1Char('\\'); --i) ++backslashes;
+    return prefix + preparedSource + (backslashes % 2 ? QStringLiteral("\n") : QStringLiteral("%\n"));
 }
 }
 }

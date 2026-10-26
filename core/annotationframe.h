@@ -4,6 +4,7 @@
 #include "annotations.h"
 #include "page.h"
 #include <QTransform>
+#include <cmath>
 namespace Okular
 {
 // Work in physical page points, never rotate normalized coordinates on a
@@ -31,6 +32,19 @@ public:
         transform.rotate(angle);
         transform.translate(-(rect.left + rect.right) * page.width() / 2, -(rect.top + rect.bottom) * page.height() / 2);
         return transform;
+    }
+    // Keep the local layout origin and width when fitting content height.
+    static NormalizedRect withLocalHeight(const NormalizedRect &rect, QSizeF page, int angle, double height)
+    {
+        if (page.width() <= 0 || page.height() <= 0 || !std::isfinite(height) || height <= 0) return rect;
+        const auto local = localSize(rect, page, angle);
+        QTransform rotation;
+        rotation.rotate(angle);
+        const auto oldBox = rotation.mapRect(QRectF(QPointF(), local));
+        const auto newBox = rotation.mapRect(QRectF(QPointF(), QSizeF(local.width(), height)));
+        const QPointF origin(rect.left * page.width() - oldBox.left(), rect.top * page.height() - oldBox.top());
+        const auto box = newBox.translated(origin);
+        return {box.left()/page.width(),box.top()/page.height(),box.right()/page.width(),box.bottom()/page.height()};
     }
     static NormalizedPoint mapPoint(NormalizedPoint point, QSizeF page, const QTransform &transform)
     {

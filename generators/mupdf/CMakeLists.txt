@@ -69,5 +69,5 @@ if(BUILD_TESTING)
 endif()
 
 add_executable(mupdf_rotation_ui_test EXCLUDE_FROM_ALL autotests/rotationuitest.cpp)
-target_link_libraries(mupdf_rotation_ui_test PRIVATE okularpart okularcore Qt6::Widgets Qt6::Test KF6::ConfigCore KF6::Parts)
+target_link_libraries(mupdf_rotation_ui_test PRIVATE mengshee_pdf_runtime okularpart okularcore Qt6::Widgets Qt6::Test KF6::ConfigCore KF6::Parts)
 add_dependencies(mupdf_rotation_ui_test okularGenerator_mupdf)

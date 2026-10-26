@@ -147,9 +147,9 @@ callout leader geometry use the same transform. Left then right is an identity.
 The shared AnnotationFrame helper defines physical size and point/rectangle
 transformations. The model appearanceRotation is clockwise in native displayed
 page axes, before temporary reader rotation. It is not another PDF page Rotate.
-At 90/270 degrees, vertical frame resizing changes layout width; horizontal
-resizing changes layout height. LaTeX recompilation is needed only when local
-layout width changes (or its source appearance must be reconstructed).
+At 90/270 degrees, local layout width maps to the vertical page extent,
+and local frame height maps to the horizontal page extent. The format does
+not prescribe resize handles or an automatic-height editing policy.
 
 LaTeX APs and `/LatexNoteData.rotation` encode the content direction defined above.
 Image stamps encode equivalent orientation in their AP and editing metadata.
@@ -447,23 +447,20 @@ Poppler should not need to know the `/LatexNoteData` schema. Okular owns JSON
 parsing and passes only generic appearance geometry to the PDF backend when
 building `/AP`.
 
-## Layout And Resize Rules
+## Layout And Frame Geometry
 
-The annotation rectangle is the authoritative outer frame. A render result
-must never replace or enlarge a rectangle chosen by the user.
+The paragraph layout and annotation frame are distinct. `layout.widthPt`
+specifies the TeX paragraph width; padding and border width are physical
+PDF-point measurements. The annotation frame describes the visible area,
+with annotation rotation mapping local layout axes into page coordinates.
+Content outside the inner frame may be clipped when composing the final AP.
+The final AP remains the authoritative visible appearance.
 
-- dragging any resize handle changes the outer frame exactly as indicated by
-  the pointer, without preserving the rendered content's aspect ratio;
-- `layout.widthPt` is the last TeX paragraph width used for reflow and is
-  derived from the frame's inner width and padding;
-- `layout.paddingPt` and `style.borderWidthPt` remain physical PDF-point
-  measurements;
-- content outside the inner frame is clipped rather than expanding the
-  annotation rectangle;
-- horizontal resizing may re-render for paragraph reflow, but the asynchronous
-  result must keep the exact frame selected by the user;
-- vertical-only resizing changes only the clipping frame and does not invoke
-  TeX or StemTeX.
+This format does not require automatic height or fixed height. Editors may
+fit the frame to rendered content or allow an independently specified frame
+height. No automatic-height mode field is defined by this specification.
+Mengshee's current editing policy is documented in
+[LaTeX note rendering guards](latex-note-render-guards.md#automatic-height-editing-policy).
 
 All dimensions ending in `Pt` are PDF points. Values ending in `Norm` are
 normalized page coordinates.
@@ -477,7 +474,7 @@ can change:
 - after editing the LaTeX source;
 - after changing render-affecting style such as text color, base font size,
   boxed/plain state, padding, or paragraph layout width;
-- after horizontal resize when the resize changes `layout.widthPt`;
+- after resizing along the local layout-width axis changes `layout.widthPt`;
 - when a resize operation needs the appearance but the runtime appearance PDF
   path or page size is unavailable.
 
@@ -490,7 +487,7 @@ the existing appearance:
 - changing annotation opacity or other PDF annotation state that does not alter
   the rendered LaTeX page;
 - opening a document that already has a valid self-contained normal appearance;
-- vertical-only resize that only changes the clipping frame.
+- changing only the clipping frame height while reusing the rendered content.
 
 Changing StemTeX configuration, such as the selected profile or TeX tree, should
 restart the renderer for future work. It should not automatically re-render all

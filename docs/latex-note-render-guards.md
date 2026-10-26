@@ -40,13 +40,18 @@ There is **no injected math atom, phantom or vertical rule inside the formula**,
 and no closing-delimiter lexer. Thus initial scripts, terminal punctuation,
 infix fractions and author macros are not changed by an injected math item.
 
-Ordinary text still uses the measured local vertical box: the first measurable
-text line gets at least the selected base font's strut ascent by a real top kern;
-a real final paragraph hlist gets at least its strut depth. Depth is applied
-last, after reboxing. No unconditional trailing strut turns resumed empty
-horizontal mode after a display into a new paragraph. Simple `a`, `A`, `g` and
-inline alpha keep their normal line box. Author-local custom boxes/fonts retain
-their natural metrics when they exceed these minimums.
+StemTeX 0.15.0 or newer owns block geometry through
+`stemtex_renderer_render_block`. Mengshee does not add another vertical box or
+repeat the first-line ascent / last-line depth correction. The synchronous SDK
+call runs in the existing background note job and is serialized per session.
+Width is converted from PDF points to TeX points; the profile preview border is
+zeroed because annotation padding is applied separately.
+
+Host colour setup preserves the current-colour state but delays its first DVI
+colour push until paragraph entry, so it does not obscure the first measurable
+line. The original paragraph hook is restored immediately; authored colour
+changes and nested colour groups remain effective. The leading-display width
+guard remains necessary because host setup precedes the author's source.
 
 This is not a TeX macro interpreter. Leading whatsits (such as an authored bare
 colour declaration) can obscure first-line measurement; that boundary is left
@@ -193,3 +198,30 @@ request, version 2026.0.19.3 is reissued with the corrected commit, tag and rele
 assets; the original commit remains in history. Existing notes need explicit
 recompilation or an appearance rebuild; opening an older PDF alone does not
 update its saved appearance.
+
+## StemTeX block integration check
+
+Export the real application wrappers with `MENGSHEE_LATEX_FIXTURES=<file.json>`
+and run `latexsourcepreparationtest exportFixtures`. Then run
+`autotests/stemtexblocktest.py --runtime <StemTeX-root> --profile <profile-dir>
+--texmf <TeX-Live-root> --fixtures <file.json> --output <temporary-directory>`.
+The opt-in test requires Python with pypdf and a Chinese-capable profile with
+xcolor. It checks native PDF output, fixed logical widths, simple-line metrics,
+tall formulas, multiple paragraphs, Chinese, and inherited/overridden colours.
+
+## Automatic-height editing policy
+
+Mengshee currently always fits LaTeX note height to the rendered logical height
+plus twice the annotation padding. This is an application editing policy, not
+an obligation of the PDF note format; no fixed/automatic-height mode is stored.
+
+New notes start with `\LaTeX` and render asynchronously without loading a
+prebuilt appearance. Creation, content edits and width reflow fit the local
+frame height while preserving the local top-left origin and width. The pending
+render uses an empty source appearance so backend registration succeeds without
+synthesizing a stock Draft stamp.
+
+Only the two local-width resize handles are exposed. At 90/270 degrees these
+appear on the top and bottom edges; the automatically fitted height changes the
+horizontal page extent. Callout tips stay fixed while frame attachments follow
+the updated frame. Padding and border width remain physical PDF-point values.

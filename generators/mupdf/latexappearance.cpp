@@ -173,8 +173,16 @@ void write(fz_context *ctx, pdf_document *doc, pdf_annot *native, const Okular::
             auto *appearance = preserved ? preserved : pdf_dict_getp(ctx, pdf_annot_obj(ctx, native), "AP/N");
             auto *original = pdf_dict_getp(ctx, appearance, "Resources/XObject/Fm0");
             raw = pdf_keep_obj(ctx, pdf_is_stream(ctx, original) ? original : appearance);
-            if (!pdf_is_stream(ctx, raw))
-                fz_throw(ctx, FZ_ERROR_FORMAT, "LaTeX annotation has no source appearance");
+            if (!pdf_is_stream(ctx, raw)) {
+                // Register new notes while their asynchronous render is pending.
+                // An empty source prevents synthesis of a stock Draft stamp.
+                pdf_drop_obj(ctx, raw);
+                raw = nullptr;
+                content = fz_new_buffer(ctx, 0);
+                raw = pdf_new_xobject(ctx, doc, fz_make_rect(0, 0, 1, 1), fz_identity, nullptr, content);
+                fz_drop_buffer(ctx, content);
+                content = nullptr;
+            }
         }
         const auto sourceBox = qtRect(pdf_dict_get_rect(ctx, raw, PDF_NAME(BBox)));
         if (auto *layout = pdf_dict_gets(ctx, raw, "MengsheeLayoutBox"))

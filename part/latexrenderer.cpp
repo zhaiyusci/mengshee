@@ -38,6 +38,7 @@
 #include <QLibrary>
 #include <QList>
 #include <QSet>
+#include <QScopeGuard>
 #include <QStandardPaths>
 #include <QTextStream>
 #include <QThread>
@@ -105,9 +106,10 @@ struct StemTeXConfig {
     const char *worker_template_utf8;
 };
 
-struct StemTeXRenderResult {
+struct StemTeXRenderOutputResult {
     char *request_id_utf8;
-    char *pdf_path_utf8;
+    char *output_path_utf8;
+    char *output_format_utf8;
     char *summary_json_utf8;
     int outcome_code;
     int issue_flags;
@@ -138,23 +140,18 @@ struct StemTeXProfileInfo {
 };
 
 struct StemtexApi {
-    using RenderCallback = void (*)(uint64_t, int, const StemTeXRenderResult *, int, const char *, void *);
     using Create = void *(*)(const StemTeXConfig *, int *, char **);
-    using Render = int (*)(void *, const char *, double, StemTeXRenderResult *, int *, char **);
-    using RenderAsync = int (*)(void *, const char *, double, uint64_t *, RenderCallback, void *, int *, char **);
-    using RenderAsyncWithFontSize = int (*)(void *, const char *, double, double, uint64_t *, RenderCallback, void *, int *, char **);
+    using RenderBlock = int (*)(void *, const char *, double, double, int, StemTeXRenderOutputResult *, int *, char **);
     using EngineSnapshot = int (*)(void *, StemTeXEngineSnapshot *);
     using ProfileInfo = char *(*)(const char *, int *, char **);
     using ValidateConfig = int (*)(const StemTeXConfig *, int *, char **);
-    using FreeResult = void (*)(StemTeXRenderResult *);
+    using FreeResult = void (*)(StemTeXRenderOutputResult *);
     using FreeString = void (*)(char *);
     using Destroy = void (*)(void *);
 
     QLibrary library;
     Create create = nullptr;
-    Render render = nullptr;
-    RenderAsync renderAsync = nullptr;
-    RenderAsyncWithFontSize renderAsyncWithFontSize = nullptr;
+    RenderBlock renderBlock = nullptr;
     EngineSnapshot engineSnapshot = nullptr;
     ProfileInfo profileInfo = nullptr;
     ValidateConfig validateConfig = nullptr;
@@ -177,18 +174,16 @@ struct StemtexApi {
         }
 
         create = reinterpret_cast<Create>(library.resolve("stemtex_renderer_create"));
-        render = reinterpret_cast<Render>(library.resolve("stemtex_renderer_render"));
-        renderAsync = reinterpret_cast<RenderAsync>(library.resolve("stemtex_renderer_render_async"));
-        renderAsyncWithFontSize = reinterpret_cast<RenderAsyncWithFontSize>(library.resolve("stemtex_renderer_render_async_with_font_size"));
+        renderBlock = reinterpret_cast<RenderBlock>(library.resolve("stemtex_renderer_render_block"));
         engineSnapshot = reinterpret_cast<EngineSnapshot>(library.resolve("stemtex_renderer_engine_snapshot"));
         profileInfo = reinterpret_cast<ProfileInfo>(library.resolve("stemtex_renderer_profile_info_json"));
         validateConfig = reinterpret_cast<ValidateConfig>(library.resolve("stemtex_renderer_validate_config"));
-        freeResult = reinterpret_cast<FreeResult>(library.resolve("stemtex_renderer_free_result"));
+        freeResult = reinterpret_cast<FreeResult>(library.resolve("stemtex_renderer_free_output_result"));
         freeString = reinterpret_cast<FreeString>(library.resolve("stemtex_renderer_free_string"));
         destroy = reinterpret_cast<Destroy>(library.resolve("stemtex_renderer_destroy"));
-        const bool ok = create && render && renderAsync && engineSnapshot && profileInfo && validateConfig && freeResult && freeString && destroy;
+        const bool ok = create && renderBlock && engineSnapshot && profileInfo && validateConfig && freeResult && freeString && destroy;
         if (!ok && error) {
-            *error = QStringLiteral("stemtex-renderer.dll does not export the expected renderer ABI.");
+            *error = QStringLiteral("StemTeX 0.15.0 or newer is required (missing block renderer API).");
         }
         return ok;
     }
@@ -311,87 +306,20 @@ public:
         const double widthPt = (std::isfinite(maxWidth) && maxWidth > 0.0 ? maxWidth : 360.0) * (72.27 / 72.0);
         const QByteArray snippet = LatexSource::prepareSnippet(latexSource, textColor).toUtf8();
 
-        struct RenderState {
-            std::mutex mutex;
-            std::condition_variable condition;
-            bool done = false;
-            int ok = 0;
-            int errorCode = 0;
-            uint64_t jobId = 0;
-            uint64_t callbackJobId = 0;
-            QString errorText;
-            QString sourcePdfFile;
-            QString summary;
-            int outcomeCode = StemTeXRenderOutcomeOk;
-            QString outcomeMessage;
-        };
-        auto state = std::make_shared<RenderState>();
-
-        const auto callback = [](uint64_t jobId, int ok, const StemTeXRenderResult *result, int errorCode, const char *error, void *userData) noexcept {
-            auto *state = static_cast<RenderState *>(userData);
-            if (!state) {
-                return;
-            }
-
-            try {
-                QString errorText = error ? QString::fromUtf8(error) : QString();
-                QString sourcePdfFile = result && result->pdf_path_utf8 ? QString::fromUtf8(result->pdf_path_utf8) : QString();
-                QString summary = result && result->summary_json_utf8 ? QString::fromUtf8(result->summary_json_utf8) : QString();
-                QString outcomeMessage = result && result->outcome_message_utf8 ? QString::fromUtf8(result->outcome_message_utf8) : QString();
-
-                std::lock_guard<std::mutex> guard(state->mutex);
-                state->callbackJobId = jobId;
-                state->ok = ok;
-                state->errorCode = errorCode;
-                state->errorText = std::move(errorText);
-                state->sourcePdfFile = std::move(sourcePdfFile);
-                state->summary = std::move(summary);
-                state->outcomeCode = result ? result->outcome_code : errorCode;
-                state->outcomeMessage = std::move(outcomeMessage);
-                state->done = true;
-                state->condition.notify_all();
-            } catch (const std::exception &exception) {
-                try {
-                    std::lock_guard<std::mutex> guard(state->mutex);
-                    state->callbackJobId = jobId;
-                    state->ok = 0;
-                    state->errorCode = errorCode;
-                    state->errorText = QStringLiteral("StemTeX callback failed while receiving the render result.");
-                    state->done = true;
-                    state->condition.notify_all();
-                    qCCritical(OkularUiDebug) << "StemTeX render callback failed:" << exception.what();
-                } catch (...) {
-                    qCCritical(OkularUiDebug) << "StemTeX render callback could not report its failure";
-                }
-            } catch (...) {
-                try {
-                    std::lock_guard<std::mutex> guard(state->mutex);
-                    state->callbackJobId = jobId;
-                    state->ok = 0;
-                    state->errorCode = errorCode;
-                    state->errorText = QStringLiteral("StemTeX callback failed with an unknown exception.");
-                    state->done = true;
-                    state->condition.notify_all();
-                } catch (...) {
-                    qCCritical(OkularUiDebug) << "StemTeX render callback could not report an unknown failure";
-                }
-            }
-        };
-
-        int submitErrorCode = 0;
-        char *submitError = nullptr;
-        uint64_t jobId = 0;
-        int submitted = 0;
+        // The note job already runs off the UI thread. Serialize this session's
+        // synchronous calls; the SDK enforces its configured request timeout.
+        std::lock_guard<std::mutex> renderLock(m_renderMutex);
+        StemTeXRenderOutputResult result{};
+        int errorCode = 0;
+        char *error = nullptr;
+        const auto cleanup = qScopeGuard([&] {
+            m_api.freeResult(&result);
+            m_api.freeString(error);
+        });
+        int ok = 0;
         try {
-            if (std::isfinite(fontSize) && fontSize > 0.0) {
-                if (!m_api.renderAsyncWithFontSize) {
-                    latexOutput = i18n("The installed StemTeX renderer does not support configurable font sizes.");
-                    return LatexRenderer::LatexFailed;
-                }
-                submitted = m_api.renderAsyncWithFontSize(m_renderer, snippet.constData(), widthPt, fontSize, &jobId, callback, state.get(), &submitErrorCode, &submitError);
-            } else {
-                submitted = m_api.renderAsync(m_renderer, snippet.constData(), widthPt, &jobId, callback, state.get(), &submitErrorCode, &submitError);
-            }
+            // STEMTEX_OUTPUT_PDF = 0; zero font size keeps the profile default.
+            ok = m_api.renderBlock(m_renderer, snippet.constData(), widthPt, fontSize, 0, &result, &errorCode, &error);
         } catch (const std::exception &exception) {
             latexOutput = i18n("StemTeX rendering failed unexpectedly: %1", QString::fromLocal8Bit(exception.what()));
             return LatexRenderer::LatexFailed;
@@ -399,51 +327,11 @@ public:
             latexOutput = i18n("StemTeX rendering failed because of an unknown internal error.");
             return LatexRenderer::LatexFailed;
         }
-        {
-            std::lock_guard<std::mutex> guard(state->mutex);
-            state->jobId = jobId;
-        }
-        if (!submitted) {
-            const QString errorText = submitError ? QString::fromUtf8(submitError) : QString();
-            if (submitError) {
-                m_api.freeString(submitError);
-            }
-            latexOutput = i18n("StemTeX rendering failed: %1", errorText.isEmpty() ? QString::number(submitErrorCode) : errorText);
-            return LatexRenderer::LatexFailed;
-        }
-        if (submitError) {
-            m_api.freeString(submitError);
-        }
-
-        {
-            std::unique_lock<std::mutex> guard(state->mutex);
-            state->condition.wait(guard, [&state]() { return state->done; });
-        }
-
-        int ok = 0;
-        int errorCode = 0;
-        uint64_t callbackJobId = 0;
-        QString errorText;
-        QString sourcePdfFile;
-        QString summary;
-        int outcomeCode = StemTeXRenderOutcomeOk;
-        QString outcomeMessage;
-        {
-            std::lock_guard<std::mutex> guard(state->mutex);
-            ok = state->ok;
-            errorCode = state->errorCode;
-            callbackJobId = state->callbackJobId;
-            errorText = state->errorText;
-            sourcePdfFile = state->sourcePdfFile;
-            summary = state->summary;
-            outcomeCode = state->outcomeCode;
-            outcomeMessage = state->outcomeMessage;
-        }
-
-        if (callbackJobId != jobId) {
-            latexOutput = i18n("StemTeX rendering failed: stale async job result.");
-            return LatexRenderer::LatexFailed;
-        }
+        const QString errorText = error ? QString::fromUtf8(error) : QString();
+        const QString sourcePdfFile = result.output_path_utf8 ? QString::fromUtf8(result.output_path_utf8) : QString();
+        const QString summary = result.summary_json_utf8 ? QString::fromUtf8(result.summary_json_utf8) : QString();
+        const int outcomeCode = result.outcome_code;
+        const QString outcomeMessage = result.outcome_message_utf8 ? QString::fromUtf8(result.outcome_message_utf8) : QString();
         if (!ok || sourcePdfFile.isEmpty() || !QFileInfo::exists(sourcePdfFile)) {
             latexOutput = i18n("StemTeX rendering failed: %1", errorText.isEmpty() ? QString::number(errorCode) : errorText);
             return LatexRenderer::LatexFailed;
@@ -472,6 +360,8 @@ public:
     }
 
 private:
+    std::mutex m_renderMutex;
+
     struct SharedState {
         std::mutex mutex;
         std::condition_variable condition;

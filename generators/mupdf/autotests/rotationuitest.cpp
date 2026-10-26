@@ -19,12 +19,65 @@
 #include <core/annotations.h>
 #include <core/document.h>
 #include <core/page.h>
+#include <core/annotationframe.h>
+#include "../runtimehelpers.h"
+#include <core/utils.h>
 namespace Okular
 {
 class PartTest : public QObject
 {
     Q_OBJECT
 private Q_SLOTS:
+    void automaticNoteHeight()
+    {
+        const QSizeF page(400,700);
+        const NormalizedRect original(.2,.3,.5,.6);
+        for (int angle : {0,90,180,270}) {
+            const auto local=AnnotationFrame::localSize(original,page,angle);
+            for (double height : {18.0,300.0}) {
+                const auto fitted=AnnotationFrame::withLocalHeight(original,page,angle,height);
+                const auto fittedLocal=AnnotationFrame::localSize(fitted,page,angle);
+                QVERIFY(qAbs(fittedLocal.width()-local.width())<1e-8);
+                QVERIFY(qAbs(fittedLocal.height()-height)<1e-8);
+                const auto restored=AnnotationFrame::withLocalHeight(fitted,page,angle,local.height());
+                QVERIFY(qAbs(restored.left-original.left)<1e-8);
+                QVERIFY(qAbs(restored.top-original.top)<1e-8);
+                QVERIFY(qAbs(restored.right-original.right)<1e-8);
+                QVERIFY(qAbs(restored.bottom-original.bottom)<1e-8);
+            }
+        }
+    }
+    void newLatexNoteHeight()
+    {
+        if(qEnvironmentVariableIsEmpty("MENGSHEE_TEST_NATIVE_LATEX")) QSKIP("Enable native StemTeX integration test explicitly.");
+        QTemporaryDir directory;
+        const auto file=directory.filePath(QStringLiteral("page.pdf"));
+        { QPdfWriter writer(file); QPainter painter(&writer); painter.fillRect(0,0,200,200,Qt::white); }
+        Part part(nullptr,{});
+        part.widget()->resize(800,600); part.widget()->show();
+        QVERIFY(part.openUrl(QUrl::fromLocalFile(file)));
+        QTRY_COMPARE(part.m_document->pages(),1u);
+        auto *action=part.actionCollection()->action(QStringLiteral("annotation_add_latex_inline_note"));
+        QVERIFY(action); QTRY_VERIFY(action->isEnabled()); action->trigger();
+        QTest::qWait(100);
+        auto *viewport=part.m_pageView->viewport();
+        QTest::mouseClick(viewport,Qt::LeftButton,Qt::NoModifier,viewport->rect().center());
+        QTRY_COMPARE(part.m_document->page(0)->annotations().size(),1);
+        auto *note=part.m_document->page(0)->annotations().first();
+        QCOMPARE(note->contents(),QStringLiteral("\\LaTeX"));
+        QVERIFY(note->flags() & Okular::Annotation::ExternallyDrawn);
+        const auto pendingImage = part.m_document->renderToImage(0, 72, true);
+        QVERIFY(!pendingImage.isNull());
+        QVERIFY(!note->latexAppearancePdfFileName().contains(QStringLiteral("latex-default-note")));
+        QTRY_VERIFY_WITH_TIMEOUT(!note->latexAppearancePdfFileName().isEmpty(),120000);
+        const auto renderedImage = part.m_document->renderToImage(0, 72, true);
+        QVERIFY(renderedImage != pendingImage);
+        const auto pdfSize=MengsheePdfRuntime::firstPageSize(note->latexAppearancePdfFileName());
+        QVERIFY(pdfSize.isValid());
+        const auto local=AnnotationFrame::localSize(note->boundingRectangle(),AnnotationFrame::pageSize(part.m_document->page(0),Okular::Utils::realDpi(nullptr)),note->appearanceRotation());
+        QVERIFY(qAbs(local.height()-pdfSize.height()-2*note->latexPadding())<.02);
+        QVERIFY(qAbs(local.width()-note->latexLayoutWidth()-2*note->latexPadding())<.02);
+    }
     void clipboardImageNote_data()
     {
         QTest::addColumn<bool>("fileUrl");

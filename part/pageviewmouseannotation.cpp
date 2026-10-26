@@ -55,6 +55,15 @@ static const int handleSize = RectangleInteraction::handleSize;
 static const int handleSizeHalf = handleSize / 2;
 static const int latexWarningMarkerSize = 14;
 
+// Only the layout-width axis is user resizable; height belongs to TeX.
+static std::array<RectangleInteraction::Handle, 2> latexWidthHandles(const AnnotationDescription &ad)
+{
+    const int angle = ad.annotation->appearanceRotation() + int(ad.pageViewItem->page()->rotation()) * 90;
+    if ((angle % 180 + 180) % 180 == 90)
+        return {RectangleInteraction::Handle::Top, RectangleInteraction::Handle::Bottom};
+    return {RectangleInteraction::Handle::Left, RectangleInteraction::Handle::Right};
+}
+
 static bool isStampAnnotation(const Okular::Annotation *annotation)
 {
     return annotation && annotation->subType() == Okular::Annotation::AStamp;
@@ -612,7 +621,12 @@ static bool applyLatexResizeUpdate(Okular::Document *document, const LatexResize
         qCWarning(OkularUiDebug) << "LaTeX note resize has no reusable appearance PDF; committing the fixed frame anyway";
     }
 
-    const Okular::NormalizedRect updatedRect = update.resizedRect;
+    auto updatedRect = update.resizedRect;
+    if (pdfSize.isValid() && !pdfSize.isEmpty()) {
+        updatedRect = Okular::AnnotationFrame::withLocalHeight(updatedRect,
+            QSizeF(LatexNoteUtils::pageWidthInPoints(page),LatexNoteUtils::pageHeightInPoints(page)),annotation->appearanceRotation(),
+            pdfSize.height()+2*LatexNoteUtils::paddingForLatexAnnotation(annotation));
+    }
     if (!isUsableRect(updatedRect)) {
         qCWarning(OkularUiDebug) << "LaTeX note resize produced an invalid annotation rectangle";
         return false;
@@ -1055,7 +1069,12 @@ void MouseAnnotation::routePaint(QPainter *painter, const QRect paintRect)
     painter->save();
     painter->setClipRect(paintRect, Qt::IntersectClip);
     painter->translate(m_focusedAnnotation.pageViewItem->uncroppedGeometry().topLeft());
-    RectangleInteraction::draw(painter, QRectF(selectionRect), m_focusedAnnotation.annotation->canBeResized(), drawingMovePreview || drawingLatexResizePreview, {fillColor, borderColor, fillColor});
+    const bool autoHeight = LatexNoteUtils::annotationIsLatex(m_focusedAnnotation.annotation);
+    RectangleInteraction::draw(painter, QRectF(selectionRect), m_focusedAnnotation.annotation->canBeResized() && !autoHeight, drawingMovePreview || drawingLatexResizePreview, {fillColor, borderColor, fillColor});
+    if (autoHeight && m_focusedAnnotation.annotation->canBeResized()) {
+        for (auto handle : latexWidthHandles(m_focusedAnnotation))
+            RectangleInteraction::drawHandle(painter, RectangleInteraction::center(QRectF(selectionRect), handle), {fillColor, borderColor, fillColor});
+    }
     if (drawingMovePreview) {
         painter->restore();
         return;
@@ -1075,7 +1094,7 @@ void MouseAnnotation::routePaint(QPainter *painter, const QRect paintRect)
         if (hasUsableCalloutPoints(calloutAnn)) {
             painter->setPen(borderColor);
             painter->setBrush(fillColor);
-            for (int i = 0; i < 3; ++i) {
+            for (int i = 0; i < 2; ++i) {
                 RectangleInteraction::drawHandle(painter, QRectF(getHandleRect(calloutHandleForIndex(i), m_focusedAnnotation)).center(), {fillColor, borderColor, fillColor});
             }
         }
@@ -1410,24 +1429,21 @@ void MouseAnnotation::performCommand(const QPoint newPos)
             const int pointIndex = calloutIndexForHandle(m_handle);
             if (calloutAnn && pointIndex >= 0) {
                 const Okular::NormalizedRect box = latexCalloutBoxRectangle(calloutAnn);
-                // Accumulate from the unsnapped starting point. Otherwise slow
-                // anchor drags repeatedly start at the same edge midpoint and
-                // can never cross to another edge.
+                // Accumulate the unsnapped pointer position so slow knee drags
+                // can cross between all four attachment edges.
                 m_calloutDragDelta += normalizedRotatedMouseDelta;
                 Okular::NormalizedPoint point = m_originalCalloutPoints[pointIndex];
                 point.x += m_calloutDragDelta.x();
                 point.y += m_calloutDragDelta.y();
 
                 CalloutBoxEdge edge = calloutBoxEdgeFacingPoint(calloutPoint(calloutAnn, 2, false), box);
-                if (m_handle == RH_CalloutTip || m_handle == RH_CalloutAnchor) {
+                setCalloutPoint(calloutAnn, point, pointIndex);
+                if (m_handle == RH_CalloutKnee) {
                     edge = calloutBoxEdgeFacingPoint(point, box);
+                    constrainCalloutLeaderToBox(calloutAnn, box, edge);
                 }
-                // The tip moves freely; only the frame attachment is snapped
-                // to a box edge. Choosing an edge must not discard the tip delta.
-                if (m_handle != RH_CalloutAnchor) {
-                    setCalloutPoint(calloutAnn, point, pointIndex);
-                }
-                constrainCalloutLeaderToBox(calloutAnn, box, edge);
+                // Moving the arrow tip must not change the knee or attachment.
+                // The attachment is derived from the knee, never dragged itself.
                 logLatexCalloutInteraction("callout-point-preview",
                                            calloutAnn,
                                            {QStringLiteral("handle: %1").arg(int(m_handle)),
@@ -1745,7 +1761,7 @@ MouseAnnotation::ResizeHandle MouseAnnotation::getHandleAt(const QPoint eventPos
 
     if (ad.annotation->canBeResized()) {
         if (calloutAnnotation(ad.annotation)) {
-            for (int i = 0; i < 3; ++i) {
+            for (int i = 0; i < 2; ++i) {
                 const ResizeHandle handle = calloutHandleForIndex(i);
                 const QRect rect = getHandleRect(handle, ad);
                 if (rect.contains(eventPos)) {
@@ -1754,6 +1770,14 @@ MouseAnnotation::ResizeHandle MouseAnnotation::getHandleAt(const QPoint eventPos
             }
         }
 
+    }
+    if (LatexNoteUtils::annotationIsLatex(ad.annotation)) {
+        const QRectF rect(controlGeometryForInteraction(ad));
+        if (ad.annotation->canBeResized())
+            for (auto handle : latexWidthHandles(ad))
+                if (RectangleInteraction::grabRect(RectangleInteraction::center(rect, handle)).contains(eventPos))
+                    return ResizeHandle(static_cast<ResizeHandleFlag>(int(handle)));
+        return ResizeHandle(static_cast<ResizeHandleFlag>(int(RectangleInteraction::hitTest(rect, eventPos, false, ad.annotation->canBeMoved()))));
     }
     return ResizeHandle(static_cast<ResizeHandleFlag>(RectangleInteraction::hitTest(QRectF(controlGeometryForInteraction(ad)), eventPos, ad.annotation->canBeResized(), ad.annotation->canBeMoved())));
 }

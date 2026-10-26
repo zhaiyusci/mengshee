@@ -553,17 +553,13 @@ public:
                 rect.right = rect.left + stampxscale;
                 rect.bottom = rect.top + stampyscale;
             }
-            if (latexStamp && ml > QApplication::startDragDistance() && pagewidth > 0.0 && !sa->contents().trimmed().isEmpty()) {
-                const double layoutWidth = LatexNoteUtils::layoutWidthForLatexTextVisibleWidth(rect.width() * pagewidth, LatexNoteUtils::paddingForLatexAnnotation(sa));
-                if (layoutWidth > 0.0) {
-                    sa->setLatexLayoutWidth(layoutWidth);
-                    const LatexNoteUtils::RenderResult rendered =
-                        LatexNoteUtils::renderAppearancePdf(sa->contents(), sa->latexTextColor(), layoutWidth, sa->isLatexCallout(), LatexNoteUtils::fontSizeForLatexAnnotation(sa));
-                    if (rendered.ok) {
-                        latexAppearancePdfFileName = rendered.pdfFileName;
-                        sa->setLatexAppearancePdfFileName(latexAppearancePdfFileName);
-                        LatexNoteUtils::showRenderWarning(pageView, rendered.warning);
-                    }
+            if (latexStamp && pagewidth > 0.0 && pageheight > 0.0) {
+                if (ml > QApplication::startDragDistance()) {
+                    sa->setLatexLayoutWidth(LatexNoteUtils::layoutWidthForLatexTextVisibleWidth(rect.width()*pagewidth,LatexNoteUtils::paddingForLatexAnnotation(sa)));
+                } else {
+                    rect.right = rect.left + (sa->latexLayoutWidth()+2*LatexNoteUtils::paddingForLatexAnnotation(sa))/pagewidth;
+                    // The background block render supplies the actual height.
+                    rect.bottom = rect.top + 20.0/pageheight;
                 }
             }
             if (latexStamp && sa->isLatexCallout()) {
@@ -1851,6 +1847,12 @@ QRect PageViewAnnotator::performRouteMouseOrTabletEvent(const AnnotatorEngine::E
             annotation->setModificationDate(QDateTime::currentDateTime());
             annotation->setAuthor(Okular::Settings::identityAuthor());
             m_document->addPageAnnotation(m_lockedItem->pageNumber(), annotation);
+            if (auto *latex = LatexNoteUtils::annotationAsLatexStampAnnotation(annotation)) {
+                LatexNoteUtils::updateLatexStampAnnotationAppearanceAsync(m_pageView,m_document,m_lockedItem->pageNumber(),
+                    latex->uniqueName(),latex->contents(),latex->latexTextColor(),latex->latexFillColor(),latex->latexBorderColor(),
+                    latex->latexLayoutWidth(),latex->latexNoteType()!=Okular::Annotation::LatexNotePlain);
+            }
+
 
 #if HAVE_NEW_SIGNATURE_API
             if (auto signatureAnnotation = dynamic_cast<Okular::SignatureAnnotation *>(annotation)) {

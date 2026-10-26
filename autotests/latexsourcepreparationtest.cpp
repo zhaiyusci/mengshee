@@ -152,22 +152,11 @@ void LatexSourcePreparationTest::snippet()
     const QString original = source;
     QString specialRgb = rgb;
     specialRgb.replace(QLatin1Char(','), QLatin1Char(' '));
-    const QString expectedPrefix = QStringLiteral("\\ifdefined\\PreviewBorder\\global\\PreviewBorder=0pt\\relax\\fi%\n"
-                                                 "\\begingroup%\n"
-                                                 "\\tracinglostchars=3\\relax%\n"
-                                                 "\\expandafter\\let\\csname mengshee@note@endcolor\\endcsname\\relax%\n"
-                                                 "\\ifdefined\\color%\n"
-                                                 "\\color[rgb]{%1}%\n"
-                                                 "\\else%\n"
-                                                 "\\special{color push rgb %2}%\n"
-                                                 "\\expandafter\\def\\csname mengshee@note@endcolor\\endcsname{\\special{color pop}}%\n"
-                                                 "\\fi%\n")
-                                       .arg(rgb, specialRgb);
     const QString prepared = prepareSnippet(source, color);
     const QString body = prepareLeadingDisplay(source);
-    QVERIFY(prepared.startsWith(expectedPrefix));
-    QVERIFY(prepared.contains(QStringLiteral("\\setbox\\MengsheeNoteBox=\\vbox{\\begingroup%\n") + body + QStringLiteral("%\n\\par%\n")));
-    QVERIFY(prepared.endsWith(QStringLiteral("\\MengsheeNoteDepth%\n\\box\\MengsheeNoteBox%\n\\csname mengshee@note@endcolor\\endcsname%\n\\endgroup")));
+    QVERIFY(prepared.contains(QStringLiteral("\\color[rgb]{%1}").arg(rgb)));
+    QVERIFY(prepared.contains(QStringLiteral("color push rgb %1").arg(specialRgb)));
+    QVERIFY(prepared.endsWith(body + QStringLiteral("%\n")));
     QCOMPARE(source, original);
     if (!color.isValid()) {
         QCOMPARE(prepared, prepareSnippet(source, QColor(Qt::black)));
@@ -185,19 +174,10 @@ void LatexSourcePreparationTest::snippet()
 void LatexSourcePreparationTest::logicalBoxStructure()
 {
     const QString prepared = prepareSnippet(QStringLiteral("a"), QColor(Qt::red));
-    QCOMPARE(prepared.count(QStringLiteral("\\newbox")), 2);
-    QCOMPARE(prepared.count(QStringLiteral("\\newdimen")), 1);
-    for (const QString &name : {QStringLiteral("box"), QStringLiteral("scratch"), QStringLiteral("top")}) {
-        const QString allocation = name == QLatin1String("top") ? QStringLiteral("\\newdimen") : QStringLiteral("\\newbox");
-        QVERIFY(prepared.contains(QStringLiteral("\\ifcsname mengshee@note@%1\\endcsname\\else\\expandafter%2\\csname mengshee@note@%1\\endcsname\\fi").arg(name, allocation)));
-    }
-    // preview reads this dimension after the snippet group has ended. All
-    // content/register assignments remain local; only its border is global.
-    QCOMPARE(prepared.count(QStringLiteral("\\global")),1);
+    QVERIFY(!prepared.contains(QStringLiteral("\\newbox")));
+    QVERIFY(!prepared.contains(QStringLiteral("\\vbox")));
+    QVERIFY(!prepared.contains(QStringLiteral("\\strutbox")));
     QVERIFY(prepared.contains(QStringLiteral("\\global\\PreviewBorder=0pt")));
-    const QString sourceClose = QStringLiteral("\\par%\n\\ifnum\\lastnodetype=1\\relax\\aftergroup\\aftergroup\\aftergroup\\MengsheeNoteLastLine\\fi%\n\\endgroup}");
-    QVERIFY(prepared.contains(sourceClose));
-    QVERIFY(prepared.indexOf(QStringLiteral("\\setbox\\MengsheeNoteScratch")) < prepared.lastIndexOf(QStringLiteral("\\MengsheeNoteDepth%\n")));
     const QString display = prepareSnippet(QStringLiteral("$$+x$$"), QColor(Qt::red));
     QVERIFY(display.contains(QStringLiteral("$$+x$$")));
     QVERIFY(!display.contains(QStringLiteral("\\vrule")));
@@ -319,12 +299,12 @@ void LatexSourcePreparationTest::terminalBackslashBoundary()
 {
     const QString single = QStringLiteral("text\\");
     const QString singlePrepared = prepareSnippet(single, QColor(Qt::black));
-    QVERIFY(singlePrepared.contains(single + QStringLiteral("\n\\par%\n")));
-    QVERIFY(!singlePrepared.contains(single + QStringLiteral("%\n\\par%\n")));
+    QVERIFY(singlePrepared.contains(single + QStringLiteral("\n")));
+    QVERIFY(!singlePrepared.contains(single + QStringLiteral("%\n")));
     const QString doubled = QStringLiteral("text\\\\");
-    QVERIFY(prepareSnippet(doubled, QColor(Qt::black)).contains(doubled + QStringLiteral("%\n\\par%\n")));
+    QVERIFY(prepareSnippet(doubled, QColor(Qt::black)).contains(doubled + QStringLiteral("%\n")));
     const QString commented = QStringLiteral("text % comment\\");
-    QVERIFY(prepareSnippet(commented, QColor(Qt::black)).contains(commented + QStringLiteral("\n\\par%\n")));
+    QVERIFY(prepareSnippet(commented, QColor(Qt::black)).contains(commented + QStringLiteral("\n")));
 }
 
 void LatexSourcePreparationTest::exportFixtures()

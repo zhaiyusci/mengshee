@@ -857,7 +857,7 @@ void AnnotationActionHandlerPrivate::slotAddLatexNote(bool boxed, bool callout, 
     const QColor fillColor = (boxed || callout) ? (callout ? Qt::white : Qt::yellow) : Qt::transparent;
     const QColor borderColor = (boxed || callout) ? Qt::black : Qt::transparent;
 
-    selectedBuiltinTool = annotator->selectLatexStampTool(LatexNoteUtils::defaultLatexAppearancePdfFileName(), latexInput, boxed, textColor, fillColor, borderColor, callout, ordered);
+    selectedBuiltinTool = annotator->selectLatexStampTool(QString(), latexInput, boxed, textColor, fillColor, borderColor, callout, ordered);
     if (selectedBuiltinTool != -1) {
         parseTool(selectedBuiltinTool);
     }

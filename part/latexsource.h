@@ -16,7 +16,7 @@ namespace LatexSource
 // Preserve source bytes and natural display height; insert only the leading
 // width/noindent guard, without adding math atoms or overriding display skips.
 QString prepareLeadingDisplay(const QString &source);
-// Adaptive colour plus measured TeX edge metrics; no glyph-ink cropping policy.
+// Host colour/padding setup for StemTeX block layout; no duplicate edge metrics.
 QString prepareSnippet(const QString &source, const QColor &textColor);
 }
 }

@@ -282,32 +282,6 @@ QColor colorForLatexAnnotation(const Okular::Annotation *annotation)
     return textColor;
 }
 
-QString defaultLatexAppearancePdfFileName()
-{
-    QDir dataDir = latexAppearanceSessionDir();
-    if (!dataDir.exists()) {
-        qCWarning(OkularUiDebug) << "Could not create a temporary directory for the default LaTeX note appearance:" << dataDir.absolutePath();
-        return QString();
-    }
-
-    const QString targetFileName = dataDir.filePath(QStringLiteral("latex-default-note.pdf"));
-    if (QFile::exists(targetFileName)) {
-        return targetFileName;
-    }
-
-    QFile resourceFile(QStringLiteral(":/mengshee/data/latex-default-note.pdf"));
-    if (!resourceFile.exists()) {
-        qCWarning(OkularUiDebug) << "Default LaTeX note appearance resource is missing.";
-        return QString();
-    }
-    if (!resourceFile.copy(targetFileName)) {
-        qCWarning(OkularUiDebug) << "Could not copy the default LaTeX note appearance to:" << targetFileName << "error:" << resourceFile.errorString();
-        return QString();
-    }
-
-    return targetFileName;
-}
-
 double rectWidthInPoints(const Okular::NormalizedRect &rect, const Okular::Page *page)
 {
     const double pageWidth = pageWidthInPoints(page);
@@ -428,7 +402,10 @@ bool applyRenderedLatexTextAnnotationAppearance(QWidget *parent,
         return false;
     }
 
-    const Okular::NormalizedRect updatedRect = textAnnotation->boundingRectangle();
+    const auto previousRect = textAnnotation->boundingRectangle();
+    const auto updatedRect = Okular::AnnotationFrame::withLocalHeight(previousRect,
+        QSizeF(pageWidthInPoints(page),pageHeightInPoints(page)),textAnnotation->appearanceRotation(),
+        rendered.pdfSizePoints.height()+2*paddingForLatexAnnotation(textAnnotation));
     const Okular::TextAnnotation::InplaceIntent targetIntent =
         textAnnotation->inplaceIntent() == Okular::TextAnnotation::Callout ? Okular::TextAnnotation::Callout : (boxed ? Okular::TextAnnotation::Unknown : Okular::TextAnnotation::TypeWriter);
     const double targetBorderWidth = boxed ? qMax(0.0, textAnnotation->style().width()) : 0.0;
@@ -452,7 +429,8 @@ bool applyRenderedLatexTextAnnotationAppearance(QWidget *parent,
     textAnnotation->setInplaceIntent(targetIntent);
     textAnnotation->style().setColor(fillColor);
     textAnnotation->style().setWidth(targetBorderWidth);
-    textAnnotation->setBoundingRectangle(updatedRect);
+    textAnnotation->adjust({updatedRect.left-previousRect.left,updatedRect.top-previousRect.top},
+        {updatedRect.right-previousRect.right,updatedRect.bottom-previousRect.bottom});
     textAnnotation->setModificationDate(QDateTime::currentDateTime());
     qCDebug(OkularUiDebug) << "Updating LaTeX note appearance; source path:" << rendered.pdfFileName << "layout width:" << layoutWidthPoints << "pdf size:" << rendered.pdfSizePoints
                            << "rect:" << updatedRect.left << updatedRect.top << updatedRect.right << updatedRect.bottom;
@@ -500,7 +478,10 @@ bool applyRenderedLatexStampAnnotationAppearance(QWidget *parent,
         return false;
     }
 
-    const Okular::NormalizedRect updatedRect = stampAnnotation->boundingRectangle();
+    const auto previousRect = stampAnnotation->boundingRectangle();
+    const auto updatedRect = Okular::AnnotationFrame::withLocalHeight(previousRect,
+        QSizeF(pageWidthInPoints(page),pageHeightInPoints(page)),stampAnnotation->appearanceRotation(),
+        rendered.pdfSizePoints.height()+2*paddingForLatexAnnotation(stampAnnotation));
     const double targetBorderWidth = boxed ? qMax(0.0, stampAnnotation->style().width()) : 0.0;
     showRenderWarning(parent, rendered.warning);
     if (rendered.pdfFileName == stampAnnotation->latexAppearancePdfFileName() && updatedRect == stampAnnotation->boundingRectangle() && qAbs(stampAnnotation->latexLayoutWidth() - layoutWidthPoints) < 1e-3 &&
@@ -525,7 +506,8 @@ bool applyRenderedLatexStampAnnotationAppearance(QWidget *parent,
     stampAnnotation->setLatexFillColor(fillColor);
     stampAnnotation->setLatexBorderColor(borderColor);
     stampAnnotation->style().setWidth(targetBorderWidth);
-    stampAnnotation->setBoundingRectangle(updatedRect);
+    stampAnnotation->adjust({updatedRect.left-previousRect.left,updatedRect.top-previousRect.top},
+        {updatedRect.right-previousRect.right,updatedRect.bottom-previousRect.bottom});
     stampAnnotation->setModificationDate(QDateTime::currentDateTime());
     qCDebug(OkularUiDebug) << "Updating LaTeX stamp appearance; source path:" << rendered.pdfFileName << "layout width:" << layoutWidthPoints << "pdf size:" << rendered.pdfSizePoints
                            << "rect:" << updatedRect.left << updatedRect.top << updatedRect.right << updatedRect.bottom;
