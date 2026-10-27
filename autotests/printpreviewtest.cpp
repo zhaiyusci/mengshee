@@ -6,6 +6,7 @@
 #include <QRadioButton>
 #include <QLineEdit>
 #include <QSpinBox>
+#include <QSlider>
 #include <QThread>
 #include <QElapsedTimer>
 #include <QTimer>
@@ -16,9 +17,7 @@ class PrintPreviewTest : public QObject {
     Q_OBJECT
 private Q_SLOTS:
     void asynchronousLatestRequestAndCache() {
-        QPrinter printer;
-        printer.setOutputFormat(QPrinter::PdfFormat);
-        Okular::MengsheePrintDialog dialog(&printer, 3, 1, QPageLayout::Portrait, false, new Okular::DefaultPrintOptionsWidget);
+        Okular::MengsheePrintDialog dialog(nullptr, 3, 1, QPageLayout::Portrait, false, new Okular::DefaultPrintOptionsWidget);
         struct State { std::atomic<int> calls{0}; std::atomic<int> last{-1}; std::atomic<bool> worker{false}; };
         auto state = std::make_shared<State>();
         dialog.setPreviewRenderer([state](int page, QSize) {
@@ -50,12 +49,59 @@ private Q_SLOTS:
         QTest::qWait(250);
         QCOMPARE(state->calls.load(),count);
     }
+    void prefetchedNavigationIsImmediate() {
+        auto calls = std::make_shared<std::atomic<int>>(0);
+        QElapsedTimer timer; timer.start();
+        Okular::MengsheePrintDialog dialog(nullptr, 3, 1, QPageLayout::Portrait, false, new Okular::DefaultPrintOptionsWidget);
+        qInfo() << "Printer-independent dialog construction ms:" << timer.elapsed();
+        dialog.setPreviewRenderer([calls](int page, QSize) {
+            ++*calls;
+            QThread::msleep(20);
+            QImage image(120, 160, QImage::Format_RGB32);
+            image.fill(page ? Qt::blue : Qt::red);
+            return Okular::PrintPreviewImage{image, {}};
+        }, {});
+        dialog.show();
+        QTRY_COMPARE(calls->load(), 2); // current and next, not the whole document
+        QTest::qWait(100);
+        auto *canvas = dialog.findChild<QWidget *>(QStringLiteral("printPreview"));
+        const auto centerColor = [canvas] {
+            const auto image = canvas->grab().toImage();
+            return image.pixelColor(image.width()/2, image.height()/2);
+        };
+        QCOMPARE(centerColor(), QColor(Qt::red));
+        auto *slider = dialog.findChild<QSlider *>(QStringLiteral("previewPageSlider"));
+        timer.restart();
+        slider->setValue(2);
+        QVERIFY(timer.elapsed() < 100);
+        QCOMPARE(centerColor(), QColor(Qt::blue));
+        QVERIFY(!dialog.findChild<QLabel *>(QStringLiteral("previewDescription"))->text().contains(QStringLiteral("Generating")));
+        QTRY_COMPARE(calls->load(), 3); // next neighbor after navigation
+        QTest::qWait(100);
+        slider->setValue(1);
+        QTest::qWait(100);
+        QCOMPARE(calls->load(), 3);
+        QCOMPARE(centerColor(), QColor(Qt::red));
+    }
+    void automaticPaperFollowsPreviewPage() {
+        Okular::MengsheePrintDialog dialog(nullptr, 2, 1, QPageLayout::Portrait, false, new Okular::DefaultPrintOptionsWidget);
+        dialog.setPreviewRenderer([](int page, QSize) {
+            QImage image(page ? QSize(160,120) : QSize(120,160), QImage::Format_RGB32);
+            image.fill(Qt::red);
+            return Okular::PrintPreviewImage{image,{}};
+        }, {});
+        auto *description = dialog.findChild<QLabel *>(QStringLiteral("previewDescription"));
+        QTRY_VERIFY(description->text().contains(QStringLiteral("Portrait")));
+        QTest::qWait(100);
+        dialog.findChild<QSlider *>(QStringLiteral("previewPageSlider"))->setValue(2);
+        QTRY_VERIFY(description->text().contains(QStringLiteral("Landscape")));
+        dialog.findChild<QRadioButton *>(QStringLiteral("portraitRadio"))->setChecked(true);
+        QTRY_VERIFY(description->text().contains(QStringLiteral("Portrait")));
+    }
     void closingDoesNotWaitForWorker() {
-        QPrinter printer;
-        printer.setOutputFormat(QPrinter::PdfFormat);
         auto started = std::make_shared<std::atomic<bool>>(false);
         auto finished = std::make_shared<std::atomic<bool>>(false);
-        auto dialog = std::make_unique<Okular::MengsheePrintDialog>(&printer, 1, 1, QPageLayout::Portrait, false, new Okular::DefaultPrintOptionsWidget);
+        auto dialog = std::make_unique<Okular::MengsheePrintDialog>(nullptr, 1, 1, QPageLayout::Portrait, false, new Okular::DefaultPrintOptionsWidget);
         dialog->setPreviewRenderer([started,finished](int,QSize) {
             *started=true;
             QThread::msleep(500);

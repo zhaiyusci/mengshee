@@ -22,8 +22,10 @@ bool MuPDFGenerator::operation(const std::function<void()> &body, QString *error
     }
     // Invalidate before the operation: even a failed edit may change PDF objects.
     // This also invalidates separately cached annotation appearances.
-    if (changesDocument)
+    if (changesDocument) {
+        m_previewOriginalDataValid = false;
         clearDisplayList();
+    }
     fz_try(m_context)
     {
         body();

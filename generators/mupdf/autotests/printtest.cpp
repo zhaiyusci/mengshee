@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "../generator_mupdf.h"
 #include <core/page.h>
+#include <core/printjob.h>
+#include <QPdfWriter>
+#include <QPainter>
 #include <QFile>
 #include <QPrinter>
 #include <QTemporaryDir>
@@ -35,6 +38,57 @@ class PrintTest : public QObject
         QFile output(file); QVERIFY(output.open(QIODevice::WriteOnly)); QCOMPARE(output.write(data),data.size());
     }
 private Q_SLOTS:
+    void mixedPaperOrientation_data()
+    {
+        QTest::addColumn<int>("mode");
+        QTest::addColumn<bool>("reverse");
+        for (int mode : {0,1,2}) for (bool reverse : {false,true})
+            QTest::newRow(qPrintable(QStringLiteral("%1-%2").arg(mode).arg(reverse))) << mode << reverse;
+    }
+    void mixedPaperOrientation()
+    {
+        QFETCH(int, mode); QFETCH(bool, reverse);
+        QTemporaryDir dir;
+        const auto original = dir.filePath(QStringLiteral("original.pdf"));
+        const auto source = dir.filePath(QStringLiteral("source.pdf"));
+        const auto printed = dir.filePath(QStringLiteral("printed.pdf"));
+        {
+            QPdfWriter writer(original);
+            writer.setPageSize(QPageSize(QPageSize::A4));
+            QPainter painter(&writer);
+            painter.drawText(100, 100, QStringLiteral("Portrait"));
+            writer.setPageOrientation(QPageLayout::Landscape);
+            QVERIFY(writer.newPage());
+            painter.drawText(100, 100, QStringLiteral("Landscape"));
+            writer.setPageOrientation(QPageLayout::Portrait);
+            QVERIFY(writer.newPage());
+            painter.drawText(100, 100, QStringLiteral("Rotated portrait"));
+        }
+        auto *ctx = fz_new_context(nullptr, nullptr, FZ_STORE_DEFAULT);
+        auto *pdf = pdf_open_document(ctx, original.toUtf8().constData());
+        pdf_dict_put_int(ctx, pdf_lookup_page_obj(ctx, pdf, 2), PDF_NAME(Rotate), 90);
+        pdf_save_document(ctx, pdf, source.toUtf8().constData(), &pdf_default_write_options);
+        pdf_drop_document(ctx, pdf); fz_drop_context(ctx);
+        MuPDFGenerator input(nullptr, {}); QList<Okular::Page *> pages;
+        QCOMPARE(input.loadDocumentWithPassword(source, pages, {}), Okular::Document::OpenSuccess);
+        Okular::PrintJobPrinter printer;
+        printer.setOutputFormat(QPrinter::PdfFormat);
+        printer.setOutputFileName(printed);
+        printer.setPageSize(QPageSize(QPageSize::A4));
+        printer.setPageOrientation(mode == 2 ? QPageLayout::Landscape : QPageLayout::Portrait);
+        printer.automaticPageOrientation = mode == 0;
+        printer.setPageOrder(reverse ? QPrinter::LastPageFirst : QPrinter::FirstPageFirst);
+        QCOMPARE(input.print(printer), Okular::Document::NoPrintError);
+        MuPDFGenerator output(nullptr, {}); QList<Okular::Page *> result;
+        QCOMPARE(output.loadDocumentWithPassword(printed, result, {}), Okular::Document::OpenSuccess);
+        QCOMPARE(result.size(), 3);
+        for (int i=0; i<3; ++i) {
+            const int sourcePage = reverse ? 2-i : i;
+            const bool landscape = mode == 0 ? sourcePage != 0 : mode == 2;
+            QCOMPARE(result[i]->width() > result[i]->height(), landscape);
+        }
+        qDeleteAll(result); qDeleteAll(pages);
+    }
     void vectorOutput_data()
     {
         QTest::addColumn<int>("rotation"); QTest::addColumn<bool>("composite"); QTest::addColumn<bool>("image");

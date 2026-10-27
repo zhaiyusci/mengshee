@@ -180,6 +180,7 @@ private:
     fz_context *m_context = nullptr;
     pdf_document *m_document = nullptr;
     QByteArray m_data;
+    bool m_previewOriginalDataValid = true;
     std::unique_ptr<MuPDFAnnotationProxy> m_annotations;
     QList<pdf_page *> m_pages;
     QString m_editError;

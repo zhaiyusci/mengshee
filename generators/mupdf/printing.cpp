@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "generator_mupdf.h"
 #include "vectorprintdevice.h"
+#include <core/printjob.h>
 #include <QDebug>
 #include <QMutex>
 #include <QPainter>
@@ -12,12 +13,25 @@ Okular::Document::PrintError MuPDFGenerator::print(QPrinter &printer)
 {
     if (!isAllowed(Okular::AllowPrint)) return Okular::Document::UnknownPrintError;
     QPainter painter;
-    if (!painter.begin(&printer)) return Okular::Document::InvalidPrinterStatePrintError;
+    const auto *job = dynamic_cast<const Okular::PrintJobPrinter *>(&printer);
+    const bool automaticOrientation = job && job->automaticPageOrientation;
     const int first = printer.fromPage() > 0 ? printer.fromPage()-1 : 0;
     const int last = printer.toPage() > 0 ? std::min(printer.toPage(),int(m_pages.size()))-1 : m_pages.size()-1;
     for (int i=first; i<=last; ++i) {
-        if (i!=first && !printer.newPage()) return Okular::Document::UnknownPrintError;
         const int index = printer.pageOrder()==QPrinter::LastPageFirst ? last-(i-first) : i;
+        if (automaticOrientation) {
+            QSizeF size;
+            if (!readOperation([&] {
+                const auto bounds = pdf_bound_page(m_context, m_pages.at(index), FZ_CROP_BOX);
+                size = QSizeF(bounds.x1-bounds.x0, bounds.y1-bounds.y0);
+            }, nullptr)) return Okular::Document::UnknownPrintError;
+            // Set the upcoming sheet before begin/newPage. The PDF content
+            // keeps its own coordinates and rotation; only the paper turns.
+            printer.setPageOrientation(Okular::paperOrientationForPage(size));
+        }
+        if (i == first) {
+            if (!painter.begin(&printer)) return Okular::Document::InvalidPrinterStatePrintError;
+        } else if (!printer.newPage()) return Okular::Document::UnknownPrintError;
         QMutexLocker lock(userMutex());
         pdf_page *page = nullptr;
         fz_display_list *list = nullptr;

@@ -1,3 +1,4 @@
+#include "core/printjob.h"
 /*
     SPDX-FileCopyrightText: 2002 Wilco Greven <greven@kde.org>
     SPDX-FileCopyrightText: 2002 Chris Cheney <ccheney@cheney.cx>
@@ -8868,15 +8869,12 @@ void Part::slotPrint()
         return;
     }
 
-#ifdef Q_OS_WIN
-    QPrinter printer(QPrinter::HighResolution);
-#else
+#ifndef Q_OS_WIN
     QPrinter printer;
+    setupPrint(printer);
 #endif
     QWidget *printConfigWidget = nullptr;
 
-    // Must do certain QPrinter setup before creating QPrintDialog
-    setupPrint(printer);
 
     // Create the Print Dialog with extra config widgets if required
     if (m_document->canConfigurePrinter()) {
@@ -8888,13 +8886,16 @@ void Part::slotPrint()
     bool success = true;
 #ifdef Q_OS_WIN
     const int currentPrintPage = qMax(1, workspaceActivePageNumber() + 1);
-    MengsheePrintDialog printDialog(&printer, m_document->pages(), currentPrintPage, m_document->orientation(), !m_document->bookmarkedPageRange().isEmpty(), printConfigWidget, widget());
+    MengsheePrintDialog printDialog(nullptr, m_document->pages(), currentPrintPage, m_document->orientation(), !m_document->bookmarkedPageRange().isEmpty(), printConfigWidget, widget());
     QString previewError;
     auto previewRenderer = m_document->createPrintPreviewRenderer(&previewError);
     printDialog.setPreviewRenderer(std::move(previewRenderer), m_document->bookmarkedPageRange(), previewError);
     connect(&printDialog, &MengsheePrintDialog::paintRequested, this, [this](QPrinter *previewPrinter) { doPrint(*previewPrinter); });
 
     if (printDialog.exec() == QDialog::Accepted) {
+        Okular::PrintJobPrinter printer(QPrinter::HighResolution);
+        setupPrint(printer);
+        printDialog.configurePrinter(printer);
         success = doPrint(printer);
     }
 #else

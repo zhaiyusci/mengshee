@@ -3,6 +3,7 @@
 #include "../../poppler/pdfpagebounds.h"
 #include "../generator_mupdf.h"
 #include <QSignalSpy>
+#include <QElapsedTimer>
 #include <QPainter>
 #include <QTemporaryDir>
 #include <QTest>
@@ -829,6 +830,48 @@ private Q_SLOTS:
         QCOMPARE(reopened.generateDocumentSynopsis()->firstChildElement().firstChildElement().attribute(QStringLiteral("ViewportName")), QStringLiteral("mnote-1-1"));
         qDeleteAll(pages);
         qDeleteAll(fresh);
+    }
+    void previewSavedEdits()
+    {
+        MuPDFGenerator backend(nullptr, {});
+        QList<Okular::Page *> pages;
+        QCOMPARE(backend.loadDocumentWithPassword(sample(), pages, {}), Okular::Document::OpenSuccess);
+        const auto original = backend.createPrintPreviewRenderer(nullptr);
+        const auto before = original(0, QSize(2048, 2048)).image;
+        Okular::TextAnnotation note;
+        note.setTextType(Okular::TextAnnotation::InPlace);
+        note.setContents(QStringLiteral("Saved edit must remain visible"));
+        note.setBoundingRectangle({.1, .2, .9, .7});
+        backend.annotationProxy()->notifyAddition(&note, 0);
+        QString error;
+        QVERIFY(backend.save(m_directory.filePath(QStringLiteral("preview-saved.pdf")), Okular::SaveInterface::SaveChanges, &error));
+        const auto expected = backend.renderToImage(0, 72, true);
+        QVERIFY(expected != before);
+        const auto edited = backend.createPrintPreviewRenderer(&error);
+        QCOMPARE(edited(0, QSize(2048, 2048)).image, expected);
+        QCOMPARE(original(0, QSize(2048, 2048)).image, before);
+        qDeleteAll(pages);
+    }
+    void previewBenchmark()
+    {
+        const auto path = qEnvironmentVariable("MENGSHEE_PREVIEW_BENCHMARK_PDF");
+        if (path.isEmpty()) QSKIP("Optional real-document preview benchmark");
+        MuPDFGenerator backend(nullptr, {});
+        QList<Okular::Page *> pages;
+        QCOMPARE(backend.loadDocumentWithPassword(path, pages, {}), Okular::Document::OpenSuccess);
+        QElapsedTimer timer;
+        timer.start();
+        QString error;
+        const auto renderer = backend.createPrintPreviewRenderer(&error);
+        QVERIFY2(bool(renderer), qPrintable(error));
+        qInfo() << "Preparation ms" << timer.elapsed();
+        for (int i = 0; i < 3; ++i) {
+            timer.restart();
+            const auto result = renderer(0, QSize(2048, 2048));
+            QVERIFY2(!result.image.isNull(), qPrintable(result.error));
+            qInfo() << "Render" << i << "ms" << timer.elapsed();
+        }
+        qDeleteAll(pages);
     }
     void printPreviewSnapshotSurvivesSourceClose()
     {

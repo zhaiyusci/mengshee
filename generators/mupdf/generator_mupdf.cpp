@@ -5,6 +5,7 @@
 #include "annots.h"
 #include "pageimport.h"
 #include <QDebug>
+#include <QElapsedTimer>
 #include <QFile>
 #include <QMutex>
 #include <QPainter>
@@ -57,6 +58,7 @@ bool MuPDFGenerator::doCloseDocument()
     pdf_drop_document(m_context, m_document);
     m_document = nullptr;
     m_data.clear();
+    m_previewOriginalDataValid = true;
     return true;
 }
 
@@ -345,21 +347,30 @@ bool MuPDFGenerator::isAllowed(Okular::Permission permission) const
 Okular::PrintPreviewRenderer MuPDFGenerator::createPrintPreviewRenderer(QString *error)
 {
     QMutexLocker lock(userMutex());
+    QElapsedTimer preparation;
+    preparation.start();
     QByteArray snapshot;
     fz_buffer *buffer = nullptr;
     fz_output *output = nullptr;
     fz_var(buffer);
     fz_var(output);
     fz_try(m_context) {
-        buffer = fz_new_buffer(m_context, 0);
-        output = fz_new_output_with_buffer(m_context, buffer);
-        auto options = pdf_default_write_options;
-        options.do_encrypt = PDF_ENCRYPT_NONE;
-        pdf_write_document(m_context, m_document, output, &options);
-        fz_close_output(m_context, output);
-        unsigned char *bytes = nullptr;
-        const auto length = fz_buffer_storage(m_context, buffer, &bytes);
-        snapshot = QByteArray(reinterpret_cast<const char *>(bytes), length);
+        // Reuse the immutable input buffer without serializing unchanged PDFs.
+        // After a save the input buffer can be stale even when MuPDF is clean.
+        if (m_previewOriginalDataValid && !pdf_has_unsaved_changes(m_context, m_document)
+            && !pdf_dict_get(m_context, pdf_trailer(m_context, m_document), PDF_NAME(Encrypt))) {
+            snapshot = m_data;
+        } else {
+            buffer = fz_new_buffer(m_context, 0);
+            output = fz_new_output_with_buffer(m_context, buffer);
+            auto options = pdf_default_write_options;
+            options.do_encrypt = PDF_ENCRYPT_NONE;
+            pdf_write_document(m_context, m_document, output, &options);
+            fz_close_output(m_context, output);
+            unsigned char *bytes = nullptr;
+            const auto length = fz_buffer_storage(m_context, buffer, &bytes);
+            snapshot = QByteArray(reinterpret_cast<const char *>(bytes), length);
+        }
     }
     fz_always(m_context) {
         fz_drop_output(m_context, output);
@@ -369,18 +380,33 @@ Okular::PrintPreviewRenderer MuPDFGenerator::createPrintPreviewRenderer(QString 
         if (error) *error = QString::fromUtf8(fz_caught_message(m_context));
         return {};
     }
-    return [snapshot](int page, QSize maximumPixels) -> Okular::PrintPreviewImage {
-        // A worker owns its context and document. Open only the requested page;
-        // loading every page's annotation model is unnecessary for preview.
-        MuPDFGenerator worker(nullptr, {});
-        worker.m_data = snapshot;
+    if (qEnvironmentVariableIsSet("MENGSHEE_PRINT_TIMING"))
+        qInfo() << "Print preview preparation ms:" << preparation.elapsed() << "bytes:" << snapshot.size();
+    struct Session {
+        QMutex mutex;
+        std::unique_ptr<MuPDFGenerator> worker;
+    };
+    const auto session = std::make_shared<Session>();
+    return [snapshot, session](int page, QSize maximumPixels) -> Okular::PrintPreviewImage {
+        QMutexLocker sessionLock(&session->mutex);
+        QElapsedTimer elapsed;
+        elapsed.start();
+        // One independent document/context per dialog, with serialized access.
+        // Keep parsed fonts, images and display lists across preview requests.
+        if (!session->worker) {
+            session->worker = std::make_unique<MuPDFGenerator>(nullptr, QVariantList{});
+            session->worker->m_data = snapshot;
+        }
+        auto &worker = *session->worker;
         auto *ctx = worker.m_context;
         fz_stream *stream = nullptr;
         fz_var(stream);
         fz_rect bounds = fz_empty_rect;
         fz_try(ctx) {
-            stream = fz_open_memory(ctx, reinterpret_cast<const unsigned char *>(snapshot.constData()), snapshot.size());
-            worker.m_document = pdf_open_document_with_stream(ctx, stream);
+            if (!worker.m_document) {
+                stream = fz_open_memory(ctx, reinterpret_cast<const unsigned char *>(worker.m_data.constData()), worker.m_data.size());
+                worker.m_document = pdf_open_document_with_stream(ctx, stream);
+            }
             fz_matrix transform;
             pdf_page_obj_transform(ctx, pdf_lookup_page_obj(ctx, worker.m_document, page), &bounds, &transform);
             bounds = fz_transform_rect(bounds, transform);
@@ -393,6 +419,8 @@ Okular::PrintPreviewRenderer MuPDFGenerator::createPrintPreviewRenderer(QString 
         pixels.scale(maximumPixels.boundedTo(pixels), Qt::KeepAspectRatio);
         Okular::PrintPreviewImage result;
         result.image = worker.render(page, qMax(1, pixels.width()), qMax(1, pixels.height()), true, &result.error);
+        if (qEnvironmentVariableIsSet("MENGSHEE_PRINT_TIMING"))
+            qInfo() << "Print preview page:" << page << "ms:" << elapsed.elapsed();
         return result;
     };
 }
@@ -446,6 +474,7 @@ bool MuPDFGenerator::save(const QString &path, SaveOptions, QString *error)
                     pdf_dict_put_string(m_context, annot, PDF_NAME(DA), normalized.constData(), normalized.size());
             }
         }
+        m_previewOriginalDataValid = false;
         pdf_save_document(m_context, m_document, name.constData(), &options);
     }
     fz_catch(m_context)

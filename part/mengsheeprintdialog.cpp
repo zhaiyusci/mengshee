@@ -7,6 +7,7 @@
 #include "mengsheeprintdialog.h"
 
 #include "core/printoptionswidget.h"
+#include "core/printjob.h"
 
 #include <QButtonGroup>
 #include <QCheckBox>
@@ -50,6 +51,33 @@ using namespace Okular;
 namespace
 {
 constexpr int previewResolutionDpi = 72;
+class PagePreview final : public QWidget {
+public:
+    using QWidget::QWidget;
+    QImage image;
+    QPageLayout layout;
+protected:
+    void paintEvent(QPaintEvent *) override {
+        QPainter painter(this);
+        painter.fillRect(rect(), palette().brush(QPalette::Dark));
+        const QRectF paper = layout.fullRect(QPageLayout::Point);
+        if (paper.isEmpty()) return;
+        const QSizeF available = QSizeF(size()) - QSizeF(32, 32);
+        if (available.width() <= 0 || available.height() <= 0) return;
+        const qreal scale = qMin(available.width() / paper.width(), available.height() / paper.height());
+        const QSizeF display = paper.size() * scale;
+        const QPointF origin((width() - display.width()) / 2, (height() - display.height()) / 2);
+        painter.translate(origin);
+        painter.scale(scale, scale);
+        painter.fillRect(paper, Qt::white);
+        if (image.isNull()) return;
+        const QRectF area = layout.paintRect(QPageLayout::Point);
+        QSizeF target = image.size();
+        target.scale(area.size(), Qt::KeepAspectRatio);
+        painter.setRenderHint(QPainter::SmoothPixmapTransform);
+        painter.drawImage(QRectF(area.center() - QPointF(target.width()/2, target.height()/2), target), image);
+    }
+};
 }
 
 MengsheePrintDialog::MengsheePrintDialog(QPrinter *printer, int documentPageCount, int currentPage, QPageLayout::Orientation documentOrientation, bool hasPageSelection, QWidget *printOptionsWidget, QWidget *parent)
@@ -61,7 +89,11 @@ MengsheePrintDialog::MengsheePrintDialog(QPrinter *printer, int documentPageCoun
     , m_hasPageSelection(hasPageSelection)
     , m_printOptionsWidget(printOptionsWidget)
 {
-    Q_ASSERT(m_printer);
+    if (m_printer) {
+        m_initialPrinterName = m_printer->printerName();
+        m_nativeOutput = m_printer->outputFormat() == QPrinter::NativeFormat;
+        m_printer->setOutputFormat(QPrinter::PdfFormat);
+    }
 
     setWindowTitle(i18nc("@title:window", "Print"));
     setModal(true);
@@ -70,12 +102,13 @@ MengsheePrintDialog::MengsheePrintDialog(QPrinter *printer, int documentPageCoun
 
     m_previewTimer = new QTimer(this);
     m_previewTimer->setSingleShot(true);
-    m_previewTimer->setInterval(120);
+    m_previewTimer->setInterval(0);
     connect(m_previewTimer, &QTimer::timeout, this, &MengsheePrintDialog::startPreviewRender);
     m_previewWatcher = new QFutureWatcher<PrintPreviewImage>(this);
     buildUi();
+    populatePageSizes();
+    populateDuplexOptions();
     populatePrinters();
-    printerChanged();
     connectPrintOptionChanges();
     updatePreviewNavigation();
     validateSettings();
@@ -298,6 +331,11 @@ void MengsheePrintDialog::buildUi()
     m_previewDescription->setAlignment(Qt::AlignCenter);
     previewLayout->addWidget(m_previewDescription);
 
+    if (!m_printer) {
+        m_previewCanvas = new PagePreview(previewPanel);
+        m_previewCanvas->setObjectName(QStringLiteral("printPreview"));
+        previewLayout->addWidget(m_previewCanvas, 1);
+    } else {
     // Use QPrintPreviewWidget's internally owned printer. Keeping the printer
     // as a dialog member would destroy it before QDialog destroys its child
     // widgets, leaving the preview widget with a dangling printer on close.
@@ -313,6 +351,8 @@ void MengsheePrintDialog::buildUi()
         previewView->setRenderHints(previewView->renderHints() | QPainter::Antialiasing | QPainter::TextAntialiasing | QPainter::SmoothPixmapTransform);
     }
     previewLayout->addWidget(m_previewWidget, 1);
+
+    }
 
     auto navigationLayout = new QHBoxLayout;
     m_previousPageButton = new QPushButton(previewPanel);
@@ -378,63 +418,76 @@ void MengsheePrintDialog::buildUi()
     connect(m_pageSlider, &QSlider::valueChanged, this, &MengsheePrintDialog::previewPageChanged);
     connect(m_previousPageButton, &QPushButton::clicked, this, &MengsheePrintDialog::previousPreviewPage);
     connect(m_nextPageButton, &QPushButton::clicked, this, &MengsheePrintDialog::nextPreviewPage);
-    connect(m_previewWidget, &QPrintPreviewWidget::paintRequested, this, &MengsheePrintDialog::paintPreview);
+    if (m_previewWidget) connect(m_previewWidget, &QPrintPreviewWidget::paintRequested, this, &MengsheePrintDialog::paintPreview);
 }
 
 void MengsheePrintDialog::populatePrinters()
 {
-    const QSignalBlocker blocker(m_printerCombo);
-    m_printerCombo->clear();
-
-    const QStringList names = QPrinterInfo::availablePrinterNames();
-    for (const QString &name : names) {
-        const QPrinterInfo info = QPrinterInfo::printerInfo(name);
-        QString label = name;
-        if (info.isDefault()) {
-            label = i18nc("Printer name followed by its status", "%1 (Default)", name);
+    m_printerCombo->setEnabled(false);
+    auto *watcher = new QFutureWatcher<QPair<QStringList, QString>>(this);
+    connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher] {
+        const auto result = watcher->result();
+        watcher->deleteLater();
+        {
+            const QSignalBlocker blocker(m_printerCombo);
+            m_printerCombo->clear();
+            for (const auto &name : result.first)
+                m_printerCombo->addItem(name == result.second ? i18nc("Printer name followed by its status", "%1 (Default)", name) : name, name);
+            const int index = m_printerCombo->findData(m_initialPrinterName.isEmpty() ? result.second : m_initialPrinterName);
+            if (index >= 0) m_printerCombo->setCurrentIndex(index);
         }
-        m_printerCombo->addItem(label, name);
-    }
-
-    QString selectedName = m_printer->printerName();
-    if (selectedName.isEmpty()) {
-        selectedName = QPrinterInfo::defaultPrinterName();
-    }
-    const int selectedIndex = m_printerCombo->findData(selectedName);
-    if (selectedIndex >= 0) {
-        m_printerCombo->setCurrentIndex(selectedIndex);
-    }
+        m_printerCombo->setEnabled(true);
+        printerChanged();
+    });
+    watcher->setFuture(QtConcurrent::run([] {
+        return qMakePair(QPrinterInfo::availablePrinterNames(), QPrinterInfo::defaultPrinterName());
+    }));
 }
 
 void MengsheePrintDialog::printerChanged()
 {
-    const QString printerName = m_printerCombo->currentData().toString();
-    if (!printerName.isEmpty()) {
-        m_printer->setPrinterName(printerName);
-    }
-
-    populatePageSizes();
-    populateDuplexOptions();
-
-    const QPrinterInfo info = QPrinterInfo::printerInfo(printerName);
-    const QList<QPrinter::ColorMode> colorModes = info.supportedColorModes();
-    const bool supportsColor = colorModes.contains(QPrinter::Color);
-    m_grayscaleCheck->setEnabled(supportsColor);
-    {
-        const QSignalBlocker blocker(m_grayscaleCheck);
-        m_grayscaleCheck->setChecked(!supportsColor || m_printer->colorMode() == QPrinter::GrayScale);
-    }
-
+    const QString name = m_printerCombo->currentData().toString();
+    const auto revision = ++m_printerRevision;
+    m_printerReady = false;
     validateSettings();
-    resetPreviewSheet();
-    schedulePreviewUpdate();
+    if (name.isEmpty()) return;
+    const auto apply = [this, revision](const PrinterCapabilities &capabilities) {
+        if (revision != m_printerRevision) return;
+        m_capabilities = capabilities;
+        populatePageSizes();
+        populateDuplexOptions();
+        const bool supportsColor = capabilities.colors.contains(QPrinter::Color);
+        m_grayscaleCheck->setEnabled(supportsColor);
+        {
+            const QSignalBlocker blocker(m_grayscaleCheck);
+            m_grayscaleCheck->setChecked(!supportsColor || (m_printer && m_printer->colorMode() == QPrinter::GrayScale));
+        }
+        m_printerReady = true;
+        validateSettings();
+        schedulePreviewUpdate();
+    };
+    if (m_printerCapabilities.contains(name)) {
+        apply(m_printerCapabilities.value(name));
+        return;
+    }
+    auto *watcher = new QFutureWatcher<PrinterCapabilities>(this);
+    connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, name, apply] {
+        const auto capabilities = watcher->result();
+        watcher->deleteLater();
+        m_printerCapabilities.insert(name, capabilities);
+        apply(capabilities);
+    });
+    watcher->setFuture(QtConcurrent::run([name] {
+        const auto info = QPrinterInfo::printerInfo(name);
+        QPrinter printer(info);
+        return PrinterCapabilities{info.supportedPageSizes(), info.supportedDuplexModes(), info.supportedColorModes(), info.defaultPageSize(), printer.pageLayout().margins(QPageLayout::Millimeter)};
+    }));
 }
 
 void MengsheePrintDialog::populatePageSizes()
 {
     const QString oldKey = selectedPageSize().key();
-    const QPrinterInfo info = QPrinterInfo::printerInfo(m_printerCombo->currentData().toString());
-    QList<QPageSize> sizes = info.supportedPageSizes();
+    QList<QPageSize> sizes = m_capabilities.sizes;
     if (sizes.isEmpty()) {
         sizes << QPageSize(QPageSize::A4) << QPageSize(QPageSize::Letter);
     }
@@ -448,10 +501,10 @@ void MengsheePrintDialog::populatePageSizes()
 
     QString preferredKey = oldKey;
     if (preferredKey.isEmpty()) {
-        preferredKey = m_printer->pageLayout().pageSize().key();
+        if (m_printer) preferredKey = m_printer->pageLayout().pageSize().key();
     }
-    if (preferredKey.isEmpty() && !info.isNull()) {
-        preferredKey = info.defaultPageSize().key();
+    if (preferredKey.isEmpty()) {
+        preferredKey = m_capabilities.defaultSize.key();
     }
 
     int preferredIndex = 0;
@@ -466,11 +519,10 @@ void MengsheePrintDialog::populatePageSizes()
 
 void MengsheePrintDialog::populateDuplexOptions()
 {
-    const QPrinterInfo info = QPrinterInfo::printerInfo(m_printerCombo->currentData().toString());
-    const QList<QPrinter::DuplexMode> modes = info.supportedDuplexModes();
+    const QList<QPrinter::DuplexMode> modes = m_capabilities.duplex;
     const bool canDuplex = modes.contains(QPrinter::DuplexAuto) || modes.contains(QPrinter::DuplexLongSide) || modes.contains(QPrinter::DuplexShortSide);
 
-    const QPrinter::DuplexMode currentMode = m_printer->duplex();
+    const QPrinter::DuplexMode currentMode = m_printer ? m_printer->duplex() : QPrinter::DuplexNone;
     const int preferredIndex = m_duplexBindingCombo->findData(currentMode == QPrinter::DuplexShortSide ? QPrinter::DuplexShortSide : QPrinter::DuplexLongSide);
     if (preferredIndex >= 0) {
         const QSignalBlocker blocker(m_duplexBindingCombo);
@@ -518,7 +570,7 @@ void MengsheePrintDialog::pageSizeChanged()
     // Apply the paper immediately so QPrintPreviewWidget rebuilds its page
     // frame with the new physical dimensions, rather than only changing the
     // descriptive label above it.
-    applyCommonSettings(*m_printer);
+    if (m_printer) applyCommonSettings(*m_printer);
     resetPreviewSheet();
     updatePreviewNavigation();
     schedulePreviewUpdate();
@@ -556,12 +608,13 @@ void MengsheePrintDialog::setPreviewRenderer(PrintPreviewRenderer renderer, cons
 
 void MengsheePrintDialog::schedulePreviewUpdate()
 {
-    ++m_previewRevision; // Invalidate immediately, including during the debounce.
+    ++m_previewRevision; // Coalesce this event-loop turn without a fixed delay.
     m_previewTimer->start();
 }
 
 void MengsheePrintDialog::paintPreview(QPrinter *printer)
 {
+    printer->setOutputFormat(QPrinter::PdfFormat);
     printer->setResolution(previewResolutionDpi);
     printer->setDocName(m_printer->docName());
     applyCommonSettings(*printer);
@@ -588,10 +641,11 @@ void MengsheePrintDialog::paintPreview(QPrinter *printer)
 
 void MengsheePrintDialog::startPreviewRender()
 {
-    applyCommonSettings(*m_printer);
+    if (m_printer) applyCommonSettings(*m_printer);
     if (!m_asyncPreview) {
+        if (!m_previewWidget) return;
         syncLayoutProperties(false);
-        m_previewWidget->updatePreview();
+        refreshPreview();
         if (m_printOptionsWidget)
             m_previewSheetCount = qMax(1, m_printOptionsWidget->property(PrintLayout::previewSheetCountProperty).toInt());
         updatePreviewNavigation();
@@ -603,7 +657,7 @@ void MengsheePrintDialog::startPreviewRender()
     }
     if (m_rangePagesRadio->isChecked() && !pageRangeIsValid()) {
         m_previewImage = {};
-        m_previewWidget->updatePreview();
+        refreshPreview();
         return;
     }
     QPageRanges ranges;
@@ -617,31 +671,54 @@ void MengsheePrintDialog::startPreviewRender()
     m_previewSheetCount = qMax(1, pages.size());
     updatePreviewNavigation();
     if (pages.isEmpty()) return;
-    const int page = pages[m_printer->pageOrder() == QPrinter::LastPageFirst ? pages.size() - m_previewSheet : m_previewSheet - 1];
-    const qreal scale = m_previewWidget->devicePixelRatioF();
-    const QSize pixels(qBound(64, qRound(m_previewWidget->width() * scale * 1.5), 2048), qBound(64, qRound(m_previewWidget->height() * scale * 1.5), 2048));
-    const QString key = QStringLiteral("%1:%2:%3").arg(page).arg(pixels.width()).arg(pixels.height());
+    int page = pages[m_printer && m_printer->pageOrder() == QPrinter::LastPageFirst ? pages.size() - m_previewSheet : m_previewSheet - 1];
+    // The renderer caps resolution at 72 DPI. A stable bounded size lets
+    // layout and dialog-size changes reuse the page instead of rerasterizing.
+    const QSize pixels(2048, 2048);
+    auto cacheKey = [pixels](int index) { return QStringLiteral("%1:%2:%3").arg(index).arg(pixels.width()).arg(pixels.height()); };
+    QString key = cacheKey(page);
+    bool prefetch = false;
     if (const auto *cached = m_previewCache.object(key)) {
         m_previewImage = *cached;
-        m_previewWidget->updatePreview();
-        return;
+        refreshPreview();
+        if (m_previewRunning) return;
+        // Only a bounded neighborhood, never the entire document. Current
+        // requests take priority when the single in-flight job completes.
+        const int position = pages.indexOf(page);
+        for (int offset : {1, -1}) {
+            const int next = position + offset;
+            if (next < 0 || next >= pages.size()) continue;
+            const auto candidate = cacheKey(pages[next]);
+            if (m_previewCache.contains(candidate)) continue;
+            page = pages[next];
+            key = candidate;
+            prefetch = true;
+            break;
+        }
+        if (!prefetch) return;
     }
-    m_previewDescription->setText(i18n("Generating preview…"));
+    if (!prefetch) {
+        m_previewDescription->setText(i18n("Generating preview…"));
+        m_previewImage = {};
+        refreshPreview();
+    }
     if (m_previewRunning) return; // Only one job; the newest request follows it.
     m_previewRunning = true;
     m_runningRevision = m_previewRevision;
     disconnect(m_previewWatcher, nullptr, this, nullptr);
-    connect(m_previewWatcher, &QFutureWatcher<PrintPreviewImage>::finished, this, [this, key]() {
+    connect(m_previewWatcher, &QFutureWatcher<PrintPreviewImage>::finished, this, [this, key, prefetch]() {
         m_previewRunning = false;
         const auto result = m_previewWatcher->result();
         if (!result.image.isNull())
             m_previewCache.insert(key, new QImage(result.image), qMax(1, int(result.image.sizeInBytes() / 1024)));
         if (m_runningRevision != m_previewRevision) {
-            if (!m_previewTimer->isActive()) m_previewTimer->start();
+            if (!m_previewTimer->isActive()) m_previewTimer->start(0);
             return;
         }
+        if (!result.image.isNull()) QTimer::singleShot(0, this, &MengsheePrintDialog::startPreviewRender);
+        if (prefetch) return;
         m_previewImage = result.image;
-        m_previewWidget->updatePreview();
+        refreshPreview();
         updatePreviewNavigation();
         if (!result.error.isEmpty()) m_previewDescription->setText(result.error);
     });
@@ -654,8 +731,10 @@ void MengsheePrintDialog::startPreviewRender()
 void MengsheePrintDialog::previewPageChanged(int page)
 {
     m_previewSheet = qBound(1, page, m_previewSheetCount);
+    ++m_previewRevision;
+    m_previewTimer->stop();
     updatePreviewNavigation();
-    schedulePreviewUpdate();
+    startPreviewRender();
 }
 
 void MengsheePrintDialog::previousPreviewPage()
@@ -694,7 +773,7 @@ void MengsheePrintDialog::validateSettings()
     // Keep validity separate from the QDialogButtonBox button. On Qt's Win32
     // backend, changing the active QPrinter can invalidate QWidget state used
     // by setEnabled() while the combo-box popup is being dismissed.
-    m_settingsValid = validRange && hasPrinter && m_printer->isValid();
+    m_settingsValid = validRange && hasPrinter && m_printerReady;
 }
 
 void MengsheePrintDialog::accept()
@@ -707,10 +786,36 @@ void MengsheePrintDialog::accept()
         return;
     }
 
-    applyCommonSettings(*m_printer);
-    applyPrintRange(*m_printer, false);
+    if (m_printer) configurePrinter(*m_printer);
     syncLayoutProperties(false);
     QDialog::accept();
+}
+
+void MengsheePrintDialog::configurePrinter(QPrinter &printer)
+{
+    if (auto *job = dynamic_cast<PrintJobPrinter *>(&printer))
+        job->automaticPageOrientation = m_autoOrientationRadio->isChecked();
+    if (!m_printer || m_nativeOutput) {
+        printer.setOutputFormat(QPrinter::NativeFormat);
+        printer.setPrinterName(m_printerCombo->currentData().toString());
+    }
+    applyCommonSettings(printer);
+    applyPrintRange(printer, false);
+}
+
+void MengsheePrintDialog::refreshPreview()
+{
+    if (!m_previewCanvas) {
+        if (m_previewWidget) m_previewWidget->updatePreview();
+        return;
+    }
+    updatePreviewNavigation();
+    auto *canvas = static_cast<PagePreview *>(m_previewCanvas);
+    canvas->image = m_grayscaleCheck->isChecked() ? m_previewImage.convertToFormat(QImage::Format_Grayscale8) : m_previewImage;
+    canvas->layout = QPageLayout(selectedPageSize(), selectedOrientation(), m_capabilities.margins, QPageLayout::Millimeter);
+    if (auto options = qobject_cast<PrintOptionsWidget *>(m_printOptionsWidget); options && options->ignorePrintMargins())
+        canvas->layout.setMode(QPageLayout::FullPageMode);
+    canvas->update();
 }
 
 void MengsheePrintDialog::applyCommonSettings(QPrinter &printer)
@@ -817,7 +922,7 @@ QPageLayout::Orientation MengsheePrintDialog::selectedOrientation() const
     if (m_portraitRadio->isChecked()) {
         return QPageLayout::Portrait;
     }
-    return m_documentOrientation;
+    return m_previewImage.isNull() ? m_documentOrientation : paperOrientationForPage(m_previewImage.size());
 }
 
 QPrinter::DuplexMode MengsheePrintDialog::selectedDuplexMode() const

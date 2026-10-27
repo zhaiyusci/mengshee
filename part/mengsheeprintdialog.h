@@ -49,6 +49,7 @@ class MengsheePrintDialog : public QDialog
 public:
     MengsheePrintDialog(QPrinter *printer, int documentPageCount, int currentPage, QPageLayout::Orientation documentOrientation, bool hasPageSelection, QWidget *printOptionsWidget, QWidget *parent = nullptr);
 
+    void configurePrinter(QPrinter &printer);
     void setPreviewRenderer(PrintPreviewRenderer renderer, const QString &selectedPages, const QString &error = {});
 
 Q_SIGNALS:
@@ -72,6 +73,7 @@ private:
     void accept() override;
     void startPreviewRender();
     void paintPreview(QPrinter *printer);
+    void refreshPreview();
     void buildUi();
     void populatePrinters();
     void populatePageSizes();
@@ -87,6 +89,20 @@ private:
     QPageSize selectedPageSize() const;
     QString pageSizeDescription(const QPageSize &pageSize) const;
 
+    struct PrinterCapabilities {
+        QList<QPageSize> sizes;
+        QList<QPrinter::DuplexMode> duplex;
+        QList<QPrinter::ColorMode> colors;
+        QPageSize defaultSize;
+        QMarginsF margins;
+    };
+    QHash<QString, PrinterCapabilities> m_printerCapabilities;
+    PrinterCapabilities m_capabilities;
+    QString m_initialPrinterName;
+    bool m_nativeOutput = false;
+    bool m_printerReady = false;
+    quint64 m_printerRevision = 0;
+    QWidget *m_previewCanvas = nullptr;
     QPrinter *m_printer;
     int m_documentPageCount;
     int m_currentDocumentPage;
