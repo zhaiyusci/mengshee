@@ -5,6 +5,7 @@
         <file>part-viewermode.rc</file>
     </qresource>
     <qresource prefix="/mengshee">
+        <file>latexworker.tex</file>
         <file>data/icons/reading-view-draw.svg</file>
         <file>data/icons/reading-view-order.svg</file>
         <file>data/icons/reading-view-generate.svg</file>

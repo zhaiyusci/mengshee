@@ -1,311 +1,29 @@
-/*
-    SPDX-License-Identifier: GPL-2.0-or-later
-*/
-
+/* SPDX-License-Identifier: GPL-2.0-or-later */
 #include "part/latexsource.h"
-
 #include <QColor>
 #include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QtTest>
-
-using GuiUtils::LatexSource::prepareLeadingDisplay;
-using GuiUtils::LatexSource::prepareSnippet;
-
+using GuiUtils::LatexSource::requestSetup;
 class LatexSourcePreparationTest : public QObject
 {
     Q_OBJECT
-
 private Q_SLOTS:
-    void preparation_data();
-    void preparation();
-    void snippet_data();
-    void snippet();
+    void requestEnvironment()
+    {
+        QCOMPARE(requestSetup(QColor()), requestSetup(Qt::black));
+        const auto red = requestSetup(Qt::red);
+        QVERIFY(red.contains(QStringLiteral("\\color[rgb]{1.000000,0.000000,0.000000}")));
+        QVERIFY(red.contains(QStringLiteral("shipout/background")));
+        QVERIFY(red.contains(QStringLiteral("shipout/foreground")));
+        // Colour setup must not add layout material or alter authored spacing.
+        for (const auto &token : {"\\everypar", "\\everydisplay", "\\strut", "\\vbox", "\\noindent", "\\hrule", "\\belowdisplay", "\\vskip"})
+            QVERIFY(!red.contains(QString::fromLatin1(token)));
+    }
     void exportFixtures();
-    void terminalBackslashBoundary();
-    void logicalBoxStructure();
-    void sourceBytesPreserved();
-    void displayMathBytesPreserved();
 };
-
-void LatexSourcePreparationTest::preparation_data()
-{
-    QTest::addColumn<QString>("source");
-    QTest::addColumn<QString>("expected");
-
-    const auto display = [](const char *name, const QString &prefix, const QString &body) {
-        QTest::newRow(name) << prefix + body << prefix + QStringLiteral("\\hrule width\\hsize height0pt depth0pt\\relax\\noindent%\n") + body;
-    };
-    const auto unchanged = [](const char *name, const QString &source) {
-        QTest::newRow(name) << source << source;
-    };
-    display("dollars-followed-by-text", QString(), QStringLiteral("$$\\alpha$$ test"));
-    display("brackets", QString(), QStringLiteral("\\[\\alpha\\]"));
-    display("unary-plus", QString(), QStringLiteral("$$+x$$"));
-    display("unary-minus", QString(), QStringLiteral("$$-x$$"));
-    display("leading-relation", QString(), QStringLiteral("$$=x$$"));
-    display("nested-aligned", QString(), QStringLiteral("$$\\begin{aligned}a&=b\\\\c&=d\\end{aligned}$$"));
-    QTest::newRow("comment-brace-offset")
-        << QStringLiteral("% start\r\n\\begin% fake } and {\r\n {equation% fake }\n}x\\end{equation}")
-        << QStringLiteral("% start\r\n\\hrule width\\hsize height0pt depth0pt\\relax\\noindent%\n\\begin% fake } and {\r\n {equation% fake }\n}x\\end{equation}");
-    display("leading-crlf", QStringLiteral(" \t\r\n\r\n"), QStringLiteral("$$x$$ test"));
-    display("leading-comments", QStringLiteral("% fake \\[ and $$\r\n \t% another\n\n"), QStringLiteral("\\[x\\]"));
-    display("comment-before-command-brace", QString(), QStringLiteral("\\begin% keep\r\n {equation}x\\end{equation}"));
-    display("comment-before-environment", QString(), QStringLiteral("\\begin { % keep\n align* % keep too\r\n }x\\end{align*}"));
-    display("environment-whitespace", QString(), QStringLiteral("\\begin\t\r\n{\t equation* \r\n}x\\end{equation*}"));
-    display("tail-comment", QString(), QStringLiteral("$$x$$ % preserved without terminal newline"));
-    display("tail-newlines", QString(), QStringLiteral("\\[x\\]\r\n\r\n \t"));
-    display("explicit-space", QString(), QStringLiteral("$$x$$\\hspace{2pt} \\kern1pt\n"));
-    display("multiple-displays", QString(), QStringLiteral("$$x$$\n$$y$$"));
-    display("leading-comment-backslashes", QStringLiteral("% \\% still inside comment\r\n% \\\\% too\n"), QStringLiteral("$$x$$"));
-
-    const QStringList environments = {
-        QStringLiteral("displaymath"),
-        QStringLiteral("equation"),
-        QStringLiteral("equation*"),
-        QStringLiteral("align"),
-        QStringLiteral("align*"),
-        QStringLiteral("gather"),
-        QStringLiteral("gather*"),
-        QStringLiteral("multline"),
-        QStringLiteral("multline*"),
-        QStringLiteral("flalign"),
-        QStringLiteral("flalign*"),
-        QStringLiteral("alignat"),
-        QStringLiteral("alignat*"),
-    };
-    for (const QString &environment : environments) {
-        const QByteArray name = environment.toLatin1();
-        display(name.constData(), QString(), QStringLiteral("\\begin{") + environment + QStringLiteral("}x\\end{") + environment + QLatin1Char('}'));
-    }
-
-    unchanged("empty", QString());
-    unchanged("whitespace", QStringLiteral(" \t\r\n\n"));
-    unchanged("comment-only", QStringLiteral(" % $$x$$ \\[x\\]"));
-    unchanged("comment-then-text", QStringLiteral("% $$x$$\r\ntext"));
-    unchanged("escaped-percent-text", QStringLiteral("\\% $$x$$"));
-    unchanged("even-backslashes-before-percent", QStringLiteral("\\\\% $$fake$$\n$$x$$"));
-    unchanged("odd-backslashes-before-percent", QStringLiteral("\\\\\\% $$x$$"));
-    unchanged("escaped-percent-in-begin", QStringLiteral("\\begin\\%\n{equation}x\\end{equation}"));
-    unchanged("even-backslashes-in-begin", QStringLiteral("\\begin\\\\% comment\n{equation}x\\end{equation}"));
-    unchanged("escaped-opening-bracket", QStringLiteral("\\\\[x\\]"));
-    unchanged("inline-dollar", QStringLiteral("$x$"));
-    unchanged("inline-parentheses", QStringLiteral("\\(x\\)"));
-    unchanged("text-before-display", QStringLiteral("text\n$$x$$"));
-    unchanged("inline-before-display", QStringLiteral("$x$\n\\[y\\]"));
-    unchanged("macro-before-display", QStringLiteral("\\mysetup\n$$x$$"));
-    unchanged("already-prepared", QStringLiteral("\\noindent%\n$$x$$"));
-    unchanged("minipage", QStringLiteral("\\begin{minipage}{2cm}$$x$$\\end{minipage}"));
-    unchanged("unknown-environment", QStringLiteral("\\begin{aligned}x\\end{aligned}"));
-    unchanged("control-word-prefix", QStringLiteral("\\begingroup{equation}$$x$$"));
-    unchanged("environment-prefix", QStringLiteral("\\begin{equations}x"));
-    unchanged("non-ascii-leading-space", QStringLiteral("\u2003$$x$$"));
-    unchanged("split-environment-name", QStringLiteral("\\begin{equa% comment\ntion}x"));
-}
-
-void LatexSourcePreparationTest::preparation()
-{
-    QFETCH(QString, source);
-    QFETCH(QString, expected);
-    const QString original = source;
-    QCOMPARE(prepareLeadingDisplay(source), expected);
-    QCOMPARE(source, original);
-    QCOMPARE(prepareLeadingDisplay(expected), expected);
-}
-
-void LatexSourcePreparationTest::snippet_data()
-{
-    QTest::addColumn<QString>("source");
-    QTest::addColumn<QColor>("color");
-    QTest::addColumn<QString>("rgb");
-
-    const QStringList sources = {
-        QStringLiteral("plain text"),
-        QStringLiteral("$$\\alpha$$ test"),
-        QStringLiteral("% leading\r\n\r\n\\[x\\]"),
-        QStringLiteral("text % terminal comment"),
-        QStringLiteral("text\r\n\r\n\n"),
-        QStringLiteral("text \\hspace{2pt}\\kern1pt \\ \t"),
-        QStringLiteral("\\color{.}text"),
-        QStringLiteral("\\color{.!50}text"),
-        QStringLiteral("\\colorlet{saved}{.}\\color{saved}text"),
-        QStringLiteral("\\color{blue}text"),
-    };
-    for (qsizetype index = 0; index < sources.size(); ++index) {
-        const QByteArray suffix = QByteArray::number(index);
-        const QByteArray blackName = QByteArrayLiteral("black-") + suffix;
-        const QByteArray invalidName = QByteArrayLiteral("invalid-") + suffix;
-        const QByteArray redName = QByteArrayLiteral("red-") + suffix;
-        QTest::newRow(blackName.constData()) << sources.at(index) << QColor(Qt::black) << QStringLiteral("0.000000,0.000000,0.000000");
-        QTest::newRow(invalidName.constData()) << sources.at(index) << QColor() << QStringLiteral("0.000000,0.000000,0.000000");
-        QTest::newRow(redName.constData()) << sources.at(index) << QColor(Qt::red) << QStringLiteral("1.000000,0.000000,0.000000");
-    }
-}
-
-void LatexSourcePreparationTest::snippet()
-{
-    QFETCH(QString, source);
-    QFETCH(QColor, color);
-    QFETCH(QString, rgb);
-    const QString original = source;
-    QString specialRgb = rgb;
-    specialRgb.replace(QLatin1Char(','), QLatin1Char(' '));
-    const QString prepared = prepareSnippet(source, color);
-    const QString body = prepareLeadingDisplay(source);
-    QVERIFY(prepared.contains(QStringLiteral("\\color[rgb]{%1}").arg(rgb)));
-    QVERIFY(prepared.contains(QStringLiteral("color push rgb %1").arg(specialRgb)));
-    QVERIFY(prepared.endsWith(body + QStringLiteral("%\n")));
-    QCOMPARE(source, original);
-    if (!color.isValid()) {
-        QCOMPARE(prepared, prepareSnippet(source, QColor(Qt::black)));
-    }
-    QString wrapper = prepared;
-    wrapper.remove(wrapper.indexOf(body), body.size());
-    // Minimum metrics are measured from TeX, not imposed as fixed PDF padding.
-    // In particular, preserve every authored display skip and never manufacture
-    // an empty paragraph by inserting a strut in the post-display hmode.
-    for (const QString &forbidden : {QStringLiteral("\\noindent\\strut\\par"), QStringLiteral("\\ifhmode\\strut"), QStringLiteral("\\everydisplay"), QStringLiteral("\\vskip"), QStringLiteral("\\vspace"), QStringLiteral("\\abovedisplayskip"), QStringLiteral("\\belowdisplayskip"), QStringLiteral("\\abovedisplayshortskip"), QStringLiteral("\\belowdisplayshortskip"), QStringLiteral("\\vrule"), QStringLiteral("\\vphantom"), QStringLiteral("\\mathopen"), QStringLiteral("\\mathclose")}) {
-        QVERIFY(!wrapper.contains(forbidden));
-    }
-}
-
-void LatexSourcePreparationTest::logicalBoxStructure()
-{
-    const QString prepared = prepareSnippet(QStringLiteral("a"), QColor(Qt::red));
-    QVERIFY(!prepared.contains(QStringLiteral("\\newbox")));
-    QVERIFY(!prepared.contains(QStringLiteral("\\vbox")));
-    QVERIFY(!prepared.contains(QStringLiteral("\\strutbox")));
-    QVERIFY(prepared.contains(QStringLiteral("\\global\\PreviewBorder=0pt")));
-    const QString display = prepareSnippet(QStringLiteral("$$+x$$"), QColor(Qt::red));
-    QVERIFY(display.contains(QStringLiteral("$$+x$$")));
-    QVERIFY(!display.contains(QStringLiteral("\\vrule")));
-    QVERIFY(!display.contains(QStringLiteral("\\vphantom")));
-    QVERIFY(!display.contains(QStringLiteral("\\mathopen")));
-    QVERIFY(!display.contains(QStringLiteral("\\mathclose")));
-    QVERIFY(!display.contains(QStringLiteral("\\setbox\\MengsheeNoteScratch")));
-    QVERIFY(!display.contains(QStringLiteral("\\ifhmode")));
-    for (const QString &environment : {QStringLiteral("align"), QStringLiteral("gather"), QStringLiteral("multline"), QStringLiteral("flalign"), QStringLiteral("alignat")}) {
-        const QString source = QStringLiteral("\\begin{%1}a&=b\\end{%1}").arg(environment);
-        QVERIFY(!prepareLeadingDisplay(source).contains(QStringLiteral("\\vrule width0pt")));
-    }
-}
-
-void LatexSourcePreparationTest::sourceBytesPreserved()
-{
-    const QString guard = QStringLiteral("\\hrule width\\hsize height0pt depth0pt\\relax\\noindent%\n");
-    const QStringList sources = {
-        QStringLiteral(" \t% leading \\% }\r\n\r\n$$+x$$  % tail\\"),
-        QStringLiteral("\\begin% ignored }\r\n {equation% another }\n}\\alpha\\end{equation}\r\n\r\n"),
-        QStringLiteral("\\begin { % head\n align* % tail\r\n }a&=b\\end{align*}"),
-        QStringLiteral("% preserve UTF-8: 中文 α\r\n\\[g\\]\\hspace{3pt} \t"),
-        QStringLiteral("a\r\n\r\ng % final comment"),
-        QStringLiteral("\\vspace*{5pt}a\\\\[8pt]g\\vspace*{7pt}"),
-        QStringLiteral("\\unknownSetup\n$$x$$"),
-        QStringLiteral("$$\\alpha\\vrule width0pt height15pt depth2pt\\relax$$"),
-        QStringLiteral("$$\\alpha$$ test\r\n\r\ntest"),
-    };
-    for (const QString &source : sources) {
-        QString prepared = prepareLeadingDisplay(source);
-        prepared.remove(guard);
-        QCOMPARE(prepared.toUtf8(), source.toUtf8());
-        const QString snippet = prepareSnippet(source, QColor(Qt::red));
-        QVERIFY(snippet.contains(prepareLeadingDisplay(source)));
-    }
-}
-
-void LatexSourcePreparationTest::displayMathBytesPreserved()
-{
-    const QString guard = QStringLiteral("\\hrule width\\hsize height0pt depth0pt\\relax\\noindent%\n");
-    // The former insertion boundary is marked only to document regressions.
-    // Remove the marker, then require the entire math list to stay byte-exact.
-    const QStringList markedSources = {
-        QStringLiteral("$$^{14}_{6}C|$$ test"),
-        QStringLiteral("$$^2x|$$"),
-        QStringLiteral("$$_2x|$$"),
-        QStringLiteral("$$x+|$$"),
-        QStringLiteral("$$x-|$$"),
-        QStringLiteral("$$x=|$$"),
-        QStringLiteral("$$x,|$$"),
-        QStringLiteral("$$x;|$$"),
-        QStringLiteral("$$x\\mathpunct{,}|$$"),
-        QStringLiteral("$$\\begin{array}{cc}a&b\\\\c&d\\end{array}|$$"),
-        QStringLiteral("$$\\mathop{lim}_{x\\to0}f(x)|$$"),
-        QStringLiteral("$$\\text{$a$} + {x^{2+y}}|$$"),
-        QStringLiteral("$$\\text{fake $$ and \\] }x|$$ trailing $$y$$"),
-        QStringLiteral("$$\\alpha% fake $$ and }\r\n +x|$$"),
-        QStringLiteral("$$x+\\%+\\{y\\}|$$"),
-        QStringLiteral("$$\\begin{aligned}a&=b\\\\c&=d\\end{aligned}|$$"),
-        QStringLiteral("\\[^2x% fake \\]\n|\\] tail"),
-        QStringLiteral("\\[\\text{fake \\] }x|\\]"),
-        QStringLiteral("\\[x\\\\% fake \\]\n+y|\\]"),
-        QStringLiteral("\\begin{equation}^2x|\\end% fake }\r\n {equation}"),
-        QStringLiteral("\\begin% fake }\n {equation*}x+% fake \\end{equation*}\n|\\end{ equation* }"),
-        QStringLiteral("\\begin{displaymath}\\text{\\end{displaymath}}x|\\end{displaymath}"),
-        QStringLiteral("$$ {a\\over b} |$$"),
-    };
-    for (const QString &marked : markedSources) {
-        const qsizetype expectedClose = marked.indexOf(QLatin1Char('|'));
-        QVERIFY(expectedClose >= 0);
-        QString source = marked;
-        source.remove(expectedClose, 1);
-        const QString actual = prepareLeadingDisplay(source);
-        QCOMPARE(actual, guard + source);
-        QVERIFY(!actual.contains(QStringLiteral("\\vrule")));
-        QVERIFY(!actual.contains(QStringLiteral("\\mathopen")));
-        QVERIFY(!actual.contains(QStringLiteral("\\mathclose")));
-        QVERIFY(!actual.contains(QStringLiteral("\\vphantom")));
-        QString restored = actual;
-        restored.remove(guard);
-        QCOMPARE(restored.toUtf8(), source.toUtf8());
-    }
-    // Macro closes, infix primitives and incomplete editor input all retain
-    // only the leading guard; preparation no longer needs to guess a close.
-    const QStringList uncertainSources = {
-        QStringLiteral("$$x"),
-        QStringLiteral("$$x% $$"),
-        QStringLiteral("$${x$$"),
-        QStringLiteral("$$x}$$"),
-        QStringLiteral("$$x$"),
-        QStringLiteral("\\[x"),
-        QStringLiteral("\\[x\\\\]"),
-        QStringLiteral("\\begin{equation}x\\end{equation*}"),
-        QStringLiteral("\\begin{equation}x% \\end{equation}"),
-        QStringLiteral("$$\\bgroup x\\egroup$$"),
-        QStringLiteral("$$\\def\\finish{$$}\\alpha\\finish test $$y$$"),
-        QStringLiteral("$$\\gdef\\finish{$$}x\\finish test $$y$$"),
-        QStringLiteral("$$\\let\\finish\\]x$$"),
-        QStringLiteral("$$\\newcommand{\\finish}{$$}x\\finish test $$y$$"),
-        QStringLiteral("$$a\\over b$$"),
-        QStringLiteral("$$a\\atop b$$"),
-        QStringLiteral("$$a\\above1pt b$$"),
-        QStringLiteral("$$n\\choose k$$"),
-        QStringLiteral("$$n\\brace k$$"),
-        QStringLiteral("$$n\\brack k$$"),
-        QStringLiteral("$$a\\overwithdelims()b$$"),
-        QStringLiteral("$$a\\atopwithdelims()b$$"),
-        QStringLiteral("$$a\\abovewithdelims()1pt b$$"),
-        QStringLiteral("$$x\\eqno(1)$$"),
-        QStringLiteral("$$x\\leqno(1)$$"),
-        QStringLiteral("$$\\verb|$$|x$$"),
-    };
-    for (const QString &source : uncertainSources) {
-        QCOMPARE(prepareLeadingDisplay(source), guard + source);
-    }
-}
-
-void LatexSourcePreparationTest::terminalBackslashBoundary()
-{
-    const QString single = QStringLiteral("text\\");
-    const QString singlePrepared = prepareSnippet(single, QColor(Qt::black));
-    QVERIFY(singlePrepared.contains(single + QStringLiteral("\n")));
-    QVERIFY(!singlePrepared.contains(single + QStringLiteral("%\n")));
-    const QString doubled = QStringLiteral("text\\\\");
-    QVERIFY(prepareSnippet(doubled, QColor(Qt::black)).contains(doubled + QStringLiteral("%\n")));
-    const QString commented = QStringLiteral("text % comment\\");
-    QVERIFY(prepareSnippet(commented, QColor(Qt::black)).contains(commented + QStringLiteral("\n")));
-}
 
 void LatexSourcePreparationTest::exportFixtures()
 {
@@ -387,6 +105,7 @@ void LatexSourcePreparationTest::exportFixtures()
         {"display-terminal-comment-backslash", QStringLiteral("$$\\alpha$$ test % comment\\")},
         {"pure-display-e", QStringLiteral("$$E=mc^2$$")},
         {"pure-display-alpha", QStringLiteral("$$\\alpha$$")},
+        {"pure-display-projection", QStringLiteral("$$\n\\sum_{A} \\boldsymbol{X}_{A} \\times \\frac{\\partial E_{P S}}{\\partial \\boldsymbol{X}_{A}}+\\sum_{A} \\boldsymbol{P}_{A} \\times \\frac{\\partial E_{P S}}{\\partial \\boldsymbol{P}_{A}}=0 .\n$$")},
         {"bracket-display", QStringLiteral("\\[\\alpha\\]")},
         {"multiline-align", QStringLiteral("\\begin{align*}\nx&=1\\\\\ny&=2\n\\end{align*}")},
         {"multiline-gather", QStringLiteral("\\begin{gather*}\nx=1\\\\\ny=2\n\\end{gather*}")},
@@ -413,7 +132,8 @@ void LatexSourcePreparationTest::exportFixtures()
             output.append(QJsonObject{
                 {QStringLiteral("name"), fixtureName},
                 {QStringLiteral("source"), fixture.source},
-                {QStringLiteral("prepared"), prepareSnippet(fixture.source, color)},
+                {QStringLiteral("prepared"), fixture.source},
+                {QStringLiteral("setup"), requestSetup(color)},
                 {QStringLiteral("width"), 240},
                 {QStringLiteral("fontSize"), 10},
                 {QStringLiteral("color"), color.name(QColor::HexRgb)},

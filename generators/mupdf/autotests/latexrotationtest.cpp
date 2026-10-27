@@ -12,6 +12,7 @@
 #include <core/annotations.h>
 #include <core/document.h>
 #include <core/page.h>
+#include <core/latexnotegeometry.h>
 class LatexRotationTest : public QObject
 {
     Q_OBJECT
@@ -58,6 +59,62 @@ class LatexRotationTest : public QObject
         return total <= quint64(actual.width() * actual.height());
     }
 private Q_SLOTS:
+    void externalLatexAppearanceGeometry()
+    {
+        const auto appearance = qEnvironmentVariable("MENGSHEE_TEST_LATEX_AP_PDF");
+        if (appearance.isEmpty()) QSKIP("Optional native StemTeX appearance regression");
+        const auto size = MengsheePdfRuntime::firstPageSize(appearance);
+        QVERIFY(size.isValid());
+        QTemporaryDir dir;
+        const auto blank = dir.filePath(QStringLiteral("blank.pdf"));
+        { QPdfWriter writer(blank); writer.setResolution(72); writer.setPageSize(QPageSize(QSizeF(600, 400), QPageSize::Point));
+          writer.setPageMargins(QMarginsF()); QPainter painter(&writer); painter.fillRect(0, 0, 600, 400, Qt::white); }
+        MuPDFGenerator backend(nullptr, {});
+        QList<Okular::Page *> pages;
+        QCOMPARE(backend.loadDocumentWithPassword(blank, pages, {}), Okular::Document::OpenSuccess);
+        Okular::StampAnnotation note;
+        const auto outer = Okular::LatexNoteGeometry::visualSizeForContent(size, size.width(), 3);
+        note.setBoundingRectangle({50./600, 50./400, (50+outer.width())/600, (50+outer.height())/400});
+        note.setOkularLatex(true);
+        note.setLatexNoteType(Okular::Annotation::LatexNoteBoxed);
+        note.setLatexPadding(3);
+        note.setLatexFillColor(Qt::yellow);
+        note.style().setWidth(0);
+        note.setLatexAppearancePdfFileName(appearance);
+        backend.annotationProxy()->notifyAddition(&note, 0);
+        const auto saved = qEnvironmentVariable("MENGSHEE_TEST_LATEX_AP_OUTPUT", dir.filePath(QStringLiteral("saved.pdf")));
+        QString error;
+        QVERIFY2(backend.save(saved, Okular::SaveInterface::SaveChanges, &error), qPrintable(error));
+        auto *ctx = fz_new_context(nullptr, nullptr, FZ_STORE_DEFAULT);
+        auto *doc = pdf_open_document(ctx, saved.toUtf8().constData());
+        auto *src = pdf_open_document(ctx, appearance.toUtf8().constData());
+        auto *annot = pdf_array_get(ctx, pdf_dict_get(ctx, pdf_lookup_page_obj(ctx, doc, 0), PDF_NAME(Annots)), 0);
+        auto *ap = pdf_dict_getp(ctx, annot, "AP/N");
+        auto *raw = pdf_dict_getp(ctx, ap, "Resources/XObject/Fm0");
+        const auto box = pdf_dict_get_rect(ctx, ap, PDF_NAME(BBox));
+        QVERIFY(qAbs(box.y1-box.y0-outer.height()) < .01);
+        const auto originalBox = pdf_dict_get_rect(ctx, pdf_lookup_page_obj(ctx, src, 0), PDF_NAME(MediaBox));
+        const auto rawBox = pdf_dict_get_rect(ctx, raw, PDF_NAME(BBox));
+        QCOMPARE(originalBox.x0, rawBox.x0); QCOMPARE(originalBox.y0, rawBox.y0);
+        QCOMPARE(originalBox.x1, rawBox.x1); QCOMPARE(originalBox.y1, rawBox.y1);
+        auto *rawBytes = pdf_load_stream(ctx, raw);
+        auto *sourceBytes = fz_new_buffer(ctx, 0);
+        auto *contents = pdf_dict_get(ctx, pdf_lookup_page_obj(ctx, src, 0), PDF_NAME(Contents));
+        const int count = pdf_is_array(ctx, contents) ? pdf_array_len(ctx, contents) : 1;
+        for (int i = 0; i < count; ++i) {
+            auto *bytes = pdf_load_stream(ctx, pdf_is_array(ctx, contents) ? pdf_array_get(ctx, contents, i) : contents);
+            fz_append_buffer(ctx, sourceBytes, bytes); fz_append_byte(ctx, sourceBytes, '\n'); fz_drop_buffer(ctx, bytes);
+        }
+        unsigned char *a, *b;
+        const auto na = fz_buffer_storage(ctx, rawBytes, &a), nb = fz_buffer_storage(ctx, sourceBytes, &b);
+        QCOMPARE(QByteArray(reinterpret_cast<char *>(a), na).trimmed(), QByteArray(reinterpret_cast<char *>(b), nb).trimmed());
+        auto *apBytes = pdf_load_stream(ctx, ap);
+        const auto n = fz_buffer_storage(ctx, apBytes, &a);
+        QVERIFY(QByteArray(reinterpret_cast<char *>(a), n).contains("1 0 0 1 3.000000 3.000000 cm"));
+        fz_drop_buffer(ctx, apBytes); fz_drop_buffer(ctx, rawBytes); fz_drop_buffer(ctx, sourceBytes);
+        pdf_drop_document(ctx, src); pdf_drop_document(ctx, doc); fz_drop_context(ctx);
+        qDeleteAll(pages);
+    }
     void importedTypewriter()
     {
         const auto path = qEnvironmentVariable("MENGSHEE_TEST_TYPEWRITER_PDF");

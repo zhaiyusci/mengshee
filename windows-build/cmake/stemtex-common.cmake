@@ -17,7 +17,7 @@ cmake_minimum_required(VERSION 3.20)
 
 # Release used only when no StemTeX runtime is available and no version was
 # requested.
-set(MENGSHEE_STEMTEX_DEFAULT_RELEASE "0.15.0")
+set(MENGSHEE_STEMTEX_DEFAULT_RELEASE "0.15.2")
 
 function(mengshee_stemtex_usable out_var directory)
     if(EXISTS "${directory}/runtime/VERSION"
@@ -27,7 +27,7 @@ function(mengshee_stemtex_usable out_var directory)
        AND EXISTS "${directory}/gui/stemtex-profile-creator.exe")
         file(READ "${directory}/runtime/VERSION" _runtime_version)
         string(STRIP "${_runtime_version}" _runtime_version)
-        if(_runtime_version VERSION_LESS "0.15.0")
+        if(_runtime_version VERSION_LESS "0.15.2")
             set(${out_var} FALSE PARENT_SCOPE)
             return()
         endif()
@@ -77,7 +77,7 @@ function(mengshee_find_stemtex_runtime out_var workspace_root)
         get_filename_component(_candidate "${STEMTEX_STAGE_ROOT}" ABSOLUTE)
         mengshee_stemtex_usable(_usable "${_candidate}")
         if(NOT _usable)
-            message(FATAL_ERROR "STEMTEX_STAGE_ROOT requires a complete StemTeX 0.15.0 or newer runtime: ${_candidate}")
+            message(FATAL_ERROR "STEMTEX_STAGE_ROOT requires a complete StemTeX 0.15.2 or newer runtime: ${_candidate}")
         endif()
         if(_requested)
             mengshee_stemtex_version_of(_version "${_candidate}")

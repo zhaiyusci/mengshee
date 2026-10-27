@@ -1,105 +1,56 @@
 # LaTeX note rendering guards
 
-## Reference and geometry policy
+## Source and block geometry
 
-Reference (read-only): `C:\Users\jairy\Documents\LaTeXBlocks`, particularly
-Word's `StemTeXRenderer.cs` and PowerPoint's `LaTeXBlockStyle.cs`.
-The transferred cropping principle is **existing TeX logical bounds UNION
-painted bounds**, not an ink-tight crop.
+Mengshee passes the original note source unchanged to StemTeX 0.15.2's
+`stemtex_renderer_render_block`. The SDK owns uniform block layout,
+fixed-width layout, natural display spacing and minimum text-line metrics.
+Do not prepend a host colour wrapper, width anchor, strut or paragraph hook:
+that can alter the SDK's paragraph and box layout or add empty vertical space.
+Do not trim authored display skips or crop to glyph outlines.
 
-**Important correction after testing in a real boxed note:** the reference's
-`FullLineHeight` option defaults to false. Its optional full-line struts are not
-the default for a fixed-width display-plus-prose block. Word's Auto formula
-wrapper is a different path and does not accept the mixed display/prose example.
-Consequently we do not force a full em-height strut into a leading display.
-The earlier revision did so and added approximately 4pt above a 10pt alpha.
+The synchronous SDK call runs in the background note job and is serialized per
+session. Width is converted from PDF points to TeX points. Annotation padding
+remains separate from the content's logical bounds.
 
-The reference itself does not universally zero display skips: the unguarded
-native source can still create the original extra paragraph. We retain our
-leading-display fix rather than copying that behaviour.
+Mengshee sets `\abovedisplayskip`, `\belowdisplayskip`,
+`\abovedisplayshortskip`, and `\belowdisplayshortskip` to `0pt` for each
+request, after font selection and before the source. This application default
+removes display-math separation; profile borders and annotation padding remain
+independent. Explicit settings in the source can override the default.
+Each generated setting uses `\setlength{...}{0pt}%`; the trailing percent
+prevents its line ending from introducing a space into TeX input.
 
-## Leading-display fix and ordinary text boundaries
+## Request settings outside the source
 
-For `$$\alpha$$ test`, the original worker minipage creates an empty indentation
-paragraph, then adds 7.57997 TeX points of baseline glue at 10pt. This occurs even
-without the colour wrapper.
+`part/latexworker.tex` uses the SDK's supported `worker_template_utf8` option.
+It follows the StemTeX 0.15.2 worker protocol; review it when upgrading the runtime.
+The profile preview border is retained exactly as in direct SDK output. Mengshee's annotation padding is an additional, separately configured frame inset.
+Before the unchanged source is typeset, the worker reads a session-local settings
+file. Mengshee atomically writes that file under the same mutex as rendering.
+Each session has its own temporary directory, retained until its workers stop.
 
-`part/latexsource.cpp` inserts only this render-time prefix after leading
-comments/whitespace:
+`part/latexsource.cpp` prepares a request-local default colour without emitting
+layout material. The worker retains the SDK's original `normalcolor` call at
+its original position; both color and xcolor default/current-colour state are
+kept consistent. For profiles without color support, shipout hooks supply the
+colour without changing layout. No host `everypar` or `everydisplay` hook is
+needed. Explicit source colours and grouped colour changes remain effective.
 
-```tex
-\hrule width\hsize height0pt depth0pt\relax\noindent%
-```
+The native regression in `autotests/stemtexblocktest.py` renders fixtures exported
+by `latexsourcepreparationtest`, using the same worker and request settings as
+the application. It checks leading displays, display-plus-prose, terminal
+whitespace, ordinary line metrics, current/explicit colours and Chinese text.
 
-The invisible width anchor preserves requested layout width, unlike `\noindent`
-alone. It introduces no real blank paragraph. Source characters and authored
-display skips are preserved; inline/prose-first/macro-first inputs are not
-reclassified as literal leading displays.
+## Preserve the SDK artifact
 
-There is **no injected math atom, phantom or vertical rule inside the formula**,
-and no closing-delimiter lexer. Thus initial scripts, terminal punctuation,
-infix fractions and author macros are not changed by an injected math item.
+The LaTeX rendering path consumes the SDK PDF without rewriting its page boxes.
+It no longer calls `LatexPdfBounds::expandInPlace`. Logical bounds, profile
+preview border and content positions come from StemTeX, not glyph-bound cropping
+or host geometry correction. The native regression compares page dimensions and
+text origins against a second renderer using the SDK's default worker with the same four
+zero display skips supplied in its source.
 
-StemTeX 0.15.0 or newer owns block geometry through
-`stemtex_renderer_render_block`. Mengshee does not add another vertical box or
-repeat the first-line ascent / last-line depth correction. The synchronous SDK
-call runs in the existing background note job and is serialized per session.
-Width is converted from PDF points to TeX points; the profile preview border is
-zeroed because annotation padding is applied separately.
-
-Host colour setup preserves the current-colour state but delays its first DVI
-colour push until paragraph entry, so it does not obscure the first measurable
-line. The original paragraph hook is restored immediately; authored colour
-changes and nested colour groups remain effective. The leading-display width
-guard remains necessary because host setup precedes the author's source.
-
-This is not a TeX macro interpreter. Leading whatsits (such as an authored bare
-colour declaration) can obscure first-line measurement; that boundary is left
-alone rather than guessed. A tested `\vsplit` workaround regressed layout and
-was rejected. Unusual existing colour/aftergroup-generated paragraphs are not
-removed by deleting arbitrary author nodes.
-
-At 10pt, removing the forced display strut leaves roughly 1bp of native preview
-border above alpha, rather than roughly 5bp. A note's default 3bp padding is
-separate: total top space is therefore roughly 4bp rather than 8bp. Native ink
-precision protection may add a small fraction of a point. The actual leading
-short-display skip is zero in this example; clearing it would not fix the extra
-strut height. Display-to-prose and ordinary baseline distances are retained.
-
-## Native PDF bounds union
-
-`generators/poppler/pdfpagebounds.{h,cpp}` measures the **already typeset PDF**.
-This is a Mengshee-owned adapter using the pinned backend's existing Core/Splash
-interfaces, not a policy or helper added to the Poppler fork.
-`part/latexpdfbounds.cpp` invokes it on the validated, caller-owned SDK artifact.
-
-- A 1×1 Splash font provider obtains real glyph outlines, not whole-font ascent
-  boxes. There is no page-sized raster allocation or raster replacement.
-- A large inspection canvas finds exterior glyphs, native paths/rules, Type3,
-  images and tiling patterns that the original page would otherwise clip.
-- The existing MediaBox is unioned with conservative painted bounds plus a 1bp
-  allowance. This is `union(logical, paddedInk)`, not padding the entire union
-  again. Logical whitespace is not removed.
-- Curve control hulls, stroke joins, image rectangles and complex clips/masks can
-  overestimate bounds. Font precision allowances scale with transforms; unsafe
-  anisotropic/near-singular transforms fail explicitly.
-- Output is zero-origin, with translated original content streams/resources;
-  selectable text and vectors remain intact. There is no second TeX pass.
-
-SVG-only measurement was rejected: dvisvgm can successfully return bounds while
-ignoring `pdf:literal`, including a tested 300×60bp rectangle.
-
-The utility accepts valid generated single-page appearance fragments, not
-arbitrary documents. Encryption/signatures, unsupported geometry/transforms,
-filters and resource excesses fail explicitly. Annots/AcroForm are deliberately
-removed under this appearance-only contract. Input is read-only; a verified new
-output is published without replacing an existing destination. The application
-then atomically replaces only its private SDK artifact using `QSaveFile`.
-Limits include 64 MiB input/output and decoded non-image streams, 2,000,000
-preflight nodes and paint/outline operations, nesting bounds, an inspection
-canvas within ±1,000,000bp and output spans at most 50,000bp. The 15-second
-deadline is cooperative: it cannot interrupt PDFDoc opening or an individual
-font-library call. This is not a malicious-PDF sandbox or complete syntax validator.
 
 ## Fixed-frame clipping is a separate operation
 
@@ -201,12 +152,12 @@ update its saved appearance.
 
 ## StemTeX block integration check
 
-Export the real application wrappers with `MENGSHEE_LATEX_FIXTURES=<file.json>`
+Export the unchanged source and request settings with `MENGSHEE_LATEX_FIXTURES=<file.json>`
 and run `latexsourcepreparationtest exportFixtures`. Then run
 `autotests/stemtexblocktest.py --runtime <StemTeX-root> --profile <profile-dir>
 --texmf <TeX-Live-root> --fixtures <file.json> --output <temporary-directory>`.
 The opt-in test requires Python with pypdf and a Chinese-capable profile with
-xcolor. It checks native PDF output, fixed logical widths, simple-line metrics,
+xcolor. It checks native PDF output against the default SDK worker (page bounds and text origins), simple-line metrics,
 tall formulas, multiple paragraphs, Chinese, and inherited/overridden colours.
 
 ## Automatic-height editing policy

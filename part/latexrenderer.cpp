@@ -8,7 +8,6 @@
 */
 
 #include "latexrenderer.h"
-#include "latexpdfbounds.h"
 #include "latexrenderguards.h"
 #include "latexsource.h"
 
@@ -38,6 +37,8 @@
 #include <QLibrary>
 #include <QList>
 #include <QSet>
+#include <QSaveFile>
+#include <QTemporaryDir>
 #include <QScopeGuard>
 #include <QStandardPaths>
 #include <QTextStream>
@@ -304,11 +305,17 @@ public:
         // The SDK width is a TeX point (1/72.27 inch), whereas annotation
         // geometry and layout.widthPt use PDF points (1/72 inch).
         const double widthPt = (std::isfinite(maxWidth) && maxWidth > 0.0 ? maxWidth : 360.0) * (72.27 / 72.0);
-        const QByteArray snippet = LatexSource::prepareSnippet(latexSource, textColor).toUtf8();
+        const QByteArray snippet = latexSource.toUtf8();
 
         // The note job already runs off the UI thread. Serialize this session's
         // synchronous calls; the SDK enforces its configured request timeout.
         std::lock_guard<std::mutex> renderLock(m_renderMutex);
+        QSaveFile setup(m_workerFiles.filePath(QStringLiteral("request-setup.tex")));
+        const QByteArray setupText = LatexSource::requestSetup(textColor).toUtf8();
+        if (!setup.open(QIODevice::WriteOnly) || setup.write(setupText) != setupText.size() || !setup.commit()) {
+            latexOutput = i18n("Could not write the LaTeX rendering settings.");
+            return LatexRenderer::LatexFailed;
+        }
         StemTeXRenderOutputResult result{};
         int errorCode = 0;
         char *error = nullptr;
@@ -340,9 +347,6 @@ public:
         fileList << sourcePdfFile;
         if (!LatexRenderGuards::isUsablePdfArtifact(sourcePdfFile)) {
             latexOutput = i18n("The LaTeX renderer returned an unreadable, invalid, or oversized PDF (limit: 64 MiB).");
-            return LatexRenderer::LatexFailed;
-        }
-        if (!LatexPdfBounds::expandInPlace(sourcePdfFile, latexOutput)) {
             return LatexRenderer::LatexFailed;
         }
         latexOutput = summary;
@@ -805,6 +809,30 @@ private:
         config.spare_worker_count = 0;
         config.delete_intermediates = 1;
 
+        // The supported worker-template option keeps host colour setup
+        // outside the snippet. Pass the author's source unchanged so the SDK
+        // owns block sizing and native display spacing.
+        QFile workerResource(QStringLiteral(":/mengshee/latexworker.tex"));
+        QFile workerFile(m_workerFiles.filePath(QStringLiteral("worker.tex")));
+        QFile setupFile(m_workerFiles.filePath(QStringLiteral("request-setup.tex")));
+        if (!m_workerFiles.isValid() || !workerResource.open(QIODevice::ReadOnly)
+            || !workerFile.open(QIODevice::WriteOnly) || !setupFile.open(QIODevice::WriteOnly)) {
+            if (error) *error = i18n("Could not prepare the LaTeX worker settings.");
+            return false;
+        }
+        QByteArray workerText = workerResource.readAll();
+        workerText.replace("@@MENGSHEE_REQUEST_SETUP@@", QDir::fromNativeSeparators(setupFile.fileName()).toUtf8());
+        const QByteArray initialSetup = LatexSource::requestSetup(Qt::black).toUtf8();
+        if (workerFile.write(workerText) != workerText.size() || !workerFile.flush()
+            || setupFile.write(initialSetup) != initialSetup.size() || !setupFile.flush()) {
+            if (error) *error = i18n("Could not write the LaTeX worker settings.");
+            return false;
+        }
+        workerFile.close();
+        setupFile.close();
+        const QByteArray workerPath = workerFile.fileName().toUtf8();
+        config.worker_template_utf8 = workerPath.constData();
+
         int errorCode = 0;
         char *errorUtf8 = nullptr;
         char *diagnosticsUtf8 = nullptr;
@@ -885,6 +913,7 @@ private:
     QString m_dllPath;
     StemtexApi m_api;
     void *m_renderer = nullptr;
+    QTemporaryDir m_workerFiles;
 };
 #endif
 LatexRenderWarning latexWarningMessage(const QString &latexOutput)

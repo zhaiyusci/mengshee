@@ -42,7 +42,7 @@ to try a build before it is packaged. See
 - Inno Setup 6, only when building the installer `.exe`.
 - Python 3, only for the workspace venv that `breeze-icons` needs for its 24x24
   icon generation; the from-scratch driver creates the venv and installs `lxml`.
-- An installed StemTeX 0.15.0 or newer runtime (the published setup, e.g. `C:\StemTeX`), or one
+- An installed StemTeX 0.15.2 or newer runtime (the published setup, e.g. `C:\StemTeX`), or one
   passed with `-DSTEMTEX_STAGE_ROOT=`. The build uses it in place; only when none
   is found does it download and install the pinned release, which needs
   administrator rights once.
