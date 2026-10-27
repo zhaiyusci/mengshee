@@ -24,3 +24,9 @@ build-dir
 # StemTeX used to be a submodule; it is a prebuilt runtime now and a leftover
 # checkout of the old submodule should not show up as untracked.
 /external/stemtex/
+
+# Generated documentation website.
+/website/guide/node_modules/
+/website/guide/dist/
+/website/guide/.astro/
+/website/.site/

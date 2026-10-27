@@ -1,49 +1,37 @@
-# Mengshee promotional website
+# Mengshee website
 
-A standalone English-language product page organized around the five research
-workflows in the main project README, plus the note-page workflow introduced in
-2026.0.23 as a sixth feature. No build step, framework, JavaScript, external
-fonts, analytics, or CDN is required.
+The product homepage is plain HTML/CSS. The bilingual user guide uses Astro
+Starlight and is built as a static site. Neither requires a server-side runtime.
 
-## Preview
+## Build and preview
 
-Open `index.html` directly in a browser. Keep `styles.css` and `assets/`
-alongside it. The layout adapts to desktop and mobile screens and respects
-reduced-motion preferences. Download links point to the latest GitHub release.
+Use Node 26 and npm:
 
-## Screenshots
+```sh
+cd website/guide
+npm ci
+npm run build
+node scripts/stage.mjs
+node scripts/serve.mjs
+```
 
-Seven genuine, user-supplied screenshots illustrate cross-references and auxiliary
-panes, LaTeX source editing, numbered proofreading notes, reading by Views, the
-appended note page beside the `see note 1.` mark that points to it, and the
-annotated document displayed in Sumatra PDF and Adobe Acrobat.
-They retain their original pixels and proportions; each links to its full-size
-image. No placeholders or fabricated application interfaces remain.
-
-Screenshots use bounded display widths to keep the page compact; every image
-links to its original resolution. The Sumatra PDF and Adobe Acrobat images illustrate portability,
-not flattened exports.
+Open http://localhost:4321/mengshee/ to preview the complete staged website.
+The guide starts at `/mengshee/guide/`, with equal English and Simplified Chinese
+editions at `/en/` and `/zh-cn/`. See [guide/README.md](guide/README.md) for editing.
 
 ## Deployment
 
 Public site: https://www.zhaiyusci.net/mengshee/
 
-GitHub Pages entry: https://zhaiyusci.github.io/mengshee/ (inherits the account's
-existing custom domain).
+`.github/workflows/pages.yml` builds and deploys on changes to `website/**` on
+master, or by manual dispatch. GitHub Pages must use GitHub Actions as its source.
+Only the staged public files in `.site/` are uploaded; dependencies, Markdown
+sources, and maintenance scripts are excluded. Upload that directory's contents
+for another static host, adjusting the guide base and site URL if necessary.
 
-`.github/workflows/pages.yml` deploys this directory through GitHub Actions.
-Pushes to `master` that change `website/**` or the workflow trigger deployment;
-it can also be run manually with `workflow_dispatch`. GitHub Pages must use
-**GitHub Actions** as its build source. Only `website/` is uploaded, not the
-application source, local test outputs, or submodules.
+## Assets
 
-For another static host, upload this directory's contents while preserving
-relative paths. Review publication rights and visible author information when
-adding or replacing screenshots.
-
-Files:
-
-- `index.html`: content, navigation, screenshot links, download links.
-- `styles.css`: responsive layout, typography, focus and print styles.
-- `assets/`: the six user-provided PNG screenshots, plus the application logo
-  and favicon copied from `icons/256-apps-mengshee.png` and `icons/mengshee.ico`.
+`assets/` contains genuine user-supplied screenshots and the Mengshee logo/favicon.
+Screenshots retain their proportions; they illustrate application behavior, not
+fabricated interfaces. Review publication rights and visible personal information
+when adding images. The homepage remains directly previewable as `index.html`.

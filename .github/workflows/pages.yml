@@ -1,4 +1,4 @@
-name: Deploy promotional website
+name: Deploy website and user guide
 
 on:
   push:
@@ -32,10 +32,22 @@ jobs:
           submodules: false
       - name: Configure Pages
         uses: actions/configure-pages@v5
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '26'
+          cache: npm
+          cache-dependency-path: website/guide/package-lock.json
+      - name: Build bilingual guide
+        working-directory: website/guide
+        run: |
+          npm ci
+          npm run build
+          node scripts/stage.mjs
       - name: Upload website
         uses: actions/upload-pages-artifact@v3
         with:
-          path: website
+          path: website/.site
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4

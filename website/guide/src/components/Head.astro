@@ -1,0 +1,10 @@
+---
+import Head from '@astrojs/starlight/components/Head.astro';
+---
+<Head {...Astro.props} />
+<script is:inline>
+  try {
+    const locale = location.pathname.match(/\/guide\/(en|zh-cn)(?:\/|$)/)?.[1];
+    if (locale) localStorage.setItem('mengshee-guide-language', locale);
+  } catch {}
+</script>

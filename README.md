@@ -139,6 +139,8 @@ without changing the underlying page content.
 
 ## Documentation
 
+User guide: [English](https://www.zhaiyusci.net/mengshee/guide/en/) · [简体中文](https://www.zhaiyusci.net/mengshee/guide/zh-cn/). Both editions cover the same workflows.
+
 ### Features and workflows
 
 - [Numbered Callouts and proofreading](docs/ordered-callouts.md)
