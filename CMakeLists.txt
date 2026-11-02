@@ -105,7 +105,7 @@ ecm_setup_version(${PROJECT_VERSION}
                   VERSION_HEADER "${CMAKE_CURRENT_BINARY_DIR}/core/version.h"
                   PACKAGE_VERSION_FILE "${CMAKE_CURRENT_BINARY_DIR}/Okular6ConfigVersion.cmake")
 
-find_package(Qt6 ${QT_REQUIRED_VERSION} CONFIG REQUIRED COMPONENTS Core Test Widgets PrintSupport Svg Xml Concurrent)
+find_package(Qt6 ${QT_REQUIRED_VERSION} CONFIG REQUIRED COMPONENTS Core Test Widgets PrintSupport Svg Xml Concurrent Network)
 
 set(MENGSHEE_QSCINTILLA_ROOT
     ""
@@ -707,6 +707,7 @@ target_link_libraries(okularpart okularcore
     pdf_page_bounds
     Qt6::Svg
     Qt6::Concurrent
+    Qt6::Network
     KF6::Archive
     KF6::Bookmarks
     KF6::I18n

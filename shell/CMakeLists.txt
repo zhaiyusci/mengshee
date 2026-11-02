@@ -8,6 +8,7 @@ include_directories(
 
 set(mengshee_SRCS
    main.cpp
+   multifile.cpp
    okular_main.cpp
    shell.cpp
    shellutils.cpp
@@ -37,7 +38,7 @@ ecm_add_app_icon(mengshee_SRCS ICONS ${ICONS_SRCS})
 add_executable(mengshee ${mengshee_SRCS})
 target_compile_definitions(mengshee PRIVATE MENGSHEE_ABOUT_VERSION_STRING="${PROJECT_VERSION}")
 
-target_link_libraries(mengshee KF6::I18n KF6::Parts KF6::WindowSystem KF6::Crash KF6::IconThemes KF6::KIOGui)
+target_link_libraries(mengshee KF6::I18n KF6::Parts KF6::WindowSystem KF6::Crash KF6::IconThemes KF6::KIOGui Qt6::Network Qt6::Concurrent)
 if (TARGET Qt6::DBus)
     target_link_libraries(mengshee Qt6::DBus)
 endif()

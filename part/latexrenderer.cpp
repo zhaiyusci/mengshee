@@ -10,6 +10,8 @@
 #include "latexrenderer.h"
 #include "latexrenderguards.h"
 #include "latexsource.h"
+#include "core/multifileipc.h"
+#include <QTemporaryFile>
 
 #include <cmath>
 #include <condition_variable>
@@ -23,6 +25,8 @@
 #include <QDebug>
 
 #include <KLocalizedString>
+#include <KConfig>
+#include <KConfigGroup>
 
 #include <QByteArray>
 #include <QColor>
@@ -363,6 +367,87 @@ public:
         return LatexRenderer::NoError;
     }
 
+    static QString configurationKey(const QJsonObject &configuration)
+    {
+        const auto profile = configuration.value(QStringLiteral("profile")).toString();
+        QJsonObject identityFields{{QStringLiteral("runtime"), configuration.value(QStringLiteral("runtime"))},
+            {QStringLiteral("profile"), profile}, {QStringLiteral("texmf"), configuration.value(QStringLiteral("texmf"))}};
+        QByteArray identity = QJsonDocument(identityFields).toJson(QJsonDocument::Compact);
+        for (const auto &name : {QStringLiteral("preamble.tex"), QStringLiteral("warmup.tex")}) {
+            QFile file(QDir(profile).filePath(name));
+            if (file.open(QIODevice::ReadOnly)) identity += file.readAll();
+        }
+        QFile worker(QStringLiteral(":/mengshee/latexworker.tex"));
+        if (worker.open(QIODevice::ReadOnly)) identity += worker.readAll();
+        return QString::fromLatin1(QCryptographicHash::hash(identity, QCryptographicHash::Sha256).toHex());
+    }
+
+    static QJsonObject serviceRequest(const QString &operation)
+    {
+        const auto runtime = resolvedRuntimeRoot();
+        configureRendererDllSearch(runtime);
+        StemtexApi api(rendererDllPath(runtime));
+        QString error;
+        if (!api.load(&error)) return {{QStringLiteral("error"), error}};
+        const auto profile = selectProfileRoot(api, &error);
+        if (profile.isEmpty()) return {{QStringLiteral("error"), error}};
+        QJsonObject request{{QStringLiteral("op"), operation}, {QStringLiteral("runtime"), runtime},
+            {QStringLiteral("profile"), profile}, {QStringLiteral("texmf"), texmfRoot(runtime)}};
+        request.insert(QStringLiteral("key"), configurationKey(request));
+        return request;
+    }
+
+    static QByteArray service(const QByteArray &payload)
+    {
+        // Each isolated host serves one global configuration for its lifetime.
+        static auto *session = new std::shared_ptr<StemtexRendererSession>;
+        static QString sessionKey;
+        const auto request = QJsonDocument::fromJson(payload).object();
+        const auto key = request.value(QStringLiteral("key")).toString();
+        const auto op = request.value(QStringLiteral("op")).toString();
+        if (op == QLatin1String("shutdown")) {
+            session->reset();
+            return MengsheeMultifile::encode({{QStringLiteral("ok"), true}});
+        }
+        QJsonObject reply;
+        const auto fail = [&](const QString &message) {
+            return MengsheeMultifile::encode({{QStringLiteral("ok"), false}, {QStringLiteral("error"), message}, {QStringLiteral("ready"), bool(*session)}});
+        };
+        if (key.isEmpty()) return fail(QStringLiteral("Missing renderer configuration identity."));
+        if (key != configurationKey(request)) return fail(QStringLiteral("Renderer configuration changed; retry with the current profile."));
+        if (op == QLatin1String("reset") || key != sessionKey) session->reset();
+        if (!*session) {
+            const auto root = request.value(QStringLiteral("runtime")).toString();
+            auto created = std::shared_ptr<StemtexRendererSession>(new StemtexRendererSession(root, rendererDllPath(root)));
+            QString error;
+            if (!created->initialize(&error, request.value(QStringLiteral("profile")).toString(), request.value(QStringLiteral("texmf")).toString())) return fail(error);
+            *session = std::move(created);
+            sessionKey = key;
+        }
+        reply.insert(QStringLiteral("ready"), true);
+        reply.insert(QStringLiteral("ok"), true);
+        if (op == QLatin1String("render")) {
+            const auto source = request.value(QStringLiteral("source")).toString();
+            const auto width = request.value(QStringLiteral("width")).toDouble();
+            const auto font = request.value(QStringLiteral("font")).toDouble();
+            if (LatexRenderGuards::validateInput(source, width, font) != LatexRenderGuards::InputError::None) return fail(QStringLiteral("Invalid LaTeX render input."));
+            QString path, diagnostic;
+            QStringList files;
+            LatexRenderWarning warning;
+            const auto cleanup = qScopeGuard([&] { for (const auto &file : files) QFile::remove(file); });
+            const auto result = (*session)->render(source, QColor(request.value(QStringLiteral("color")).toString()), width, font, path, diagnostic, files, &warning);
+            if (result != LatexRenderer::NoError) return fail(diagnostic);
+            QFile pdf(path);
+            if (!pdf.open(QIODevice::ReadOnly)) return fail(QStringLiteral("Could not read the rendered PDF."));
+            reply.insert(QStringLiteral("pdf"), QString::fromLatin1(pdf.readAll().toBase64()));
+            reply.insert(QStringLiteral("diagnostic"), diagnostic);
+            reply.insert(QStringLiteral("warning"), warning.message);
+            reply.insert(QStringLiteral("warningType"), int(warning.type));
+            reply.insert(QStringLiteral("warningSeverity"), warning.severity);
+        }
+        return MengsheeMultifile::encode(reply);
+    }
+
 private:
     std::mutex m_renderMutex;
 
@@ -572,8 +657,17 @@ private:
         if (!envTexmf.isEmpty()) {
             return envTexmf;
         }
-        const QString configuredTexmf = Okular::Settings::latexStemtexTexmfRoot().trimmed();
+        const QString configuredTexmf = globalSetting(QStringLiteral("LatexStemtexTexmfRoot"), Okular::Settings::latexStemtexTexmfRoot()).trimmed();
         return configuredTexmf.isEmpty() ? runtimeRoot : QDir::cleanPath(QDir(configuredTexmf).absolutePath());
+    }
+
+    static QString globalSetting(const QString &key, const QString &localValue)
+    {
+        if (!MengsheeMultifile::isDocumentProcess()) return localValue;
+        // Other windows may have changed the global profile. Read persisted
+        // typesetting settings without reloading unrelated UI preferences.
+        KConfig current(Okular::Settings::self()->config()->name(), KConfig::SimpleConfig);
+        return KConfigGroup(&current, QStringLiteral("Reviews")).readEntry(key, QString());
     }
 
     static QString bundledProfilesRoot()
@@ -713,7 +807,7 @@ private:
 
         QStringList preferredNames;
         const QString envProfileName = QString::fromLocal8Bit(qgetenv("MENGSHEE_STEMTEX_PROFILE_NAME")).trimmed();
-        const QString configuredProfileName = Okular::Settings::latexStemtexProfileName().trimmed();
+        const QString configuredProfileName = globalSetting(QStringLiteral("LatexStemtexProfileName"), Okular::Settings::latexStemtexProfileName()).trimmed();
         if (!envProfileName.isEmpty()) {
             preferredNames << envProfileName;
         } else if (!configuredProfileName.isEmpty()) {
@@ -761,7 +855,7 @@ private:
         AddDllDirectory(sdkDirWide.c_str());
     }
 
-    bool initialize(QString *error)
+    bool initialize(QString *error, const QString &explicitProfile = {}, const QString &explicitTexmf = {})
     {
         if (!QFileInfo::exists(m_dllPath)) {
             if (error) {
@@ -782,7 +876,7 @@ private:
         }
 
         QString profileError;
-        const QString profile = selectProfileRoot(m_api, &profileError);
+        const QString profile = explicitProfile.isEmpty() ? selectProfileRoot(m_api, &profileError) : explicitProfile;
         if (profile.isEmpty()) {
             if (error) {
                 *error = profileError;
@@ -791,7 +885,7 @@ private:
         }
 
         const QByteArray runtime = QDir::cleanPath(m_runtimeRoot).toUtf8();
-        const QString texmfRootPath = texmfRoot(m_runtimeRoot);
+        const QString texmfRootPath = explicitTexmf.isEmpty() ? texmfRoot(m_runtimeRoot) : explicitTexmf;
         const QByteArray texmf = QDir::cleanPath(texmfRootPath).toUtf8();
         const QByteArray profileRoot = QDir::cleanPath(profile).toUtf8();
         const QString tempRoot = writableStemTeXTempRoot();
@@ -804,8 +898,10 @@ private:
         config.profile_root_utf8 = profileRoot.constData();
         config.state_root_utf8 = stateRoot.constData();
         config.renders_root_utf8 = rendersRoot.constData();
-        config.request_timeout_ms = 90000;
-        config.xdvipdfmx_timeout_ms = 90000;
+        // The SDK shares its request limit with worker startup. The coordinator
+        // separately enforces 10 seconds for the complete render/recovery phase.
+        config.request_timeout_ms = 60000;
+        config.xdvipdfmx_timeout_ms = 10000;
         config.spare_worker_count = 0;
         config.delete_intermediates = 1;
 
@@ -1017,6 +1113,12 @@ QString LatexRenderer::compactErrorMessage(const QString &latexOutput)
 void LatexRenderer::prewarmStemTeX()
 {
 #ifdef Q_OS_WIN
+    if (MengsheeMultifile::isDocumentProcess()) {
+        const auto request = StemtexRendererSession::serviceRequest(QStringLiteral("warmup"));
+        if (!request.contains(QStringLiteral("error")))
+            std::thread([request] { MengsheeMultifile::request(request); }).detach();
+        return;
+    }
     StemtexRendererSession::prewarm();
 #endif
 }
@@ -1069,6 +1171,12 @@ QString LatexRenderer::defaultStemTeXTexmfRoot()
 void LatexRenderer::restartStemTeX()
 {
 #ifdef Q_OS_WIN
+    if (MengsheeMultifile::isDocumentProcess()) {
+        const auto request = StemtexRendererSession::serviceRequest(QStringLiteral("reset"));
+        if (!request.contains(QStringLiteral("error")))
+            std::thread([request] { MengsheeMultifile::request(request); }).detach();
+        return;
+    }
     StemtexRendererSession::reset();
     StemtexRendererSession::prewarm();
 #endif
@@ -1077,6 +1185,16 @@ void LatexRenderer::restartStemTeX()
 StemTeXStatus LatexRenderer::stemTeXStatus()
 {
 #ifdef Q_OS_WIN
+    if (MengsheeMultifile::isDocumentProcess()) {
+        const auto reply = MengsheeMultifile::request(StemtexRendererSession::serviceRequest(QStringLiteral("status")), 1000, false);
+        StemTeXStatus status;
+        status.supported = true;
+        status.ready = status.primaryReady = reply.value(QStringLiteral("ready")).toBool();
+        status.initializing = !status.ready && reply.value(QStringLiteral("pending")).toInt() > 0;
+        status.asyncRunning = reply.value(QStringLiteral("pending")).toInt() > 0;
+        status.note = status.ready ? i18n("Shared Mengshee typesetting service is ready.") : reply.value(QStringLiteral("error")).toString();
+        return status;
+    }
     return StemtexRendererSession::sharedStatus();
 #else
     StemTeXStatus status;
@@ -1134,6 +1252,30 @@ LatexRenderer::Error LatexRenderer::renderLatexToPdf(const QString &latexFormula
     }
     const QString &formula = latexFormula;
 #ifdef Q_OS_WIN
+    if (MengsheeMultifile::isDocumentProcess()) {
+        auto request = StemtexRendererSession::serviceRequest(QStringLiteral("render"));
+        if (request.contains(QStringLiteral("error"))) { latexOutput = request.value(QStringLiteral("error")).toString(); return LatexFailed; }
+        request.insert(QStringLiteral("source"), formula);
+        request.insert(QStringLiteral("color"), textColor.name(QColor::HexArgb));
+        request.insert(QStringLiteral("width"), maxWidth);
+        request.insert(QStringLiteral("font"), fontSize);
+        const auto reply = MengsheeMultifile::request(request);
+        if (!reply.value(QStringLiteral("ok")).toBool()) { latexOutput = reply.value(QStringLiteral("error")).toString(); return LatexFailed; }
+        const auto bytes = QByteArray::fromBase64(reply.value(QStringLiteral("pdf")).toString().toLatin1());
+        QTemporaryFile file(QDir::temp().filePath(QStringLiteral("mengshee-shared-latex-XXXXXX.pdf")));
+        if (bytes.isEmpty() || bytes.size() > 64*1024*1024 || !file.open() || file.write(bytes) != bytes.size() || !file.flush()) {
+            latexOutput = i18n("Could not save the shared typesetting result."); return LatexFailed;
+        }
+        if (!LatexRenderGuards::isUsablePdfArtifact(file.fileName())) { latexOutput = i18n("The shared typesetting result is not a valid PDF."); return LatexFailed; }
+        file.setAutoRemove(false);
+        pdfFileName = file.fileName(); m_fileList << pdfFileName;
+        latexOutput = reply.value(QStringLiteral("diagnostic")).toString();
+        m_lastBackendName = QStringLiteral("stemtex");
+        m_lastWarning.message = reply.value(QStringLiteral("warning")).toString();
+        m_lastWarning.type = static_cast<LatexRenderWarningType>(reply.value(QStringLiteral("warningType")).toInt());
+        m_lastWarning.severity = reply.value(QStringLiteral("warningSeverity")).toDouble();
+        return NoError;
+    }
     logTexInvocation("stemtex-render",
                      QStringLiteral("stemtex"),
                      QStringLiteral("configured-stemtex"),
@@ -1160,3 +1302,13 @@ LatexRenderer::Error LatexRenderer::renderLatexToPdf(const QString &latexFormula
 }
 
 }
+
+#ifdef Q_OS_WIN
+// Private ABI: coordinator and part must come from the same application build.
+extern "C" Q_DECL_EXPORT QByteArray mengsheeStemtexService(const QByteArray &request)
+{
+    try { return GuiUtils::StemtexRendererSession::service(request); }
+    catch (const std::exception &e) { return MengsheeMultifile::encode({{QStringLiteral("ok"), false}, {QStringLiteral("error"), QString::fromLocal8Bit(e.what())}}); }
+    catch (...) { return MengsheeMultifile::encode({{QStringLiteral("ok"), false}, {QStringLiteral("error"), QStringLiteral("Shared renderer failed unexpectedly.")}}); }
+}
+#endif

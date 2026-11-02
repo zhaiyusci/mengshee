@@ -13,6 +13,8 @@
 #include "aboutdata.h"
 #include "okular_main.h"
 #include "shellutils.h"
+#include "multifile.h"
+#include "core/multifileipc.h"
 #include <KAboutData>
 #include <KCrash>
 #include <KIconTheme>
@@ -277,10 +279,44 @@ static int runMengsheeApplication(int argc, char **argv)
     QCommandLineOption newProcessOption({QStringLiteral("new-process")}, i18n("Open documents in a separate process"));
     newProcessOption.setFlags(QCommandLineOption::HiddenFromHelp);
     parser.addOption(newProcessOption);
+    for (const auto &name : {QStringLiteral("multifile-coordinator"), QStringLiteral("document-process"), QStringLiteral("multifile-status"), QStringLiteral("stemtex-service")}) {
+        QCommandLineOption option(name);
+        option.setFlags(QCommandLineOption::HiddenFromHelp);
+        parser.addOption(option);
+    }
+    QCommandLineOption documentOptions(QStringLiteral("document-options"), QString(), QStringLiteral("options"));
+    documentOptions.setFlags(QCommandLineOption::HiddenFromHelp);
+    parser.addOption(documentOptions);
     parser.addPositionalArgument(QStringLiteral("urls"), i18n("Documents to open. Specify '-' to read from stdin."));
 
     parser.process(app);
     aboutData.processCommandLine(&parser);
+
+#ifdef Q_OS_WIN
+    if (parser.isSet(QStringLiteral("stemtex-service"))) return MengsheeMultifile::runRendererHost();
+    if (parser.isSet(QStringLiteral("multifile-coordinator"))) return MengsheeMultifile::runCoordinator();
+    if (parser.isSet(QStringLiteral("multifile-status"))) {
+        const auto reply = MengsheeMultifile::request({{QStringLiteral("op"), QStringLiteral("status")}}, 3000, false);
+        const auto bytes = MengsheeMultifile::encode(reply);
+        std::fwrite(bytes.constData(), 1, size_t(bytes.size()), stdout);
+        return reply.value(QStringLiteral("ok")).toBool() ? 0 : 1;
+    }
+    const bool documentProcess = parser.isSet(QStringLiteral("document-process"));
+    if (documentProcess) {
+        qputenv("MENGSHEE_DOCUMENT_PROCESS", "1");
+        MengsheeMultifile::keepDocumentLease();
+    } else if (!parser.isSet(newProcessOption) && !parser.positionalArguments().contains(QStringLiteral("-"))) {
+        QStringList urls;
+        for (const auto &path : parser.positionalArguments())
+            urls << ShellUtils::urlFromArg(path, ShellUtils::qfileExistFunc(), ShellUtils::page(ShellUtils::serializeOptions(parser))).toString(QUrl::FullyEncoded);
+        QString error;
+        if (MengsheeMultifile::openDocuments(urls, ShellUtils::serializeOptions(parser), &error)) return 0;
+        KMessageBox::error(nullptr, error);
+        return 1;
+    }
+#else
+    const bool documentProcess = false;
+#endif
 
     // see if we are starting with session management
     if (app.isSessionRestored()) {
@@ -291,7 +327,7 @@ static int runMengsheeApplication(int argc, char **argv)
         for (int i = 0; i < parser.positionalArguments().count(); ++i) {
             paths << parser.positionalArguments().at(i);
         }
-        Okular::Status status = Okular::main(paths, ShellUtils::serializeOptions(parser), parser.isSet(newProcessOption));
+        Okular::Status status = Okular::main(paths, documentProcess ? parser.value(documentOptions) : ShellUtils::serializeOptions(parser), documentProcess || parser.isSet(newProcessOption));
         switch (status) {
         case Okular::Error:
             return -1;

@@ -17,6 +17,8 @@
 */
 
 #include "shell.h"
+#include "multifile.h"
+#include "core/multifileipc.h"
 
 // qt/kde includes
 #include <KActionCollection>
@@ -475,6 +477,12 @@ bool Shell::canOpenDocs(int numDocs, int desktop)
 
 void Shell::openUrl(const QUrl &url, const QString &serializedOptions)
 {
+    if (MengsheeMultifile::isDocumentProcess() && !m_tabs.isEmpty() && !m_tabs[0].part->url().isEmpty()) {
+        QString error;
+        if (!MengsheeMultifile::openDocuments({url.toString(QUrl::FullyEncoded)}, serializedOptions, &error))
+            KMessageBox::error(this, error);
+        return;
+    }
     hideWelcomeScreen();
 
     const int activeTab = m_tabWidget->currentIndex();
@@ -1122,6 +1130,10 @@ void Shell::openGeneratedFile(const QString &path)
 
 bool Shell::launchDetachedDocument(const QString &path)
 {
+    if (MengsheeMultifile::isDocumentProcess()) {
+        const QUrl url = ShellUtils::urlFromArg(path, ShellUtils::qfileExistFunc(), QString());
+        return MengsheeMultifile::openDocuments({url.toString(QUrl::FullyEncoded)}, QString());
+    }
     QProcess process;
 #ifdef OKULAR_BINARY
     process.setProgram(QStringLiteral(OKULAR_BINARY));
