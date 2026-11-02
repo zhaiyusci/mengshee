@@ -13,6 +13,7 @@
 #include "aboutdata.h"
 #include "shell.h"
 #include "shellutils.h"
+#include "core/multifileipc.h"
 #include <KLocalizedString>
 #include <KWindowSystem>
 #include <QApplication>
@@ -230,6 +231,12 @@ Status main(const QStringList &paths, const QString &serializedOptions, bool for
     }
 
     shell->show();
+#ifdef Q_OS_WIN
+    if (MengsheeMultifile::isDocumentProcess() && !ShellUtils::noRaise(serializedOptions)) {
+        shell->raise();
+        shell->activateWindow();
+    }
+#endif
     for (int i = 0; i < paths.count();) {
         // Page only makes sense if we are opening one file
         const QString page = ShellUtils::page(serializedOptions);

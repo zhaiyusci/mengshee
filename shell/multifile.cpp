@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "multifile.h"
+#include "shellutils.h"
 #include "core/multifileipc.h"
 #include <QApplication>
 #include <QFutureWatcher>
@@ -116,6 +117,15 @@ public:
 
 bool openDocuments(const QStringList &paths, const QString &options, QString *error)
 {
+#ifdef Q_OS_WIN
+    // The user-facing launcher/window owns foreground permission. Transfer it
+    // to the background coordinator before asking it to start a document.
+    if (!ShellUtils::noRaise(options)) {
+        const auto coordinator = request({{QStringLiteral("op"), QStringLiteral("status")}}, 15000);
+        const auto pid = DWORD(coordinator.value(QStringLiteral("pid")).toDouble());
+        if (pid) AllowSetForegroundWindow(pid);
+    }
+#endif
     const auto reply = request({{QStringLiteral("op"), QStringLiteral("open")},
         {QStringLiteral("paths"), QJsonArray::fromStringList(paths)}, {QStringLiteral("options"), options}}, 15000);
     if (error) *error = reply.value(QStringLiteral("error")).toString();
@@ -273,7 +283,13 @@ int runCoordinator()
                         QObject::connect(child, &QProcess::finished, &server, [&, child] { children.remove(child); child->deleteLater(); });
                         child->start();
                         if (!child->waitForStarted(5000)) { children.remove(child); child->deleteLater(); ok = false; }
-                        else pids.append(double(child->processId()));
+                        else {
+                            pids.append(double(child->processId()));
+#ifdef Q_OS_WIN
+                            if (!ShellUtils::noRaise(request.value(QStringLiteral("options")).toString()))
+                                AllowSetForegroundWindow(DWORD(child->processId()));
+#endif
+                        }
                     }
                     send(socket, {{QStringLiteral("ok"), ok}, {QStringLiteral("children"), pids},
                         {QStringLiteral("error"), ok ? QString() : QStringLiteral("Could not start a document process.")}}); return;
