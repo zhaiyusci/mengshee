@@ -1,7 +1,7 @@
-# Multifile process prototype (Windows)
+# Multifile process model (Windows)
 
-The `multifile` branch experiments with a coordinator and isolated document
-processes. It is not a released application architecture yet.
+Mengshee 2026.0.27.0 introduces a coordinator and isolated document processes
+on Windows, with a shared StemTeX typesetting host.
 
 ## Ownership and failure boundaries
 
@@ -42,7 +42,7 @@ the coordinator inside a DLL destructor.
 
 The local named pipe is restricted to the current user and scoped to this
 Mengshee executable. Other applications using StemTeX are not enrolled in it.
-This prototype serializes rendering and caps queued requests at 64. Closing a requesting
+The coordinator serializes rendering and caps queued requests at 64. Closing a requesting
 document does not cancel an active shared job. Startup, explicit reset and profile
 replacement have a 60-second budget, including host replacement and warmup.
 Ordinary typesetting, PDF conversion and any error/checkpoint recovery together
@@ -77,12 +77,11 @@ and verifies that reset interrupts that request and restores rendering, then
 terminates a renderer host to check error reporting and recovery on the next
 request. Recorded worker PIDs are checked for cleanup after reset and shutdown.
 
-## Remaining prototype scope
+## Scope and limitations
 
 The windows are independent top-level windows, not embedded child windows or a
 central tab UI. There is no global unsaved-document recovery service. Shared UI
 preferences and recent-file writes retain their existing behavior and still need
 review for concurrent updates. IPC transport uses buffered JSON/base64; throughput
 and large-result memory usage have not been benchmarked. Non-Windows launch
-behavior is unchanged. Manual editing and prolonged use remain necessary before
-considering a release.
+behavior is unchanged.
