@@ -60,6 +60,8 @@ public:
     bool canInsertPageFromPdf() const override;
     bool duplicatePageInDocument(int pageNumber, bool resolveDestinationConflicts, Okular::Page **insertedPage, quint64 *editId, QString *errorText) override;
     bool insertPdfPageInDocument(int insertAfterPageNumber, const QString &insertedFileName, int pageToInsert, bool resolveDestinationConflicts, Okular::Page **insertedPage, quint64 *editId, QString *errorText) override;
+    bool canAppendPdfFile() const override;
+    bool appendPdfFileInDocument(const QString &sourceFileName, bool resolveDestinationConflicts, QList<Okular::Page *> *appendedPages, QList<quint64> *editIds, QString *errorText) override;
     bool canCombinePdfFiles() const override;
     int pdfPageCount(const QString &inputFileName, QString *errorText) override;
     bool combinePdfFiles(const QStringList &inputFileNames, const QString &outputFileName, bool resolveDestinationConflicts, QString *errorText) override;

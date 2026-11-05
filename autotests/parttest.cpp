@@ -258,6 +258,7 @@ private Q_SLOTS:
     void testStandaloneCombineBackend();
     void testCombinePdfAvailableWithoutDocument();
     void testCombinePdfFilesPreservesSourceLinkNamespaces();
+    void testAppendPdfFile();
     void testMouseMoveOverLinkWhileInSelectionMode();
     void testClickUrlLinkWhileInSelectionMode();
     void testClickBlankAfterHoveringLinkDoesNotFollowStaleLink();
@@ -9322,6 +9323,66 @@ void PartTest::testInsertPdfPagePreservesInternalLinks()
     mergedPart.m_document->requestTextPage(1);
     QTRY_VERIFY(mergedPart.m_document->page(1)->hasTextPage());
     QVERIFY(hasInternalGotoLinkToPage(mergedPart.m_document, 1, 2));
+}
+
+void PartTest::testAppendPdfFile()
+{
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+    const QString hostFile = tempDir.filePath(QStringLiteral("append-host.pdf"));
+    const QString savedFile = tempDir.filePath(QStringLiteral("append-saved.pdf"));
+    QVERIFY(QFile::copy(QStringLiteral(KDESRCDIR "data/pdf_with_internal_links.pdf"), hostFile));
+
+    Okular::Part part(nullptr, {});
+    QVERIFY(openDocument(&part, hostFile));
+    QCOMPARE(part.m_document->pages(), 3u);
+    QVERIFY(part.m_document->canAppendPdfFile());
+    QVERIFY(part.actionCollection()->action(QStringLiteral("file_append_pdf")));
+
+    QString errorText;
+    const QString multiplePageSource = QStringLiteral(KDESRCDIR "data/file2.pdf");
+    const int sourcePages = part.m_document->pdfPageCount(multiplePageSource, &errorText);
+    QVERIFY2(sourcePages > 0, qPrintable(errorText));
+
+    const int appended = part.appendPdfFile(multiplePageSource, false, &errorText);
+    QCOMPARE(appended, sourcePages);
+    QVERIFY2(errorText.isEmpty(), qPrintable(errorText));
+    QCOMPARE(part.m_document->pages(), 3u + unsigned(sourcePages));
+    QVERIFY(part.isModified());
+    // The host pages are US Letter and the appended pages are A4, so the page
+    // shape proves which document the appended pages came from. It does not
+    // depend on the screen DPI, unlike an absolute point size.
+    const Okular::Page *hostPage = part.m_document->page(0);
+    const Okular::Page *firstAppendedPage = part.m_document->page(3);
+    QVERIFY(hostPage && firstAppendedPage);
+    QVERIFY(firstAppendedPage->width() < hostPage->width());
+    QVERIFY(firstAppendedPage->height() > hostPage->height());
+
+    // Appending a file is one undo step, however many pages it adds.
+    part.m_document->undo();
+    QCOMPARE(part.m_document->pages(), 3u);
+    part.m_document->redo();
+    QCOMPARE(part.m_document->pages(), 3u + unsigned(sourcePages));
+    part.m_document->undo();
+    QCOMPARE(part.m_document->pages(), 3u);
+    part.m_document->redo();
+    QCOMPARE(part.m_document->pages(), 3u + unsigned(sourcePages));
+
+    // A one-page source is the same operation with a single edit identity.
+    const int singlePage = part.appendPdfFile(QStringLiteral(KDESRCDIR "data/file1.pdf"), false, &errorText);
+    QVERIFY2(singlePage == 1, qPrintable(errorText));
+    QCOMPARE(part.m_document->pages(), 4u + unsigned(sourcePages));
+    part.m_document->undo();
+    QCOMPARE(part.m_document->pages(), 3u + unsigned(sourcePages));
+    part.m_document->redo();
+    QCOMPARE(part.m_document->pages(), 4u + unsigned(sourcePages));
+
+    QVERIFY2(part.m_document->saveChanges(savedFile, &errorText), qPrintable(errorText));
+    Okular::Part reopened(nullptr, {});
+    QVERIFY(openDocument(&reopened, savedFile));
+    QCOMPARE(reopened.m_document->pages(), 4u + unsigned(sourcePages));
+    QVERIFY(reopened.m_document->page(3)->width() < reopened.m_document->page(0)->width());
+    QVERIFY(reopened.m_document->page(3)->height() > reopened.m_document->page(0)->height());
 }
 
 void PartTest::testStandaloneCombineBackend()

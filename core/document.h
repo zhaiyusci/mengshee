@@ -1117,6 +1117,19 @@ public:
     bool insertPdfPage(int insertAfterPageNumber, const QString &insertedFileName, int pageToInsert, bool resolveDestinationConflicts, quint64 *editId, QString *errorText);
 
     /**
+     * Returns whether the current document backend can append every page of
+     * another PDF to the end of the open document.
+     */
+    bool canAppendPdfFile() const;
+
+    /**
+     * Appends every page of @p appendedFileName to the end of the open
+     * document, in source order, without writing it. One edit identity is
+     * recorded per appended page in @p editIds, in the same order.
+     */
+    bool appendPdfFile(const QString &appendedFileName, bool resolveDestinationConflicts, QList<quint64> *editIds, QString *errorText);
+
+    /**
      * Returns whether the current document backend can combine complete PDF
      * files into a new PDF.
      */

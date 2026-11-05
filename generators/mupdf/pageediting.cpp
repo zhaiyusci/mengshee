@@ -367,6 +367,96 @@ bool MuPDFGenerator::insertPdfPageInDocument(int after, const QString &path, int
         },
         error);
 }
+bool MuPDFGenerator::canAppendPdfFile() const
+{
+    return true;
+}
+
+bool MuPDFGenerator::appendPdfFileInDocument(const QString &path, bool suffix, QList<Okular::Page *> *pages, QList<quint64> *ids, QString *error)
+{
+    if (!pages || !ids || path.isEmpty())
+        return false;
+    pages->clear();
+    ids->clear();
+    pdf_document *source = nullptr;
+    pdf_page *validationPage = nullptr;
+    QList<pdf_obj *> imported;
+    QString importError;
+    fz_var(source);
+    fz_var(validationPage);
+    const auto name = path.toUtf8();
+    return operation(
+        [&] {
+            fz_try(m_context)
+            {
+                source = pdf_open_document(m_context, name.constData());
+                if (pdf_needs_password(m_context, source))
+                    fz_throw(m_context, FZ_ERROR_ARGUMENT, "Cannot import an encrypted PDF without a password");
+                QList<int> indices;
+                const int count = pdf_count_pages(m_context, source);
+                for (int i = 0; i < count; ++i)
+                    indices.append(i);
+                if (indices.isEmpty())
+                    fz_throw(m_context, FZ_ERROR_ARGUMENT, "The selected PDF has no pages");
+                // Load every source page once, so a damaged page is reported
+                // before the open document is changed.
+                for (int i = 0; i < count; ++i) {
+                    validationPage = pdf_load_page(m_context, source, i);
+                    pdf_bound_page(m_context, validationPage, FZ_CROP_BOX);
+                    fz_drop_page(m_context, reinterpret_cast<fz_page *>(validationPage));
+                    validationPage = nullptr;
+                }
+                imported = importMuPDFPages(m_context, m_document, source, indices, suffix, &importError);
+                if (imported.isEmpty())
+                    fz_throw(m_context, FZ_ERROR_ARGUMENT, "%s", qPrintable(importError));
+                const int firstIndex = int(m_pages.size());
+                const int importedCount = int(imported.size());
+                fz_try(m_context)
+                {
+                    for (auto *object : imported) {
+                        const quint64 id = m_nextEdit++;
+                        pdf_insert_page(m_context, m_document, -1, object);
+                        m_detached.insert(id, pdf_keep_obj(m_context, object));
+                        m_pages.append(nullptr);
+                        ids->append(id);
+                    }
+                    for (int i = 0; i < importedCount; ++i)
+                        pages->append(createPage(firstIndex + i));
+                }
+                fz_catch(m_context)
+                {
+                    // Roll back the pages inserted so far, dropping the model
+                    // pages built for them. Objects already imported into the
+                    // PDF object table stay there, as with a failed single-page
+                    // insert; the source pages were validated above, so this
+                    // path is limited to unexpected backend failures.
+                    while (!pages->isEmpty())
+                        delete pages->takeLast();
+                    while (m_pages.size() > firstIndex) {
+                        pdf_delete_page(m_context, m_document, int(m_pages.size()) - 1);
+                        if (auto *page = reinterpret_cast<fz_page *>(m_pages.takeLast()))
+                            fz_drop_page(m_context, page);
+                    }
+                    while (!ids->isEmpty())
+                        pdf_drop_obj(m_context, m_detached.take(ids->takeLast()));
+                    fz_rethrow(m_context);
+                }
+            }
+            fz_always(m_context)
+            {
+                for (auto *object : imported)
+                    pdf_drop_obj(m_context, object);
+                imported.clear();
+                pdf_drop_document(m_context, source);
+            }
+            fz_catch(m_context)
+            {
+                fz_rethrow(m_context);
+            }
+        },
+        error);
+}
+
 bool MuPDFGenerator::combinePdfFiles(const QStringList &paths, const QString &output, bool suffix, QString *error)
 {
     pdf_document *combined = nullptr, *source = nullptr;

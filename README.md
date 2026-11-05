@@ -127,9 +127,11 @@ ordinary annotation tools and editing existing Numbered Callouts remain
 available across modes, subject to the document's normal permissions. Switching
 modes does not automatically start a drawing tool.
 
-Page editing includes inserting blank pages, deleting or duplicating pages,
-and reordering them in the thumbnail sidebar. Page moves preserve annotations
-and live edit state.
+Page editing includes appending another PDF's pages, inserting blank pages,
+deleting or duplicating pages, and reordering them in the thumbnail sidebar.
+Appending writes into the open document rather than producing a separate file,
+and one undo step removes everything that was appended. Page moves preserve
+annotations and live edit state.
 
 Mengshee stores editable annotation metadata together with standard PDF
 annotation appearances. LaTeX Notes, including their numbered badges, remain

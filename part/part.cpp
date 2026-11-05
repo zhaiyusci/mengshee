@@ -1019,6 +1019,13 @@ void Part::setupViewerActions()
     m_combinePdfFiles->setEnabled(true);
     connect(m_combinePdfFiles, &QAction::triggered, this, &Part::slotCombinePdfFiles);
 
+    m_appendPdfFile = ac->addAction(QStringLiteral("file_append_pdf"));
+    m_appendPdfFile->setText(i18n("Append PDF File..."));
+    m_appendPdfFile->setIcon(QIcon::fromTheme(QStringLiteral("document-import"), QIcon::fromTheme(QStringLiteral("document-open"))));
+    m_appendPdfFile->setToolTip(i18n("Append all pages of another PDF to the end of this document"));
+    m_appendPdfFile->setEnabled(false);
+    connect(m_appendPdfFile, &QAction::triggered, this, &Part::slotAppendPdfFile);
+
     m_editOcrTextLayer = ac->addAction(QStringLiteral("advanced_edit_ocr_text"));
     m_editOcrTextLayer->setText(i18n("Edit OCR Text Layer"));
     m_editOcrTextLayer->setCheckable(true);
@@ -3885,6 +3892,47 @@ private:
     bool m_firstRedo = true;
 };
 
+// Appending a PDF appends its pages as one batch, so it is one undo step even
+// though every page keeps its own backend edit identity.
+class LivePageAppendCommand : public QUndoCommand
+{
+public:
+    LivePageAppendCommand(Part *part, const QString &text, int firstInsertAfterPage, const QList<quint64> &editIds)
+        : QUndoCommand(text)
+        , m_part(part)
+        , m_firstInsertAfterPage(firstInsertAfterPage)
+        , m_editIds(editIds)
+    {
+    }
+
+    void undo() override
+    {
+        apply(false);
+    }
+
+    void redo() override
+    {
+        if (m_firstRedo) {
+            m_firstRedo = false;
+            return;
+        }
+        apply(true);
+    }
+
+private:
+    void apply(bool attach)
+    {
+        if (m_part && !m_part->applyLivePageAttachments(attach, m_firstInsertAfterPage, m_editIds)) {
+            qWarning() << "Appended page undo/redo failed";
+        }
+    }
+
+    QPointer<Part> m_part;
+    int m_firstInsertAfterPage = -1;
+    QList<quint64> m_editIds;
+    bool m_firstRedo = true;
+};
+
 class LivePageRotationCommand : public QUndoCommand
 {
 public:
@@ -4827,6 +4875,9 @@ void Part::updatePageEditActions()
     if (m_combinePdfFiles) {
         m_combinePdfFiles->setEnabled(!m_document->isOpened() || m_document->canCombinePdfFiles());
     }
+    if (m_appendPdfFile) {
+        m_appendPdfFile->setEnabled(canEditPages && m_document->canAppendPdfFile());
+    }
     if (m_recognizeEnglishText) {
         m_recognizeEnglishText->setVisible(showOcrActions);
         m_recognizeEnglishText->setEnabled(showOcrActions && canEditPages && m_document->canPerformEnglishOcr());
@@ -5516,6 +5567,47 @@ void Part::slotInsertPage()
         return;
     }
     insertPageWithDialog(workspaceActivePageNumber());
+}
+
+void Part::slotAppendPdfFile()
+{
+    if (!canUsePageLevelEditing() || !m_document->canAppendPdfFile()) {
+        KMessageBox::information(widget(), i18n("PDF files can only be appended to local PDF documents."));
+        return;
+    }
+
+    const QString currentFile = url().toLocalFile();
+    const QString startDirectory = currentFile.isEmpty() ? QString() : QFileInfo(currentFile).absolutePath();
+    const QString fileName = QFileDialog::getOpenFileName(widget(), i18n("Append PDF File"), startDirectory, i18n("PDF Documents (*.pdf)"));
+    if (fileName.isEmpty()) {
+        return;
+    }
+
+    const QFileInfo sourceInfo(fileName);
+    if (sourceInfo.canonicalFilePath() == QFileInfo(currentFile).canonicalFilePath()) {
+        KMessageBox::information(widget(), i18n("A document cannot be appended to itself."));
+        return;
+    }
+
+    const std::optional<bool> resolveDestinationConflicts = askWhetherToResolveDestinationConflicts(widget());
+    if (!resolveDestinationConflicts) {
+        return;
+    }
+
+    QString errorText;
+    const int appendedPages = appendPdfFile(fileName, *resolveDestinationConflicts, &errorText);
+    if (appendedPages <= 0) {
+        if (errorText.isEmpty()) {
+            KMessageBox::information(widget(), i18n("Could not append the PDF file."));
+        } else {
+            KMessageBox::information(widget(), i18n("Could not append the PDF file. %1", errorText));
+        }
+        return;
+    }
+
+    if (PageView *view = workspaceActivePageView()) {
+        view->displayMessage(i18np("Appended %1 page from %2.", "Appended %1 pages from %2.", appendedPages, sourceInfo.fileName()));
+    }
 }
 
 void Part::slotSetPageTemplate()
@@ -6900,6 +6992,53 @@ bool Part::applyLivePageAttachment(bool attach, int insertAfterPage, quint64 edi
     return true;
 }
 
+bool Part::applyLivePageAttachments(bool attach, int firstInsertAfterPage, const QList<quint64> &editIds)
+{
+    if (editIds.isEmpty()) {
+        return false;
+    }
+
+    const QPointer<PageView> initiatingView = workspaceActivePageView();
+    QString errorText;
+    const int count = int(editIds.size());
+    // Appended pages are consecutive, so attaching them in order and detaching
+    // them in reverse order keeps every index valid.
+    if (attach) {
+        for (int i = 0; i < count; ++i) {
+            if (!m_document->attachPage(firstInsertAfterPage + i, editIds.at(i), &errorText)) {
+                qWarning() << "Could not restore an appended page:" << errorText;
+                return false;
+            }
+        }
+    } else {
+        for (int i = count - 1; i >= 0; --i) {
+            if (!m_document->detachPage(firstInsertAfterPage + i + 1, editIds.at(i), &errorText)) {
+                qWarning() << "Could not remove an appended page:" << errorText;
+                return false;
+            }
+        }
+    }
+
+    const int pageCount = static_cast<int>(m_document->pages());
+    if (pageCount > 0) {
+        DocumentViewport viewport(qBound(0, firstInsertAfterPage + 1, pageCount - 1));
+        viewport.rePos.enabled = true;
+        viewport.rePos.normalizedX = 0;
+        viewport.rePos.normalizedY = 0;
+        viewport.rePos.pos = DocumentViewport::TopLeft;
+        if (initiatingView) {
+            initiatingView->goToDocumentViewport(viewport, true, true);
+        } else {
+            m_document->setViewport(viewport, nullptr, true);
+        }
+    }
+    updateViewActions();
+    updatePageEditActions();
+    refreshTemplateNotes();
+    setWindowTitleFromDocument();
+    return true;
+}
+
 bool Part::applyLiveNotePageAttachment(bool attach, int insertAfterPage, quint64 editId)
 {
     // A note page appearing or disappearing must not move the reader, in any
@@ -7850,6 +7989,47 @@ void Part::insertPdfPage(int insertAfterPageNumber, const QString &insertedFileN
         m_pageView->displayMessage(insertAfterPageNumber < 0 ? i18n("Inserted a PDF page before the first page.")
                                                              : i18n("Inserted a PDF page after page %1.", insertAfterPageNumber + 1));
     }
+}
+
+int Part::appendPdfFile(const QString &fileName, bool resolveDestinationConflicts, QString *errorText)
+{
+    if (!m_document->isOpened() || !canUsePageLevelEditing() || !m_document->canAppendPdfFile()) {
+        return 0;
+    }
+
+    const bool hasTemplateNotes = documentHasTemplateNotes();
+    if (hasTemplateNotes) {
+        refreshTemplateNotes();
+    }
+
+    const int firstInsertAfterPage = static_cast<int>(m_document->pages()) - 1;
+    QList<quint64> editIds;
+    QApplication::setOverrideCursor(Qt::WaitCursor);
+    const bool appended = m_document->appendPdfFile(fileName, resolveDestinationConflicts, &editIds, errorText);
+    QApplication::restoreOverrideCursor();
+    if (!appended || editIds.isEmpty()) {
+        return 0;
+    }
+
+    // Template-note text follows the page count, so refresh it before pushing
+    // the append command: the append then stays the top entry on the undo stack
+    // and one undo step still removes the appended pages.
+    refreshTemplateNotes();
+    m_document->pushUndoCommand(new LivePageAppendCommand(this, i18nc("Undo action", "Append PDF File"), firstInsertAfterPage, editIds));
+    updateViewActions();
+    updatePageEditActions();
+    setWindowTitleFromDocument();
+
+    // Open the first appended page, so the result of the append is visible.
+    if (PageView *view = workspaceActivePageView()) {
+        DocumentViewport viewport(qBound(0, firstInsertAfterPage + 1, static_cast<int>(m_document->pages()) - 1));
+        viewport.rePos.enabled = true;
+        viewport.rePos.normalizedX = 0;
+        viewport.rePos.normalizedY = 0;
+        viewport.rePos.pos = DocumentViewport::TopLeft;
+        view->goToDocumentViewport(viewport, true, true);
+    }
+    return int(editIds.size());
 }
 
 void Part::slotDeleteCurrentPage()

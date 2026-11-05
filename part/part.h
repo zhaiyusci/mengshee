@@ -134,6 +134,7 @@ class OKULARPART_EXPORT Part : public KParts::ReadWritePart, public Okular::Docu
     friend class PageBackingFileCommand;
     friend class LivePageMoveCommand;
     friend class LivePageAttachmentCommand;
+    friend class LivePageAppendCommand;
     friend class LivePageRotationCommand;
     friend class LivePageBoxCommand;
     friend class LiveNotePageCommand;
@@ -348,6 +349,7 @@ private:
     bool applyPageEditBackingFile(const QString &fileName, int pageNumber, bool forcePageTopologyChanged = false, bool preserveViewport = false);
     bool applyLivePageMove(int sourcePage, int destinationPage);
     bool applyLivePageAttachment(bool attach, int insertAfterPage, quint64 editId);
+    bool applyLivePageAttachments(bool attach, int firstInsertAfterPage, const QList<quint64> &editIds);
     // Attaches or detaches a note page without moving the reader. The page-level
     // helper follows the affected page, which is right for page editing and
     // wrong for a note the reader is looking at on an earlier page.
@@ -370,6 +372,10 @@ private:
     // points. Falls back to A4 when the page size is unavailable.
     QSizeF blankPageSizeForReference(int referencePage) const;
     void insertPdfPage(int insertAfterPageNumber, const QString &insertedFileName, int pageToInsert);
+    // Appends every page of another local PDF to the end of the document as one
+    // undo step and reports why it failed. The caller asks for the file and the
+    // named-destination conflict policy. Returns the number of appended pages.
+    int appendPdfFile(const QString &fileName, bool resolveDestinationConflicts, QString *errorText);
     void insertBlankPageAfterPage(int pageNumber);
     void duplicatePage(int pageNumber);
     void addReadingView(int pageNumber, const QRectF &displayRectangle);
@@ -579,6 +585,7 @@ private:
     QAction *m_aboutBackend;
     QAction *m_reload;
     QAction *m_combinePdfFiles = nullptr;
+    QAction *m_appendPdfFile = nullptr;
     QAction *m_recognizeEnglishText = nullptr;
     QAction *m_editOcrTextLayer = nullptr;
     QAction *m_addCurrentPageToContents = nullptr;
@@ -659,6 +666,7 @@ private:
 
 private Q_SLOTS:
     void slotCombinePdfFiles();
+    void slotAppendPdfFile();
     void slotRecognizeEnglishText();
     void slotGenerateReadingViews();
     void slotInsertPage();

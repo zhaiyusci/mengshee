@@ -7380,6 +7380,37 @@ msgstr "在磁盘上找不到当前 PDF 文件。"
 msgid "Combine PDF Files"
 msgstr "合并 PDF 文件"
 
+msgid "Append PDF File..."
+msgstr "追加 PDF 文件..."
+
+msgid "Append PDF File"
+msgstr "追加 PDF 文件"
+
+msgctxt "Undo action"
+msgid "Append PDF File"
+msgstr "追加 PDF 文件"
+
+msgid "Append all pages of another PDF to the end of this document"
+msgstr "将另一个 PDF 的所有页面追加到本文档末尾"
+
+msgid "PDF files can only be appended to local PDF documents."
+msgstr "只能将 PDF 文件追加到本地 PDF 文档。"
+
+msgid "A document cannot be appended to itself."
+msgstr "不能将文档追加到自身。"
+
+msgid "Could not append the PDF file."
+msgstr "无法追加该 PDF 文件。"
+
+#, kde-format
+msgid "Could not append the PDF file. %1"
+msgstr "无法追加该 PDF 文件。%1"
+
+#, kde-format
+msgid "Appended %1 page from %2."
+msgid_plural "Appended %1 pages from %2."
+msgstr[0] "已从 %2 追加 %1 页。"
+
 msgid "Arrange the PDF files in the order they should appear in the new document."
 msgstr "请按 PDF 文件在新文档中的先后顺序排列。"
 

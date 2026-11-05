@@ -210,6 +210,34 @@ public:
                                          QString *errorText) = 0;
 
     /**
+     * Returns whether this generator can append every page of another PDF in
+     * one operation. Generators that return false still support
+     * Document::appendPdfFile, which imports the pages one at a time.
+     */
+    virtual bool canAppendPdfFile() const
+    {
+        return false;
+    }
+
+    /**
+     * Appends every page of @p sourceFileName to the open document without
+     * writing it, in source order, and returns the appended model pages and
+     * their edit identities. Only generators that return true from
+     * canAppendPdfFile() are called through this method.
+     */
+    virtual bool appendPdfFileInDocument(const QString &sourceFileName, bool resolveDestinationConflicts, QList<Page *> *appendedPages, QList<quint64> *editIds, QString *errorText)
+    {
+        Q_UNUSED(sourceFileName);
+        Q_UNUSED(resolveDestinationConflicts);
+        Q_UNUSED(appendedPages);
+        Q_UNUSED(editIds);
+        if (errorText) {
+            errorText->clear();
+        }
+        return false;
+    }
+
+    /**
      * Returns whether this generator can combine complete PDF files.
      */
     virtual bool canCombinePdfFiles() const = 0;

@@ -6523,6 +6523,57 @@ bool Document::insertPdfPage(int insertAfterPageNumber, const QString &insertedF
     return true;
 }
 
+bool Document::canAppendPdfFile() const
+{
+    const auto pageInsertion = dynamic_cast<PageInsertionInterface *>(d->m_generator);
+    return pageInsertion && pageInsertion->canInsertPageFromPdf();
+}
+
+bool Document::appendPdfFile(const QString &appendedFileName, bool resolveDestinationConflicts, QList<quint64> *editIds, QString *errorText)
+{
+    auto pageInsertion = dynamic_cast<PageInsertionInterface *>(d->m_generator);
+    if (!pageInsertion || !editIds || appendedFileName.isEmpty() || !pageInsertion->canInsertPageFromPdf()) {
+        return false;
+    }
+
+    editIds->clear();
+    if (pageInsertion->canAppendPdfFile()) {
+        QList<Page *> appendedPages;
+        QList<quint64> appendedIds;
+        d->clearAndWaitForRequests();
+        if (!pageInsertion->appendPdfFileInDocument(appendedFileName, resolveDestinationConflicts, &appendedPages, &appendedIds, errorText) || appendedPages.isEmpty()
+            || appendedPages.size() != appendedIds.size()) {
+            return false;
+        }
+        for (Page *page : appendedPages) {
+            d->m_pagesVector.append(page);
+        }
+        d->publishPageTopologyChange();
+        *editIds = appendedIds;
+        return true;
+    }
+
+    // Backends without a batch append import one page at a time.
+    const int pageCount = pageInsertion->pdfPageCount(appendedFileName, errorText);
+    if (pageCount <= 0) {
+        return false;
+    }
+    QList<quint64> appendedIds;
+    for (int page = 1; page <= pageCount; ++page) {
+        quint64 editId = 0;
+        if (!insertPdfPage(int(d->m_pagesVector.size()) - 1, appendedFileName, page, resolveDestinationConflicts, &editId, errorText)) {
+            for (int i = int(appendedIds.size()) - 1; i >= 0; --i) {
+                QString rollbackError;
+                detachPage(int(d->m_pagesVector.size()) - 1, appendedIds.at(i), &rollbackError);
+            }
+            return false;
+        }
+        appendedIds.append(editId);
+    }
+    *editIds = appendedIds;
+    return true;
+}
+
 bool Document::canCombinePdfFiles() const
 {
     const auto pageInsertion = dynamic_cast<PageInsertionInterface *>(d->m_generator);
