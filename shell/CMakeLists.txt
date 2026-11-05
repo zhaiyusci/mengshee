@@ -48,19 +48,6 @@ endif()
 
 install(TARGETS mengshee ${KDE_INSTALL_TARGETS_DEFAULT_ARGS})
 
-if(APPLE)
-    set_target_properties(mengshee PROPERTIES
-        MACOSX_BUNDLE_DISPLAY_NAME "Mengshee"
-        MACOSX_BUNDLE_BUNDLE_NAME "Mengshee"
-        MACOSX_BUNDLE_ICON_FILE "mengshee_SRCS"
-        MACOSX_BUNDLE_LONG_VERSION_STRING "Mengshee ${MENGSHEE_VERSION}"
-        MACOSX_BUNDLE_SHORT_VERSION_STRING "${MENGSHEE_VERSION_MAJOR}.${MENGSHEE_VERSION_MINOR}"
-        MACOSX_BUNDLE_BUNDLE_VERSION "${MENGSHEE_VERSION}"
-        MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/MacOSXBundleInfo.plist.in"
-        MACOSX_BUNDLE_GUI_IDENTIFIER "org.jairy.mengshee"
-        MACOSX_BUNDLE_COPYRIGHT "2026 The Mengshee Contributors; 2002-2026 The Okular Developers")
-endif()
-
 # Mengshee shell data files
 
 install( PROGRAMS org.jairy.mengshee.desktop  DESTINATION  ${KDE_INSTALL_APPDIR} )

@@ -13,9 +13,6 @@ CMakeLists.txt.user*
 .qtcreator
 /cmake-build*
 
-# Flatpak
-.flatpak-builder
-build-dir
 .DS_Store
 
 # Generated Windows SDK, builds, and runtimes live inside the checkout.

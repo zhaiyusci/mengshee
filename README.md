@@ -157,7 +157,6 @@ User guide: [English](https://www.zhaiyusci.net/mengshee/guide/en/) · [简体�
 - [Page editing and annotation preservation](docs/page-editing-annotation-model.md)
 - [Local components and submodules](README.local-components.md)
 - [Local Poppler fork](docs/local-poppler-fork.md)
-- [Local Linux build notes](README.local-linux-build.md)
 - [Fixed Windows development runtime and deployment checks](docs/development-runtime.md)
 
 The application shell lives in `shell/`; viewer and annotation UI in `part/`;

@@ -2,9 +2,6 @@ set(mupdf_backend_sources generator_mupdf.cpp annots.cpp latexappearance.cpp lat
 if(BUILD_DESKTOP)
     install(PROGRAMS ../poppler/okularApplication_pdf.desktop DESTINATION ${KDE_INSTALL_APPDIR})
 endif()
-if(BUILD_MOBILE)
-    install(PROGRAMS ../poppler/org.kde.mobile.okular_pdf.desktop DESTINATION ${KDE_INSTALL_APPDIR})
-endif()
 # Keep the engine and its embedded resources in one DLL. Both the plugin and
 # the UI's PDF helpers use this runtime rather than linking MuPDF statically.
 add_library(mengshee_pdf_runtime SHARED ${mupdf_backend_sources} printing.cpp vectorprintdevice.cpp pdfpagebounds.cpp runtimehelpers.cpp systemfonts.cpp context.cpp)

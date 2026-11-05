@@ -16,8 +16,6 @@ project(mengshee VERSION ${MENGSHEE_VERSION})
 set(QT_REQUIRED_VERSION "6.6.0") # Remember to update the QT_DEPRECATED_WARNINGS_SINCE below
 set(KF_REQUIRED_VERSION "5.240.0") # Remember to update the KF_DEPRECATED_WARNINGS_SINCE below
 
-set(OKULAR_UI "" CACHE STRING "Which Okular user interface to build. Possible values: desktop, mobile, both. Default: desktop (except on Android, where it is 'mobile')")
-
 set(FORCE_NOT_REQUIRED_DEPENDENCIES "" CACHE STRING "List (semicolon-separated) of dependencies that will be downgraded from REQUIRED to RECOMMENDED")
 
 find_package(ECM ${KF_REQUIRED_VERSION} CONFIG REQUIRED)
@@ -36,11 +34,6 @@ include(ECMAddTests)
 include(ECMAddAppIcon)
 include(CMakePackageConfigHelpers)
 include(ECMSetupQtPluginMacroNames)
-include(ECMAddAndroidApk)
-
-if (ANDROID AND (FORCE_NOT_REQUIRED_DEPENDENCIES STREQUAL ""))
-    set(FORCE_NOT_REQUIRED_DEPENDENCIES "KF6Wallet;KF6DocTools;Qt6Qml;TIFF;LibSpectre;KExiv2Qt6;DjVuLibre;EPub;Discount;")
-endif()
 
 function(set_okular_optional_package_properties _name _props)
     if(NOT "${_props}" STREQUAL "PROPERTIES")
@@ -69,25 +62,7 @@ function(set_okular_optional_package_properties _name _props)
     )
 endfunction()
 
-if(OKULAR_UI STREQUAL "")
-    if(ANDROID)
-        set(OKULAR_UI "mobile")
-    else()
-        set(OKULAR_UI "desktop")
-    endif()
-endif()
-
-if(OKULAR_UI STREQUAL "desktop" OR OKULAR_UI STREQUAL "both")
-    set(BUILD_DESKTOP ON)
-else()
-    set(BUILD_DESKTOP OFF)
-endif()
-if(OKULAR_UI STREQUAL "mobile" OR OKULAR_UI STREQUAL "both")
-    include(ECMQmlModule)
-    set(BUILD_MOBILE ON)
-else()
-    set(BUILD_MOBILE OFF)
-endif()
+set(BUILD_DESKTOP ON)
 
 # append the plugins from the install tree folder to the QT_PLUGIN_PATH
 if(UNIX)
@@ -163,7 +138,7 @@ find_package(KF6 ${KF_REQUIRED_VERSION} REQUIRED COMPONENTS
     IconThemes
 )
 
-if (NOT WIN32 AND NOT HAIKU)
+if (NOT WIN32)
     find_package(KF6Wallet ${KF_REQUIRED_VERSION})
     set_okular_optional_package_properties(KF6Wallet PROPERTIES
     PURPOSE "Required for document storing passwords in secure wallets.")
@@ -191,7 +166,7 @@ if (BUILD_DESKTOP)
     # shall we use DBus?
     # enabled per default on Linux & BSD systems
     set(USE_DBUS_DEFAULT OFF)
-    if(UNIX AND NOT APPLE AND NOT ANDROID AND NOT HAIKU)
+    if(UNIX)
         set(USE_DBUS_DEFAULT ON)
     endif()
     option(USE_DBUS "Build components using DBus (used for interprocess communication, external open in same instance and various presentation related bits)" ${USE_DBUS_DEFAULT})
@@ -222,25 +197,7 @@ if (BUILD_DESKTOP)
     endif()
 endif()
 
-if (BUILD_MOBILE)
-    find_package(Qt6 ${QT_REQUIRED_VERSION} CONFIG REQUIRED COMPONENTS Qml Quick)
-    find_package(KF6Kirigami)
-    set_package_properties(KF6Kirigami PROPERTIES
-        DESCRIPTION "A QtQuick based components set"
-        PURPOSE "Required at runtime by the mobile app"
-        TYPE RUNTIME
-    )
-    find_package(KF6KirigamiAddons)
-    set_package_properties(KF6KirigamiAddons PROPERTIES
-        DESCRIPTION "A set of widgets for Kirigami along with  code to support them"
-        PURPOSE "Required at runtime by the mobile app"
-        TYPE RUNTIME
-    )
-
-    qt_policy(SET QTP0001 NEW)
-endif()
-
-if(NOT WIN32 AND NOT ANDROID AND NOT APPLE AND NOT HAIKU)
+if(NOT WIN32)
     if (Qt6Gui_VERSION VERSION_GREATER_EQUAL "6.10.0")
         find_package(Qt6GuiPrivate ${QT_REQUIRED_VERSION} REQUIRED)
     else()
@@ -387,10 +344,6 @@ if(BUILD_DESKTOP)
 endif()
 add_subdirectory( generators )
 
-if(BUILD_MOBILE)
-    add_subdirectory( mobile )
-endif()
-
 if(BUILD_TESTING)
    add_subdirectory( autotests )
 endif()
@@ -524,20 +477,6 @@ add_library(okularcore SHARED ${okularcore_SRCS})
 generate_export_header(okularcore BASE_NAME okularcore EXPORT_FILE_NAME "${CMAKE_CURRENT_BINARY_DIR}/core/okularcore_export.h")
 target_include_directories(okularcore PUBLIC "$<INSTALL_INTERFACE:${KDE_INSTALL_INCLUDEDIR}>")
 
-if (ANDROID)
-    set(fileName ${CMAKE_BINARY_DIR}/Okular5Core-android-dependencies.xml)
-    file(WRITE "${fileName}" "<rules><dependencies><lib name='Okular5Core'><depends>\n"
-                                "<bundled file='${KDE_INSTALL_PLUGINDIR}/okular/generators' />\n"
-                             "</depends></lib></dependencies></rules>\n")
-    install(FILES ${fileName} DESTINATION ${KDE_INSTALL_LIBDIR})
-endif()
-
-
-# Special handling for linking okularcore on OSX/Apple
-IF(APPLE)
-    SET(OKULAR_IOKIT "-framework IOKit" CACHE STRING "Apple IOKit framework")
-ENDIF(APPLE)
-
 # Extra library needed by imported synctex code on Windows
 if(WIN32)
     set(SHLWAPI shlwapi)
@@ -545,7 +484,6 @@ endif(WIN32)
 
 target_link_libraries(okularcore
 PRIVATE
-    ${OKULAR_IOKIT}
     ${SHLWAPI}
     KF6::Archive
     KF6::KIOCore
@@ -797,5 +735,4 @@ install(FILES
 feature_summary(WHAT ALL FATAL_ON_MISSING_REQUIRED_PACKAGES)
 
 message("-- Building Desktop User Interface: ${BUILD_DESKTOP}")
-message("-- Building Mobile Interface: ${BUILD_MOBILE}")
 message("")
