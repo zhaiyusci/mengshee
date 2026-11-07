@@ -18,16 +18,29 @@ DefaultPrintOptionsWidget::DefaultPrintOptionsWidget(QWidget *parent)
 {
     setWindowTitle(i18n("Print Options"));
     QFormLayout *layout = new QFormLayout(this);
-    m_ignorePrintMargins = new QComboBox;
-    // value indicates whether full page is enabled (i.e. print margins ignored)
-    m_ignorePrintMargins->insertItem(0, i18n("Fit to printable area"), false);
-    m_ignorePrintMargins->insertItem(1, i18n("Fit to full page"), true);
-    layout->addRow(i18n("Scale mode:"), m_ignorePrintMargins);
+    m_scaleModeCombo = new QComboBox;
+    m_scaleModeCombo->setObjectName(QStringLiteral("scaleModeCombo"));
+    m_scaleModeCombo->insertItem(0, i18n("Fit to printable area"), int(PrintScaleMode::FitToPrintableArea));
+    m_scaleModeCombo->insertItem(1, i18n("Fit to full page"), int(PrintScaleMode::FitToFullPage));
+    // Same wording as the PDF backend's print options, so the choice reads the
+    // same whichever backend provides it.
+    m_scaleModeCombo->insertItem(2, i18n("None; print original size"), int(PrintScaleMode::OriginalSize));
+    layout->addRow(i18n("Scale mode:"), m_scaleModeCombo);
+}
+
+PrintScaleMode DefaultPrintOptionsWidget::scaleMode() const
+{
+    return static_cast<PrintScaleMode>(m_scaleModeCombo->currentData().toInt());
 }
 
 bool DefaultPrintOptionsWidget::ignorePrintMargins() const
 {
-    return m_ignorePrintMargins->currentData().value<bool>();
+    return scaleMode() == PrintScaleMode::FitToFullPage;
+}
+
+bool DefaultPrintOptionsWidget::originalPageSize() const
+{
+    return scaleMode() == PrintScaleMode::OriginalSize;
 }
 
 }

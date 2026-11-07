@@ -573,7 +573,12 @@ msgstr "适合可打印区域"
 msgid "Fit to full page"
 msgstr "适合整个页面"
 
-#: core/printoptionswidget.cpp:25
+#: core/printoptionswidget.cpp:26
+#, kde-format
+msgid "None; print original size"
+msgstr "原大小（不缩放）"
+
+#: core/printoptionswidget.cpp:27
 #, kde-format
 msgid "Scale mode:"
 msgstr "缩放模式："

@@ -15,5 +15,9 @@ class PrintJobPrinter : public QPrinter
 public:
     using QPrinter::QPrinter;
     bool automaticPageOrientation = false;
+    // Print each page at its original physical size instead of scaling it to
+    // the sheet. The page is centred and clipped when it is larger than the
+    // sheet.
+    bool originalPageSize = false;
 };
 }

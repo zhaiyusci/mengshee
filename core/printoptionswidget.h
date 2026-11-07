@@ -16,6 +16,15 @@ class QComboBox;
 namespace Okular
 {
 
+/**
+ * How a document page is sized on the printed sheet.
+ */
+enum class PrintScaleMode {
+    FitToPrintableArea,
+    FitToFullPage,
+    OriginalSize,
+};
+
 namespace PrintLayout
 {
 enum Mode {
@@ -71,6 +80,16 @@ public:
     {
     }
     virtual bool ignorePrintMargins() const = 0;
+
+    /**
+     * Returns whether the page should be printed at its original size instead
+     * of being scaled to the sheet. Widgets that do not offer this choice keep
+     * the default of scaling.
+     */
+    virtual bool originalPageSize() const
+    {
+        return false;
+    }
 };
 
 /**
@@ -87,9 +106,11 @@ public:
     explicit DefaultPrintOptionsWidget(QWidget *parent = nullptr);
 
     bool ignorePrintMargins() const override;
+    bool originalPageSize() const override;
+    PrintScaleMode scaleMode() const;
 
 private:
-    QComboBox *m_ignorePrintMargins;
+    QComboBox *m_scaleModeCombo = nullptr;
 };
 
 }

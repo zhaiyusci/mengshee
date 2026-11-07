@@ -56,6 +56,11 @@ public:
     using QWidget::QWidget;
     QImage image;
     QPageLayout layout;
+    // Physical size of the PDF page in points, used by "original size" so the
+    // preview draws the page at its own size instead of stretching it to the
+    // printable area.
+    QSizeF originalPageSizePoints;
+    bool originalSize = false;
 protected:
     void paintEvent(QPaintEvent *) override {
         QPainter painter(this);
@@ -72,10 +77,21 @@ protected:
         painter.fillRect(paper, Qt::white);
         if (image.isNull()) return;
         const QRectF area = layout.paintRect(QPageLayout::Point);
-        QSizeF target = image.size();
-        target.scale(area.size(), Qt::KeepAspectRatio);
+        QRectF target;
+        if (originalSize && !originalPageSizePoints.isEmpty()) {
+            // Keep the page's own physical size, centred in the printable area
+            // like the printer backend does; content beyond it is clipped.
+            target = QRectF(area.center().x() - originalPageSizePoints.width() / 2.0,
+                            area.center().y() - originalPageSizePoints.height() / 2.0,
+                            originalPageSizePoints.width(), originalPageSizePoints.height());
+            painter.setClipRect(area);
+        } else {
+            QSizeF targetSize = image.size();
+            targetSize.scale(area.size(), Qt::KeepAspectRatio);
+            target = QRectF(area.center() - QPointF(targetSize.width()/2, targetSize.height()/2), targetSize);
+        }
         painter.setRenderHint(QPainter::SmoothPixmapTransform);
-        painter.drawImage(QRectF(area.center() - QPointF(target.width()/2, target.height()/2), target), image);
+        painter.drawImage(target, image);
     }
 };
 }
@@ -110,6 +126,10 @@ MengsheePrintDialog::MengsheePrintDialog(QPrinter *printer, int documentPageCoun
     populateDuplexOptions();
     populatePrinters();
     connectPrintOptionChanges();
+    if (auto *scaleCombo = findChild<QComboBox *>(QStringLiteral("scaleModeCombo"))) {
+        connect(scaleCombo, &QComboBox::currentIndexChanged, this, &MengsheePrintDialog::scaleModeChanged);
+    }
+    scaleModeChanged();
     updatePreviewNavigation();
     validateSettings();
 }
@@ -759,9 +779,9 @@ void MengsheePrintDialog::updatePreviewNavigation()
     m_nextPageButton->setEnabled(m_previewSheet < m_previewSheetCount);
     m_pageNumberLabel->setText(i18n("Sheet %1 of %2", m_previewSheet, m_previewSheetCount));
 
-    const QPageSize pageSize = selectedPageSize();
-    const QString orientation = selectedOrientation() == QPageLayout::Landscape ? i18n("Landscape") : i18n("Portrait");
-    m_previewDescription->setText(i18nc("Paper size and page orientation shown above print preview", "%1 · %2", pageSizeDescription(pageSize), orientation));
+    const QPageLayout layout = previewPageLayout();
+    const QString orientation = layout.orientation() == QPageLayout::Landscape ? i18n("Landscape") : i18n("Portrait");
+    m_previewDescription->setText(i18nc("Paper size and page orientation shown above print preview", "%1 · %2", pageSizeDescription(layout.pageSize()), orientation));
 }
 
 void MengsheePrintDialog::validateSettings()
@@ -812,10 +832,36 @@ void MengsheePrintDialog::refreshPreview()
     updatePreviewNavigation();
     auto *canvas = static_cast<PagePreview *>(m_previewCanvas);
     canvas->image = m_grayscaleCheck->isChecked() ? m_previewImage.convertToFormat(QImage::Format_Grayscale8) : m_previewImage;
-    canvas->layout = QPageLayout(selectedPageSize(), selectedOrientation(), m_capabilities.margins, QPageLayout::Millimeter);
-    if (auto options = qobject_cast<PrintOptionsWidget *>(m_printOptionsWidget); options && options->ignorePrintMargins())
-        canvas->layout.setMode(QPageLayout::FullPageMode);
+    canvas->layout = previewPageLayout();
+    // The renderer caps previews at 72 DPI, so the image's pixel size is the
+    // page's physical size in points. "Original size" draws it at that size
+    // inside the selected sheet, matching what the printer backend does.
+    canvas->originalSize = originalPageSizeSelected();
+    canvas->originalPageSizePoints = canvas->originalSize && !m_previewImage.isNull() ? QSizeF(m_previewImage.size()) : QSizeF();
+    canvas->setProperty("previewOriginalSize", canvas->originalSize);
     canvas->update();
+}
+
+void MengsheePrintDialog::scaleModeChanged()
+{
+    refreshPreview();
+}
+
+bool MengsheePrintDialog::originalPageSizeSelected() const
+{
+    if (auto options = qobject_cast<PrintOptionsWidget *>(m_printOptionsWidget)) {
+        return options->originalPageSize();
+    }
+    return false;
+}
+
+QPageLayout MengsheePrintDialog::previewPageLayout() const
+{
+    QPageLayout layout(selectedPageSize(), selectedOrientation(), m_capabilities.margins, QPageLayout::Millimeter);
+    if (auto options = qobject_cast<PrintOptionsWidget *>(m_printOptionsWidget); options && options->ignorePrintMargins()) {
+        layout.setMode(QPageLayout::FullPageMode);
+    }
+    return layout;
 }
 
 void MengsheePrintDialog::applyCommonSettings(QPrinter &printer)
@@ -832,6 +878,9 @@ void MengsheePrintDialog::applyCommonSettings(QPrinter &printer)
 
     if (auto options = qobject_cast<PrintOptionsWidget *>(m_printOptionsWidget)) {
         printer.setFullPage(options->ignorePrintMargins());
+        if (auto *job = dynamic_cast<PrintJobPrinter *>(&printer)) {
+            job->originalPageSize = options->originalPageSize();
+        }
     }
 }
 

@@ -15,6 +15,7 @@ Okular::Document::PrintError MuPDFGenerator::print(QPrinter &printer)
     QPainter painter;
     const auto *job = dynamic_cast<const Okular::PrintJobPrinter *>(&printer);
     const bool automaticOrientation = job && job->automaticPageOrientation;
+    const bool originalPageSize = job && job->originalPageSize;
     const int first = printer.fromPage() > 0 ? printer.fromPage()-1 : 0;
     const int last = printer.toPage() > 0 ? std::min(printer.toPage(),int(m_pages.size()))-1 : m_pages.size()-1;
     for (int i=first; i<=last; ++i) {
@@ -46,7 +47,12 @@ Okular::Document::PrintError MuPDFGenerator::print(QPrinter &printer)
             page = pdf_load_page(m_context,m_document,index);
             if (pdf_update_page(m_context,page)) clearAnnotationLists();
             const auto bounds = pdf_bound_page(m_context,page,FZ_CROP_BOX);
-            const float scale = std::min(area.width()/(bounds.x1-bounds.x0),area.height()/(bounds.y1-bounds.y0));
+            // Mirrors the PDF backend's "None; print original size" path: the
+            // page keeps its own physical size (printer resolution / 72) and is
+            // centred in the printable area instead of being scaled to it.
+            const float scale = originalPageSize
+                ? std::max(1,printer.resolution())/72.0f
+                : std::min(area.width()/(bounds.x1-bounds.x0),area.height()/(bounds.y1-bounds.y0));
             const auto transform = fz_make_matrix(scale,0,0,scale,
                 (area.width()-(bounds.x1-bounds.x0)*scale)/2-bounds.x0*scale,
                 (area.height()-(bounds.y1-bounds.y0)*scale)/2-bounds.y0*scale);

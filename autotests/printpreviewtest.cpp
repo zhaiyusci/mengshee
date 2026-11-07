@@ -1,12 +1,16 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "part/mengsheeprintdialog.h"
 #include "core/printoptionswidget.h"
+#include "core/printjob.h"
 #include <QTest>
 #include <QLabel>
+#include <QComboBox>
 #include <QRadioButton>
 #include <QLineEdit>
+#include <QPrinter>
 #include <QSpinBox>
 #include <QSlider>
+#include <QTemporaryDir>
 #include <QThread>
 #include <QElapsedTimer>
 #include <QTimer>
@@ -113,6 +117,65 @@ private Q_SLOTS:
         dialog.reset();
         QVERIFY(timer.elapsed()<200);
         QTRY_VERIFY(finished->load());
+    }
+    void scaleModeOffersOriginalSize() {
+        Okular::MengsheePrintDialog dialog(nullptr, 1, 1, QPageLayout::Portrait, false, new Okular::DefaultPrintOptionsWidget);
+        auto *combo = dialog.findChild<QComboBox *>(QStringLiteral("scaleModeCombo"));
+        QVERIFY(combo);
+        QCOMPARE(combo->count(), 3);
+        const int printableIndex = combo->findData(int(Okular::PrintScaleMode::FitToPrintableArea));
+        const int fullPageIndex = combo->findData(int(Okular::PrintScaleMode::FitToFullPage));
+        const int originalIndex = combo->findData(int(Okular::PrintScaleMode::OriginalSize));
+        QVERIFY(printableIndex >= 0);
+        QVERIFY(fullPageIndex >= 0);
+        QVERIFY(originalIndex >= 0);
+
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        Okular::PrintJobPrinter printer(QPrinter::HighResolution);
+        printer.setOutputFormat(QPrinter::PdfFormat);
+        printer.setOutputFileName(directory.filePath(QStringLiteral("scale-mode.pdf")));
+
+        combo->setCurrentIndex(printableIndex);
+        dialog.configurePrinter(printer);
+        QVERIFY(!printer.fullPage());
+        QVERIFY(!printer.originalPageSize);
+
+        combo->setCurrentIndex(fullPageIndex);
+        dialog.configurePrinter(printer);
+        QVERIFY(printer.fullPage());
+        QVERIFY(!printer.originalPageSize);
+
+        combo->setCurrentIndex(originalIndex);
+        dialog.configurePrinter(printer);
+        // Like the PDF backend, "original size" keeps the selected paper and
+        // only disables scaling; margins are not ignored for this mode.
+        QVERIFY(!printer.fullPage());
+        QVERIFY(printer.originalPageSize);
+    }
+    void scaleModePreviewDrawsOriginalSize() {
+        Okular::MengsheePrintDialog dialog(nullptr, 1, 1, QPageLayout::Portrait, false, new Okular::DefaultPrintOptionsWidget);
+        dialog.setPreviewRenderer([](int, QSize) {
+            QImage image(120, 160, QImage::Format_RGB32);
+            image.fill(Qt::white);
+            return Okular::PrintPreviewImage{image, {}};
+        }, {});
+        dialog.show();
+        auto *combo = dialog.findChild<QComboBox *>(QStringLiteral("scaleModeCombo"));
+        auto *paperSize = dialog.findChild<QComboBox *>(QStringLiteral("pageSizeCombo"));
+        auto *canvas = dialog.findChild<QWidget *>(QStringLiteral("printPreview"));
+        QVERIFY(combo);
+        QVERIFY(paperSize);
+        QVERIFY(canvas);
+        QTRY_VERIFY(canvas->property("previewOriginalSize").isValid());
+        const int originalIndex = combo->findData(int(Okular::PrintScaleMode::OriginalSize));
+        QVERIFY(originalIndex >= 0);
+        combo->setCurrentIndex(originalIndex);
+        QTRY_VERIFY(canvas->property("previewOriginalSize").toBool());
+        // The sheet stays the selected paper; only the page drawing size changes.
+        QVERIFY(paperSize->isEnabled());
+        combo->setCurrentIndex(combo->findData(int(Okular::PrintScaleMode::FitToPrintableArea)));
+        QTRY_VERIFY(!canvas->property("previewOriginalSize").toBool());
     }
 };
 QTEST_MAIN(PrintPreviewTest)

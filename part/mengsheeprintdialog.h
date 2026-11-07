@@ -67,6 +67,7 @@ private Q_SLOTS:
     void previousPreviewPage();
     void nextPreviewPage();
     void updatePreviewNavigation();
+    void scaleModeChanged();
     void validateSettings();
 
 private:
@@ -88,6 +89,8 @@ private:
     QPrinter::DuplexMode selectedDuplexMode() const;
     QPageSize selectedPageSize() const;
     QString pageSizeDescription(const QPageSize &pageSize) const;
+    bool originalPageSizeSelected() const;
+    QPageLayout previewPageLayout() const;
 
     struct PrinterCapabilities {
         QList<QPageSize> sizes;

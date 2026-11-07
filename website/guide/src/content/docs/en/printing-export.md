@@ -8,6 +8,8 @@ sidebar:
 
 Open **File → Print**. Choose the page range, printer, number of copies, and paper settings. Page numbers in the dialog start at 1; the default number of copies is 1.
 
+**Scale mode** fits the page to the printable area, fits it to the full page, or prints it at its **original size** (the PDF page's own physical size, without scaling). The selected paper size is kept.
+
 With automatic paper orientation, each output page chooses portrait or landscape from that page's displayed dimensions, including its saved rotation. A mixed document can therefore use both orientations. A manually selected portrait or landscape orientation stays fixed. This turns the output paper; it does not edit the PDF.
 
 Preview pages are rendered at a lower resolution for responsiveness. They are not the images sent to the printer: printing preserves vector content where supported, with local raster rendering for effects that require it. Actual results also depend on the printer driver and its paper capabilities.
