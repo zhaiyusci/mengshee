@@ -144,6 +144,7 @@
 #include "aipageanalysis.h"
 #include "aichat.h"
 #include "glmocrsettings.h"
+#include "aiservicesettings.h"
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include "core/numberedcalloutgeometry_p.h"
@@ -1040,13 +1041,18 @@ void Part::setupViewerActions()
     m_editOcrTextLayer->setVisible(false);
     connect(m_editOcrTextLayer, &QAction::triggered, this, &Part::editOcrTextLayer);
 
+    m_recognizeContent = ac->addAction(QStringLiteral("recognize_content"));
+    m_recognizeContent->setText(i18n("Recognize Content…"));
+    m_recognizeContent->setIcon(QIcon(QStringLiteral(":/mengshee/data/icons/recognize-text.svg")));
+    connect(m_recognizeContent, &QAction::triggered, this, [this] { recognizeText(OcrEngine::Select); });
+
     m_recognizeEnglishText = ac->addAction(QStringLiteral("advanced_recognize_english_text"));
     m_recognizeEnglishText->setText(i18n("Recognize English Text..."));
-    m_recognizeEnglishText->setIcon(QIcon::fromTheme(QStringLiteral("accessories-character-map"), QIcon::fromTheme(QStringLiteral("edit-find"))));
+    m_recognizeEnglishText->setIcon(QIcon(QStringLiteral(":/mengshee/data/icons/recognize-text.svg")));
     m_recognizeEnglishText->setToolTip(i18n("Add a searchable English text layer to scanned PDF pages"));
     m_recognizeEnglishText->setEnabled(false);
     m_recognizeEnglishText->setVisible(false);
-    connect(m_recognizeEnglishText, &QAction::triggered, this, &Part::slotRecognizeEnglishText);
+    connect(m_recognizeEnglishText, &QAction::triggered, this, [this] { recognizeText(OcrEngine::Local); });
 
     m_addCurrentPageToContents = ac->addAction(QStringLiteral("tools_add_current_page_to_contents"));
     m_addCurrentPageToContents->setText(i18n("Add Current Page to Contents"));
@@ -1055,7 +1061,7 @@ void Part::setupViewerActions()
     connect(m_addCurrentPageToContents, &QAction::triggered, m_toc.data(), &TOC::addCurrentPageEntry);
 
     m_editingModeSelector = new KSelectAction(i18n("Mode"), this);
-    m_editingModeSelector->setItems({i18n("Reading and Annotations"), i18n("Cross-references"), i18n("OCR"), i18n("Page Editing"), i18n("Reading Views"), i18n("Proofread")});
+    m_editingModeSelector->setItems({i18n("Reading and Annotations"), i18n("Cross-references"), i18n("Content Recognition"), i18n("Page Editing"), i18n("Proofread")});
     m_editingModeSelector->setCurrentItem(static_cast<int>(m_editingMode));
     ac->addAction(QStringLiteral("editing_mode_selector"), m_editingModeSelector);
     connect(m_editingModeSelector, &KSelectAction::indexTriggered, this, [this](int index) {
@@ -1084,17 +1090,26 @@ void Part::setupViewerActions()
     });
 
     m_aiReadingViews = ac->addAction(QStringLiteral("view_ai_reading_views"));
-    m_aiReadingViews->setText(i18n("AI Reading Views…"));
-    m_aiReadingViews->setIconText(i18nc("Compact AI reading-region toolbar button", "AI Views"));
-    m_aiReadingViews->setIcon(QIcon(QStringLiteral(":/mengshee/data/icons/reading-view-ai.svg")));
-    m_aiReadingViews->setToolTip(i18n("Generate Reading Views for selected pages with GLM-OCR"));
+    m_aiReadingViews->setText(i18n("Generate Reading Views with OCR Service…"));
+    m_aiReadingViews->setIconText(i18n("OCR Service Views"));
+    m_aiReadingViews->setIcon(QIcon(QStringLiteral(":/mengshee/data/icons/reading-view-service.svg")));
+    m_aiReadingViews->setToolTip(i18n("Generate Reading Views for selected pages with the selected OCR service"));
+    m_chatReadingViews = ac->addAction(QStringLiteral("view_chat_reading_views"));
+    m_chatReadingViews->setText(i18n("Generate Reading Views with General AI…"));
+    m_chatReadingViews->setIcon(QIcon(QStringLiteral(":/mengshee/data/icons/reading-view-ai.svg")));
+    m_chatReadingViews->setVisible(false);
+    connect(m_chatReadingViews, &QAction::triggered, this, [this] { generateReadingViews(ViewDetector::Chat); });
+    m_glmOcr = ac->addAction(QStringLiteral("advanced_glm_ocr"));
+    updateOcrServiceAction();
+    m_glmOcr->setVisible(false);
+    connect(m_glmOcr, &QAction::triggered, this, [this] { recognizeText(OcrEngine::Service); });
     m_aiOcr = ac->addAction(QStringLiteral("advanced_ai_ocr"));
-    m_aiOcr->setText(i18n("AI OCR…"));
-    m_aiOcr->setIcon(QIcon::fromTheme(QStringLiteral("edit-find")));
+    m_aiOcr->setText(i18n("Recognize Text with General AI…"));
+    m_aiOcr->setIcon(QIcon(QStringLiteral(":/mengshee/data/icons/recognize-text-ai.svg")));
     m_aiReadingViews->setVisible(false);
     m_aiOcr->setVisible(false);
-    connect(m_aiReadingViews, &QAction::triggered, this, [this] { generateReadingViews(true); });
-    connect(m_aiOcr, &QAction::triggered, this, &Part::recognizeCurrentPageWithAi);
+    connect(m_aiReadingViews, &QAction::triggered, this, [this] { generateReadingViews(ViewDetector::Glm); });
+    connect(m_aiOcr, &QAction::triggered, this, [this] { recognizeText(OcrEngine::Chat); });
     m_generateReadingViews = ac->addAction(QStringLiteral("view_generate_reading_views"));
     m_generateReadingViews->setText(i18n("Auto-generate Reading Views..."));
     m_generateReadingViews->setIconText(i18nc("Compact reading-region toolbar button", "Generate"));
@@ -1102,7 +1117,7 @@ void Part::setupViewerActions()
     m_generateReadingViews->setToolTip(i18n("Detect page regions locally and create editable Views"));
     m_generateReadingViews->setEnabled(false);
     m_generateReadingViews->setVisible(false);
-    connect(m_generateReadingViews, &QAction::triggered, this, [this] { generateReadingViews(false); });
+    connect(m_generateReadingViews, &QAction::triggered, this, [this] { generateReadingViews(ViewDetector::Local); });
 
     m_numberByClicking = ac->addAction(QStringLiteral("tools_number_by_clicking"));
     m_numberByClicking->setText(i18n("Click to Number"));
@@ -1115,7 +1130,7 @@ void Part::setupViewerActions()
         stopClickNumbering();
         PageView *view = workspaceActivePageView();
         if (checked && view) {
-            if (m_editingMode == EditingMode::Views) view->setClickNumberingTarget(PageView::ClickNumberingTarget::Views);
+            if (m_editingMode == EditingMode::ContentRecognition) view->setClickNumberingTarget(PageView::ClickNumberingTarget::Views);
             else if (m_editingMode == EditingMode::Proofread) view->setClickNumberingTarget(PageView::ClickNumberingTarget::NumberedCallouts);
         }
         updatePageEditActions();
@@ -1515,7 +1530,7 @@ void Part::connectWorkspacePageView(PageView *view)
     connect(view, &PageView::ocrTextLayerChangeRequested, this, &Part::applyOcrTextLayerChange);
     connect(view, &PageView::rightClick, this, &Part::slotShowMenu);
     connect(view, &PageView::editPdfLinkRequested, this, &Part::editPdfLink);
-    view->setReadingViewEditingEnabled(m_editingMode == EditingMode::Views && canUsePageLevelEditing() && m_document->canEditReadingViews());
+    view->setReadingViewEditingEnabled(m_editingMode == EditingMode::ContentRecognition && canUsePageLevelEditing() && m_document->canEditReadingViews());
     connect(view, &PageView::readingViewEditingChanged, this, [this, view](bool) {
         if (!m_updatingEditingMode && workspaceActivePageView() == view) {
             updatePageEditActions();
@@ -1625,9 +1640,9 @@ void Part::openAuxiliaryView(PageView *sourceView, const DocumentViewport &targe
     }
     const QScopedValueRollback<bool> updatingMode(m_updatingEditingMode, true);
     view->setCrossReferenceModeEnabled(m_editingMode == EditingMode::CrossReferences);
-    view->setOcrModeEnabled(m_editingMode == EditingMode::Ocr);
+    view->setOcrModeEnabled(m_editingMode == EditingMode::ContentRecognition);
     view->setPageEditModeEnabled(m_editingMode == EditingMode::Pages);
-    view->setReadingViewEditingEnabled(m_editingMode == EditingMode::Views && canUsePageLevelEditing() && m_document->canEditReadingViews());
+    view->setReadingViewEditingEnabled(m_editingMode == EditingMode::ContentRecognition && canUsePageLevelEditing() && m_document->canEditReadingViews());
     registerWorkspacePageViewActions(view);
     connectWorkspacePageView(view);
     // Seed the new tab from the source frame. For links this makes Back return
@@ -4821,8 +4836,8 @@ void Part::updatePageEditActions()
     const bool canEditPages = canUsePageLevelEditing();
     const bool showPageActions = m_editingMode == EditingMode::Pages;
     const bool showCrossReferenceActions = m_editingMode == EditingMode::CrossReferences;
-    const bool showOcrActions = m_editingMode == EditingMode::Ocr;
-    const bool editingViews = m_editingMode == EditingMode::Views;
+    const bool showOcrActions = m_editingMode == EditingMode::ContentRecognition;
+    const bool editingViews = m_editingMode == EditingMode::ContentRecognition;
     // Modes organize entry points, not annotation editing permissions. Existing
     // Numbered Callouts remain editable in every mode, including Read by Views.
     for (const char *name : {"annotation_add_ordered_callout", "annotation_numbered_callout_format", "annotation_renumber_callouts", "annotation_export_numbered_callouts"}) {
@@ -4873,6 +4888,10 @@ void Part::updatePageEditActions()
         const bool canAnalyze = canEditPages && m_document->canRenderToImage() && m_document->isAllowed(AllowCopy) && m_document->isAllowed(AllowModify);
         m_aiReadingViews->setVisible(editingViews);
         m_aiReadingViews->setEnabled(canEditViews && canAnalyze);
+        m_chatReadingViews->setVisible(editingViews);
+        m_chatReadingViews->setEnabled(canEditViews && canAnalyze);
+        m_glmOcr->setVisible(showOcrActions);
+        m_glmOcr->setEnabled(showOcrActions && canAnalyze);
         m_aiOcr->setVisible(showOcrActions);
         m_aiOcr->setEnabled(showOcrActions && canAnalyze);
     }
@@ -4901,6 +4920,10 @@ void Part::updatePageEditActions()
     }
     if (m_appendPdfFile) {
         m_appendPdfFile->setEnabled(canEditPages && m_document->canAppendPdfFile());
+    }
+    if (m_recognizeContent) {
+        m_recognizeContent->setVisible(showOcrActions);
+        m_recognizeContent->setEnabled(canEditPages && (m_document->canPerformEnglishOcr() || m_document->canGenerateReadingViews() || m_document->canRenderToImage()));
     }
     if (m_recognizeEnglishText) {
         m_recognizeEnglishText->setVisible(showOcrActions);
@@ -5082,9 +5105,9 @@ void Part::setEditingMode(EditingMode mode)
     }
     for (PageView *view : std::as_const(views)) {
         view->setCrossReferenceModeEnabled(mode == EditingMode::CrossReferences);
-        view->setOcrModeEnabled(mode == EditingMode::Ocr);
+        view->setOcrModeEnabled(mode == EditingMode::ContentRecognition);
         view->setPageEditModeEnabled(mode == EditingMode::Pages);
-        view->setReadingViewEditingEnabled(mode == EditingMode::Views && canUsePageLevelEditing() && m_document->canEditReadingViews());
+        view->setReadingViewEditingEnabled(mode == EditingMode::ContentRecognition && canUsePageLevelEditing() && m_document->canEditReadingViews());
     }
     updatePageEditActions();
     updateToolBars();
@@ -5093,7 +5116,7 @@ void Part::setEditingMode(EditingMode mode)
 void Part::editOcrTextLayer()
 {
     PageView *view = workspaceActivePageView();
-    if (!view || m_editingMode != EditingMode::Ocr || !canUsePageLevelEditing()) {
+    if (!view || m_editingMode != EditingMode::ContentRecognition || !canUsePageLevelEditing()) {
         return;
     }
     if (view->isOcrTextEditing()) {
@@ -5106,7 +5129,7 @@ void Part::editOcrTextLayer()
 
 void Part::applyOcrTextLayerChange(int pageNumber, const QList<OcrTextWord> &before, const QList<OcrTextWord> &after)
 {
-    if (m_editingMode != EditingMode::Ocr || !canUsePageLevelEditing()) {
+    if (m_editingMode != EditingMode::ContentRecognition || !canUsePageLevelEditing()) {
         return;
     }
     QString error;
@@ -5119,16 +5142,30 @@ void Part::applyOcrTextLayerChange(int pageNumber, const QList<OcrTextWord> &bef
     m_document->pushUndoCommand(new LivePdfLinkCommand(i18nc("Undo action", "Edit OCR Text Layer"), undo, redo));
 }
 
-void Part::slotRecognizeEnglishText()
+void Part::updateOcrServiceAction()
 {
-    if (m_editingMode != EditingMode::Ocr) {
-        return;
-    }
-    if (!canUsePageLevelEditing() || !m_document->canPerformEnglishOcr()) {
-        KMessageBox::information(widget(), i18n("English text recognition is only available for local PDF files."));
-        return;
-    }
+    GlmOcrSettings settings;
+    settings.load();
+    const bool mathpix = settings.useMathpixForOcr();
+    m_glmOcr->setText(mathpix ? i18n("Mathpix OCR") : i18n("Recognize Text with OCR Service…"));
+    m_glmOcr->setIcon(QIcon(mathpix ? QStringLiteral(":/mengshee/data/icons/recognize-text-mathpix.svg")
+                                   : QStringLiteral(":/mengshee/data/icons/recognize-text-service.svg")));
+}
 
+void Part::recognizeText(OcrEngine engine)
+{
+    const bool select = engine == OcrEngine::Select;
+    bool remote = !select && engine != OcrEngine::Local;
+    if (m_editingMode != EditingMode::ContentRecognition || m_generatingReadingViews || !canUsePageLevelEditing()
+        || (!select && (remote ? (!m_document->canRenderToImage() || !m_document->isAllowed(AllowCopy) || !m_document->isAllowed(AllowModify)) : !m_document->canPerformEnglishOcr()))) {
+        return;
+    }
+    stopClickNumbering();
+    if (auto *view = workspaceActivePageView()) view->finishOcrWordEditing();
+    QScopedValueRollback<bool> generationGuard(m_generatingReadingViews, true);
+    QScopedValueRollback<bool> invalidationGuard(m_readingViewDetectionInvalidated, false);
+    const auto *action = select ? m_recognizeContent : engine == OcrEngine::Chat ? m_aiOcr : remote ? m_glmOcr : m_recognizeEnglishText;
+    auto service = remote ? AiPageAnalysis::ocrService(engine == OcrEngine::Service, m_glmOcrBaseUrl, m_mathpixBaseUrl) : AiPageAnalysis::OcrService{};
     const int pageCount = static_cast<int>(m_document->pages());
     const int currentPage = qBound(0, workspaceActivePageNumber(), std::max(0, pageCount - 1));
     if (pageCount <= 0) {
@@ -5136,10 +5173,38 @@ void Part::slotRecognizeEnglishText()
     }
 
     QDialog dialog(widget());
-    dialog.setWindowTitle(i18n("Recognize English Text"));
+    dialog.setWindowTitle(action->text().remove(QChar(0x2026)));
+    dialog.setWindowIcon(action->icon());
+    dialog.setObjectName(QStringLiteral("recognizeTextDialog"));
     auto *layout = new QVBoxLayout(&dialog);
 
-    auto *description = new QLabel(i18n("Add an invisible, searchable English text layer to scanned pages. The page image is not changed."), &dialog);
+    auto *engines = new QComboBox(&dialog);
+    engines->setObjectName(QStringLiteral("recognitionEngine"));
+    engines->addItems({QStringLiteral("Tesseract"), QStringLiteral("GLM-OCR"), QStringLiteral("Mathpix")});
+    auto *engineLabel = new QLabel(i18n("Recognition engine"), &dialog);
+    engineLabel->setBuddy(engines);
+    if (select) {
+        layout->addWidget(engineLabel);
+        layout->addWidget(engines);
+    } else {
+        engineLabel->hide();
+        engines->hide();
+    }
+    auto *textOutput = new QCheckBox(i18n("Add searchable text (OCR)"), &dialog);
+    auto *viewOutput = new QCheckBox(i18n("Generate Reading Views"), &dialog);
+    textOutput->setObjectName(QStringLiteral("recognitionTextOutput"));
+    viewOutput->setObjectName(QStringLiteral("recognitionViewOutput"));
+    textOutput->setChecked(!select);
+    if (select) {
+        viewOutput->setChecked(true);
+        layout->addWidget(textOutput);
+        layout->addWidget(viewOutput);
+    } else {
+        textOutput->hide();
+        viewOutput->hide();
+    }
+
+    auto *description = new QLabel(remote ? i18n("Send images of the selected pages to %1 (%2) to recognize searchable text.", QUrl(service.base).host(), service.model) : i18n("Add an invisible, searchable English text layer to scanned pages. The page image is not changed."), &dialog);
     description->setWordWrap(true);
     layout->addWidget(description);
 
@@ -5162,13 +5227,47 @@ void Part::slotRecognizeEnglishText()
 
     auto *languageLabel = new QLabel(i18n("Recognition language: English"), &dialog);
     layout->addWidget(languageLabel);
+    languageLabel->setVisible(!remote);
     auto *skipExistingText = new QCheckBox(i18n("Skip pages that already contain selectable text"), &dialog);
+    skipExistingText->setObjectName(QStringLiteral("skipRecognizedText"));
     skipExistingText->setChecked(true);
     layout->addWidget(skipExistingText);
 
+    auto *skipViews = new QCheckBox(i18n("Skip pages that already have Views"), &dialog);
+    skipViews->setChecked(true);
+    skipViews->setVisible(select);
+    layout->addWidget(skipViews);
+    auto *review = new QCheckBox(i18n("Review recognized boxes before applying"), &dialog);
+    review->setVisible(remote);
+    layout->addWidget(review);
     auto *buttons = new QDialogButtonBox(QDialogButtonBox::Cancel, &dialog);
     auto *recognizeButton = buttons->addButton(i18nc("@action:button", "Recognize"), QDialogButtonBox::AcceptRole);
-    recognizeButton->setIcon(QIcon::fromTheme(QStringLiteral("edit-find")));
+    recognizeButton->setIcon(action->icon());
+    if (!service.error.isEmpty()) {
+        description->setText(service.error);
+        recognizeButton->setEnabled(false);
+    }
+    if (select) {
+        const auto update = [=, &service, &remote, this] {
+            remote = engines->currentIndex() != 0;
+            service = remote ? AiPageAnalysis::ocrService(true, m_glmOcrBaseUrl, m_mathpixBaseUrl, engines->currentText()) : AiPageAnalysis::OcrService{};
+            const bool text = textOutput->isChecked(), views = viewOutput->isChecked();
+            languageLabel->setVisible(text && !remote);
+            skipExistingText->setEnabled(text);
+            skipViews->setEnabled(views);
+            review->setVisible(remote && text);
+            description->setText(!service.error.isEmpty() ? service.error : remote
+                ? i18n("Send the selected page images to %1 (%2).", QUrl(service.base).host(), service.model)
+                : i18n("Process the selected pages locally with Tesseract."));
+            const bool available = remote ? m_document->canRenderToImage() && m_document->isAllowed(AllowCopy) && m_document->isAllowed(AllowModify)
+                : (!text || m_document->canPerformEnglishOcr()) && (!views || m_document->canGenerateReadingViews());
+            recognizeButton->setEnabled((text || views) && available && service.error.isEmpty());
+        };
+        connect(engines, &QComboBox::currentIndexChanged, &dialog, update);
+        connect(textOutput, &QCheckBox::toggled, &dialog, update);
+        connect(viewOutput, &QCheckBox::toggled, &dialog, update);
+        update();
+    }
     layout->addWidget(buttons);
 
     connect(pageRange, &QRadioButton::toggled, rangeEdit, &QWidget::setEnabled);
@@ -5207,6 +5306,7 @@ void Part::slotRecognizeEnglishText()
         }
     }
 
+    if (m_readingViewDetectionInvalidated) return;
     const QUrl documentUrl = url();
     std::unique_ptr<ClosedTemporaryPdfFile> sourceFile(createClosedOcrTemporaryPdfFile(QStringLiteral("source")));
     std::unique_ptr<ClosedTemporaryPdfFile> outputFile(createClosedOcrTemporaryPdfFile(QStringLiteral("output")));
@@ -5221,70 +5321,195 @@ void Part::slotRecognizeEnglishText()
         return;
     }
 
-    QProgressDialog progressDialog(i18n("Preparing English text recognition..."), i18n("Cancel"), 0, selectedPages.size(), widget());
-    progressDialog.setWindowTitle(i18n("Recognize English Text"));
-    progressDialog.setWindowModality(Qt::ApplicationModal);
-    progressDialog.setMinimumDuration(0);
-    progressDialog.setAutoClose(false);
-    progressDialog.setAutoReset(false);
-
-    std::atomic_bool cancelRequested = false;
-    bool userCancelled = false;
-    connect(&progressDialog, &QProgressDialog::canceled, &dialog, [&cancelRequested, &userCancelled] {
-        userCancelled = true;
-        cancelRequested.store(true);
-    });
-
     const QString sourceFileName = sourceFile->fileName();
-    const QString outputFileName = outputFile->fileName();
-    QPointer<QProgressDialog> progressPointer(&progressDialog);
-    QFutureWatcher<Okular::OcrResult> watcher;
-    const QFuture<Okular::OcrResult> future = QtConcurrent::run([document = m_document,
-                                                                 sourceFileName,
-                                                                 outputFileName,
-                                                                 selectedPages,
-                                                                 skipExisting = skipExistingText->isChecked(),
-                                                                 &cancelRequested,
-                                                                 progressPointer] {
-        return document->saveWithEnglishOcr(sourceFileName, outputFileName, selectedPages, skipExisting, [&cancelRequested, progressPointer](int completed, int total, int currentPageNumber) {
-            if (progressPointer) {
-                QMetaObject::invokeMethod(
-                    progressPointer,
-                    [progressPointer, completed, total, currentPageNumber] {
-                        if (progressPointer) {
-                            progressPointer->setMaximum(total);
-                            progressPointer->setValue(completed);
-                            progressPointer->setLabelText(i18n("Recognizing English text on page %1...", currentPageNumber));
-                        }
-                    },
-                    Qt::QueuedConnection);
+    QList<QPair<int, QList<ReadingView>>> generated;
+    int viewCount = 0, replacedViews = 0;
+    const auto appendViews = [&](int page, const auto &rectangles, bool replaced) {
+        QList<ReadingView> views;
+        for (const auto &r : rectangles) views.append({QUuid::createUuid().toString(QUuid::WithoutBraces), int(views.size()) + 1, r});
+        if (!views.isEmpty()) {
+            viewCount += views.size();
+            replacedViews += replaced;
+            generated.append({page, views});
+        }
+    };
+    Okular::OcrResult ocrResult;
+    if (remote) {
+        Document working(widget());
+        if (working.openDocument(sourceFileName, QUrl::fromLocalFile(sourceFileName), QMimeDatabase().mimeTypeForName(QStringLiteral("application/pdf"))) != Document::OpenSuccess) {
+            KMessageBox::information(widget(), i18n("Could not prepare the current document for text recognition."));
+            return;
+        }
+        for (const int number : selectedPages) {
+            const int index = number - 1;
+            const auto previous = viewOutput->isChecked() ? working.readingViews(index, &ocrResult.errorText) : QList<ReadingView>();
+            if (!ocrResult.errorText.isEmpty()) break;
+            const bool needViews = viewOutput->isChecked() && (!skipViews->isChecked() || previous.isEmpty());
+            bool needText = textOutput->isChecked();
+            if (needText && skipExistingText->isChecked()) {
+                working.requestTextPage(index);
+                if (!working.page(index)->text().trimmed().isEmpty()) {
+                    ++ocrResult.skippedPages;
+                    needText = false;
+                }
             }
-            return !cancelRequested.load();
-        });
-    });
-    connect(&watcher, &QFutureWatcher<Okular::OcrResult>::finished, &progressDialog, &QDialog::accept);
-    watcher.setFuture(future);
-    progressDialog.exec();
-    if (watcher.isRunning()) {
-        userCancelled = true;
-        cancelRequested.store(true);
-        watcher.waitForFinished();
-    }
+            if (!needText && !needViews) continue;
+            const auto size = working.pageSizeInPoints(index);
+            const int dpi = size.isEmpty() ? 0 : int(std::min(216.0, 2048.0 * 72.0 / std::max(size.width(), size.height())));
+            if (dpi < 1) {
+                ocrResult.errorText = i18n("This page is too large for whole-page AI analysis.");
+                break;
+            }
+            const auto image = working.renderToImage(index, dpi, false, &ocrResult.errorText);
+            if (image.isNull()) {
+                if (ocrResult.errorText.isEmpty()) ocrResult.errorText = i18n("Could not render page %1.", number);
+                break;
+            }
+            QList<AiPageAnalysis::Region> regions;
+            QList<AiPageAnalysis::Region> boxes;
+            if (!AiPageAnalysis::reviewOcr(widget(), index, image, service, needText && review->isChecked(), regions, ocrResult.errorText, needText, needViews ? &boxes : nullptr) || m_readingViewDetectionInvalidated) return;
+            if (!ocrResult.errorText.isEmpty()) break;
+            QList<NormalizedRect> rectangles;
+            for (const auto &box : boxes) {
+                const auto &r = box.rectangle;
+                rectangles.append({r.left(), r.top(), r.right(), r.bottom()});
+            }
+            appendViews(index, rectangles, !previous.isEmpty());
+            if (!needText || regions.isEmpty()) continue;
+            QList<OcrTextWord> words;
+            for (const auto &region : regions) words.append({region.text, region.rectangle});
+            if (!working.replaceOcrTextLayer(index, words, &ocrResult.errorText)) {
+                if (ocrResult.errorText.isEmpty()) ocrResult.errorText = i18n("Could not update the OCR text layer.");
+                break;
+            }
+            ++ocrResult.recognizedPages;
+            ocrResult.recognizedWords += words.size();
+        }
+        ocrResult.success = ocrResult.errorText.isEmpty() && (!ocrResult.recognizedPages || working.saveChanges(outputFile->fileName(), &ocrResult.errorText));
+    } else if (textOutput->isChecked()) {
+        QProgressDialog progressDialog(i18n("Preparing English text recognition..."), i18n("Cancel"), 0, selectedPages.size(), widget());
+        progressDialog.setWindowTitle(i18n("Recognize English Text"));
+        progressDialog.setWindowModality(Qt::ApplicationModal);
+        progressDialog.setMinimumDuration(0);
+        progressDialog.setAutoClose(false);
+        progressDialog.setAutoReset(false);
 
-    const Okular::OcrResult ocrResult = watcher.result();
-    if (ocrResult.cancelled || userCancelled) {
+        std::atomic_bool cancelRequested = false;
+        bool userCancelled = false;
+        connect(&progressDialog, &QProgressDialog::canceled, &dialog, [&cancelRequested, &userCancelled] {
+            userCancelled = true;
+            cancelRequested.store(true);
+        });
+
+        const QString outputFileName = outputFile->fileName();
+        QPointer<QProgressDialog> progressPointer(&progressDialog);
+        QFutureWatcher<Okular::OcrResult> watcher;
+        const QFuture<Okular::OcrResult> future = QtConcurrent::run([document = m_document,
+                                                                     sourceFileName,
+                                                                     outputFileName,
+                                                                     selectedPages,
+                                                                     skipExisting = skipExistingText->isChecked(),
+                                                                     &cancelRequested,
+                                                                     progressPointer] {
+            return document->saveWithEnglishOcr(sourceFileName, outputFileName, selectedPages, skipExisting, [&cancelRequested, progressPointer](int completed, int total, int currentPageNumber) {
+                if (progressPointer) {
+                    QMetaObject::invokeMethod(
+                        progressPointer,
+                        [progressPointer, completed, total, currentPageNumber] {
+                            if (progressPointer) {
+                                progressPointer->setMaximum(total);
+                                progressPointer->setValue(completed);
+                                progressPointer->setLabelText(i18n("Recognizing English text on page %1...", currentPageNumber));
+                            }
+                        },
+                        Qt::QueuedConnection);
+                }
+                return !cancelRequested.load();
+            });
+        });
+        connect(&watcher, &QFutureWatcher<Okular::OcrResult>::finished, &progressDialog, &QDialog::accept);
+        watcher.setFuture(future);
+        progressDialog.exec();
+        if (watcher.isRunning()) {
+            userCancelled = true;
+            cancelRequested.store(true);
+            watcher.waitForFinished();
+        }
+
+        ocrResult = watcher.result();
+        if (ocrResult.cancelled || userCancelled) {
+            return;
+        }
+    } else {
+        ocrResult.success = true;
+    }
+    if (!remote && viewOutput->isChecked() && ocrResult.success) {
+        QList<int> pages;
+        QSet<int> replaced;
+        for (int number : selectedPages) {
+            const auto previous = m_document->readingViews(number - 1, &snapshotError);
+            if (!snapshotError.isEmpty()) { KMessageBox::information(widget(), snapshotError); return; }
+            if (!previous.isEmpty()) {
+                if (skipViews->isChecked()) continue;
+                replaced.insert(number - 1);
+            }
+            pages.append(number - 1);
+        }
+        if (!pages.isEmpty()) {
+            QProgressDialog progress(i18n("Preparing View detection..."), i18n("Cancel"), 0, pages.size(), widget());
+            progress.setWindowModality(Qt::ApplicationModal);
+            progress.setAutoClose(false);
+            progress.setAutoReset(false);
+            std::atomic_bool cancelled = false;
+            connect(&progress, &QProgressDialog::canceled, &dialog, [&] { cancelled.store(true); });
+            QFutureWatcher<ReadingViewGenerationResult> watcher;
+            connect(&watcher, &QFutureWatcherBase::finished, &progress, &QDialog::accept);
+            watcher.setFuture(QtConcurrent::run([&, document = m_document] {
+                return document->generateReadingViews(sourceFileName, pages, [&](int done, int, int) {
+                    QMetaObject::invokeMethod(&progress, [&progress, done] { progress.setValue(done); }, Qt::QueuedConnection);
+                    return !cancelled.load();
+                });
+            }));
+            if (!watcher.isFinished()) progress.exec();
+            watcher.waitForFinished();
+            const auto result = watcher.result();
+            if (cancelled || result.cancelled) return;
+            if (!result.success) { KMessageBox::information(widget(), result.errorText); return; }
+            for (int page : pages) appendViews(page, result.rectangles.value(page), replaced.contains(page));
+        }
+    }
+    if (m_readingViewDetectionInvalidated || url() != documentUrl) return;
+    if (!ocrResult.success) {
+        KMessageBox::information(widget(), ocrResult.errorText.isEmpty() ? i18n("Text recognition failed.") : i18n("Text recognition failed. %1", ocrResult.errorText));
         return;
     }
-    if (!ocrResult.success) {
-        KMessageBox::information(widget(), ocrResult.errorText.isEmpty() ? i18n("English text recognition failed.") : i18n("English text recognition failed. %1", ocrResult.errorText));
-        return;
+    if (!generated.isEmpty()) {
+        if (!reviewGeneratedViews(generated, viewCount, replacedViews, dialog.windowTitle(), documentUrl) || m_readingViewDetectionInvalidated || url() != documentUrl) return;
+        if (!ocrResult.recognizedPages) {
+            if (!commitReadingViewBatch(generated, i18n("Content Recognition"), &snapshotError)) KMessageBox::information(widget(), snapshotError);
+            return;
+        }
+        // Stage both outputs together so cancellation and undo cover the entire batch.
+        auto combined = std::unique_ptr<ClosedTemporaryPdfFile>(createClosedOcrTemporaryPdfFile(QStringLiteral("recognized")));
+        Document working(widget());
+        if (!combined || working.openDocument(outputFile->fileName(), QUrl::fromLocalFile(outputFile->fileName()), QMimeDatabase().mimeTypeForName(QStringLiteral("application/pdf"))) != Document::OpenSuccess) {
+            KMessageBox::information(widget(), i18n("Could not prepare the current document for text recognition."));
+            return;
+        }
+        for (const auto &entry : generated) {
+            if (!working.setReadingViews(entry.first, entry.second, &snapshotError)) { KMessageBox::information(widget(), snapshotError); return; }
+        }
+        if (!working.saveChanges(combined->fileName(), &snapshotError)) { KMessageBox::information(widget(), snapshotError); return; }
+        working.closeDocument();
+        outputFile = std::move(combined);
     }
     if (ocrResult.recognizedPages == 0) {
-        const QString message = ocrResult.skippedPages > 0 ? i18n("All selected pages already contain selectable text.") : i18n("No English text was recognized on the selected pages.");
+        const QString message = viewOutput->isChecked() ? i18n("No new content was recognized on the selected pages.") : ocrResult.skippedPages == selectedPages.size() ? i18n("All selected pages already contain selectable text.") : i18n("No text was recognized on the selected pages.");
         KMessageBox::information(widget(), message);
         return;
     }
 
+    m_generatingReadingViews = false; // Allow the undo command to switch to the completed snapshot.
     setUrl(documentUrl);
     KParts::OpenUrlArguments args = arguments();
     args.setMimeType(QStringLiteral("application/pdf"));
@@ -5292,7 +5517,7 @@ void Part::slotRecognizeEnglishText()
 
     const QString editedFileName = outputFile->fileName();
     auto command = std::make_unique<PageBackingFileCommand>(this,
-                                                            i18nc("Undo action", "Recognize Text"),
+                                                            select ? i18n("Content Recognition") : i18nc("Undo action", "Recognize Text"),
                                                             std::move(sourceFile),
                                                             sourceFileName,
                                                             std::move(outputFile),
@@ -5303,7 +5528,7 @@ void Part::slotRecognizeEnglishText()
                                                             true);
     m_document->pushUndoCommand(command.release());
     if (PageView *view = workspaceActivePageView()) {
-        view->displayMessage(i18np("Recognized English text on %1 page (%2 words).",
+        view->displayMessage(remote ? i18np("Recognized text on %1 page.", "Recognized text on %1 pages.", ocrResult.recognizedPages) : i18np("Recognized English text on %1 page (%2 words).",
                                    "Recognized English text on %1 pages (%2 words).",
                                    ocrResult.recognizedPages,
                                    ocrResult.recognizedWords));
@@ -5989,7 +6214,7 @@ bool applyReadingViewBatch(Okular::Document *document, const ReadingViewBatch &b
 
 bool Part::applyReadingViewsToDocument(int sourcePage)
 {
-    if (m_editingMode != EditingMode::Views || !canUsePageLevelEditing() || !m_document->canEditReadingViews() || sourcePage < 0 || sourcePage >= int(m_document->pages())) {
+    if (m_editingMode != EditingMode::ContentRecognition || !canUsePageLevelEditing() || !m_document->canEditReadingViews() || sourcePage < 0 || sourcePage >= int(m_document->pages())) {
         return false;
     }
     // Preflight every page before making any changes, including malformed data
@@ -6089,7 +6314,7 @@ void Part::stopClickNumbering()
 void Part::numberReadingViewByClick(int pageNumber, const QString &viewId)
 {
     auto *view = workspaceActivePageView();
-    if (!view || view->clickNumberingTarget() != PageView::ClickNumberingTarget::Views || m_editingMode != EditingMode::Views || !canUsePageLevelEditing()) return;
+    if (!view || view->clickNumberingTarget() != PageView::ClickNumberingTarget::Views || m_editingMode != EditingMode::ContentRecognition || !canUsePageLevelEditing()) return;
     QString error;
     const auto before = m_document->readingViews(pageNumber, &error);
     if (!error.isEmpty()) {
@@ -6173,7 +6398,7 @@ void Part::numberCalloutByClick(int pageNumber, Okular::Annotation *clickedAnnot
 
 bool Part::commitReadingViewBatch(const QList<QPair<int, QList<Okular::ReadingView>>> &batch, const QString &undoText, QString *error)
 {
-    if (m_editingMode != EditingMode::Views || !canUsePageLevelEditing() || !m_document->canEditReadingViews() || batch.isEmpty()) {
+    if (m_editingMode != EditingMode::ContentRecognition || !canUsePageLevelEditing() || !m_document->canEditReadingViews() || batch.isEmpty()) {
         return false;
     }
     ReadingViewBatch before;
@@ -6231,57 +6456,10 @@ bool Part::commitReadingViewBatch(const QList<QPair<int, QList<Okular::ReadingVi
 }
 
 
-void Part::recognizeCurrentPageWithAi()
+void Part::generateReadingViews(ViewDetector detector)
 {
-    if (m_editingMode != EditingMode::Ocr || m_generatingReadingViews || !canUsePageLevelEditing()
-        || !m_document->isAllowed(AllowCopy) || !m_document->isAllowed(AllowModify)) {
-        return;
-    }
-    stopClickNumbering();
-    if (auto *view = workspaceActivePageView()) view->finishOcrWordEditing();
-    const int index = workspaceActivePageNumber();
-    const auto size = m_document->pageSizeInPoints(index);
-    if (size.isEmpty()) return;
-    const double longestEdge = 2048.0;
-    const int dpi = int(std::min(216.0, longestEdge * 72.0 / std::max(size.width(), size.height())));
-    if (dpi < 1) {
-        KMessageBox::information(widget(), i18n("This page is too large for whole-page AI analysis."));
-        return;
-    }
-    QScopedValueRollback<bool> generationGuard(m_generatingReadingViews, true);
-    QScopedValueRollback<bool> invalidationGuard(m_readingViewDetectionInvalidated, false);
-    QString error;
-    QList<OcrTextWord> previousWords;
-    if (!m_document->readOcrTextLayer(index, &previousWords, &error)) {
-        KMessageBox::information(widget(), error.isEmpty() ? i18n("Could not read the OCR layer.") : error);
-        return;
-    }
-    const QUrl documentUrl = url();
-    const auto *page = m_document->page(index);
-    const auto image = m_document->renderToImage(index, dpi, false, &error);
-    if (image.isNull()) {
-        KMessageBox::information(widget(), error);
-        return;
-    }
-    const auto regions = AiPageAnalysis::reviewOcr(widget(), index, image);
-    if (regions.isEmpty()) return;
-    if (m_readingViewDetectionInvalidated || url() != documentUrl || m_document->page(index) != page || m_document->pageSizeInPoints(index) != size) {
-        KMessageBox::information(widget(), i18n("The page changed during analysis. Run the analysis again."));
-        return;
-    }
-    QList<OcrTextWord> current;
-    if (!m_document->readOcrTextLayer(index, &current, &error) || current != previousWords) {
-        KMessageBox::information(widget(), i18n("The OCR layer changed during analysis. Run the analysis again."));
-        return;
-    }
-    QList<OcrTextWord> words;
-    for (const auto &region : regions) words.append({region.text, region.rectangle});
-    applyOcrTextLayerChange(index, previousWords, words);
-}
-
-void Part::generateReadingViews(bool useAi)
-{
-    if (m_generatingReadingViews || m_editingMode != EditingMode::Views || !canUsePageLevelEditing() || (useAi ? (!m_document->canRenderToImage() || !m_document->isAllowed(AllowCopy) || !m_document->isAllowed(AllowModify)) : !m_document->canGenerateReadingViews())) return;
+    const bool useAi = detector != ViewDetector::Local;
+    if (m_generatingReadingViews || m_editingMode != EditingMode::ContentRecognition || !canUsePageLevelEditing() || (useAi ? (!m_document->canRenderToImage() || !m_document->isAllowed(AllowCopy) || !m_document->isAllowed(AllowModify)) : !m_document->canGenerateReadingViews())) return;
     stopClickNumbering();
     // Keep the live backend alive until the worker has joined and the user has
     // accepted/rejected the batch. File reloads are deferred during this scope.
@@ -6290,19 +6468,29 @@ void Part::generateReadingViews(bool useAi)
     const int pageCount = int(m_document->pages());
     if (!pageCount) return;
     const int currentPage = qBound(0, workspaceActivePageNumber(), pageCount - 1);
-    const auto title = useAi ? i18n("AI Reading Views") : i18n("Auto-generate Reading Views");
-    QString layoutKey;
-    if (useAi) {
+    const auto title = (detector == ViewDetector::Chat ? m_chatReadingViews : useAi ? m_aiReadingViews : m_generateReadingViews)->text().remove(QChar(0x2026));
+    QString base, model, layoutKey;
+    bool glmLayout = false;
+    if (detector == ViewDetector::Glm) {
         GlmOcrSettings settings;
         settings.load();
-        layoutKey = settings.layoutApiKey();
+        glmLayout = settings.layoutProvider() == GlmOcrSettings::EnumLayoutProvider::ZhipuGlmOcr;
+        layoutKey = glmLayout ? settings.layoutApiKey() : settings.siliconFlowApiKey();
+        base = glmLayout ? m_glmOcrBaseUrl : AiPageAnalysis::siliconFlowBase;
+        model = glmLayout ? QStringLiteral("glm-ocr") : AiPageAnalysis::siliconFlowModel;
+    } else if (detector == ViewDetector::Chat) {
+        AiServiceSettings settings;
+        settings.load();
+        base = settings.baseUrl();
+        model = settings.modelId();
+        layoutKey = settings.apiKey();
     }
     QDialog dialog(widget());
     dialog.setWindowTitle(title);
     dialog.setObjectName(QStringLiteral("generateReadingViewsDialog"));
     auto *layout = new QVBoxLayout(&dialog);
     auto *description = new QLabel(useAi
-        ? i18n("Send images of the selected pages to GLM-OCR to detect reading regions. You can review the number of Views before applying them.")
+        ? i18n("Send images of the selected pages to %1 (%2) to detect reading regions. Review the results before applying them.", QUrl(base).host(), model)
         : i18n("Detect page regions locally and create editable Views. Detection can be imperfect; you can adjust the ranges and numbers afterwards. PDF content and annotations are not changed."), &dialog);
     description->setWordWrap(true);
     layout->addWidget(description);
@@ -6335,8 +6523,11 @@ void Part::generateReadingViews(bool useAi)
     layout->addWidget(note);
     auto *buttons = new QDialogButtonBox(QDialogButtonBox::Cancel, &dialog);
     auto *generate = buttons->addButton(useAi ? i18n("Send and generate") : i18nc("@action:button", "Generate"), QDialogButtonBox::AcceptRole);
-    if (useAi && layoutKey.trimmed().isEmpty()) {
-        description->setText(i18n("Enter your Zhipu API key in OCR and Layout Services settings."));
+    if (detector == ViewDetector::Glm && layoutKey.trimmed().isEmpty()) {
+        description->setText(i18n("Enter the selected provider’s API key in OCR and Layout Services settings."));
+        generate->setEnabled(false);
+    } else if (detector == ViewDetector::Chat && (base.trimmed().isEmpty() || model.trimmed().isEmpty())) {
+        description->setText(i18n("Set the model and API base URL in General AI settings."));
         generate->setEnabled(false);
     }
     layout->addWidget(buttons);
@@ -6401,17 +6592,24 @@ void Part::generateReadingViews(bool useAi)
             }
             const auto image = m_document->renderToImage(page, dpi, false, &error);
             if (image.isNull()) break;
-            auto *reply = AiPageAnalysis::requestLayout(network, m_glmOcrBaseUrl, layoutKey, image, error);
+            auto *reply = glmLayout ? AiPageAnalysis::requestLayout(network, base, layoutKey, image, error)
+                                                       : detector == ViewDetector::Glm ? AiPageAnalysis::requestSiliconFlowOcr(network, layoutKey, image, AiPageAnalysis::SiliconTask::Views, error)
+                                                       : AiPageAnalysis::requestChatViews(network, base, model, layoutKey, image, error);
             if (!reply) break;
             QEventLoop wait;
             connect(reply, &QNetworkReply::finished, &wait, &QEventLoop::quit);
             connect(&progress, &QProgressDialog::canceled, reply, &QNetworkReply::abort);
             if (!reply->isFinished()) wait.exec();
             if (progress.wasCanceled()) break;
-            const auto response = AiChat::response(reply, error);
+            QList<AiPageAnalysis::Region> regions;
+            if (glmLayout) {
+                const auto response = AiChat::response(reply, error);
+                if (error.isEmpty()) regions = AiPageAnalysis::layoutViews(response, error);
+            } else {
+                const auto answer = AiChat::answer(reply, error);
+                if (error.isEmpty()) regions = detector == ViewDetector::Glm ? AiPageAnalysis::siliconRegions(answer, true, error) : AiPageAnalysis::chatRegions(answer, error, false);
+            }
             reply->deleteLater();
-            if (!error.isEmpty()) break;
-            const auto regions = AiPageAnalysis::layoutViews(response, error);
             if (!error.isEmpty()) break;
             auto &rectangles = result.rectangles[page];
             for (const auto &region : regions) {
@@ -6482,6 +6680,25 @@ void Part::generateReadingViews(bool useAi)
         KMessageBox::information(widget(), i18n("No page regions were detected. No changes were made."));
         return;
     }
+    if (!reviewGeneratedViews(batch, count, replaced, title, documentUrl)) return;
+    // The confirmation itself runs an event loop; revalidate after it closes.
+    if (m_readingViewDetectionInvalidated || url() != documentUrl || int(m_document->pages()) != pageCount) {
+        KMessageBox::information(widget(), i18n("The document changed during detection. No Views were applied."));
+        return;
+    }
+    for (int page : requested) {
+        const auto previous = m_document->readingViews(page, &error);
+        if (!error.isEmpty() || previous != original.value(page)) {
+            KMessageBox::information(widget(), i18n("The Views changed during detection. No generated Views were applied."));
+            return;
+        }
+    }
+    if (!commitReadingViewBatch(batch, i18nc("Undo action", "Auto-generate Reading Views"), &error))
+        KMessageBox::information(widget(), error.isEmpty() ? i18n("Could not apply the generated Views.") : error);
+}
+
+bool Part::reviewGeneratedViews(const QList<QPair<int, QList<Okular::ReadingView>>> &batch, int count, int replaced, const QString &title, const QUrl &documentUrl)
+{
     QDialog confirm(widget());
     confirm.setObjectName(QStringLiteral("confirmReadingViewsDialog"));
     confirm.setWindowTitle(title);
@@ -6528,21 +6745,7 @@ void Part::generateReadingViews(bool useAi)
     connect(reviewButtons, &QDialogButtonBox::accepted, &confirm, &QDialog::accept);
     connect(reviewButtons, &QDialogButtonBox::rejected, &confirm, &QDialog::reject);
     reviewLayout->addWidget(reviewButtons);
-    if (confirm.exec() != QDialog::Accepted) return;
-    // The confirmation itself runs an event loop; revalidate after it closes.
-    if (m_readingViewDetectionInvalidated || url() != documentUrl || int(m_document->pages()) != pageCount) {
-        KMessageBox::information(widget(), i18n("The document changed during detection. No Views were applied."));
-        return;
-    }
-    for (int page : requested) {
-        const auto previous = m_document->readingViews(page, &error);
-        if (!error.isEmpty() || previous != original.value(page)) {
-            KMessageBox::information(widget(), i18n("The Views changed during detection. No generated Views were applied."));
-            return;
-        }
-    }
-    if (!commitReadingViewBatch(batch, i18nc("Undo action", "Auto-generate Reading Views"), &error))
-        KMessageBox::information(widget(), error.isEmpty() ? i18n("Could not apply the generated Views.") : error);
+    return confirm.exec() == QDialog::Accepted;
 }
 
 void Part::refreshReadingViews()
@@ -6562,7 +6765,7 @@ void Part::refreshReadingViews()
 
 bool Part::commitReadingViews(int pageNumber, const QList<Okular::ReadingView> &views, const QString &undoText)
 {
-    if (m_editingMode != EditingMode::Views || !canUsePageLevelEditing() || !m_document->canEditReadingViews() || pageNumber < 0 || pageNumber >= int(m_document->pages())) {
+    if (m_editingMode != EditingMode::ContentRecognition || !canUsePageLevelEditing() || !m_document->canEditReadingViews() || pageNumber < 0 || pageNumber >= int(m_document->pages())) {
         return false;
     }
     QString error;
@@ -6604,7 +6807,7 @@ bool Part::commitReadingViews(int pageNumber, const QList<Okular::ReadingView> &
 
 void Part::addReadingView(int pageNumber, const QRectF &displayRectangle)
 {
-    if (m_editingMode != EditingMode::Views || !canUsePageLevelEditing() || !m_document->canEditReadingViews()) {
+    if (m_editingMode != EditingMode::ContentRecognition || !canUsePageLevelEditing() || !m_document->canEditReadingViews()) {
         return;
     }
     QString error;
@@ -6626,7 +6829,7 @@ void Part::addReadingView(int pageNumber, const QRectF &displayRectangle)
 
 bool Part::addReadingViewWithNumber(int pageNumber, const QRectF &displayRectangle, int number)
 {
-    if (m_editingMode != EditingMode::Views || !canUsePageLevelEditing() || !m_document->canEditReadingViews()
+    if (m_editingMode != EditingMode::ContentRecognition || !canUsePageLevelEditing() || !m_document->canEditReadingViews()
         || pageNumber < 0 || pageNumber >= int(m_document->pages()) || number <= 0 || !displayRectangle.isValid()) {
         return false;
     }
@@ -6646,7 +6849,7 @@ bool Part::addReadingViewWithNumber(int pageNumber, const QRectF &displayRectang
 
 void Part::editReadingViewNumber(int pageNumber, const QString &id)
 {
-    if (m_editingMode != EditingMode::Views || !canUsePageLevelEditing() || !m_document->canEditReadingViews()) {
+    if (m_editingMode != EditingMode::ContentRecognition || !canUsePageLevelEditing() || !m_document->canEditReadingViews()) {
         return;
     }
     QString error;
@@ -6671,7 +6874,7 @@ void Part::editReadingViewNumber(int pageNumber, const QString &id)
 
 void Part::deleteReadingView(int pageNumber, const QString &id)
 {
-    if (m_editingMode != EditingMode::Views || !canUsePageLevelEditing() || !m_document->canEditReadingViews()) {
+    if (m_editingMode != EditingMode::ContentRecognition || !canUsePageLevelEditing() || !m_document->canEditReadingViews()) {
         return;
     }
     QString error;
@@ -6688,7 +6891,7 @@ void Part::deleteReadingView(int pageNumber, const QString &id)
 
 void Part::changeReadingViewRectangle(int pageNumber, const QString &id, const QRectF &displayRectangle)
 {
-    if (m_editingMode != EditingMode::Views || !canUsePageLevelEditing() || !m_document->canEditReadingViews()
+    if (m_editingMode != EditingMode::ContentRecognition || !canUsePageLevelEditing() || !m_document->canEditReadingViews()
         || pageNumber < 0 || pageNumber >= int(m_document->pages()) || !displayRectangle.isValid()) {
         return;
     }
@@ -8511,6 +8714,7 @@ KConfigDialog *Part::realSlotPreferences()
     // Create dialog
     PreferencesDialog *dialog = new PreferencesDialog(m_pageView, Okular::Settings::self(), m_embedMode, m_document->editorCommandOverride());
     m_document->fillConfigDialog(dialog);
+    connect(dialog, &KConfigDialog::settingsChanged, this, &Part::updateOcrServiceAction);
 
     dialog->setAttribute(Qt::WA_DeleteOnClose);
 
@@ -8535,6 +8739,7 @@ void Part::slotAccessibilityPreferences()
     // Create dialog
     PreferencesDialog *dialog = new PreferencesDialog(m_pageView, Okular::Settings::self(), m_embedMode, m_document->editorCommandOverride());
     m_document->fillConfigDialog(dialog);
+    connect(dialog, &KConfigDialog::settingsChanged, this, &Part::updateOcrServiceAction);
 
     dialog->setAttribute(Qt::WA_DeleteOnClose);
 
@@ -8548,6 +8753,7 @@ void Part::slotAnnotationPreferences()
     // Create dialog
     PreferencesDialog *dialog = new PreferencesDialog(m_pageView, Okular::Settings::self(), m_embedMode, m_document->editorCommandOverride());
     m_document->fillConfigDialog(dialog);
+    connect(dialog, &KConfigDialog::settingsChanged, this, &Part::updateOcrServiceAction);
 
     dialog->setAttribute(Qt::WA_DeleteOnClose);
 

@@ -6,6 +6,7 @@
 #include <KSharedConfig>
 #include <QAction>
 #include <QApplication>
+#include <QCheckBox>
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QElapsedTimer>
@@ -41,12 +42,25 @@ private Q_SLOTS:
         QTest::newRow("reading-order") << false << false << true;
         QTest::newRow("reject-generated-views") << false << true << true;
         QTest::newRow("reading-order-no-key") << false << false << false;
+        QTest::newRow("content-mathpix-both") << true << false << true;
+        QTest::newRow("content-mathpix-views") << true << false << true;
+        QTest::newRow("content-glm-both") << true << false << true;
+        QTest::newRow("content-glm-views") << true << false << true;
         QTest::newRow("ocr-word") << true << false << true;
+        QTest::newRow("mathpix-ocr") << true << false << true;
+        QTest::newRow("dedicated-ocr") << true << false << true;
+        QTest::newRow("chat-views") << false << false << true;
         QTest::newRow("invalid-box") << true << true << true;
     }
 
     void analyzePage()
     {
+        const QByteArray tag(QTest::currentDataTag());
+        const bool unified = tag.startsWith("content-");
+        const bool viewsOnly = unified && tag.endsWith("-views");
+        const bool mathpix = tag.contains("mathpix");
+        const bool dedicatedOcr = unified || mathpix || QByteArray(QTest::currentDataTag()) == "dedicated-ocr";
+        const bool chatViews = QByteArray(QTest::currentDataTag()) == "chat-views";
         QFETCH(bool, ocr);
         QFETCH(bool, invalid);
         QFETCH(bool, layoutKeySet);
@@ -58,19 +72,24 @@ private Q_SLOTS:
         KConfigGroup ai(config, QStringLiteral("Service"));
         ai.writeEntry("BaseUrl", QStringLiteral("http://127.0.0.1:%1/v1").arg(server.serverPort()));
         ai.writeEntry("ModelId", QStringLiteral("fixture"));
+        ai.writeEntry("UseMathpixForOcr", mathpix);
+        ai.writeEntry("MathpixAppId", QStringLiteral("fixture-app"));
         ai.sync();
-        QString chatKey, layoutKey;
+        QString chatKey, layoutKey, mathpixKey;
         KCoreConfigSkeleton keys(config);
         keys.setCurrentGroup(QStringLiteral("Service"));
         keys.addItemPassword(QStringLiteral("ApiKey"), chatKey);
         keys.addItemPassword(QStringLiteral("LayoutApiKey"), layoutKey);
+        keys.addItemPassword(QStringLiteral("MathpixAppKey"), mathpixKey);
+        mathpixKey = QStringLiteral("fixture-mathpix-key");
         chatKey = QStringLiteral("test-chat-token");
         layoutKey = layoutKeySet ? QStringLiteral("test-layout-token") : QString();
         QVERIFY(keys.save());
 
+        const QString replay = mathpix && !unified ? qEnvironmentVariable("MENGSHEE_TEST_MATHPIX_FIXTURE") : QString();
         int requests = 0;
         bool validRequest = false;
-        const auto content = invalid ? R"({"items":[{"box":[200,0,100,500],"text":"bad"}]})" : ocr ? R"({"items":[{"box":[50,100,450,150],"text":"示例"}]})" : R"({"items":[{"box":[500,100,950,900]},{"box":[50,100,450,900]}]})";
+        const auto content = invalid ? R"({"items":[{"box":[200,0,100,500],"text":"bad"}]})" : ocr ? R"({"items":[{"box":[50,100,450,150],"text":"示例 test"}]})" : R"({"items":[{"box":[500,100,950,900]},{"box":[50,100,450,900]}]})";
         connect(&server, &QTcpServer::newConnection, this, [&] {
             auto *socket = server.nextPendingConnection();
             connect(socket, &QTcpSocket::readyRead, socket, [&, socket, body = QByteArray()]() mutable {
@@ -84,11 +103,21 @@ private Q_SLOTS:
                 ++requests;
                 QString dataUrl;
                 QJsonObject response;
-                if (ocr) {
+                if (mathpix) {
+                    dataUrl = root.value(QStringLiteral("src")).toString();
+                    validRequest = body.startsWith("POST /v3/text ") && root.value(QStringLiteral("enable_document_layout")).toBool();
+                    if (!replay.isEmpty()) {
+                        QFile fixture(replay + QStringLiteral(".json"));
+                        QVERIFY(fixture.open(QIODevice::ReadOnly));
+                        response = QJsonDocument::fromJson(fixture.readAll()).object();
+                    } else {
+                        response = QJsonDocument::fromJson(R"json({"lines_json":{"page_width":1000,"page_height":1000,"lines":[{"text":"","type":"abstract"},{"text":"Re\u0000sult\r\n\\(\tK \\)","text_display":"WRONG","cnt":[[50,100],[450,100],[450,150],[50,150]]}]}})json").object();
+                    }
+                } else if ((ocr && !dedicatedOcr) || chatViews) {
                     const auto parts = root[QStringLiteral("messages")].toArray().first().toObject()[QStringLiteral("content")].toArray();
                     dataUrl = parts.last().toObject()[QStringLiteral("image_url")].toObject()[QStringLiteral("url")].toString();
                     validRequest = body.startsWith("POST /v1/chat/completions ") && root[QStringLiteral("model")].toString() == QStringLiteral("fixture");
-                    const QJsonObject message {{QStringLiteral("content"), QString::fromUtf8(content)}};
+                    const QJsonObject message {{QStringLiteral("content"), chatViews ? QStringLiteral(R"({"items":[{"box":[50,100,450,300]},{"box":[530,100,950,300]},{"box":[50,340,950,620]},{"box":[50,660,450,900]},{"box":[530,660,950,900]}]})") : QString::fromUtf8(content)}};
                     response.insert(QStringLiteral("choices"), QJsonArray {QJsonObject {{QStringLiteral("message"), message}}});
                 } else {
                     dataUrl = root.value(QStringLiteral("file")).toString();
@@ -98,12 +127,18 @@ private Q_SLOTS:
                         blocks.append(QJsonObject {{QStringLiteral("width"), 1000}, {QStringLiteral("height"), 1000}, {QStringLiteral("bbox_2d"), box}, {QStringLiteral("label"), QStringLiteral("text")}});
                     }
                     QJsonArray pages;
+                    if (dedicatedOcr) {
+                        blocks = QJsonArray{QJsonObject{{QStringLiteral("width"), 1000}, {QStringLiteral("height"), 1000}, {QStringLiteral("label"), QStringLiteral("text")},
+                            {QStringLiteral("content"), QStringLiteral("<p>示<b>例</b></p><p>第二行</p>")}, {QStringLiteral("bbox_2d"), QJsonArray{50,100,450,150}}}};
+                    }
                     pages.append(blocks);
                     response.insert(QStringLiteral("layout_details"), pages);
                 }
                 const auto headers = body.first(headerEnd).toLower();
-                const QByteArray expectedKey = ocr ? "test-chat-token" : "test-layout-token";
-                if (ocr || layoutKeySet)
+                const QByteArray expectedKey = ((ocr && !dedicatedOcr) || chatViews) ? "test-chat-token" : "test-layout-token";
+                if (mathpix)
+                    validRequest &= headers.contains("app_id: fixture-app") && headers.contains("app_key: fixture-mathpix-key") && !headers.contains("authorization:");
+                else if (ocr || layoutKeySet)
                     validRequest &= headers.contains(QByteArray("authorization: bearer ").append(expectedKey));
                 else
                     validRequest &= !headers.contains("authorization:");
@@ -119,20 +154,21 @@ private Q_SLOTS:
             QPdfWriter writer(file);
             QPainter painter(&writer);
             painter.drawText(100, 500, QStringLiteral("AI test"));
-            if (!ocr) {
+            if (!ocr || mathpix) {
                 QVERIFY(writer.newPage());
                 painter.drawText(100, 500, QStringLiteral("Second page"));
             }
         }
         Part part(nullptr, {});
         part.m_glmOcrBaseUrl = ai.readEntry("BaseUrl", QString());
-        QVERIFY(part.openUrl(QUrl::fromLocalFile(file)));
+        part.m_mathpixBaseUrl = QStringLiteral("http://127.0.0.1:%1").arg(server.serverPort());
+        QVERIFY(part.openUrl(QUrl::fromLocalFile(replay.isEmpty() ? file : replay + QStringLiteral(".pdf"))));
         auto *doc = part.m_document;
         const QImage before = doc->renderToImage(0, 72, false);
         QVERIFY(!before.isNull());
         doc->setRotation(Rotation90);
-        part.setEditingMode(ocr ? EditingMode::Ocr : EditingMode::Views);
-        auto *action = part.actionCollection()->action(ocr ? QStringLiteral("advanced_ai_ocr") : QStringLiteral("view_ai_reading_views"));
+        part.setEditingMode(EditingMode::ContentRecognition);
+        auto *action = part.actionCollection()->action(unified ? QStringLiteral("recognize_content") : dedicatedOcr ? QStringLiteral("advanced_glm_ocr") : chatViews ? QStringLiteral("view_chat_reading_views") : ocr ? QStringLiteral("advanced_ai_ocr") : QStringLiteral("view_ai_reading_views"));
         QVERIFY(action && action->isEnabled() && action->isVisible());
         bool sent = false, applied = false, missingKeyBlocked = false;
         QTimer drive;
@@ -149,6 +185,12 @@ private Q_SLOTS:
             auto *buttons = dialog->findChild<QDialogButtonBox *>();
             if (!buttons)
                 return;
+            if (unified && dialog->objectName() == QStringLiteral("confirmReadingViewsDialog")) {
+                QVERIFY(doc->readingViews(0).isEmpty());
+                applied = true;
+                dialog->accept();
+                return;
+            }
             if (!ocr) {
                 if (dialog->objectName() == QStringLiteral("generateReadingViewsDialog")) {
                     auto *all = dialog->findChild<QRadioButton *>(QStringLiteral("generateViewsAllPages"));
@@ -177,6 +219,34 @@ private Q_SLOTS:
                         dialog->accept();
                     }
                 }
+                return;
+            }
+            if (dialog->objectName() == QStringLiteral("recognizeTextDialog")) {
+                if (unified) {
+                    auto *engines = dialog->findChild<QComboBox *>(QStringLiteral("recognitionEngine"));
+                    engines->setCurrentText(mathpix ? QStringLiteral("Mathpix") : QStringLiteral("GLM-OCR"));
+                    auto *text = dialog->findChild<QCheckBox *>(QStringLiteral("recognitionTextOutput"));
+                    QVERIFY(!text->isChecked()); // Native text on the fixture page.
+                    QVERIFY(dialog->findChild<QCheckBox *>(QStringLiteral("recognitionViewOutput"))->isChecked());
+                    text->setChecked(!viewsOnly);
+                    dialog->findChild<QCheckBox *>(QStringLiteral("skipRecognizedText"))->setChecked(false);
+                    sent = true;
+                    dialog->accept();
+                    return;
+                }
+                const auto options = dialog->findChildren<QCheckBox *>();
+                auto skip = std::find_if(options.begin(), options.end(), [](QCheckBox *box) { return box->isVisible() && box->isChecked(); });
+                QVERIFY(skip != options.end());
+                (*skip)->setChecked(false);
+                options.last()->setChecked(!mathpix);
+                if (mathpix && replay.isEmpty()) dialog->findChild<QRadioButton *>()->setChecked(true);
+                sent = true;
+                applied = mathpix;
+                dialog->accept();
+                return;
+            }
+            if (invalid && validRequest) {
+                dialog->accept();
                 return;
             }
             for (auto *button : buttons->buttons()) {
@@ -211,26 +281,53 @@ private Q_SLOTS:
             return;
         }
         QVERIFY(validRequest);
-        QCOMPARE(requests, ocr ? 1 : 2);
+        QCOMPARE(requests, unified ? 1 : (ocr && (!mathpix || !replay.isEmpty())) ? 1 : 2);
         QCOMPARE(applied, !invalid);
         QList<OcrTextWord> words;
         QString error;
         QVERIFY(doc->readOcrTextLayer(0, &words, &error));
+        if (!replay.isEmpty()) {
+            QVERIFY(!words.isEmpty());
+            QVERIFY(doc->saveChanges(replay + QStringLiteral("-searchable.pdf"), &error));
+            QCOMPARE(doc->renderToImage(0, 72, false), before);
+            return;
+        }
         if (invalid) {
             QVERIFY(words.isEmpty());
             if (!ocr) QVERIFY(doc->readingViews(1).isEmpty());
             QVERIFY(!doc->canUndo());
             return;
         }
+        if (unified) {
+            QVERIFY(!doc->readingViews(0).isEmpty());
+            QCOMPARE(words.isEmpty(), viewsOnly);
+            QCOMPARE(doc->renderToImage(0, 72, false), before);
+            QVERIFY(doc->canUndo());
+            doc->undo();
+            QVERIFY(doc->readingViews(0).isEmpty());
+            QVERIFY(doc->readOcrTextLayer(0, &words, &error));
+            QVERIFY(words.isEmpty());
+            return;
+        }
         if (ocr) {
-            QCOMPARE(words.size(), 1);
-            QCOMPARE(words.first().text, QStringLiteral("示例"));
+            QCOMPARE(words.size(), dedicatedOcr && !mathpix ? 2 : 1);
             const QRectF expected(QPointF(.05, .1), QPointF(.45, .15));
             const auto actual = words.first().rectangle;
             // The embedded fallback font rounds its metrics. Allow 1/20 of a unit on the OCR service's 1000-unit grid.
             constexpr double tolerance = 0.05 / 1000;
-            QVERIFY2(actual.adjusted(-tolerance, -tolerance, tolerance, tolerance).contains(expected), qPrintable(QDebug::toString(actual)));
-            QVERIFY(expected.adjusted(-tolerance, -tolerance, tolerance, tolerance).contains(actual));
+            if (mathpix) {
+                QCOMPARE(words.first().text, QStringLiteral("Result \\( K \\)"));
+                QVERIFY(actual.adjusted(-tolerance,-tolerance,tolerance,tolerance).contains(expected));
+            } else if (dedicatedOcr) {
+                QCOMPARE(words.first().text, QStringLiteral("示例"));
+                QCOMPARE(words.last().text, QStringLiteral("第二行"));
+                QVERIFY(actual.height() < expected.height() * .7);
+                QVERIFY(words.last().rectangle.top() > actual.top());
+            } else {
+                QCOMPARE(words.first().text, QStringLiteral("示例 test"));
+                QVERIFY2(actual.adjusted(-tolerance, -tolerance, tolerance, tolerance).contains(expected), qPrintable(QDebug::toString(actual)));
+                QVERIFY(expected.adjusted(-tolerance, -tolerance, tolerance, tolerance).contains(actual));
+            }
             QCOMPARE(doc->renderToImage(0, 72, false), before);
         } else {
             QCOMPARE(doc->readingViews(1).size(), 5);
@@ -243,8 +340,18 @@ private Q_SLOTS:
             QVERIFY(views[3].rectangle.right < views[4].rectangle.left);
             QCOMPARE(views[1].number, 2);
         }
+        if (mathpix) {
+            QList<OcrTextWord> second;
+            QVERIFY(doc->readOcrTextLayer(1, &second, &error));
+            QCOMPARE(second.size(), 1);
+        }
         QVERIFY(doc->canUndo());
         doc->undo();
+        if (mathpix) {
+            QList<OcrTextWord> second;
+            QVERIFY(doc->readOcrTextLayer(1, &second, &error));
+            QVERIFY(second.isEmpty());
+        }
         if (!ocr) QVERIFY(doc->readingViews(1).isEmpty());
         QVERIFY(doc->readingViews(0).isEmpty());
         QVERIFY(doc->readOcrTextLayer(0, &words, &error));

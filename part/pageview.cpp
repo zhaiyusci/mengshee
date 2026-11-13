@@ -931,6 +931,7 @@ bool PageView::isOcrTextEditing() const
 bool PageView::startOcrTextEditing(int pageNumber)
 {
     if (!d->ocrModeEnabled) return false;
+    setClickNumberingTarget(ClickNumberingTarget::None);
     cancelReadingViewCreation();
     stopOcrTextEditing();
     if (!d->document->readOcrTextLayer(pageNumber, &d->ocrWords, nullptr)) {
@@ -6568,7 +6569,18 @@ void PageView::drawDocumentOnPainter(const QRect contentsRect, QPainter *p, bool
                     font.setPixelSize(qMax(1, qRound(placement.fontSize * item->uncroppedHeight())));
                     p->setFont(font);
                     p->setPen(Qt::black);
-                    p->drawText(QPointF(rect.left(), origin.y() + placement.baseline * item->uncroppedHeight()), word.text);
+                    const QFontMetricsF metrics(font, p->device());
+                    const QRectF ink = metrics.tightBoundingRect(word.text);
+                    if (!ink.isEmpty() && !rect.isEmpty()) {
+                        const double sx = std::min(1.0, rect.width() / ink.width());
+                        const double sy = std::min(1.0, rect.height() / ink.height());
+                        const double baseline = std::clamp(origin.y() + placement.baseline * item->uncroppedHeight(),
+                                                           rect.top() - ink.top() * sy, std::max(rect.top() - ink.top() * sy, rect.bottom() - ink.bottom() * sy));
+                        p->setClipRect(rect, Qt::IntersectClip);
+                        p->translate(rect.left() - ink.left() * sx, baseline);
+                        p->scale(sx, sy);
+                        p->drawText(QPointF(), word.text);
+                    }
                     p->restore();
                     p->setPen(QColor(0, 120, 212, 65));
                     p->drawRect(rect);

@@ -341,7 +341,7 @@ private Q_SLOTS:
         MuPDFGenerator backend(nullptr, {});
         QList<Okular::Page *> pages;
         QCOMPARE(backend.loadDocumentWithPassword(sample(), pages, {}), Okular::Document::OpenSuccess);
-        QList<Okular::OcrTextWord> words {{QStringLiteral("first"), QRectF(.1, .3, .2, .04)}, {QStringLiteral("untouched"), QRectF(.4, .3, .3, .04)}};
+        QList<Okular::OcrTextWord> words {{QStringLiteral("first"), QRectF(.1, .3, .2, .04)}, {QStringLiteral("one full line"), QRectF(.4, .3, .3, .04)}};
         QString error;
         const auto original = backend.renderToImage(0, 144, false);
         for (int i = 0; i < 5; ++i) {
@@ -367,6 +367,41 @@ private Q_SLOTS:
         compareOcrWords(actual, words);
         qDeleteAll(pages);
         qDeleteAll(fresh);
+    }
+    void importedScanTranscript()
+    {
+        const QString input = qEnvironmentVariable("MENGSHEE_TEST_SCAN_TRANSCRIPT");
+        if (input.isEmpty()) QSKIP("Set MENGSHEE_TEST_SCAN_TRANSCRIPT to a searchable scan with text beneath its image.");
+        MuPDFGenerator backend(nullptr, {});
+        QList<Okular::Page *> pages;
+        QCOMPARE(backend.loadDocumentWithPassword(input, pages, {}), Okular::Document::OpenSuccess);
+        QString error;
+        for (int page = 0; page < pages.size(); ++page) {
+            QList<Okular::OcrTextWord> words;
+            QVERIFY2(backend.readOcrTextLayer(page, &words, &error), qPrintable(error));
+            QVERIFY2(!words.isEmpty(), qPrintable(QString::number(page + 1)));
+            if (page > 1) continue;
+            const auto original = backend.renderToImage(page, 96, false);
+            words.first().text = QStringLiteral("Correction");
+            QVERIFY2(backend.replaceOcrTextLayer(page, words, &error), qPrintable(error));
+            QCOMPARE(backend.renderToImage(page, 96, false), original);
+            QList<Okular::OcrTextWord> edited;
+            QVERIFY2(backend.readOcrTextLayer(page, &edited, &error), qPrintable(error));
+            QVERIFY(std::any_of(edited.begin(), edited.end(), [](const auto &w) { return w.text == QStringLiteral("Correction"); }));
+        }
+        const auto saved = m_directory.filePath(QStringLiteral("edited-searchable-scan.pdf"));
+        QVERIFY2(backend.save(saved, Okular::SaveInterface::SaveChanges, &error), qPrintable(error));
+        MuPDFGenerator reopened(nullptr, {});
+        QList<Okular::Page *> fresh;
+        QCOMPARE(reopened.loadDocumentWithPassword(saved, fresh, {}), Okular::Document::OpenSuccess);
+        for (int page = 0; page < std::min<qsizetype>(2, fresh.size()); ++page) {
+            QList<Okular::OcrTextWord> words;
+            QVERIFY2(reopened.readOcrTextLayer(page, &words, &error), qPrintable(error));
+            QCOMPARE(std::count_if(words.cbegin(), words.cend(), [](const auto &w) { return w.text == QStringLiteral("Correction"); }), 1);
+            QCOMPARE(reopened.renderToImage(page, 96, false), backend.renderToImage(page, 96, false));
+        }
+        qDeleteAll(fresh);
+        qDeleteAll(pages);
     }
     void ocrSnapshotTemporaryFiles()
     {

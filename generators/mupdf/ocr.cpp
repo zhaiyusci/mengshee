@@ -5,6 +5,7 @@
 #include <QFileInfo>
 #include <QMutex>
 #include <QScopeGuard>
+#include <QSet>
 #include <QStandardPaths>
 #include <algorithm>
 #include <core/page.h>
@@ -24,6 +25,194 @@ QMutex ocrAllocatorMutex;
 #endif
 #endif
 
+namespace
+{
+// Retain the boundary of each invisible text object, including objects which
+// share a baseline. MuPDF can otherwise merge them into one structured line.
+struct OcrBoundaryDevice {
+    fz_device super;
+    fz_stext_page *page;
+    QSet<const fz_stext_char *> *ends;
+};
+
+void recordOcrText(fz_context *ctx, fz_device *device, const fz_text *text, fz_matrix matrix)
+{
+    auto *tracker = reinterpret_cast<OcrBoundaryDevice *>(device);
+    fz_ignore_text(ctx, device->passthrough, text, matrix);
+    auto *block = tracker->page->last_block;
+    if (block && block->type == FZ_STEXT_BLOCK_TEXT && block->u.t.last_line)
+        tracker->ends->insert(block->u.t.last_line->last_char);
+}
+
+// Some scanned PDFs paint the searchable transcript first and then cover it
+// with opaque page-wide image strips. Recognize only an isolated text prefix
+// followed by a complete scan. Keep every later drawing operation intact.
+struct ScanTranscript {
+    int stream = -1;
+    int64_t end = 0;
+};
+
+fz_rect transcriptInk(fz_context *ctx, pdf_page *page, pdf_obj *stream, int64_t length)
+{
+    fz_rect ink = fz_empty_rect;
+    auto *device = fz_new_bbox_device(ctx, &ink);
+    pdf_processor *proc = nullptr;
+    fz_buffer *prefix = nullptr;
+    fz_stream *input = nullptr;
+    fz_var(proc);
+    fz_var(prefix);
+    fz_var(input);
+    fz_try(ctx) {
+        input = pdf_open_stream(ctx, stream);
+        prefix = fz_new_buffer(ctx, length);
+        fz_resize_buffer(ctx, prefix, length);
+        unsigned char *bytes;
+        fz_buffer_storage(ctx, prefix, &bytes);
+        if (fz_read(ctx, input, bytes, length) != size_t(length))
+            fz_throw(ctx, FZ_ERROR_FORMAT, "Truncated scan transcript");
+        prefix->len = length;
+        proc = pdf_new_run_processor(ctx, page->doc, device, fz_identity, -1, "View", nullptr, nullptr, nullptr, nullptr, nullptr);
+        pdf_process_glyph(ctx, proc, page->doc, pdf_page_resources(ctx, page), prefix);
+        pdf_close_processor(ctx, proc);
+        fz_close_device(ctx, device);
+    }
+    fz_always(ctx) {
+        fz_drop_stream(ctx, input);
+        fz_drop_buffer(ctx, prefix);
+        pdf_drop_processor(ctx, proc);
+        fz_drop_device(ctx, device);
+    }
+    fz_catch(ctx) fz_rethrow(ctx);
+    return ink;
+}
+
+ScanTranscript scanTranscript(fz_context *ctx, pdf_page *page)
+{
+    auto *contents = pdf_page_contents(ctx, page);
+    auto *resources = pdf_page_resources(ctx, page);
+    if (!pdf_dict_get(ctx, resources, PDF_NAME(XObject)))
+        return {};
+    const bool array = pdf_is_array(ctx, contents);
+    const auto box = pdf_to_rect(ctx, pdf_dict_get_inheritable(ctx, page->obj, PDF_NAME(CropBox)));
+    const auto bounds = fz_is_empty_rect(box) ? pdf_to_rect(ctx, pdf_dict_get_inheritable(ctx, page->obj, PDF_NAME(MediaBox))) : box;
+    for (int i = 0; i < (array ? pdf_array_len(ctx, contents) : 1); ++i) {
+        auto *stream = array ? pdf_array_get(ctx, contents, i) : contents;
+        if (!pdf_is_stream(ctx, stream)) return {};
+        auto *input = pdf_open_stream(ctx, stream);
+        pdf_lexbuf lex;
+        pdf_lexbuf_init(ctx, &lex, PDF_LEXBUF_SMALL);
+        ScanTranscript result;
+        bool onlySave = true;
+        fz_try(ctx) {
+            QList<fz_matrix> stack;
+            QList<QPair<float, float>> strips;
+            fz_matrix matrix = fz_identity;
+            float operands[6] = {};
+            int count = 0;
+            QByteArray name;
+            int64_t groupStart = 0;
+            bool text = false, image = false;
+            for (;;) {
+                const auto start = fz_tell(ctx, input);
+                const auto token = pdf_lex(ctx, input, &lex);
+                if (token == PDF_TOK_EOF) break;
+                if (token != PDF_TOK_KEYWORD) onlySave = false;
+                if (token == PDF_TOK_INT || token == PDF_TOK_REAL) {
+                    if (count >= 6) break;
+                    operands[count++] = token == PDF_TOK_INT ? float(lex.i) : lex.f;
+                    continue;
+                }
+                if (token == PDF_TOK_NAME) { name = lex.scratch; continue; }
+                if (token == PDF_TOK_STRING) continue;
+                if (token != PDF_TOK_KEYWORD) { onlySave = false; break; }
+                const QByteArrayView op(lex.scratch);
+                if (op != "q") onlySave = false;
+                if (op == "q") {
+                    if (stack.isEmpty()) groupStart = start;
+                    stack.append(matrix);
+                } else if (op == "Q") {
+                    if (stack.isEmpty()) break;
+                    matrix = stack.takeLast();
+                } else if (op == "cm" && count == 6 && !stack.isEmpty()) {
+                    matrix = fz_concat({operands[0], operands[1], operands[2], operands[3], operands[4], operands[5]}, matrix);
+                } else if (op == "Do" && text && !stack.isEmpty()) {
+                    auto *obj = pdf_dict_gets(ctx, pdf_dict_get(ctx, resources, PDF_NAME(XObject)), name.constData());
+                    if (!pdf_name_eq(ctx, pdf_dict_get(ctx, obj, PDF_NAME(Subtype)), PDF_NAME(Image)) ||
+                        pdf_dict_get(ctx, obj, PDF_NAME(Mask)) || pdf_dict_get(ctx, obj, PDF_NAME(SMask)) ||
+                        pdf_dict_get_bool(ctx, obj, PDF_NAME(ImageMask)) || pdf_dict_get_int(ctx, obj, PDF_NAME(SMaskInData)) ||
+                        matrix.b != 0 || matrix.c != 0) break;
+                    const auto r = fz_transform_rect(fz_unit_rect, matrix);
+                    if (r.x0 > bounds.x0 + .05f || r.x1 < bounds.x1 - .05f) break;
+                    if (!image) result.end = groupStart;
+                    image = true;
+                    strips.append({r.y0, r.y1});
+                    // Accept sub-pixel rounding where image strips meet.
+                    std::sort(strips.begin(), strips.end());
+                    float y = bounds.y0;
+                    for (const auto &strip : strips) {
+                        if (strip.first > y + .001f) break;
+                        y = std::max(y, strip.second);
+                    }
+                    if (y >= bounds.y1 - 1.f) {
+                        const auto ink = transcriptInk(ctx, page, stream, result.end);
+                        if (!fz_is_empty_rect(ink) && ink.x0 >= r.x0 && ink.x1 <= r.x1 &&
+                            ink.y0 >= strips.first().first && ink.y1 <= y)
+                            result.stream = i;
+                        break;
+                    }
+                } else if (!image && !stack.isEmpty() && (op == "BT" || op == "ET" || op == "Tf" || op == "Td" || op == "Tm" || op == "TL" || op == "Tj")) {
+                    if (op == "Tj") text = true;
+                } else break;
+                count = 0;
+                name.clear();
+            }
+        }
+        fz_always(ctx) {
+            pdf_lexbuf_fin(ctx, &lex);
+            fz_drop_stream(ctx, input);
+        }
+        fz_catch(ctx) fz_rethrow(ctx);
+        if (result.stream >= 0) return result;
+        if (!onlySave) break;
+    }
+    return {};
+}
+
+// Insert the standard invisible rendering mode into genuine text objects.
+// The prefix has already been validated by scanTranscript; lexing avoids
+// mistaking a BT inside an escaped PDF string for an operator.
+fz_buffer *normalizedTranscript(fz_context *ctx, pdf_obj *stream, int64_t end)
+{
+    auto *data = pdf_load_stream(ctx, stream);
+    unsigned char *bytes;
+    const auto size = fz_buffer_storage(ctx, data, &bytes);
+    auto *input = fz_open_memory(ctx, bytes, end);
+    auto *output = fz_new_buffer(ctx, size);
+    pdf_lexbuf lex;
+    pdf_lexbuf_init(ctx, &lex, PDF_LEXBUF_SMALL);
+    fz_try(ctx) {
+        size_t copied = 0;
+        for (;;) {
+            const auto token = pdf_lex(ctx, input, &lex);
+            if (token == PDF_TOK_EOF) break;
+            if (token == PDF_TOK_KEYWORD && !strcmp(lex.scratch, "BT")) {
+                const size_t next = fz_tell(ctx, input);
+                fz_append_data(ctx, output, bytes + copied, next - copied);
+                fz_append_string(ctx, output, " 3 Tr ");
+                copied = next;
+            }
+        }
+        fz_append_data(ctx, output, bytes + copied, size - copied);
+    }
+    fz_always(ctx) {
+        pdf_lexbuf_fin(ctx, &lex);
+        fz_drop_stream(ctx, input);
+        fz_drop_buffer(ctx, data);
+    }
+    fz_catch(ctx) { fz_drop_buffer(ctx, output); fz_rethrow(ctx); }
+    return output;
+}
+}
 bool MuPDFGenerator::canPerformEnglishOcr() const
 {
 #if HAVE_TESSERACT
@@ -37,6 +226,7 @@ bool MuPDFGenerator::readOcrTextLayer(int index, QList<Okular::OcrTextWord> *wor
     if (!words)
         return false;
     words->clear();
+    QSet<const fz_stext_char *> ends;
     fz_stext_page *text = nullptr;
     fz_var(text);
     fz_device *device = nullptr;
@@ -52,7 +242,40 @@ bool MuPDFGenerator::readOcrTextLayer(int index, QList<Okular::OcrTextWord> *wor
                 auto *page = m_pages.at(index);
                 text = fz_new_stext_page(m_context, pdf_bound_page(m_context, page, FZ_CROP_BOX));
                 device = fz_new_stext_device(m_context, text, &options);
-                pdf_run_page_contents(m_context, page, device, fz_identity, nullptr);
+                auto *ctx = m_context;
+                auto *tracker = fz_new_derived_passthrough_device(ctx, device, OcrBoundaryDevice);
+                fz_drop_device(m_context, device);
+                device = &tracker->super;
+                tracker->page = text;
+                tracker->ends = &ends;
+                device->ignore_text = recordOcrText;
+                const auto transcript = scanTranscript(m_context, page);
+                if (transcript.stream < 0) {
+                    pdf_run_page_contents(m_context, page, device, fz_identity, nullptr);
+                } else {
+                    auto *contents = pdf_page_contents(m_context, page);
+                    fz_rect bounds;
+                    fz_matrix matrix;
+                    pdf_page_transform(m_context, page, &bounds, &matrix);
+                    auto *proc = pdf_new_run_processor(m_context, m_document, device, matrix, -1, "View", nullptr, nullptr, nullptr, nullptr, nullptr);
+                    fz_buffer *joined = nullptr;
+                    fz_var(joined);
+                    fz_try(m_context) {
+                        joined = fz_new_buffer(m_context, 1024);
+                        const bool array = pdf_is_array(m_context, contents);
+                        for (int i = 0; i < (array ? pdf_array_len(m_context, contents) : 1); ++i) {
+                            auto *stream = array ? pdf_array_get(m_context, contents, i) : contents;
+                            auto *buffer = i == transcript.stream ? normalizedTranscript(m_context, stream, transcript.end) : pdf_load_stream(m_context, stream);
+                            fz_append_buffer(m_context, joined, buffer);
+                            fz_drop_buffer(m_context, buffer);
+                            fz_append_byte(m_context, joined, 10);
+                        }
+                        pdf_process_glyph(m_context, proc, m_document, pdf_page_resources(m_context, page), joined);
+                        pdf_close_processor(m_context, proc);
+                    }
+                    fz_always(m_context) { pdf_drop_processor(m_context, proc); fz_drop_buffer(m_context, joined); }
+                    fz_catch(m_context) fz_rethrow(m_context);
+                }
                 fz_close_device(m_context, device);
                 const auto box = text->mediabox;
                 for (auto *block = text->first_block; block; block = block->next) {
@@ -65,7 +288,7 @@ bool MuPDFGenerator::readOcrTextLayer(int index, QList<Okular::OcrTextWord> *wor
                             if (word.isEmpty())
                                 return;
                             words->append(
-                                {word, QRectF(QPointF((bounds.x0 - box.x0) / (box.x1 - box.x0), (bounds.y0 - box.y0) / (box.y1 - box.y0)), QPointF((bounds.x1 - box.x0) / (box.x1 - box.x0), (bounds.y1 - box.y0) / (box.y1 - box.y0)))});
+                                {word.trimmed(), QRectF(QPointF((bounds.x0 - box.x0) / (box.x1 - box.x0), (bounds.y0 - box.y0) / (box.y1 - box.y0)), QPointF((bounds.x1 - box.x0) / (box.x1 - box.x0), (bounds.y1 - box.y0) / (box.y1 - box.y0)))});
                             word.clear();
                             bounds = fz_empty_rect;
                         };
@@ -74,13 +297,18 @@ bool MuPDFGenerator::readOcrTextLayer(int index, QList<Okular::OcrTextWord> *wor
                                 flush();
                                 continue;
                             }
-                            if (ch->c <= 32) {
+                            if (ch->c == ' ') {
+                                if (!word.isEmpty())
+                                    word += QLatin1Char(' ');
+                            } else if (ch->c < 32) {
                                 flush();
-                                continue;
+                            } else {
+                                const char32_t code = ch->c;
+                                word += QString::fromUcs4(&code, 1);
+                                bounds = fz_union_rect(bounds, fz_rect_from_quad(ch->quad));
                             }
-                            const char32_t code = ch->c;
-                            word += QString::fromUcs4(&code, 1);
-                            bounds = fz_union_rect(bounds, fz_rect_from_quad(ch->quad));
+                            if (ends.contains(ch))
+                                flush();
                         }
                         flush();
                     }
@@ -100,10 +328,19 @@ bool MuPDFGenerator::readOcrTextLayer(int index, QList<Okular::OcrTextWord> *wor
 }
 bool MuPDFGenerator::replaceOcrTextLayer(int index, const QList<Okular::OcrTextWord> &words, QString *error)
 {
-    for (const auto &word : words) {
-        if (!word.rectangle.isValid() || std::ranges::any_of(word.text, [](QChar c) { return c.isNull() || c.category() == QChar::Other_Control; })) {
+    for (qsizetype i = 0; i < words.size(); ++i) {
+        const auto &word = words[i];
+        if (!word.rectangle.isValid()) {
             if (error)
-                *error = QStringLiteral("OCR words require printable text and valid rectangles.");
+                *error = QStringLiteral("OCR region %1 has an invalid rectangle (%2, %3, %4 x %5).")
+                             .arg(i + 1).arg(word.rectangle.x()).arg(word.rectangle.y()).arg(word.rectangle.width()).arg(word.rectangle.height());
+            return false;
+        }
+        const auto control = std::ranges::find_if(word.text, [](QChar c) { return c.category() == QChar::Other_Control; });
+        if (control != word.text.end()) {
+            if (error)
+                *error = QStringLiteral("OCR region %1 contains control character U+%2.")
+                             .arg(i + 1).arg(QString::number(control->unicode(), 16).rightJustified(4, QLatin1Char('0')).toUpper());
             return false;
         }
     }
@@ -133,6 +370,21 @@ bool MuPDFGenerator::replaceOcrTextLayer(int index, const QList<Okular::OcrTextW
             auto *previousResources = pdf_keep_obj(m_context, pdf_dict_get(m_context, page->obj, PDF_NAME(Resources)));
             fz_try(m_context)
             {
+                const auto transcript = scanTranscript(m_context, page);
+                if (transcript.stream >= 0) {
+                    const bool array = pdf_is_array(m_context, previousContents);
+                    auto *old = array ? pdf_array_get(m_context, previousContents, transcript.stream) : previousContents;
+                    auto *buffer = normalizedTranscript(m_context, old, transcript.end);
+                    auto *stream = pdf_add_stream(m_context, m_document, buffer, nullptr, 0);
+                    fz_drop_buffer(m_context, buffer);
+                    if (array) {
+                        auto *copy = pdf_copy_array(m_context, previousContents);
+                        pdf_array_put_drop(m_context, copy, transcript.stream, stream);
+                        pdf_dict_put_drop(m_context, page->obj, PDF_NAME(Contents), copy);
+                    } else {
+                        pdf_dict_put_drop(m_context, page->obj, PDF_NAME(Contents), stream);
+                    }
+                }
                 pdf_filter_page_contents(m_context, m_document, page, &options);
                 auto *object = pdf_lookup_page_obj(m_context, m_document, index);
                 auto *resources = pdf_deep_copy_obj(m_context, pdf_dict_get_inheritable(m_context, object, PDF_NAME(Resources)));
@@ -160,7 +412,10 @@ bool MuPDFGenerator::replaceOcrTextLayer(int index, const QList<Okular::OcrTextW
                     const double width = word.rectangle.width() * (box.x1 - box.x0);
                     const fz_matrix trm = {float(width / measured.e), 0, 0, -1, float(box.x0 + word.rectangle.left() * (box.x1 - box.x0)), 0};
                     text = fz_new_text(m_context);
-                    fz_show_string(m_context, text, font, trm, utf8.constData(), 0, 0, FZ_BIDI_LTR, FZ_LANG_UNSET);
+                    // Separate adjacent OCR words explicitly. Readers can join
+                    // neighboring runs even when there is a geometric gap.
+                    const QByteArray separated = utf8 + ' ';
+                    fz_show_string(m_context, text, font, trm, separated.constData(), 0, 0, FZ_BIDI_LTR, FZ_LANG_UNSET);
                     // show_string can select fallback fonts. Keep a common baseline
                     // and fit the union of their typographic extents to the word box.
                     float ascent = 0, descent = 0;
@@ -178,6 +433,9 @@ bool MuPDFGenerator::replaceOcrTextLayer(int index, const QList<Okular::OcrTextW
                             span->items[i].y = baseline;
                     }
                     fz_ignore_text(m_context, device, text, inverse);
+                    // Start a fresh PDF text object for the next editable region.
+                    // The device emits an absolute text matrix for each span.
+                    fz_append_string(m_context, buffer, "ET\nBT\n");
                     fz_drop_text(m_context, text);
                     text = nullptr;
                 }
@@ -189,7 +447,7 @@ bool MuPDFGenerator::replaceOcrTextLayer(int index, const QList<Okular::OcrTextW
                 if (!forms)
                     forms = pdf_dict_put_dict(m_context, resources, PDF_NAME(XObject), 1);
                 do {
-                    fz_snprintf(name, sizeof(name), "MengsheeOCR%d", suffix++);
+                    fz_snprintf(name, sizeof(name), "Fm%d", suffix++);
                 } while (pdf_dict_gets(m_context, forms, name));
                 pdf_dict_puts_drop(m_context, forms, name, pdf_new_xobject(m_context, m_document, fz_transform_rect(box, inverse), fz_identity, ocrResources, buffer));
                 fz_drop_buffer(m_context, buffer);

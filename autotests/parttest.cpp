@@ -4412,7 +4412,7 @@ void PartTest::testOrderedCalloutToolModes()
 
         // Creation is a Proofread entry point; existing annotations remain
         // editable in every mode. Never trigger hidden QAction entries.
-        for (EditingMode mode : {EditingMode::Reading, EditingMode::CrossReferences, EditingMode::Ocr, EditingMode::Pages, EditingMode::Views, EditingMode::Proofread}) {
+        for (EditingMode mode : {EditingMode::Reading, EditingMode::CrossReferences, EditingMode::ContentRecognition, EditingMode::Pages, EditingMode::Proofread}) {
             part.setEditingMode(mode);
             QCOMPARE(tool->isVisible(), mode == EditingMode::Proofread);
             QCOMPARE(renumber->isVisible(), mode == EditingMode::Proofread);
@@ -5366,7 +5366,7 @@ void PartTest::testReadingViewGeneration()
     if (!part.m_document->canGenerateReadingViews()) {
         QSKIP("Automatic View generation requires a Tesseract-enabled PDF backend.");
     }
-    part.setEditingMode(EditingMode::Views);
+    part.setEditingMode(EditingMode::ContentRecognition);
     auto *document = part.m_document;
     QString error;
     const QList<ReadingView> previous{{QStringLiteral("a8bde85f-6219-462f-8d47-e9ae29d5b591"), 8, NormalizedRect(.2, .2, .8, .8)}};
@@ -5483,7 +5483,7 @@ void PartTest::testReadingViewGenerationDialog()
     part.setEditingMode(EditingMode::Reading);
     QVERIFY(!action->isVisible());
     QVERIFY(!action->isEnabled());
-    part.setEditingMode(EditingMode::Views);
+    part.setEditingMode(EditingMode::ContentRecognition);
     QVERIFY(action->isVisible());
     QCOMPARE(action->isEnabled(), part.m_document->canGenerateReadingViews());
     if (!action->isEnabled()) {
@@ -5529,7 +5529,7 @@ void PartTest::testReadingViewGenerationEndToEnd()
     QVERIFY(writeReadingViewGenerationFixture(input, 0));
     Part part(nullptr, {});
     QVERIFY(openDocument(&part, input));
-    part.setEditingMode(EditingMode::Views);
+    part.setEditingMode(EditingMode::ContentRecognition);
     if (!part.m_document->canGenerateReadingViews()) {
         QSKIP("Automatic View generation requires a Tesseract-enabled PDF backend.");
     }
@@ -5762,7 +5762,7 @@ void PartTest::testReadingViewsHistoryAndPageIdentity()
     QVERIFY(QFile::copy(QStringLiteral(KDESRCDIR "data/simple-multipage.pdf"), input));
     Part part(nullptr, {});
     QVERIFY(openDocument(&part, input));
-    part.setEditingMode(EditingMode::Views);
+    part.setEditingMode(EditingMode::ContentRecognition);
     part.m_document->setRotation(Okular::Rotation0);
     QCOMPARE(part.m_document->page(0)->rotation(), Okular::Rotation0);
     const auto viewport = part.m_document->viewport().toString();
@@ -5848,7 +5848,7 @@ void PartTest::testReadingViewsMouseEditing()
     QVERIFY(QTest::qWaitForWindowExposed(part.widget()));
     auto *modeSelector = qobject_cast<KSelectAction *>(part.actionCollection()->action(QStringLiteral("editing_mode_selector")));
     QVERIFY(modeSelector && modeSelector->isEnabled());
-    modeSelector->actions().at(int(EditingMode::Views))->trigger();
+    modeSelector->actions().at(int(EditingMode::ContentRecognition))->trigger();
     QVERIFY(!part.m_advancedModeEnabled);
     QVERIFY(part.m_pageView->readingViewEditingEnabled());
     QTRY_VERIFY(part.m_document->page(0)->hasPixmap(part.m_pageView));
@@ -5946,7 +5946,7 @@ void PartTest::testReadingViewsMouseEditing()
     QCOMPARE(part.m_document->readingViews(0).size(), 1);
     part.setEditingMode(EditingMode::CrossReferences);
     QVERIFY(!part.m_pageView->readingViewEditingEnabled());
-    part.setEditingMode(EditingMode::Views);
+    part.setEditingMode(EditingMode::ContentRecognition);
     QVERIFY(part.m_pageView->readingViewEditingEnabled());
     QVERIFY(part.m_pageView->readingViewsAtGlobalPos(canvas->mapToGlobal(corner)).contains(before.id));
     modeSelector->actions().at(int(EditingMode::Reading))->trigger();
@@ -5972,7 +5972,7 @@ void PartTest::testDrawViewToolToggle()
     QVERIFY(draw && select);
     QVERIFY(draw->isCheckable());
     QVERIFY(!draw->isChecked());
-    part.setEditingMode(EditingMode::Views);
+    part.setEditingMode(EditingMode::ContentRecognition);
     QVERIFY(draw->isVisible() && draw->isEnabled());
     QVERIFY(!main->isReadingViewCreationActive());
     QSignalSpy state(main, SIGNAL(readingViewCreationChanged(bool)));
@@ -6004,7 +6004,7 @@ void PartTest::testDrawViewToolToggle()
     QVERIFY(!draw->isChecked() && !main->isReadingViewCreationActive());
     main->startReadingViewCreation(); // Refused outside Views mode.
     QVERIFY(!draw->isChecked() && !main->isReadingViewCreationActive());
-    part.setEditingMode(EditingMode::Views);
+    part.setEditingMode(EditingMode::ContentRecognition);
     QVERIFY(!draw->isChecked() && !main->isReadingViewCreationActive());
     draw->trigger();
     part.openAuxiliaryView(main, DocumentViewport(0), QStringLiteral("Draw state frame"));
@@ -6053,7 +6053,7 @@ void PartTest::testClickNumberingViews()
     capabilities->setCapability(Okular::View::ZoomModality, int(PageView::ZoomFitPage));
     capabilities->setCapability(Okular::View::ViewModeModality, int(Okular::Settings::EnumViewMode::Single));
     view->goToDocumentViewport(DocumentViewport(0), false);
-    part.setEditingMode(EditingMode::Views);
+    part.setEditingMode(EditingMode::ContentRecognition);
     QTRY_VERIFY(part.m_document->page(0)->hasPixmap(view));
     QAction *number = part.actionCollection()->action(QStringLiteral("tools_number_by_clicking"));
     QAction *draw = part.actionCollection()->action(QStringLiteral("advanced_add_reading_view"));
@@ -7133,7 +7133,7 @@ void PartTest::testUnifiedEditingModes()
     QVERIFY(QTest::qWaitForWindowExposed(part.widget()));
     auto *selector = qobject_cast<KSelectAction *>(part.actionCollection()->action(QStringLiteral("editing_mode_selector")));
     QVERIFY(selector);
-    QCOMPARE(selector->actions().size(), 6);
+    QCOMPARE(selector->actions().size(), 5);
     QCOMPARE(int(EditingMode::Proofread), 5);
     QCOMPARE(selector->currentItem(), int(EditingMode::Reading));
     auto *named = part.actionCollection()->action(QStringLiteral("advanced_add_named_destination"));
@@ -7158,19 +7158,19 @@ void PartTest::testUnifiedEditingModes()
     highlight->trigger();
     QVERIFY(highlight->isChecked());
     QSignalSpy created(main, SIGNAL(createReadingViewRequested(int,QRectF)));
-    for (EditingMode mode : {EditingMode::CrossReferences, EditingMode::Ocr, EditingMode::Pages, EditingMode::Views, EditingMode::Proofread, EditingMode::Reading}) {
+    for (EditingMode mode : {EditingMode::CrossReferences, EditingMode::ContentRecognition, EditingMode::Pages, EditingMode::Proofread, EditingMode::Reading}) {
         selector->actions().at(int(mode))->trigger();
         QCOMPARE(part.m_editingMode, mode);
         QCOMPARE(selector->currentItem(), int(mode));
         QCOMPARE(main->namedDestinationsVisible(), mode == EditingMode::CrossReferences);
-        QCOMPARE(main->ocrModeEnabled(), mode == EditingMode::Ocr);
-        QCOMPARE(main->readingViewEditingEnabled(), mode == EditingMode::Views);
+        QCOMPARE(main->ocrModeEnabled(), mode == EditingMode::ContentRecognition);
+        QCOMPARE(main->readingViewEditingEnabled(), mode == EditingMode::ContentRecognition);
         QCOMPARE(named->isVisible(), mode == EditingMode::CrossReferences);
-        QCOMPARE(ocr->isVisible(), mode == EditingMode::Ocr);
-        QCOMPARE(ocrEdit->isVisible(), mode == EditingMode::Ocr);
+        QCOMPARE(ocr->isVisible(), mode == EditingMode::ContentRecognition);
+        QCOMPARE(ocrEdit->isVisible(), mode == EditingMode::ContentRecognition);
         QCOMPARE(insert->isVisible(), mode == EditingMode::Pages);
-        QCOMPARE(draw->isVisible(), mode == EditingMode::Views);
-        QCOMPARE(apply->isVisible(), mode == EditingMode::Views);
+        QCOMPARE(draw->isVisible(), mode == EditingMode::ContentRecognition);
+        QCOMPARE(apply->isVisible(), mode == EditingMode::ContentRecognition);
         QCOMPARE(numbered->isVisible(), mode == EditingMode::Proofread);
         QCOMPARE(renumber->isVisible(), mode == EditingMode::Proofread);
         if (mode == EditingMode::Proofread) {
@@ -7186,7 +7186,7 @@ void PartTest::testUnifiedEditingModes()
         QCOMPARE(part.m_document->readingViews(0), views);
     }
     QCOMPARE(created.count(), 0);
-    selector->actions().at(int(EditingMode::Views))->trigger();
+    selector->actions().at(int(EditingMode::ContentRecognition))->trigger();
     QSignalSpy drawingCancelled(main, SIGNAL(readingViewCreationCancelled()));
     draw->trigger();
     const int previousCancellationCount = drawingCancelled.count();
@@ -7195,12 +7195,12 @@ void PartTest::testUnifiedEditingModes()
     QCOMPARE(part.m_document->readingViews(0), views);
     QSignalSpy namingCancelled(main, SIGNAL(namedDestinationCreationCancelled()));
     named->trigger();
-    selector->actions().at(int(EditingMode::Ocr))->trigger();
+    selector->actions().at(int(EditingMode::ContentRecognition))->trigger();
     QVERIFY(namingCancelled.count() > 0);
     QVERIFY(!main->isOcrTextEditing());
 
     // New frames inherit the task mode, while their reading projection is independent.
-    selector->actions().at(int(EditingMode::Views))->trigger();
+    selector->actions().at(int(EditingMode::ContentRecognition))->trigger();
     auto *openAuxiliary = part.actionCollection()->action(QStringLiteral("open_auxiliary_view"));
     QVERIFY(openAuxiliary && openAuxiliary->isEnabled());
     openAuxiliary->trigger();
@@ -7208,12 +7208,12 @@ void PartTest::testUnifiedEditingModes()
     PageView *auxiliary = part.m_documentWorkspace->auxiliaryViews().constFirst();
     QVERIFY(auxiliary->readingViewEditingEnabled());
     auxiliary->setReadingViewMode(false);
-    for (EditingMode mode : {EditingMode::Ocr, EditingMode::CrossReferences, EditingMode::Pages, EditingMode::Views, EditingMode::Proofread, EditingMode::Reading}) {
+    for (EditingMode mode : {EditingMode::ContentRecognition, EditingMode::CrossReferences, EditingMode::Pages, EditingMode::Proofread, EditingMode::Reading}) {
         selector->actions().at(int(mode))->trigger();
         for (PageView *frame : {main, auxiliary}) {
-            QCOMPARE(frame->ocrModeEnabled(), mode == EditingMode::Ocr);
+            QCOMPARE(frame->ocrModeEnabled(), mode == EditingMode::ContentRecognition);
             QCOMPARE(frame->namedDestinationsVisible(), mode == EditingMode::CrossReferences);
-            QCOMPARE(frame->readingViewEditingEnabled(), mode == EditingMode::Views);
+            QCOMPARE(frame->readingViewEditingEnabled(), mode == EditingMode::ContentRecognition);
             QVERIFY(!frame->isOcrTextEditing());
         }
         QVERIFY(main->readingViewMode());
@@ -7494,7 +7494,7 @@ void PartTest::testReadingViewTemplateApply()
     QVERIFY(QFile::copy(QStringLiteral(KDESRCDIR "data/simple-multipage.pdf"), input));
     Part part(nullptr, {});
     QVERIFY(openDocument(&part, input));
-    part.setEditingMode(EditingMode::Views);
+    part.setEditingMode(EditingMode::ContentRecognition);
     part.m_document->setRotation(Okular::Rotation0);
     auto *applyAction = part.actionCollection()->action(QStringLiteral("view_apply_views_to_document"));
     QVERIFY(applyAction);
@@ -7574,7 +7574,7 @@ void PartTest::testReadingViewTemplateRejectsUnsupported()
     QString error;
     QVERIFY2(part.m_document->combinePdfFiles({plain, plain, unknown}, combined, true, &error), qPrintable(error));
     QVERIFY(openDocument(&part, combined));
-    part.setEditingMode(EditingMode::Views);
+    part.setEditingMode(EditingMode::ContentRecognition);
     const QList<ReadingView> source{{QStringLiteral("b99f36a5-bb53-4cf0-9a8e-069b84c4df33"), 1, NormalizedRect(.1, .1, .45, .9)}};
     QVERIFY(part.m_document->setReadingViews(0, source, &error));
     const QString pageOneToken = part.m_document->readingViewPageToken(1);
@@ -10021,7 +10021,7 @@ void PartTest::testOcrTextLayout()
         part.widget()->resize(1100, 800);
         part.widget()->show();
         QVERIFY(QTest::qWaitForWindowExposed(part.widget()));
-        part.setEditingMode(EditingMode::Ocr);
+        part.setEditingMode(EditingMode::ContentRecognition);
         part.actionCollection()->action(QStringLiteral("advanced_edit_ocr_text"))->trigger();
         QVERIFY(part.m_pageView->isOcrTextEditing());
         QVERIFY(part.m_pageView->viewport()->grab().save(output + QStringLiteral("-natural.png")));
@@ -10106,7 +10106,7 @@ void PartTest::testOcrTextLayerEditing()
     QVERIFY(recognize && edit);
     QVERIFY(!recognize->isVisible());
     QVERIFY(!edit->isVisible());
-    part.setEditingMode(EditingMode::Ocr);
+    part.setEditingMode(EditingMode::ContentRecognition);
     QVERIFY(!part.m_pageView->namedDestinationsVisible());
     QVERIFY(!part.m_pageView->isOcrTextEditing()); // mode selection does not start a tool
     QVERIFY(recognize->isVisible());

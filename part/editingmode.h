@@ -11,9 +11,8 @@ namespace Okular
 enum class EditingMode {
     Reading,
     CrossReferences,
-    Ocr,
+    ContentRecognition,
     Pages,
-    Views,
     Proofread,
 };
 }

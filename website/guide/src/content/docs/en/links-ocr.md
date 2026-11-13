@@ -10,7 +10,7 @@ Use **Cross-references** mode to work with links and destinations. A link is the
 
 ## Recognize a scanned page
 
-A scanned page may look like text while containing only an image. In **OCR** mode, use **Recognize Text** to create searchable text. The bundled recognition workflow supports English; inspect results carefully for formulas, names, and unusual layouts.
+In **Content Recognition** mode, choose **Recognize Content** and select **Add searchable text (OCR)**. Tesseract runs locally with the bundled English model. GLM-OCR and Mathpix send the selected page images to the configured service. Select **Generate Reading Views** as well to create both outputs in one operation. Pages with selectable text skip OCR by default.
 
 OCR does not reconstruct the original mathematical source. Its searchable layer lets you search or select recognized words while retaining the scanned page appearance.
 

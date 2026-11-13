@@ -9368,7 +9368,7 @@ msgstr "无法编码页面图像。"
 msgid "No regions were found on this page."
 msgstr "此页没有识别出区域。"
 
-msgid "Review the words and boxes. Apply replaces the OCR layer on this page."
+msgid "Review the recognized text and boxes. Apply replaces the OCR layer on this page."
 msgstr "请核对识别文字和位置。点击“应用”将替换此页的 OCR 文字层。"
 
 msgid "Review the numbered regions. Apply replaces the Views on this page."
@@ -9380,7 +9380,7 @@ msgstr "模型未返回所需的区域列表。"
 msgid "The model returned invalid page coordinates."
 msgstr "模型返回的页面坐标无效。"
 
-msgid "The model returned an invalid OCR word."
+msgid "The model returned invalid OCR text."
 msgstr "模型返回了无效的识别文字。"
 
 msgid "The request timed out."
@@ -9452,8 +9452,139 @@ msgstr "请在「OCR 与版面分析服务」设置中填写智谱 API 密钥。
 msgid "Set the model and API base URL in General AI settings."
 msgstr "请在「通用 AI」设置中填写模型和 API 基础地址。"
 
-msgid "Send images of the selected pages to GLM-OCR to detect reading regions. You can review the number of Views before applying them."
-msgstr "将所选页面的图像发送给 GLM-OCR 识别阅读区域。应用前可检查分区结果和数量。"
+msgid "Send images of the selected pages to %1 (%2) to detect reading regions. Review the results before applying them."
+msgstr "将所选页面的图像发送至 %1（%2）识别阅读区域。应用前可检查分区结果。"
 
 msgid "Send and generate"
 msgstr "发送并生成"
+
+msgid "GLM-OCR Text Recognition"
+msgstr "GLM-OCR 文字识别"
+
+msgid "Generate Reading Views with GLM-OCR…"
+msgstr "用 GLM-OCR 划分阅读视图…"
+
+msgid "GLM-OCR Views"
+msgstr "GLM-OCR 分区"
+
+msgid "Generate Reading Views with General AI…"
+msgstr "用通用 AI 划分阅读视图…"
+
+msgid "Recognize Text with GLM-OCR…"
+msgstr "用 GLM-OCR 识别文字…"
+
+msgid "Recognize Text with General AI…"
+msgstr "用通用 AI 识别文字…"
+
+#, kde-format
+msgid "No data was transferred for %1 seconds."
+msgstr "连续 %1 秒没有传输数据。"
+
+msgid "SiliconFlow DeepSeek-OCR"
+msgstr "硅基流动 DeepSeek-OCR"
+
+msgid "SiliconFlow API key:"
+msgstr "硅基流动 API 密钥："
+
+msgid "Enter a SiliconFlow API key."
+msgstr "请输入硅基流动 API 密钥。"
+
+msgid "Recognize a built-in test image with SiliconFlow."
+msgstr "使用硅基流动识别内置测试图片。"
+
+msgid "Model response: %1"
+msgstr "模型回复：%1"
+
+msgid "The model returned a multi-word region instead of a word box."
+msgstr "模型返回的区域含有多个词，无法作为逐词坐标使用。"
+
+msgid "Generate Reading Views with OCR Service…"
+msgstr "使用 OCR 服务生成阅读视图…"
+
+msgid "OCR Service Views"
+msgstr "OCR 服务视图"
+
+msgid "Generate Reading Views for selected pages with the selected OCR service"
+msgstr "使用所选 OCR 服务为指定页面生成阅读视图"
+
+msgid "Recognize Text with OCR Service…"
+msgstr "使用 OCR 服务识别文字…"
+
+msgid "Enter the selected provider’s API key in OCR and Layout Services settings."
+msgstr "请在 OCR 与阅读视图服务设置中填写所选服务商的 API 密钥。"
+
+msgid "Recognize selected area"
+msgstr "识别选区"
+
+msgid "Drag over an area to recognize it separately."
+msgstr "拖选要单独识别的区域。"
+
+msgid "Review the boxes. Drag over missing text to recognize that area again before applying."
+msgstr "请核对词框。若有遗漏，可在预览中拖选相应文字，重新识别选区后再应用。"
+
+msgid "Use Mathpix for text recognition"
+msgstr "使用 Mathpix 识别文字"
+
+msgid "Mathpix app ID:"
+msgstr "Mathpix 应用 ID："
+
+msgid "Mathpix app key:"
+msgstr "Mathpix 应用密钥："
+
+msgid "Mathpix OCR"
+msgstr "Mathpix 文字识别"
+
+msgid "Mathpix did not return positioned text lines."
+msgstr "Mathpix 没有返回包含坐标的文字行。"
+
+msgid "Enter the Mathpix app ID and app key in OCR and Layout Services settings."
+msgstr "请在 OCR 与版面分析服务设置中填写 Mathpix 应用 ID 和密钥。"
+
+msgid "Send images of the selected pages to %1 (%2) to recognize searchable text."
+msgstr "将所选页的图像发送到 %1（%2），识别并添加可搜索文字。"
+
+msgid "Review recognized boxes before applying"
+msgstr "应用前逐页核对识别框"
+
+msgid "Text recognition failed."
+msgstr "文字识别失败。"
+
+msgid "Text recognition failed. %1"
+msgstr "文字识别失败。%1"
+
+msgid "No text was recognized on the selected pages."
+msgstr "所选页面未识别到文字。"
+
+msgid "Could not render page %1."
+msgstr "无法渲染第 %1 页。"
+
+msgid "Could not update the OCR text layer."
+msgstr "无法更新 OCR 文字层。"
+
+msgid "Recognized text on %1 page."
+msgid_plural "Recognized text on %1 pages."
+msgstr[0] "已识别 %1 页文字。"
+
+msgid "Content Recognition"
+msgstr "内容识别"
+
+msgid "Recognize Content…"
+msgstr "识别内容…"
+
+msgid "Recognition engine"
+msgstr "识别引擎"
+
+msgid "Add searchable text (OCR)"
+msgstr "添加可搜索文字（OCR）"
+
+msgid "Generate Reading Views"
+msgstr "划分阅读视图"
+
+msgid "Send the selected page images to %1 (%2)."
+msgstr "将所选页面的图像发送到 %1（%2）。"
+
+msgid "Process the selected pages locally with Tesseract."
+msgstr "使用 Tesseract 在本地处理所选页面。"
+
+msgid "No new content was recognized on the selected pages."
+msgstr "所选页面没有需要添加的识别结果。"

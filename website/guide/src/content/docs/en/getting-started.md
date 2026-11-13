@@ -17,7 +17,7 @@ For Chinese text, additional packages, or a local TeX Live installation, follow 
 
 ## Find your tools
 
-The mode selector on the main toolbar groups tools by task: Reading and Annotations, Cross-references, OCR, Page Editing, Reading Views, and Proofread. Changing mode reveals the relevant controls; it does not automatically activate every tool in that mode. Hover over an icon for its name.
+The mode selector on the main toolbar groups tools by task: Reading and Annotations, Cross-references, Content Recognition, Page Editing, and Proofread. Changing mode reveals the relevant controls; it does not automatically activate every tool in that mode. Hover over an icon for its name.
 
 Try a short workflow: open a PDF, fit it to the window width, highlight a sentence, and save a copy. Reopen the copy to confirm that your annotation is there.
 

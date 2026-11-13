@@ -10,6 +10,11 @@
         <file>data/icons/reading-view-order.svg</file>
         <file>data/icons/reading-view-generate.svg</file>
         <file>data/icons/reading-view-ai.svg</file>
+        <file>data/icons/recognize-text.svg</file>
+        <file>data/icons/recognize-text-ai.svg</file>
+        <file>data/icons/recognize-text-service.svg</file>
+        <file>data/icons/recognize-text-mathpix.svg</file>
+        <file>data/icons/reading-view-service.svg</file>
         <file>data/icons/reading-view-apply.svg</file>
         <file>data/icons/annotation-note-page.svg</file>
     </qresource>

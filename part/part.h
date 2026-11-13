@@ -594,8 +594,12 @@ private:
     KSelectAction *m_editingModeSelector = nullptr;
     QAction *m_applyReadingViewsToDocument = nullptr;
     QAction *m_generateReadingViews = nullptr;
+    QString m_mathpixBaseUrl = QStringLiteral("https://api.mathpix.com");
     QString m_glmOcrBaseUrl = QStringLiteral("https://open.bigmodel.cn/api/paas/v4");
     QAction *m_aiReadingViews = nullptr;
+    enum class ViewDetector { Local, Glm, Chat };
+    QAction *m_chatReadingViews = nullptr;
+    QAction *m_glmOcr = nullptr;
     QAction *m_aiOcr = nullptr;
     QAction *m_numberByClicking = nullptr;
     QHash<int, QStringList> m_viewNumberingPrefix;
@@ -667,12 +671,16 @@ private:
     QString m_latexStemtexProfileName;
     QString m_latexStemtexTexmfRoot;
 
+    enum class OcrEngine { Local, Chat, Service, Select };
+    QAction *m_recognizeContent = nullptr;
+    bool reviewGeneratedViews(const QList<QPair<int, QList<Okular::ReadingView>>> &batch, int count, int replaced, const QString &title, const QUrl &documentUrl);
+    void recognizeText(OcrEngine engine);
+    void updateOcrServiceAction();
+
 private Q_SLOTS:
     void slotCombinePdfFiles();
     void slotAppendPdfFile();
-    void slotRecognizeEnglishText();
-    void generateReadingViews(bool useAi);
-    void recognizeCurrentPageWithAi();
+    void generateReadingViews(ViewDetector detector);
     void slotInsertPage();
     void slotSetPageTemplate();
     void slotInsertPageFromTemplate();

@@ -45,15 +45,25 @@ QNetworkReply *AiChat::postJson(QNetworkAccessManager &network, const QString &b
         request.setRawHeader("Authorization", "Bearer " + token);
     }
     auto *reply = network.post(request, QJsonDocument(payload).toJson(QJsonDocument::Compact));
-    QTimer::singleShot(timeoutMs, reply, &QNetworkReply::abort);
+    auto *idle = new QTimer(reply);
+    idle->setSingleShot(true);
+    idle->setInterval(timeoutMs);
+    QObject::connect(reply, &QNetworkReply::readyRead, idle, [idle] { idle->start(); });
+    QObject::connect(reply, &QNetworkReply::uploadProgress, idle, [idle] { idle->start(); });
+    QObject::connect(reply, &QNetworkReply::finished, idle, &QTimer::stop);
+    QObject::connect(idle, &QTimer::timeout, reply, [reply, timeoutMs] {
+        reply->setProperty("idleTimeoutMs", timeoutMs);
+        reply->abort();
+    });
+    idle->start();
     return reply;
 }
 
 QJsonObject AiChat::response(QNetworkReply *reply, QString &error)
 {
     const int code = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-    if (reply->error() == QNetworkReply::OperationCanceledError) {
-        error = i18n("The request timed out.");
+    if (reply->property("idleTimeoutMs").isValid()) {
+        error = i18n("No data was transferred for %1 seconds.", reply->property("idleTimeoutMs").toInt() / 1000);
     } else if (code && (code < 200 || code >= 300)) {
         const QByteArray body = reply->read(16384);
         const auto object = QJsonDocument::fromJson(body).object();

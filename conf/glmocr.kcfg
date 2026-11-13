@@ -3,9 +3,13 @@
   <kcfgfile name="mengshee-aiservicerc" />
   <group name="Service">
     <entry name="LayoutProvider" type="Enum">
-      <choices><choice name="ZhipuGlmOcr"/></choices>
+      <choices><choice name="ZhipuGlmOcr"/><choice name="SiliconFlow"/></choices>
       <default>ZhipuGlmOcr</default>
     </entry>
+    <entry name="UseMathpixForOcr" type="Bool"><default>false</default></entry>
+    <entry name="MathpixAppId" type="String" />
+    <entry name="MathpixAppKey" type="Password" />
     <entry name="LayoutApiKey" type="Password" />
+    <entry name="SiliconFlowApiKey" type="Password" />
   </group>
 </kcfg>
