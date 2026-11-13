@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <!DOCTYPE gui SYSTEM "kpartgui.dtd">
-<gui name="okular_part" version="94">
+<gui name="okular_part" version="96">
 <MenuBar>
   <Menu name="file"><text>&amp;File</text>
     <Action name="get_new_stuff" group="file_open"/>
@@ -97,6 +97,7 @@
       <Action name="annotation_export_numbered_callouts"/>
       <Action name="tools_number_by_clicking"/>
       <Action name="advanced_recognize_english_text"/>
+      <Action name="advanced_ai_ocr"/>
       <Action name="advanced_edit_ocr_text"/>
       <Separator/>
       <Action name="advanced_add_named_destination"/>
@@ -112,6 +113,7 @@
       <Action name="tools_delete_current_page"/>
       <Action name="advanced_add_reading_view"/>
       <Action name="view_generate_reading_views"/>
+      <Action name="view_ai_reading_views"/>
       <Action name="view_apply_views_to_document"/>
     </Menu>
     <Separator/>
@@ -164,6 +166,7 @@
   <Action name="annotation_renumber_callouts"/>
   <Action name="annotation_export_numbered_callouts"/>
   <Action name="advanced_recognize_english_text"/>
+  <Action name="advanced_ai_ocr"/>
   <Action name="advanced_edit_ocr_text"/>
   <Separator/>
   <Action name="advanced_add_named_destination"/>
@@ -181,6 +184,7 @@
   <Action name="advanced_add_reading_view"/>
   <Action name="tools_number_by_clicking"/>
   <Action name="view_generate_reading_views"/>
+  <Action name="view_ai_reading_views"/>
   <Action name="view_apply_views_to_document"/>
 </ToolBar>
 <ToolBar name="annotationToolBar" iconText="icononly" newline="true"><text>Annotation Toolbar</text>

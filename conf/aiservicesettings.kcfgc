@@ -1,0 +1,4 @@
+File=aiservice.kcfg
+ClassName=AiServiceSettings
+NameSpace=Okular
+ParentInConstructor=true

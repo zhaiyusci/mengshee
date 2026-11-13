@@ -11,6 +11,9 @@
 
 // single config pages
 #include "dlgaccessibility.h"
+#include "dlgaiservice.h"
+#include "aiservicesettings.h"
+#include "glmocrsettings.h"
 #include "dlgannotations.h"
 #include "dlgdebug.h"
 #include "dlgeditor.h"
@@ -48,6 +51,12 @@ PreferencesDialog::PreferencesDialog(QWidget *parent, KConfigSkeleton *skeleton,
         m_annotations = new DlgAnnotations(this);
         addPage(m_presentation, i18n("Presentation"), QStringLiteral("view-presentation"), i18n("Options for Presentation Mode"));
         m_annotationsPage = addPage(m_annotations, i18n("Annotations"), QStringLiteral("draw-freehand"), i18n("Annotation Options"));
+        auto *aiSettings = new Okular::AiServiceSettings(this);
+        aiSettings->load();
+        addPage(new DlgAiService(this), aiSettings, i18n("General AI"), QStringLiteral("preferences-system-network"), i18n("OpenAI-compatible vision model"));
+        auto *layoutSettings = new Okular::GlmOcrSettings(this);
+        layoutSettings->load();
+        addPage(new DlgDocumentAnalysis(this), layoutSettings, i18n("OCR and Layout Services"), QStringLiteral("view-split-left-right"), i18n("Page layout analysis for Reading Views"));
         if (editCmd.isEmpty()) {
             m_editor = new DlgEditor(this);
             addPage(m_editor, i18n("Editor"), QStringLiteral("accessories-text-editor"), i18n("Editor Options"));

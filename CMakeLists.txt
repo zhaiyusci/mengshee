@@ -547,6 +547,10 @@ if(BUILD_DESKTOP)
     gui/tocmodel.cpp
     part/preferencesdialog.cpp
     part/dlgaccessibility.cpp
+    part/dlgaiservice.cpp
+    part/aichat.cpp
+    part/aipageanalysis.cpp
+    part/glmlayout.cpp
     part/dlgdebug.cpp
     part/dlgeditor.cpp
     part/dlggeneral.cpp
@@ -629,7 +633,7 @@ if (Qt6TextToSpeech_FOUND)
       part/tts.cpp)
 endif()
 
-kconfig_add_kcfg_files(okularpart_SRCS GENERATE_MOC conf/settings.kcfgc)
+kconfig_add_kcfg_files(okularpart_SRCS GENERATE_MOC conf/settings.kcfgc conf/aiservicesettings.kcfgc conf/glmocrsettings.kcfgc)
 
 add_library(okularpart SHARED ${okularpart_SRCS})
 if(MENGSHEE_PDF_BACKEND STREQUAL "MuPDF")

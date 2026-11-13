@@ -141,6 +141,11 @@
 #include "core/document_p.h"
 #include "core/form.h"
 #include "core/generator.h"
+#include "aipageanalysis.h"
+#include "aichat.h"
+#include "glmocrsettings.h"
+#include <QNetworkAccessManager>
+#include <QNetworkReply>
 #include "core/numberedcalloutgeometry_p.h"
 #include "core/page.h"
 #include "core/printoptionswidget.h"
@@ -1078,6 +1083,18 @@ void Part::setupViewerActions()
         }
     });
 
+    m_aiReadingViews = ac->addAction(QStringLiteral("view_ai_reading_views"));
+    m_aiReadingViews->setText(i18n("AI Reading Views…"));
+    m_aiReadingViews->setIconText(i18nc("Compact AI reading-region toolbar button", "AI Views"));
+    m_aiReadingViews->setIcon(QIcon(QStringLiteral(":/mengshee/data/icons/reading-view-ai.svg")));
+    m_aiReadingViews->setToolTip(i18n("Generate Reading Views for selected pages with GLM-OCR"));
+    m_aiOcr = ac->addAction(QStringLiteral("advanced_ai_ocr"));
+    m_aiOcr->setText(i18n("AI OCR…"));
+    m_aiOcr->setIcon(QIcon::fromTheme(QStringLiteral("edit-find")));
+    m_aiReadingViews->setVisible(false);
+    m_aiOcr->setVisible(false);
+    connect(m_aiReadingViews, &QAction::triggered, this, [this] { generateReadingViews(true); });
+    connect(m_aiOcr, &QAction::triggered, this, &Part::recognizeCurrentPageWithAi);
     m_generateReadingViews = ac->addAction(QStringLiteral("view_generate_reading_views"));
     m_generateReadingViews->setText(i18n("Auto-generate Reading Views..."));
     m_generateReadingViews->setIconText(i18nc("Compact reading-region toolbar button", "Generate"));
@@ -1085,7 +1102,7 @@ void Part::setupViewerActions()
     m_generateReadingViews->setToolTip(i18n("Detect page regions locally and create editable Views"));
     m_generateReadingViews->setEnabled(false);
     m_generateReadingViews->setVisible(false);
-    connect(m_generateReadingViews, &QAction::triggered, this, &Part::slotGenerateReadingViews);
+    connect(m_generateReadingViews, &QAction::triggered, this, [this] { generateReadingViews(false); });
 
     m_numberByClicking = ac->addAction(QStringLiteral("tools_number_by_clicking"));
     m_numberByClicking->setText(i18n("Click to Number"));
@@ -4852,6 +4869,13 @@ void Part::updatePageEditActions()
         const QSignalBlocker blocker(m_numberByClicking);
         m_numberByClicking->setChecked(workspaceActivePageView() && workspaceActivePageView()->clickNumberingTarget() != PageView::ClickNumberingTarget::None);
     }
+    if (m_aiReadingViews && m_aiOcr) {
+        const bool canAnalyze = canEditPages && m_document->canRenderToImage() && m_document->isAllowed(AllowCopy) && m_document->isAllowed(AllowModify);
+        m_aiReadingViews->setVisible(editingViews);
+        m_aiReadingViews->setEnabled(canEditViews && canAnalyze);
+        m_aiOcr->setVisible(showOcrActions);
+        m_aiOcr->setEnabled(showOcrActions && canAnalyze);
+    }
     if (m_generateReadingViews) {
         m_generateReadingViews->setVisible(editingViews);
         m_generateReadingViews->setEnabled(canEditViews && m_document->canGenerateReadingViews());
@@ -6206,9 +6230,58 @@ bool Part::commitReadingViewBatch(const QList<QPair<int, QList<Okular::ReadingVi
     return true;
 }
 
-void Part::slotGenerateReadingViews()
+
+void Part::recognizeCurrentPageWithAi()
 {
-    if (m_generatingReadingViews || m_editingMode != EditingMode::Views || !canUsePageLevelEditing() || !m_document->canGenerateReadingViews()) return;
+    if (m_editingMode != EditingMode::Ocr || m_generatingReadingViews || !canUsePageLevelEditing()
+        || !m_document->isAllowed(AllowCopy) || !m_document->isAllowed(AllowModify)) {
+        return;
+    }
+    stopClickNumbering();
+    if (auto *view = workspaceActivePageView()) view->finishOcrWordEditing();
+    const int index = workspaceActivePageNumber();
+    const auto size = m_document->pageSizeInPoints(index);
+    if (size.isEmpty()) return;
+    const double longestEdge = 2048.0;
+    const int dpi = int(std::min(216.0, longestEdge * 72.0 / std::max(size.width(), size.height())));
+    if (dpi < 1) {
+        KMessageBox::information(widget(), i18n("This page is too large for whole-page AI analysis."));
+        return;
+    }
+    QScopedValueRollback<bool> generationGuard(m_generatingReadingViews, true);
+    QScopedValueRollback<bool> invalidationGuard(m_readingViewDetectionInvalidated, false);
+    QString error;
+    QList<OcrTextWord> previousWords;
+    if (!m_document->readOcrTextLayer(index, &previousWords, &error)) {
+        KMessageBox::information(widget(), error.isEmpty() ? i18n("Could not read the OCR layer.") : error);
+        return;
+    }
+    const QUrl documentUrl = url();
+    const auto *page = m_document->page(index);
+    const auto image = m_document->renderToImage(index, dpi, false, &error);
+    if (image.isNull()) {
+        KMessageBox::information(widget(), error);
+        return;
+    }
+    const auto regions = AiPageAnalysis::reviewOcr(widget(), index, image);
+    if (regions.isEmpty()) return;
+    if (m_readingViewDetectionInvalidated || url() != documentUrl || m_document->page(index) != page || m_document->pageSizeInPoints(index) != size) {
+        KMessageBox::information(widget(), i18n("The page changed during analysis. Run the analysis again."));
+        return;
+    }
+    QList<OcrTextWord> current;
+    if (!m_document->readOcrTextLayer(index, &current, &error) || current != previousWords) {
+        KMessageBox::information(widget(), i18n("The OCR layer changed during analysis. Run the analysis again."));
+        return;
+    }
+    QList<OcrTextWord> words;
+    for (const auto &region : regions) words.append({region.text, region.rectangle});
+    applyOcrTextLayerChange(index, previousWords, words);
+}
+
+void Part::generateReadingViews(bool useAi)
+{
+    if (m_generatingReadingViews || m_editingMode != EditingMode::Views || !canUsePageLevelEditing() || (useAi ? (!m_document->canRenderToImage() || !m_document->isAllowed(AllowCopy) || !m_document->isAllowed(AllowModify)) : !m_document->canGenerateReadingViews())) return;
     stopClickNumbering();
     // Keep the live backend alive until the worker has joined and the user has
     // accepted/rejected the batch. File reloads are deferred during this scope.
@@ -6217,11 +6290,20 @@ void Part::slotGenerateReadingViews()
     const int pageCount = int(m_document->pages());
     if (!pageCount) return;
     const int currentPage = qBound(0, workspaceActivePageNumber(), pageCount - 1);
+    const auto title = useAi ? i18n("AI Reading Views") : i18n("Auto-generate Reading Views");
+    QString layoutKey;
+    if (useAi) {
+        GlmOcrSettings settings;
+        settings.load();
+        layoutKey = settings.layoutApiKey();
+    }
     QDialog dialog(widget());
-    dialog.setWindowTitle(i18n("Auto-generate Reading Views"));
+    dialog.setWindowTitle(title);
     dialog.setObjectName(QStringLiteral("generateReadingViewsDialog"));
     auto *layout = new QVBoxLayout(&dialog);
-    auto *description = new QLabel(i18n("Detect page regions locally and create editable Views. Detection can be imperfect; you can adjust the ranges and numbers afterwards. PDF content and annotations are not changed."), &dialog);
+    auto *description = new QLabel(useAi
+        ? i18n("Send images of the selected pages to GLM-OCR to detect reading regions. You can review the number of Views before applying them.")
+        : i18n("Detect page regions locally and create editable Views. Detection can be imperfect; you can adjust the ranges and numbers afterwards. PDF content and annotations are not changed."), &dialog);
     description->setWordWrap(true);
     layout->addWidget(description);
     auto *pagesGroup = new QGroupBox(i18n("Pages"), &dialog);
@@ -6252,7 +6334,11 @@ void Part::slotGenerateReadingViews()
     note->setWordWrap(true);
     layout->addWidget(note);
     auto *buttons = new QDialogButtonBox(QDialogButtonBox::Cancel, &dialog);
-    buttons->addButton(i18nc("@action:button", "Generate"), QDialogButtonBox::AcceptRole);
+    auto *generate = buttons->addButton(useAi ? i18n("Send and generate") : i18nc("@action:button", "Generate"), QDialogButtonBox::AcceptRole);
+    if (useAi && layoutKey.trimmed().isEmpty()) {
+        description->setText(i18n("Enter your Zhipu API key in OCR and Layout Services settings."));
+        generate->setEnabled(false);
+    }
     layout->addWidget(buttons);
     connect(range, &QRadioButton::toggled, rangeEdit, &QWidget::setEnabled);
     connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
@@ -6290,41 +6376,83 @@ void Part::slotGenerateReadingViews()
         return;
     }
     const QUrl documentUrl = url();
-    std::unique_ptr<ClosedTemporaryPdfFile> snapshot(createClosedOcrTemporaryPdfFile(QStringLiteral("views")));
     QString error;
-    if (!snapshot || !m_document->saveChanges(snapshot->fileName(), &error)) {
-        KMessageBox::information(widget(), i18n("Could not prepare the current document for View detection. %1", error));
-        return;
-    }
+    ReadingViewGenerationResult result;
     QProgressDialog progress(i18n("Preparing View detection..."), i18n("Cancel"), 0, requested.size(), widget());
-    progress.setWindowTitle(i18n("Auto-generate Reading Views"));
+    progress.setWindowTitle(title);
     progress.setWindowModality(Qt::ApplicationModal);
     progress.setMinimumDuration(0);
     progress.setAutoClose(false);
     progress.setAutoReset(false);
     std::atomic_bool cancelled = false;
-    connect(&progress, &QProgressDialog::canceled, &dialog, [&cancelled] { cancelled.store(true); });
-    QPointer<QProgressDialog> progressPointer(&progress);
-    QFutureWatcher<Okular::ReadingViewGenerationResult> watcher;
-    connect(&watcher, &QFutureWatcher<Okular::ReadingViewGenerationResult>::finished, &progress, &QDialog::accept);
-    watcher.setFuture(QtConcurrent::run([document = m_document, source = snapshot->fileName(), requested, &cancelled, progressPointer] {
-        return document->generateReadingViews(source, requested, [&cancelled, progressPointer](int completed, int total, int page) {
-            if (progressPointer) QMetaObject::invokeMethod(progressPointer, [progressPointer, completed, total, page] {
-                if (progressPointer) {
-                    progressPointer->setMaximum(total);
-                    progressPointer->setValue(completed);
-                    progressPointer->setLabelText(i18n("Detecting Views on page %1...", page));
-                }
-            }, Qt::QueuedConnection);
-            return !cancelled.load();
-        });
-    }));
-    if (!watcher.isFinished()) progress.exec();
-    if (watcher.isRunning()) {
-        cancelled.store(true);
-        watcher.waitForFinished();
+    if (useAi) {
+        QNetworkAccessManager network;
+        progress.show();
+        for (int i = 0; i < requested.size(); ++i) {
+            const int page = requested[i];
+            progress.setValue(i);
+            progress.setLabelText(i18n("Detecting Views on page %1...", page + 1));
+            if (progress.wasCanceled() || m_readingViewDetectionInvalidated || url() != documentUrl) break;
+            const auto size = m_document->pageSizeInPoints(page);
+            const int dpi = size.isEmpty() ? 0 : int(std::min(216.0, 1600.0 * 72 / std::max(size.width(), size.height())));
+            if (dpi < 1) {
+                error = i18n("This page is too large for whole-page AI analysis.");
+                break;
+            }
+            const auto image = m_document->renderToImage(page, dpi, false, &error);
+            if (image.isNull()) break;
+            auto *reply = AiPageAnalysis::requestLayout(network, m_glmOcrBaseUrl, layoutKey, image, error);
+            if (!reply) break;
+            QEventLoop wait;
+            connect(reply, &QNetworkReply::finished, &wait, &QEventLoop::quit);
+            connect(&progress, &QProgressDialog::canceled, reply, &QNetworkReply::abort);
+            if (!reply->isFinished()) wait.exec();
+            if (progress.wasCanceled()) break;
+            const auto response = AiChat::response(reply, error);
+            reply->deleteLater();
+            if (!error.isEmpty()) break;
+            const auto regions = AiPageAnalysis::layoutViews(response, error);
+            if (!error.isEmpty()) break;
+            auto &rectangles = result.rectangles[page];
+            for (const auto &region : regions) {
+                const auto &r = region.rectangle;
+                rectangles.append({r.left(), r.top(), r.right(), r.bottom()});
+            }
+        }
+        result.cancelled = progress.wasCanceled();
+        result.success = result.rectangles.size() == requested.size();
+        result.errorText = m_readingViewDetectionInvalidated ? i18n("The document changed during detection. No Views were applied.") : error;
+        progress.hide();
+    } else {
+        std::unique_ptr<ClosedTemporaryPdfFile> snapshot(createClosedOcrTemporaryPdfFile(QStringLiteral("views")));
+        if (!snapshot || !m_document->saveChanges(snapshot->fileName(), &error)) {
+            KMessageBox::information(widget(), i18n("Could not prepare the current document for View detection. %1", error));
+            return;
+        }
+        connect(&progress, &QProgressDialog::canceled, &dialog, [&cancelled] { cancelled.store(true); });
+        QPointer<QProgressDialog> progressPointer(&progress);
+        QFutureWatcher<Okular::ReadingViewGenerationResult> watcher;
+        connect(&watcher, &QFutureWatcher<Okular::ReadingViewGenerationResult>::finished, &progress, &QDialog::accept);
+        watcher.setFuture(QtConcurrent::run([document = m_document, source = snapshot->fileName(), requested, &cancelled, progressPointer] {
+            return document->generateReadingViews(source, requested, [&cancelled, progressPointer](int completed, int total, int page) {
+                if (progressPointer) QMetaObject::invokeMethod(progressPointer, [progressPointer, completed, total, page] {
+                    if (progressPointer) {
+                        progressPointer->setMaximum(total);
+                        progressPointer->setValue(completed);
+                        progressPointer->setLabelText(i18n("Detecting Views on page %1...", page));
+                    }
+                }, Qt::QueuedConnection);
+                return !cancelled.load();
+            });
+        }));
+        if (!watcher.isFinished()) progress.exec();
+        if (watcher.isRunning()) {
+            cancelled.store(true);
+            watcher.waitForFinished();
+        }
+        result = watcher.result();
+        progress.hide();
     }
-    const auto result = watcher.result();
     if (cancelled.load() || result.cancelled) return;
     if (!result.success) {
         KMessageBox::information(widget(), result.errorText.isEmpty() ? i18n("Could not detect Views.") : result.errorText);
@@ -6354,9 +6482,53 @@ void Part::slotGenerateReadingViews()
         KMessageBox::information(widget(), i18n("No page regions were detected. No changes were made."));
         return;
     }
-    if (KMessageBox::warningContinueCancel(widget(),
-            i18n("Apply %1 generated Views to %2 pages? Existing Views will be replaced on %3 pages. You can adjust the results manually or undo this operation.", count, batch.size(), replaced),
-            i18n("Auto-generate Reading Views"), KGuiItem(i18nc("@action:button", "Apply"))) != KMessageBox::Continue) return;
+    QDialog confirm(widget());
+    confirm.setObjectName(QStringLiteral("confirmReadingViewsDialog"));
+    confirm.setWindowTitle(title);
+    auto *reviewLayout = new QVBoxLayout(&confirm);
+    auto *summary = new QLabel(i18n("Apply %1 generated Views to %2 pages? Existing Views will be replaced on %3 pages. You can adjust the results manually or undo this operation.", count, batch.size(), replaced), &confirm);
+    summary->setWordWrap(true);
+    reviewLayout->addWidget(summary);
+    auto *pageChoice = new QComboBox(&confirm);
+    for (const auto &entry : batch)
+        pageChoice->addItem(i18n("Page %1", entry.first + 1));
+    reviewLayout->addWidget(pageChoice);
+    auto *preview = new QLabel(&confirm);
+    preview->setAlignment(Qt::AlignCenter);
+    reviewLayout->addWidget(preview);
+    const auto showPreview = [&](int row) {
+        if (m_readingViewDetectionInvalidated || url() != documentUrl) {
+            preview->clear();
+            return;
+        }
+        const auto &[page, views] = batch.at(row);
+        const auto size = m_document->pageSizeInPoints(page);
+        const int dpi = size.isEmpty() ? 0 : int(std::min({144.0, 640.0 * 72 / size.width(), 440.0 * 72 / size.height()}));
+        const auto image = dpi > 0 ? m_document->renderToImage(page, dpi, false) : QImage();
+        if (image.isNull()) {
+            preview->clear();
+            return;
+        }
+        auto thumbnail = QPixmap::fromImage(image);
+        QPainter painter(&thumbnail);
+        painter.setPen(QPen(Qt::blue, 1));
+        for (const auto &view : views) {
+            const auto &r = view.rectangle;
+            const QRectF box(QPointF(r.left * image.width(), r.top * image.height()), QPointF(r.right * image.width(), r.bottom * image.height()));
+            painter.drawRect(box);
+            painter.drawText(box, Qt::AlignTop | Qt::AlignLeft, QString::number(view.number));
+        }
+        painter.end();
+        preview->setPixmap(thumbnail);
+    };
+    connect(pageChoice, &QComboBox::currentIndexChanged, &confirm, showPreview);
+    showPreview(0);
+    auto *reviewButtons = new QDialogButtonBox(QDialogButtonBox::Cancel, &confirm);
+    reviewButtons->addButton(i18nc("@action:button", "Apply"), QDialogButtonBox::AcceptRole);
+    connect(reviewButtons, &QDialogButtonBox::accepted, &confirm, &QDialog::accept);
+    connect(reviewButtons, &QDialogButtonBox::rejected, &confirm, &QDialog::reject);
+    reviewLayout->addWidget(reviewButtons);
+    if (confirm.exec() != QDialog::Accepted) return;
     // The confirmation itself runs an event loop; revalidate after it closes.
     if (m_readingViewDetectionInvalidated || url() != documentUrl || int(m_document->pages()) != pageCount) {
         KMessageBox::information(widget(), i18n("The document changed during detection. No Views were applied."));

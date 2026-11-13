@@ -319,6 +319,23 @@ private Q_SLOTS:
         QCOMPARE(backend.renderToImage(1, 72, false).size(), QSize(400, 500));
         qDeleteAll(pages);
     }
+private:
+    static void compareOcrWords(const QList<Okular::OcrTextWord> &actual, const QList<Okular::OcrTextWord> &expected)
+    {
+        QCOMPARE(actual.size(), expected.size());
+        for (int i = 0; i < actual.size(); ++i) {
+            QCOMPARE(actual[i].text, expected[i].text);
+            const auto &bounds = actual[i].rectangle;
+            const auto &wanted = expected[i].rectangle;
+            constexpr double tolerance = 0.000001;
+            QVERIFY2(bounds.adjusted(-tolerance, -tolerance, tolerance, tolerance).contains(wanted)
+                         && wanted.adjusted(-tolerance, -tolerance, tolerance, tolerance).contains(bounds),
+                     qPrintable(QStringLiteral("Got (%1,%2 %3x%4), expected (%5,%6 %7x%8)")
+                                    .arg(bounds.x()).arg(bounds.y()).arg(bounds.width()).arg(bounds.height())
+                                    .arg(wanted.x()).arg(wanted.y()).arg(wanted.width()).arg(wanted.height())));
+        }
+    }
+private Q_SLOTS:
     void ocrWordRectanglesRemainStable()
     {
         MuPDFGenerator backend(nullptr, {});
@@ -332,7 +349,7 @@ private Q_SLOTS:
             QVERIFY2(backend.replaceOcrTextLayer(0, words, &error), qPrintable(error));
             QList<Okular::OcrTextWord> actual;
             QVERIFY2(backend.readOcrTextLayer(0, &actual, &error), qPrintable(error));
-            QCOMPARE(actual, words);
+            compareOcrWords(actual, words);
             QCOMPARE(backend.renderToImage(0, 144, false), original);
         }
         const auto saved = m_directory.filePath(QStringLiteral("ocr-edited.pdf"));
@@ -342,12 +359,12 @@ private Q_SLOTS:
         QCOMPARE(reopened.loadDocumentWithPassword(saved, fresh, {}), Okular::Document::OpenSuccess);
         QList<Okular::OcrTextWord> actual;
         QVERIFY2(reopened.readOcrTextLayer(0, &actual, &error), qPrintable(error));
-        QCOMPARE(actual, words);
+        compareOcrWords(actual, words);
         // Undo/redo payloads also round-trip without expanding other words.
         words[0].rectangle.setWidth(.2);
         QVERIFY2(reopened.replaceOcrTextLayer(0, words, &error), qPrintable(error));
         QVERIFY2(reopened.readOcrTextLayer(0, &actual, &error), qPrintable(error));
-        QCOMPARE(actual, words);
+        compareOcrWords(actual, words);
         qDeleteAll(pages);
         qDeleteAll(fresh);
     }

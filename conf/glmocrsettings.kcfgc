@@ -1,0 +1,4 @@
+File=glmocr.kcfg
+ClassName=GlmOcrSettings
+NameSpace=Okular
+ParentInConstructor=true

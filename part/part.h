@@ -594,6 +594,9 @@ private:
     KSelectAction *m_editingModeSelector = nullptr;
     QAction *m_applyReadingViewsToDocument = nullptr;
     QAction *m_generateReadingViews = nullptr;
+    QString m_glmOcrBaseUrl = QStringLiteral("https://open.bigmodel.cn/api/paas/v4");
+    QAction *m_aiReadingViews = nullptr;
+    QAction *m_aiOcr = nullptr;
     QAction *m_numberByClicking = nullptr;
     QHash<int, QStringList> m_viewNumberingPrefix;
     QHash<int, QList<QPair<int, Okular::Annotation *>>> m_calloutNumberingPrefix;
@@ -668,7 +671,8 @@ private Q_SLOTS:
     void slotCombinePdfFiles();
     void slotAppendPdfFile();
     void slotRecognizeEnglishText();
-    void slotGenerateReadingViews();
+    void generateReadingViews(bool useAi);
+    void recognizeCurrentPageWithAi();
     void slotInsertPage();
     void slotSetPageTemplate();
     void slotInsertPageFromTemplate();

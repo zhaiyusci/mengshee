@@ -9261,3 +9261,199 @@ msgstr "向左旋转批注"
 
 msgid "Rotate Annotation Right"
 msgstr "向右旋转批注"
+
+#: part/preferencesdialog.cpp
+
+#: part/preferencesdialog.cpp
+msgid "OpenAI-compatible API"
+msgstr "兼容 OpenAI 的 API"
+
+#: part/dlgaiservice.cpp
+msgid "API base URL:"
+msgstr "API 基础地址："
+
+#: part/dlgaiservice.cpp
+msgid "Model name:"
+msgstr "模型名称："
+
+#: part/dlgaiservice.cpp
+msgid "For example, glm-5.3"
+msgstr "例如 glm-5.3"
+
+#: part/dlgaiservice.cpp
+msgid "API key:"
+msgstr "API 密钥："
+
+#: part/dlgaiservice.cpp
+msgid "A pasted key is saved in your local settings. To keep the key outside Mengshee, enter an environment variable such as $OPENAI_API_KEY. Leave blank for services without authentication."
+msgstr "直接输入的密钥会保存在本机设置中。也可以填写环境变量名（如 $OPENAI_API_KEY），让密钥保留在环境变量中。服务无需鉴权时留空即可。"
+
+#: part/dlgaiservice.cpp
+msgid "Test connection"
+msgstr "测试连接"
+
+#: part/dlgaiservice.cpp
+msgid "Send a short text request to the selected model."
+msgstr "向所选模型发送一条简短的文本请求。"
+
+#: part/dlgaiservice.cpp
+msgid "Enter an HTTP or HTTPS API base URL."
+msgstr "请输入 HTTP 或 HTTPS 格式的 API 基础地址。"
+
+#: part/dlgaiservice.cpp
+msgid "Enter the model name supplied by the service."
+msgstr "请输入服务提供的模型名称。"
+
+#: part/dlgaiservice.cpp
+msgid "The API key environment variable is empty or unset."
+msgstr "密钥环境变量为空或尚未设置。"
+
+#: part/dlgaiservice.cpp
+msgid "The API key contains an invalid character."
+msgstr "API 密钥含有无效字符。"
+
+#: part/dlgaiservice.cpp
+msgid "Testing connection…"
+msgstr "正在测试连接…"
+
+#: part/dlgaiservice.cpp
+msgid "The connection test timed out."
+msgstr "连接测试超时。"
+
+#: part/dlgaiservice.cpp
+#, kde-format
+msgid "The service returned HTTP %1."
+msgstr "服务返回 HTTP %1。"
+
+#: part/dlgaiservice.cpp
+msgid "The model responded successfully."
+msgstr "模型已成功响应。"
+
+#: part/dlgaiservice.cpp
+msgid "The service did not return a chat completion."
+msgstr "服务未返回有效的对话响应。"
+
+#: part/dlgaiservice.cpp
+#, kde-format
+msgid "The service returned HTTP %1. %2"
+msgstr "服务返回 HTTP %1。%2"
+
+msgid "AI Reading Views…"
+msgstr "AI 划分阅读视图…"
+
+msgid "AI Reading Views"
+msgstr "AI 划分阅读视图"
+
+msgid "AI OCR…"
+msgstr "AI 文字识别…"
+
+msgid "AI OCR"
+msgstr "AI 文字识别"
+
+msgid "Send page"
+msgstr "发送当前页"
+
+#, kde-format
+msgid "Analyzing page %1…"
+msgstr "正在分析第 %1 页…"
+
+#, kde-format
+msgid "Send an image of page %1 to %2 using model %3?"
+msgstr "将第 %1 页的图像发送到 %2，使用模型 %3 分析吗？"
+
+
+msgid "Could not encode the page image."
+msgstr "无法编码页面图像。"
+
+msgid "No regions were found on this page."
+msgstr "此页没有识别出区域。"
+
+msgid "Review the words and boxes. Apply replaces the OCR layer on this page."
+msgstr "请核对识别文字和位置。点击“应用”将替换此页的 OCR 文字层。"
+
+msgid "Review the numbered regions. Apply replaces the Views on this page."
+msgstr "请核对编号和区域。点击“应用”将替换此页的阅读视图。"
+
+msgid "The model did not return the requested list of regions."
+msgstr "模型未返回所需的区域列表。"
+
+msgid "The model returned invalid page coordinates."
+msgstr "模型返回的页面坐标无效。"
+
+msgid "The model returned an invalid OCR word."
+msgstr "模型返回了无效的识别文字。"
+
+msgid "The request timed out."
+msgstr "请求超时。"
+
+msgid "The model reached its output limit."
+msgstr "模型输出已达上限，结果不完整。"
+
+msgid "This page is too large for whole-page AI analysis."
+msgstr "本页尺寸过大，无法进行整页 AI 分析。"
+
+msgid "Could not read the OCR layer."
+msgstr "无法读取 OCR 文字层。"
+
+msgid "The page changed during analysis. Run the analysis again."
+msgstr "分析期间页面已改变，请重新分析。"
+
+msgid "The OCR layer changed during analysis. Run the analysis again."
+msgstr "分析期间 OCR 文字层已改变，请重新分析。"
+
+msgid "The Views changed during analysis. Run the analysis again."
+msgstr "分析期间阅读视图已改变，请重新分析。"
+
+msgid "Searchable OCR text — OpenAI-compatible vision chat (tested with GLM)"
+msgstr "可搜索 OCR 文字层 — OpenAI 兼容视觉对话接口（已测试 GLM）"
+
+msgid "Tested with glm-5.3-flash"
+msgstr "已验证 glm-5.3-flash"
+
+
+
+
+
+
+msgid "Invalid GLM-OCR page layout."
+msgstr "GLM-OCR 返回了无效的页面布局。"
+
+msgctxt "Compact AI reading-region toolbar button"
+msgid "AI Views"
+msgstr "AI 分区"
+
+msgid "Generate Reading Views for selected pages with GLM-OCR"
+msgstr "用 GLM-OCR 为所选页面生成阅读视图"
+
+msgid "General AI"
+msgstr "通用 AI"
+
+msgid "OpenAI-compatible vision model"
+msgstr "兼容 OpenAI 接口的视觉模型"
+
+msgid "OCR and Layout Services"
+msgstr "OCR 与版面分析服务"
+
+msgid "Service provider:"
+msgstr "服务提供商："
+
+msgid "Zhipu GLM-OCR"
+msgstr "智谱 GLM-OCR"
+
+msgid "Page layout analysis for Reading Views"
+msgstr "阅读视图的页面版面解析"
+
+msgid "Zhipu API key:"
+msgstr "智谱 API 密钥："
+
+msgid "Enter your Zhipu API key in OCR and Layout Services settings."
+msgstr "请在「OCR 与版面分析服务」设置中填写智谱 API 密钥。"
+
+msgid "Set the model and API base URL in General AI settings."
+msgstr "请在「通用 AI」设置中填写模型和 API 基础地址。"
+
+msgid "Send images of the selected pages to GLM-OCR to detect reading regions. You can review the number of Views before applying them."
+msgstr "将所选页面的图像发送给 GLM-OCR 识别阅读区域。应用前可检查分区结果和数量。"
+
+msgid "Send and generate"
+msgstr "发送并生成"
