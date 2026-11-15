@@ -5096,6 +5096,62 @@ void Document::resetSearch(int searchID)
     documentGuard->d->notifySearchSetupChanged(-1, 0, documentGeneration);
 }
 
+bool Document::setPageHighlights(int id, int pageNumber, const QList<NormalizedRect> &rectangles, const QColor &color)
+{
+    if (pageNumber < 0 || pageNumber >= d->m_pagesVector.size()) {
+        return false;
+    }
+    Page *page = d->m_pagesVector.at(pageNumber);
+    for (const NormalizedRect &rectangle : rectangles) {
+        if (rectangle.isNull()) {
+            continue;
+        }
+        RegularAreaRect area;
+        area.appendShape(rectangle);
+        page->d->setHighlight(area, color, id);
+    }
+
+    const QList<DocumentObserver *> observers = d->m_observers.values();
+    QPointer<Document> documentGuard(this);
+    for (DocumentObserver *observer : observers) {
+        if (!documentGuard) {
+            return true;
+        }
+        if (documentGuard->d->m_observers.contains(observer)) {
+            observer->notifyPageChanged(pageNumber, DocumentObserver::Highlights);
+        }
+    }
+    return true;
+}
+
+void Document::clearPageHighlights(int id)
+{
+    QList<int> changedPages;
+    for (Page *page : std::as_const(d->m_pagesVector)) {
+        if (!page->hasHighlights(id)) {
+            continue;
+        }
+        page->d->deleteHighlights(id);
+        changedPages.append(page->number());
+    }
+    if (changedPages.isEmpty()) {
+        return;
+    }
+
+    const QList<DocumentObserver *> observers = d->m_observers.values();
+    QPointer<Document> documentGuard(this);
+    for (const int pageNumber : std::as_const(changedPages)) {
+        for (DocumentObserver *observer : observers) {
+            if (!documentGuard) {
+                return;
+            }
+            if (documentGuard->d->m_observers.contains(observer)) {
+                observer->notifyPageChanged(pageNumber, DocumentObserver::Highlights);
+            }
+        }
+    }
+}
+
 void Document::cancelSearch()
 {
     d->m_searchCancelled = true;

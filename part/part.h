@@ -71,6 +71,8 @@ class GUIActivateEvent;
 }
 
 class FindBar;
+class AiBridge;
+class QProcess;
 class ThumbnailList;
 class ThumbnailController;
 class PageSizeLabel;
@@ -286,6 +288,8 @@ protected Q_SLOTS:
     void cannotQuit();
     void slotShowFindBar();
     void slotHideFindBar();
+    void slotShowAiChatWindow();
+    void stopAiChatWindow();
     void slotJobStarted(KIO::Job *job);
     void slotJobFinished(KJob *job);
     void loadCancelled(const QString &reason);
@@ -485,6 +489,8 @@ private:
     Sidebar *m_sidebar;
     SearchWidget *m_searchWidget;
     QPointer<FindBar> m_findBar;
+    AiBridge *m_aiBridge = nullptr;
+    QProcess *m_aiChatProcess = nullptr;
     KMessageWidget *m_migrationMessage;
     KMessageWidget *m_topMessage;
     KMessageWidget *m_formsMessage;
@@ -561,6 +567,7 @@ private:
     QAction *m_find;
     QAction *m_findNext;
     QAction *m_findPrev;
+    QAction *m_aiChatWindow;
     QAction *m_save;
     QAction *m_saveAs;
     QAction *m_printPreview;

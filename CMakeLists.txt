@@ -550,6 +550,8 @@ if(BUILD_DESKTOP)
     part/dlgaiservice.cpp
     part/aichat.cpp
     part/aipageanalysis.cpp
+    part/aibridge.cpp
+    part/aisearch.cpp
     part/glmlayout.cpp
     part/dlgdebug.cpp
     part/dlgeditor.cpp

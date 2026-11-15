@@ -32,6 +32,7 @@
     <Action name="edit_find"/>
     <Action name="edit_find_next"/>
     <Action name="edit_find_prev"/>
+    <Action name="ai_chat"/>
   </Menu>
   <Menu name="view"><text>&amp;View</text>
     <Action name="presentation"/>

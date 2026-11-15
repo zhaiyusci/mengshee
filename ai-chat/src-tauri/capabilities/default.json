@@ -1,0 +1,9 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Chat window: model API over the network, loopback bridge via plain fetch.",
+  "windows": ["main"],
+  "permissions": [
+    "core:default"
+  ]
+}

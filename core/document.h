@@ -80,6 +80,7 @@ struct OcrTextWord;
 #define PAGEVIEW_SEARCH_ID 2
 #define SW_SEARCH_ID 3
 #define PRESENTATION_SEARCH_ID 4
+#define AI_SEARCH_ID 5
 
 /**
  * The DocumentInfo structure can be filled in by generators to display
@@ -806,6 +807,21 @@ public:
      * Resets the search for the given @p searchID.
      */
     void resetSearch(int searchID);
+
+    /**
+     * Sets display-only highlight rectangles on one page for the observer with
+     * the given @p id.
+     *
+     * These highlights belong to the live document model only: they are not
+     * annotations, they never change page content, and they are never written
+     * to the PDF. They use the same page highlight storage as search matches.
+     */
+    bool setPageHighlights(int id, int pageNumber, const QList<NormalizedRect> &rectangles, const QColor &color);
+
+    /**
+     * Removes every display-only highlight for the observer with the given @p id.
+     */
+    void clearPageHighlights(int id);
 
     /**
      * Returns the bookmark manager of the document.

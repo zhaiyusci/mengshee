@@ -9588,3 +9588,377 @@ msgstr "使用 Tesseract 在本地处理所选页面。"
 
 msgid "No new content was recognized on the selected pages."
 msgstr "所选页面没有需要添加的识别结果。"
+
+#: part/part.cpp
+msgid "Search &Passages…"
+msgstr "搜索段落(&P)…"
+
+#: part/part.cpp
+msgid "Rank the document text by relevance to a query and show where each matching passage is"
+msgstr "按查询相关度对文档文本排序，并显示每个命中段落的位置"
+
+#: part/aisearchpanel.cpp
+msgctxt "Ranked passage search"
+msgid "Search text:"
+msgstr "搜索文本："
+
+#: part/aisearchpanel.cpp
+msgid "Describe what you are looking for"
+msgstr "输入你要找的内容"
+
+#: part/aisearchpanel.cpp
+msgid "Enter the text to look for."
+msgstr "请输入要查找的内容。"
+
+#: part/aisearchpanel.cpp
+msgid "Reading the document text…"
+msgstr "正在读取文档文本…"
+
+#: part/aisearchpanel.cpp
+msgid "No text is available in this document (indexed %1 pages, %2 characters)."
+msgstr "这个文档没有可用文本（已索引 %1 页、%2 个字符）。"
+
+#: part/aisearchpanel.cpp
+msgid "No passage matches “%1” (indexed %2 pages, %3 characters)."
+msgstr "没有匹配“%1”的段落（已索引 %2 页、%3 个字符）。"
+
+#: part/aisearchpanel.cpp
+msgctxt "Search result: page number and matched text"
+msgid "Page %1 — %2"
+msgstr "第 %1 页 — %2"
+
+#: part/aisearchpanel.cpp
+msgid "1 matching passage"
+msgstr "1 个匹配段落"
+
+#: part/aisearchpanel.cpp
+msgid "%1 matching passages"
+msgstr "%1 个匹配段落"
+
+#: part/aisearchpanel.cpp
+msgctxt "Ranked passage search"
+msgid "Ask:"
+msgstr "提问："
+
+#: part/aisearchpanel.cpp
+msgid "Ask about this document"
+msgstr "就这个文档提问"
+
+#: part/aisearchpanel.cpp
+msgid "Enter a question or the text to look for."
+msgstr "请输入问题或要查找的内容。"
+
+#: part/aisearchpanel.cpp
+msgid "The answer could not be requested: %1"
+msgstr "无法请求回答：%1"
+
+#: part/aisearchpanel.cpp
+msgid "Asking the model…"
+msgstr "正在询问模型…"
+
+#: part/aisearchpanel.cpp
+msgid "The answer could not be generated: %1"
+msgstr "无法生成回答：%1"
+
+#: part/aisearchpanel.cpp
+msgid "The model returned no answer."
+msgstr "模型没有返回回答内容。"
+
+#: part/aisearchpanel.cpp
+msgid "No citation could be verified against the document; treat this answer as unchecked."
+msgstr "没有任何引用能在文档中得到核实，这段回答请当作未核实内容。"
+
+#: part/aisearchpanel.cpp
+msgid "Verified sources: pages %1"
+msgstr "已核实的出处：第 %1 页"
+
+#: part/aisearchpanel.cpp
+msgid "Matching passages are shown below. Configure the model and API base URL under General AI to get an answer with verified sources."
+msgstr "下面显示的是匹配段落。在“通用 AI”设置中填写模型和 API 地址后，这里会给出带已核实出处的回答。"
+
+#: part/aisearchpanel.cpp
+msgid "AI check"
+msgstr "AI 检查"
+
+#: part/aisearchpanel.cpp
+msgid "Show the configured AI service and test it"
+msgstr "显示已配置的 AI 服务并发一个测试请求"
+
+#: part/aisearchpanel.cpp
+msgid "Service: %1 | Model: %2 | Key: %3"
+msgstr "服务：%1 ｜ 模型：%2 ｜ 密钥：%3"
+
+#: part/aisearchpanel.cpp
+msgid "not set"
+msgstr "未填写"
+
+#: part/aisearchpanel.cpp
+msgid "set"
+msgstr "已填写"
+
+#: part/aisearchpanel.cpp
+msgid "Testing…"
+msgstr "测试中…"
+
+#: part/aisearchpanel.cpp
+msgid "The model responded successfully: %1"
+msgstr "模型返回成功：%1"
+
+#: part/aisearchpanel.cpp
+msgid "Search could not be expanded: %1"
+msgstr "无法改写检索词：%1"
+
+#: part/aisearchpanel.cpp
+msgid "Nothing matched directly. Asking the model for search terms…"
+msgstr "直接检索没有命中，正在让模型改写检索词…"
+
+#: part/aisearchpanel.cpp
+msgid "No passage matches “%1” (searched instead for: %2)."
+msgstr "没有匹配“%1”的段落（改用这些检索词也没找到：%2）。"
+
+#: part/part.cpp
+msgid "Ask &AI…"
+msgstr "AI 问答(&A)…"
+
+#: part/part.cpp
+msgid "Ask a question about this document and see the answer with its evidence"
+msgstr "就这个文档提问，并查看回答及其在文档中的依据"
+
+#: part/aisearchpanel.cpp
+msgid "Ask a question about this document"
+msgstr "问一个关于本文档的问题"
+
+#: part/aisearchpanel.cpp
+msgid "Answer"
+msgstr "回答"
+
+#: part/aisearchpanel.cpp
+msgid "Evidence in the document (click to jump)"
+msgstr "文档中的依据（点击跳转）"
+
+#: part/aisearchpanel.cpp
+msgid "Enter a question about this document."
+msgstr "请输入一个关于本文档的问题。"
+
+#: part/aisearchpanel.cpp
+msgid "Answering…"
+msgstr "正在回答…"
+
+#: part/aisearchpanel.cpp
+msgid "Reading the whole document (%1 pages)…"
+msgstr "正在通读整个文档（%1 页）…"
+
+#: part/aisearchpanel.cpp
+msgid "Using the %1 most relevant passages…"
+msgstr "正在使用最相关的 %1 个段落…"
+
+#: part/aisearchpanel.cpp
+msgid "The document is large. Narrowing down the relevant pages…"
+msgstr "文档较大，正在缩小相关页面的范围…"
+
+#: part/aisearchpanel.cpp
+msgid "The question could not be prepared for search: %1"
+msgstr "无法为检索准备问题：%1"
+
+#: part/aisearchpanel.cpp
+msgid "No relevant part of this document could be found for the question."
+msgstr "没有在文档中找到与这个问题相关的部分。"
+
+#: part/aisearchpanel.cpp
+msgid "Using the most relevant passages…"
+msgstr "正在使用最相关的段落…"
+
+#: part/aisearchpanel.cpp
+msgid "The document is too large to send whole, and no relevant passage was found. Configure the model under General AI, or ask a narrower question."
+msgstr "文档太大，无法整篇发送，也没有找到相关段落。请在“通用 AI”中配置模型，或把问题问得更具体。"
+
+#: part/aisearchpanel.cpp
+msgctxt "Evidence: page number and quoted text"
+msgid "Page %1 — “%2”"
+msgstr "第 %1 页 —“%2”"
+
+#: part/aisearchpanel.cpp
+msgid "The model gave no citation that could be verified in the document; treat the answer as unchecked."
+msgstr "模型没有给出能在文档中核实的依据，这段回答请当作未核实内容。"
+
+#: part/aisearchpanel.cpp
+msgid "%1 verified source(s); %2 citation(s) could not be found in the document and were dropped."
+msgstr "已核实 %1 处依据；另有 %2 处引用在文档中找不到，已丢弃。"
+
+#: part/aisearchpanel.cpp
+msgid "%1 verified source(s)."
+msgstr "已核实 %1 处依据。"
+
+#: part/aisearchpanel.cpp
+msgid "The model named pages but no exact quotes. Asking for the exact text…"
+msgstr "模型只给了页码，正在向模型索取原文…"
+
+#: part/aisearchpanel.cpp
+msgid "Pages are known but the exact quotes could not be requested: %1"
+msgstr "已知页码，但无法索取原文：%1"
+
+#: part/aisearchpanel.cpp
+msgid "The model named pages but gave no exact quotes: %1"
+msgstr "模型只给了页码，没有给出原文：%1"
+
+#: part/aisearchpanel.cpp
+msgid "The model named pages but gave no exact quote; the pages are shown without highlighted text."
+msgstr "模型只给出页码，没有可核实的原文；这里只列出页码，页面内不标高亮。"
+
+#: part/aisearchpanel.cpp
+msgid "Page %1 (page only, no exact quote)"
+msgstr "第 %1 页（只有页码，没有原文）"
+
+
+
+#: part/aisearchpanel.cpp
+msgid "Page %1 — “%2” (located from the answer text)"
+msgstr "第 %1 页 —“%2”（按回答内容自动定位）"
+
+#: part/aisearchpanel.cpp
+msgid "The model named pages but no exact quote, and no passage on those pages matched the answer."
+msgstr "模型只给出页码，也没有提供原文，而且在这几页上没有找到与回答内容匹配的段落。"
+
+#: part/aisearchpanel.cpp
+msgid "%1 source(s) located from the answer text; %2 named page(s) could not be located."
+msgstr "已按回答内容定位 %1 处；另有 %2 个页码无法定位到具体段落。"
+
+#: part/aisearchpanel.cpp
+msgid "%1 source(s) located; %2 citation(s) could not be found verbatim and were replaced or dropped."
+msgstr "已定位 %1 处；另有 %2 处引用无法逐字匹配，已替换或丢弃。"
+
+#: part/aisearchpanel.cpp
+msgid "%1 source(s) located."
+msgstr "已定位 %1 处依据。"
+
+#: part/aisearchpanel.cpp
+msgid "Asking the model for the exact wording on page(s) %1…"
+msgstr "正在向模型索取第 %1 页的原文…"
+
+#: part/aisearchpanel.cpp
+msgid "The exact wording could not be requested: %1"
+msgstr "无法索取原文：%1"
+
+#: part/aisearchpanel.cpp
+msgid "The exact wording could not be obtained: %1"
+msgstr "没有拿到原文：%1"
+
+#: part/aisearchpanel.cpp
+msgid "The model named pages but gave no quote that exists in the document; the pages are listed without highlighted text."
+msgstr "模型只给出页码，没有给出在文档中真实存在的原文；这里只列出页码，页面内不标高亮。"
+
+#: part/aisearchpanel.cpp
+msgid "Reading the pages as images…"
+msgstr "正在把页面作为图像读取…"
+
+#: part/aisearchpanel.cpp
+msgid "Pages as images"
+msgstr "页面转图片"
+
+#: part/aisearchpanel.cpp
+msgid "Send the pages as images to a vision model instead of their text"
+msgstr "把页面渲染成图像交给视觉模型，而不是发送文本"
+
+#: part/aisearchpanel.cpp
+msgid "Ask a question, then follow up"
+msgstr "提一个问题，之后可以继续追问"
+
+#: part/aisearchpanel.cpp
+msgid "New"
+msgstr "新对话"
+
+#: part/aisearchpanel.cpp
+msgid "Start a new conversation"
+msgstr "开始新的对话"
+
+#: part/aisearchpanel.cpp
+msgid "<p><b>You:</b> %1</p>"
+msgstr "<p><b>你：</b>%1</p>"
+
+#: part/aisearchpanel.cpp
+msgid "<p><b>AI:</b> %1</p>"
+msgstr "<p><b>AI：</b>%1</p>"
+
+#: part/aisearchpanel.cpp
+msgid "<p><i>Configure the model and API base URL under General AI first.</i></p>"
+msgstr "<p><i>请先在“通用 AI”中配置模型和 API 地址。</i></p>"
+
+#: part/aisearchpanel.cpp
+msgid "The %1 attached images are the pages of one PDF, in order: image 1 is page 1, and so on."
+msgstr "附上的 %1 张图片是一份 PDF 的页面，按顺序排列：第 1 张图是第 1 页，依此类推。"
+
+#: part/aisearchpanel.cpp
+msgid "The request could not be sent: %1"
+msgstr "请求未能发出：%1"
+
+#: part/aisearchpanel.cpp
+msgid "No locateable evidence was given for this answer."
+msgstr "这段回答没有给出可定位的依据。"
+
+#: part/aisearchpanel.cpp
+msgid "<p><i>Evidence:</i> %1</p>"
+msgstr "<p><i>依据：</i>%1</p>"
+
+#: part/aisearchpanel.cpp
+msgid "page %1"
+msgstr "第 %1 页"
+
+#: part/aisearchpanel.cpp
+msgid "page %1 “%2”"
+msgstr "第 %1 页“%2”"
+
+#: part/aisearchpanel.cpp
+msgid "%1 evidence link(s)."
+msgstr "%1 个依据链接。"
+
+#: part/aisearchpanel.cpp
+msgid "This document has no extractable text; turn on “Pages as images”."
+msgstr "这个文档没有可提取的文本；请勾选“页面转图片”。"
+
+#: part/aisearchpanel.cpp
+msgid "Locating the evidence on page %1…"
+msgstr "正在第 %1 页上定位依据…"
+
+#: part/aisearchpanel.cpp
+msgid "page %1 (located)"
+msgstr "第 %1 页（已定位）"
+
+#: part/aisearchpanel.cpp
+msgid "The %1 images below are the pages of one PDF. Each page is preceded by a line “PDF page N:” and the image right after it is that page. Cite N."
+msgstr "下面的 %1 张图片是一份 PDF 的页面。每页前面有一行“PDF page N:”，紧跟着的图片就是该页。引用那个 N。"
+
+#: part/aisearchpanel.cpp
+msgid "This model does not take page images; asking again from the text."
+msgstr "这个模型不接受页面图像，改用文本重新提问。"
+
+#: part/aisearchpanel.cpp
+msgid "Formula typesetting failed: %1"
+msgstr "公式排版失败：%1"
+
+#: part/aisearchpanel.cpp
+msgid "%1 formula(s) typeset."
+msgstr "已排版 %1 个公式。"
+
+#: part/aisearchpanel.cpp
+msgid "The answer contains formulas that were not marked with $...$, so they were not typeset."
+msgstr "回答里有公式没有用 $...$ 标记，因此没有排版。"
+
+#: part/part.cpp
+msgid "AI &Chat Window…"
+msgstr "AI 对话窗口(&C)…"
+
+#: part/part.cpp
+msgid "Open the separate chat window that reads this document and can jump to pages"
+msgstr "打开独立的对话窗口：它读取当前文档，并能跳转到文档中的页面"
+
+#: part/part.cpp
+msgid "The chat bridge could not start: %1"
+msgstr "对话桥接无法启动：%1"
+
+#: part/part.cpp
+msgid "The AI chat window was not found. Set MENGSHEE_AI_CHAT to its path, or build it in ai-chat."
+msgstr "找不到 AI 对话窗口。请用环境变量 MENGSHEE_AI_CHAT 指定路径，或先在 ai-chat 中构建。"
+
+#: part/part.cpp
+msgid "The AI chat window could not be started."
+msgstr "AI 对话窗口无法启动。"

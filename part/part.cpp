@@ -36,6 +36,7 @@
 #include <QContextMenuEvent>
 #include <QCursor>
 #include <QDir>
+#include <QProcess>
 #if HAVE_DBUS
 #include <QDBusConnection>
 #endif // HAVE_DBUS
@@ -156,6 +157,7 @@
 #include "extensions.h"
 #include "fileprinterpreview.h"
 #include "findbar.h"
+#include "aibridge.h"
 #include "gui/signatureguiutils.h"
 #include "gui/toolbarbuttonheight.h"
 #include "layers.h"
@@ -611,6 +613,15 @@ Part::Part(QObject *parent, const QVariantList &args)
     m_findBar = new FindBar(m_document, rightContainer);
     m_findBar->setSearchView(m_pageView);
     rightLayout->addWidget(m_findBar);
+    // Loopback bridge for the separate chat front end.
+    m_aiBridge = new AiBridge(m_document, this);
+    m_aiBridge->setPathProvider([this] { return url().toLocalFile(); });
+    {
+        QString bridgeError;
+        if (!m_aiBridge->start(&bridgeError)) {
+            qWarning() << "AI bridge did not start:" << bridgeError;
+        }
+    }
     connectWorkspacePageView(m_pageView);
     m_bottomBar = new QWidget(rightContainer);
     QHBoxLayout *bottomBarLayout = new QHBoxLayout(m_bottomBar);
@@ -960,6 +971,13 @@ void Part::setupViewerActions()
 
     m_findPrev = KStandardAction::findPrev(this, SLOT(slotFindPrev()), ac);
     m_findPrev->setEnabled(false);
+
+    m_aiChatWindow = ac->addAction(QStringLiteral("ai_chat"), this, &Part::slotShowAiChatWindow);
+    m_aiChatWindow->setText(i18n("AI &Chat Window…"));
+    m_aiChatWindow->setIcon(QIcon::fromTheme(QStringLiteral("view-conversation-balloon")));
+    m_aiChatWindow->setWhatsThis(i18n("Open the separate chat window that reads this document and can jump to pages"));
+    ac->setDefaultShortcut(m_aiChatWindow, QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_J));
+    m_aiChatWindow->setEnabled(false);
 
     m_save = nullptr;
     m_saveAs = nullptr;
@@ -1757,6 +1775,7 @@ void Part::routeWorkspacePageViewActions(PageView *view)
 
 Part::~Part()
 {
+    stopAiChatWindow();
 #if HAVE_DBUS
     QDBusConnection::sessionBus().unregisterObject(m_registerDbusName);
 #endif // HAVE_DBUS
@@ -2420,7 +2439,9 @@ bool Part::openFile()
     m_find->setEnabled(ok && canSearch);
     m_findNext->setEnabled(ok && canSearch);
     m_findPrev->setEnabled(ok && canSearch);
-    if (m_save) {
+    // The chat window belongs to the document it was opened for.
+    stopAiChatWindow();
+    m_aiChatWindow->setEnabled(ok);    if (m_save) {
         m_save->setEnabled(ok && !(isstdin || mime.inherits(QStringLiteral("inode/directory"))));
     }
     if (m_saveAs) {
@@ -2815,6 +2836,10 @@ bool Part::closeUrl(bool promptToSave)
     m_find->setEnabled(false);
     m_findNext->setEnabled(false);
     m_findPrev->setEnabled(false);
+    if (m_aiChatWindow) {
+        m_aiChatWindow->setEnabled(false);
+    }
+    stopAiChatWindow();
     if (m_save) {
         m_save->setEnabled(false);
     }
@@ -3373,6 +3398,88 @@ void Part::slotHideFindBar()
             view->setFocus();
         }
         m_closeFindBar->setEnabled(false);
+    }
+}
+
+namespace
+{
+// The chat window ships next to the application once packaged; during
+// development it lives in the checkout. Search upward for both layouts.
+QString findAiChatExecutable()
+{
+    const QString fromEnvironment = qEnvironmentVariable("MENGSHEE_AI_CHAT");
+    if (!fromEnvironment.isEmpty() && QFileInfo::exists(fromEnvironment)) {
+        return fromEnvironment;
+    }
+    QDir directory(QCoreApplication::applicationDirPath());
+    for (int depth = 0; depth < 6; ++depth) {
+        const QStringList candidates = {
+            directory.filePath(QStringLiteral("mengshee-ai-chat.exe")),
+            directory.filePath(QStringLiteral("ai-chat/src-tauri/target/release/mengshee-ai-chat.exe")),
+            directory.filePath(QStringLiteral("ai-chat/src-tauri/target/debug/mengshee-ai-chat.exe")),
+        };
+        for (const QString &candidate : candidates) {
+            if (QFileInfo::exists(candidate)) {
+                return candidate;
+            }
+        }
+        if (!directory.cdUp()) {
+            break;
+        }
+    }
+    return {};
+}
+}
+
+void Part::stopAiChatWindow()
+{
+    if (!m_aiChatProcess) {
+        return;
+    }
+    QProcess *process = m_aiChatProcess;
+    m_aiChatProcess = nullptr;
+    if (process->state() != QProcess::NotRunning) {
+        process->terminate();
+        if (!process->waitForFinished(1500)) {
+            process->kill();
+            process->waitForFinished(1000);
+        }
+    }
+    process->deleteLater();
+}
+
+void Part::slotShowAiChatWindow()
+{
+    if (!m_aiBridge) {
+        return;
+    }
+    QString bridgeError;
+    if (!m_aiBridge->start(&bridgeError)) {
+        KMessageBox::information(widget(), i18n("The chat bridge could not start: %1", bridgeError));
+        return;
+    }
+    if (m_aiChatProcess && m_aiChatProcess->state() != QProcess::NotRunning) {
+        return;
+    }
+    const QString executable = findAiChatExecutable();
+    if (executable.isEmpty()) {
+        KMessageBox::information(widget(), i18n("The AI chat window was not found. Set MENGSHEE_AI_CHAT to its path, or build it in ai-chat."));
+        return;
+    }
+    m_aiChatProcess = new QProcess(this);
+    m_aiChatProcess->setProgram(executable);
+    m_aiChatProcess->setWorkingDirectory(QFileInfo(executable).absolutePath());
+    connect(m_aiChatProcess, &QProcess::finished, this, [this] {
+        if (m_aiChatProcess) {
+            m_aiChatProcess->deleteLater();
+            m_aiChatProcess = nullptr;
+        }
+    });
+    m_aiChatProcess->start();
+    if (!m_aiChatProcess->waitForStarted(3000)) {
+        KMessageBox::information(widget(), i18n("The AI chat window could not be started."));
+        m_aiChatProcess->deleteLater();
+        m_aiChatProcess = nullptr;
     }
 }
 

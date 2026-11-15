@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8" />
+    <title>Mengshee · AI</title>
+    <link rel="stylesheet" href="style.css" />
+    <script>
+        window.MathJax = {
+            tex: { inlineMath: [["$", "$"], ["\\(", "\\)"]], displayMath: [["$$", "$$"], ["\\[", "\\]"]] },
+            svg: { fontCache: "global" },
+            startup: { typeset: false }
+        };
+    </script>
+    <script src="vendor/tex-svg.js" defer></script>
+</head>
+<body>
+<header>
+    <span id="document-title">未连接</span>
+    <span id="document-meta"></span>
+</header>
+
+<main id="chat"></main>
+
+<footer>
+    <textarea id="question" rows="1" placeholder="就当前文档提问，回车发送"></textarea>
+    <button id="send">发送</button>
+    <span id="status"></span>
+</footer>
+
+<script src="app.js" defer></script>
+</body>
+</html>

@@ -1,0 +1,17 @@
+{
+  "name": "mengshee-ai-chat",
+  "private": true,
+  "version": "0.1.0",
+  "license": "GPL-2.0-or-later",
+  "scripts": {
+    "vendor:mathjax": "node scripts/vendor-mathjax.cjs",
+    "dev": "npm run vendor:mathjax && tauri dev",
+    "build": "npm run vendor:mathjax && tauri build"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.12.4"
+  },
+  "dependencies": {
+    "mathjax": "^3.2.2"
+  }
+}
