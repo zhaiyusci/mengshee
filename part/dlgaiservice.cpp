@@ -33,13 +33,15 @@ DlgAiService::DlgAiService(QWidget *parent)
     : QWidget(parent)
 {
     auto *form = new QFormLayout(this);
-    form->addRow(new QLabel(i18n("Searchable OCR text — OpenAI-compatible vision chat (tested with GLM)"), this));
+    form->addRow(new QLabel(i18n("Text recognition and questions with any OpenAI-compatible chat service"), this));
     auto *base = addField(form, QStringLiteral("BaseUrl"), i18n("API base URL:"));
-    base->setPlaceholderText(QStringLiteral("https://open.bigmodel.cn/api/paas/v4"));
+    base->setPlaceholderText(QStringLiteral("https://api.deepseek.com/v1"));
     auto *model = addField(form, QStringLiteral("ModelId"), i18n("Model name:"));
-    model->setPlaceholderText(i18n("Tested with glm-5.3-flash"));
+    model->setPlaceholderText(i18n("e.g. deepseek-chat, kimi-k2, glm-5.3-flash"));
     auto *key = addField(form, QStringLiteral("ApiKey"), i18n("API key:"));
     key->setEchoMode(QLineEdit::Password);
+    auto *effort = addField(form, QStringLiteral("ReasoningEffort"), i18n("Reasoning effort:"));
+    effort->setPlaceholderText(i18n("Empty uses the service default; try low, medium, high or max"));
     auto *hint = new QLabel(i18n("A pasted key is saved in your local settings. To keep the key outside Mengshee, enter an environment variable such as $OPENAI_API_KEY. Leave blank for services without authentication."), this);
     hint->setWordWrap(true);
     form->addRow(QString(), hint);
@@ -154,3 +156,4 @@ DlgDocumentAnalysis::DlgDocumentAnalysis(QWidget *parent)
         });
     });
 }
+

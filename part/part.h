@@ -491,6 +491,7 @@ private:
     QPointer<FindBar> m_findBar;
     AiBridge *m_aiBridge = nullptr;
     QProcess *m_aiChatProcess = nullptr;
+    QByteArray m_aiChatOutput;
     KMessageWidget *m_migrationMessage;
     KMessageWidget *m_topMessage;
     KMessageWidget *m_formsMessage;

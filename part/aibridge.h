@@ -1,15 +1,13 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-#pragma once
+#ifndef AIBRIDGE_H
+#define AIBRIDGE_H
 
 #include <QHash>
 #include <QObject>
-#include <QPointer>
 #include <functional>
 
 #include "aisearch.h"
 
-class QTcpServer;
-class QTcpSocket;
 class QJsonObject;
 class QNetworkAccessManager;
 
@@ -19,52 +17,47 @@ class Document;
 }
 
 /**
- * A loopback-only HTTP bridge that lets a separate chat front end (Tauri)
- * answer questions about the open document and drive the viewer.
+ * The protocol between the reader and its own chat window.
  *
- * It binds 127.0.0.1 on a random port, requires a per-run token, and never
- * exposes model credentials: the front end has its own settings.
+ * The chat window is this application's window, started by the reader as a
+ * child process; the two talk over the child's standard input and output, one
+ * JSON object per line. That transport is the same on every platform and needs
+ * no port, token, discovery file or platform-specific socket.
  *
- *   GET  /state                 document path, title, page count, current page
- *   GET  /page/{n}/text         text layer of one page
- *   GET  /page/{n}/image?dpi=N  PNG of one page
- *   POST /jump                  {"page": 12, "rects": [[l,t,r,b], ...]}
- *   GET  /ping
+ * Requests and replies:
+ *   {"id": 1, "method": "state", "params": {}} -> {"id": 1, "ok": true, "result": {...}}
  */
 class AiBridge : public QObject
 {
     Q_OBJECT
-public:
-    explicit AiBridge(Okular::Document *document, QObject *parent = nullptr);
-    ~AiBridge() override;
 
-    bool start(QString *error = nullptr);
-    int port() const;
-    QString token() const;
+public:
+    /** The sender writes one complete line to the chat window. */
+    using Sender = std::function<void(const QByteArray &line)>;
+
+    explicit AiBridge(Okular::Document *document, Sender sender, QObject *parent = nullptr);
+
+    void setSender(Sender sender);
+    /** Feeds one line read from the child's standard output. */
+    void receive(const QByteArray &line);
+
     /** Supplies the document path on demand; the part decides what is open. */
     void setPathProvider(std::function<QString()> provider);
 
 private:
-    void handleConnection();
-    void readRequest(QTcpSocket *socket);
-    bool authorized(const QString &path, const QByteArray &tokenHeader) const;
-    void respond(QTcpSocket *socket, int status, const QByteArray &contentType, const QByteArray &body);
-    void respondJson(QTcpSocket *socket, const QJsonObject &object, int status = 200);
-    void handleAsk(QTcpSocket *socket, const QByteArray &body);
+    void dispatch(const QJsonObject &request);
+    void reply(int id, const QJsonObject &result);
+    void replyError(int id, const QString &error);
     void ensureIndex();
-    void writeDiscoveryFile();
-    void removeDiscoveryFile();
     QString currentPath() const;
 
-    QPointer<Okular::Document> m_document;
-    QTcpServer *m_server = nullptr;
+    Okular::Document *m_document = nullptr;
+    Sender m_sender;
     QNetworkAccessManager *m_network = nullptr;
-    QString m_token;
-    QHash<QTcpSocket *, QByteArray> m_buffers;
-    QString m_discoveryPath;
     std::function<QString()> m_pathProvider;
     AiSearch::Index m_index;
     int m_indexPages = -1;
     QString m_indexPath;
-    int m_port = 0;
 };
+
+#endif

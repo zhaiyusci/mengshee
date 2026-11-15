@@ -9404,11 +9404,11 @@ msgstr "分析期间 OCR 文字层已改变，请重新分析。"
 msgid "The Views changed during analysis. Run the analysis again."
 msgstr "分析期间阅读视图已改变，请重新分析。"
 
-msgid "Searchable OCR text — OpenAI-compatible vision chat (tested with GLM)"
-msgstr "可搜索 OCR 文字层 — OpenAI 兼容视觉对话接口（已测试 GLM）"
+msgid "Text recognition and questions with any OpenAI-compatible chat service"
+msgstr "用于文字识别与提问，支持任意 OpenAI 兼容的对话服务"
 
-msgid "Tested with glm-5.3-flash"
-msgstr "已验证 glm-5.3-flash"
+msgid "e.g. deepseek-chat, kimi-k2, glm-5.3-flash"
+msgstr "例如 deepseek-chat、kimi-k2、glm-5.3-flash"
 
 
 
@@ -9428,8 +9428,8 @@ msgstr "用 GLM-OCR 为所选页面生成阅读视图"
 msgid "General AI"
 msgstr "通用 AI"
 
-msgid "OpenAI-compatible vision model"
-msgstr "兼容 OpenAI 接口的视觉模型"
+msgid "Any OpenAI-compatible chat service"
+msgstr "任意 OpenAI 兼容的对话服务"
 
 msgid "OCR and Layout Services"
 msgstr "OCR 与版面分析服务"
@@ -9962,3 +9962,12 @@ msgstr "找不到 AI 对话窗口。请用环境变量 MENGSHEE_AI_CHAT 指定�
 #: part/part.cpp
 msgid "The AI chat window could not be started."
 msgstr "AI 对话窗口无法启动。"
+
+#: part/dlgaiservice.cpp
+msgid "Reasoning effort:"
+msgstr "思考深度："
+
+#: part/dlgaiservice.cpp
+msgid "Empty uses the service default; try low, medium, high or max"
+msgstr "留空使用服务商默认值；可填 low、medium、high、max"
+

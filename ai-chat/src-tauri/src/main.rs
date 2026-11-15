@@ -1,14 +1,44 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use serde::Serialize;
-use std::io::Write;
+use std::collections::HashMap;
+use std::io::{BufRead, Write};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::mpsc::Sender;
+use std::sync::{Mutex, OnceLock};
+
+/// Everything the window needs is handed over by Mengshee when it starts it:
+/// this is the reader's own window, not a program that looks for a partner.
+#[derive(Clone)]
+struct Launch {
+    document: String,
+}
+
+static LAUNCH: OnceLock<Launch> = OnceLock::new();
+
+type Pending = Mutex<HashMap<u64, Sender<Result<serde_json::Value, String>>>>;
+
+static PENDING: OnceLock<Pending> = OnceLock::new();
+static NEXT_ID: AtomicU64 = AtomicU64::new(1);
+
+fn launch_info() -> Launch {
+    let arguments: Vec<String> = std::env::args().collect();
+    let mut document = String::new();
+    let mut index = 1;
+    while index < arguments.len() {
+        if arguments[index] == "--document" {
+            document = arguments.get(index + 1).cloned().unwrap_or_default();
+            index += 2;
+        } else {
+            index += 1;
+        }
+    }
+    Launch { document }
+}
 
 /// A per-user writable directory. The application may live in Program Files,
 /// where its own directory is read-only for a normal process.
 fn data_root() -> std::path::PathBuf {
-    // The application may live in Program Files, where its own directory is
-    // read-only. Prefer the reader's per-user data directory, then the
-    // temporary directory, and only then the executable's folder.
     if let Ok(local) = std::env::var("LOCALAPPDATA") {
         let path = std::path::PathBuf::from(local).join("mengshee").join("ai-chat");
         if std::fs::create_dir_all(&path).is_ok() {
@@ -25,8 +55,6 @@ fn data_root() -> std::path::PathBuf {
         .unwrap_or_else(|| std::path::PathBuf::from("ai-chat-data"))
 }
 
-/// Startup diagnostics: a double-clicked window that dies without a console
-/// must still leave a trace.
 fn log(message: &str) {
     let path = data_root().join("aichat.log");
     if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(&path) {
@@ -34,71 +62,118 @@ fn log(message: &str) {
     }
 }
 
-/// Where the running reader's bridge listens, and the token it expects.
+fn document_title(document: &str) -> String {
+    let name = std::path::Path::new(document)
+        .file_name()
+        .map(|name| name.to_string_lossy().to_string())
+        .unwrap_or_default();
+    if name.is_empty() {
+        "Mengshee · AI".to_string()
+    } else {
+        format!("Mengshee · AI — {name}")
+    }
+}
+
+/// Reads the reader's replies from standard input and hands each one to the
+/// request that is waiting for it.
+fn start_reader() {
+    std::thread::spawn(|| {
+        let stdin = std::io::stdin();
+        for line in stdin.lock().lines() {
+            let Ok(line) = line else { break };
+            let Ok(value) = serde_json::from_str::<serde_json::Value>(&line) else {
+                continue;
+            };
+            let Some(id) = value["id"].as_u64() else { continue };
+            let Some(pending) = PENDING.get() else { continue };
+            let sender = pending.lock().ok().and_then(|mut map| map.remove(&id));
+            if let Some(sender) = sender {
+                if value["ok"].as_bool() == Some(true) {
+                    let _ = sender.send(Ok(value["result"].clone()));
+                } else {
+                    let error = value["error"]
+                        .as_str()
+                        .unwrap_or("Mengshee 返回了错误")
+                        .to_string();
+                    let _ = sender.send(Err(error));
+                }
+            }
+        }
+    });
+}
+
+fn send_request(method: String, params: serde_json::Value) -> Result<serde_json::Value, String> {
+    let id = NEXT_ID.fetch_add(1, Ordering::SeqCst);
+    let (sender, receiver) = std::sync::mpsc::channel();
+    PENDING
+        .get()
+        .ok_or_else(|| "这个窗口由 Mengshee 启动。".to_string())?
+        .lock()
+        .map_err(|_| "连接状态已损坏".to_string())?
+        .insert(id, sender);
+
+    let request = serde_json::json!({ "id": id, "method": method, "params": params });
+    let line = serde_json::to_string(&request).map_err(|error| error.to_string())?;
+    {
+        let mut output = std::io::stdout().lock();
+        output
+            .write_all(format!("{line}\n").as_bytes())
+            .map_err(|error| error.to_string())?;
+        output.flush().map_err(|error| error.to_string())?;
+    }
+
+    match receiver.recv_timeout(std::time::Duration::from_secs(300)) {
+        Ok(result) => result,
+        Err(_) => {
+            if let Some(pending) = PENDING.get() {
+                if let Ok(mut map) = pending.lock() {
+                    map.remove(&id);
+                }
+            }
+            Err("Mengshee 没有响应。".into())
+        }
+    }
+}
+
+#[tauri::command]
+async fn bridge_request(method: String, params: serde_json::Value) -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(move || send_request(method, params))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
 #[derive(Serialize)]
-struct BridgeInfo {
-    port: u16,
-    token: String,
+struct WindowInfo {
+    document: String,
 }
 
 #[tauri::command]
-fn bridge_info() -> Result<BridgeInfo, String> {
-    let data = std::env::var("LOCALAPPDATA").map_err(|error| error.to_string())?;
-    let path = std::path::Path::new(&data)
-        .join("mengshee")
-        .join("ai-bridge.json");
-    if !path.exists() {
-        return Err("Mengshee 没有在运行。请先在 Mengshee 中打开一份文档，再用「编辑 → AI 对话窗口…」启动本窗口。".into());
+fn window_info() -> WindowInfo {
+    WindowInfo {
+        document: LAUNCH
+            .get()
+            .map(|launch| launch.document.clone())
+            .unwrap_or_default(),
     }
-    let text = std::fs::read_to_string(&path)
-        .map_err(|error| format!("无法读取桥接信息：{error}"))?;
-    let value: serde_json::Value = serde_json::from_str(&text).map_err(|error| error.to_string())?;
-    Ok(BridgeInfo {
-        port: value["port"].as_u64().unwrap_or(0) as u16,
-        token: value["token"].as_str().unwrap_or("").to_string(),
-    })
-}
-
-/// Sends one chat-completions request. Doing it here, instead of from the
-/// WebView, avoids CORS and keeps the key out of the page's network log.
-#[tauri::command]
-async fn chat_completion(base_url: String, api_key: String, body: serde_json::Value) -> Result<serde_json::Value, String> {
-    let url = format!("{}/chat/completions", base_url.trim_end_matches('/'));
-    let client = reqwest::Client::new();
-    let mut request = client.post(&url).json(&body);
-    if !api_key.trim().is_empty() {
-        request = request.bearer_auth(api_key);
-    }
-    let response = request.send().await.map_err(|error| error.to_string())?;
-    let status = response.status();
-    let value: serde_json::Value = response.json().await.map_err(|error| error.to_string())?;
-    if !status.is_success() {
-        let message = value["error"]["message"]
-            .as_str()
-            .unwrap_or("request failed")
-            .to_string();
-        return Err(format!("HTTP {}: {message}", status.as_u16()));
-    }
-    Ok(value)
 }
 
 fn main() {
-    log("start");
+    let launch = launch_info();
+    log(&format!("start: document={}", launch.document));
     std::panic::set_hook(Box::new(|info| {
         log(&format!("panic: {info}"));
     }));
+    let _ = PENDING.set(Mutex::new(HashMap::new()));
+    start_reader();
+    let _ = LAUNCH.set(launch.clone());
+
     let result = tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![bridge_info, chat_completion])
-        .setup(|app| {
-            // Create the window explicitly so a WebView2 failure is logged
-            // instead of only panicking, and keep its data folder in a path we
-            // know the app can write.
-            log("setup");
+        .invoke_handler(tauri::generate_handler![bridge_request, window_info])
+        .setup(move |app| {
             let data_directory = data_root().join("webview");
             let _ = std::fs::create_dir_all(&data_directory);
-            log(&format!("webview data: {}", data_directory.display()));
             match tauri::WebviewWindowBuilder::new(app, "main", tauri::WebviewUrl::App("index.html".into()))
-                .title("Mengshee · AI")
+                .title(document_title(&launch.document))
                 .inner_size(720.0, 860.0)
                 .data_directory(data_directory)
                 .build()

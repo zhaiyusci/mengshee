@@ -53,7 +53,7 @@ PreferencesDialog::PreferencesDialog(QWidget *parent, KConfigSkeleton *skeleton,
         m_annotationsPage = addPage(m_annotations, i18n("Annotations"), QStringLiteral("draw-freehand"), i18n("Annotation Options"));
         auto *aiSettings = new Okular::AiServiceSettings(this);
         aiSettings->load();
-        addPage(new DlgAiService(this), aiSettings, i18n("General AI"), QStringLiteral("preferences-system-network"), i18n("OpenAI-compatible vision model"));
+        addPage(new DlgAiService(this), aiSettings, i18n("General AI"), QStringLiteral("preferences-system-network"), i18n("Any OpenAI-compatible chat service"));
         auto *layoutSettings = new Okular::GlmOcrSettings(this);
         layoutSettings->load();
         addPage(new DlgDocumentAnalysis(this), layoutSettings, i18n("OCR and Layout Services"), QStringLiteral("view-split-left-right"), i18n("Page layout analysis for Reading Views"));
@@ -89,3 +89,4 @@ void PreferencesDialog::switchToAnnotationsPage()
 }
 
 #include "moc_preferencesdialog.cpp"
+

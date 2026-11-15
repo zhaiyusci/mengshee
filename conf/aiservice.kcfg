@@ -5,5 +5,7 @@
     <entry name="BaseUrl" type="String" />
     <entry name="ModelId" type="String" />
     <entry name="ApiKey" type="Password" />
+    <!-- Optional reasoning_effort value; empty means the service default. -->
+    <entry name="ReasoningEffort" type="String" />
   </group>
 </kcfg>

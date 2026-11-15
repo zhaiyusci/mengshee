@@ -1,7 +1,6 @@
-// A small chat window over the running Mengshee: it asks the model about the
-// open document, renders Markdown + MathJax, and turns `[words](pdf:12)` links
-// into jumps. Document access goes through the loopback bridge; the bridge
-// token never leaves this machine.
+// The chat window of the application. Mengshee started this window and talks
+// to it over standard input/output; the document, page text, model answers and
+// page jumps all arrive through that channel.
 
 const tauri = window.__TAURI__;
 const invoke = tauri?.core?.invoke;
@@ -16,7 +15,6 @@ const elements = {
 };
 
 const state = {
-    bridge: null,
     document: null,
     pageTexts: new Map(),
     history: [],
@@ -27,43 +25,39 @@ const systemPrompt = `You answer questions about one PDF, which the first user m
 Use only that document; never use outside knowledge. If it does not contain the answer, say so plainly.
 Answer in the language of the question. Be concrete and direct; do not explain your reasoning.
 
-Format: Markdown prose. Every factual claim links inline to the place in the document that supports it:
-- [words](pdf:12) links to page 12 (the page's position in the file, 1 for the first page).
-- [see (14)](pdf:12 "(14)") also names the printed object there: a label such as (14), Figure 5, Section 3.1, or a short verbatim phrase.
+Format: Markdown prose. Support each claim with an inline link to the document:
+[three or more words copied exactly](pdf:12)
+The link text must be copied character for character from page 12, so the reader can find it
+and highlight it. Do not paraphrase inside the link text.
+If the page also prints a label for that object, add it in quotes:
+[the counterpoise correction is](pdf:7 "(12)")
 Write formulas as ASCII LaTeX: inline $...$, display $$...$$. Never paste Unicode math letters.
 Follow-up questions continue the same conversation.`;
 
-async function bridge(path, options = {}) {
-    if (!state.bridge) {
-        throw new Error("没有找到正在运行的 Mengshee。");
+async function request(method, params = {}) {
+    if (!invoke) {
+        throw new Error("这个窗口由 Mengshee 启动。");
     }
-    const url = new URL(path, `http://127.0.0.1:${state.bridge.port}`);
-    url.searchParams.set("token", state.bridge.token);
-    const response = await window.fetch(url, options);
-    return response;
+    return invoke("bridge_request", { method, params });
 }
 
 async function connect() {
-    if (!invoke) {
-        elements.title.textContent = "需要在 Tauri 窗口中运行";
-        return;
-    }
     try {
-        state.bridge = await invoke("bridge_info");
-    } catch (error) {
-        elements.title.textContent = "没有找到正在运行的 Mengshee";
-        elements.status.textContent = String(error);
-        return;
+        const result = await request("state");
+        state.document = result.document?.pages ? result.document : null;
+        renderDocumentState();
+        return true;
+    } catch {
+        state.document = null;
+        renderDocumentState();
+        return false;
     }
-    const documentState = await (await bridge("/state")).json();
-    state.document = documentState.document?.pages ? documentState.document : null;
-    renderDocumentState();
 }
 
 function renderDocumentState() {
     if (!state.document) {
         elements.title.textContent = "没有打开的文档";
-        elements.meta.textContent = "在 Mengshee 里打开一份 PDF";
+        elements.meta.textContent = "";
         return;
     }
     elements.title.textContent = state.document.title || state.document.path;
@@ -79,8 +73,8 @@ async function documentContext() {
         if (state.pageTexts.has(page)) {
             continue;
         }
-        const text = (await (await bridge(`/page/${page}/text`)).json()).text || "";
-        state.pageTexts.set(page, text);
+        const result = await request("pageText", { page });
+        state.pageTexts.set(page, result.text || "");
     }
     let context = "";
     for (let page = 1; page <= state.document.pages; page += 1) {
@@ -101,8 +95,8 @@ function renderMarkdown(markdown) {
     for (const match of markdown.matchAll(linkPattern)) {
         html += escapeHtml(markdown.slice(last, match.index));
         const page = Number(match[2]);
-        const label = match[3] ? escapeHtml(match[3]) : "";
-        html += `<a data-page="${page}" data-label="${label}">${escapeHtml(match[1])}</a>`;
+        const label = match[3] ? match[3] : "";
+        html += `<a data-page="${page}" data-label="${escapeHtml(label)}">${escapeHtml(match[1])}</a>`;
         last = match.index + match[0].length;
     }
     html += escapeHtml(markdown.slice(last));
@@ -151,24 +145,10 @@ async function ask() {
         }
 
         elements.status.textContent = "生成回答…";
-        // The reader owns the model settings and the API key; this window only
-        // sends the conversation.
-        const response = await bridge("/ask", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                messages: [{ role: "system", content: systemPrompt }, ...state.history],
-                temperature: 0.2
-            })
+        // Mengshee owns the model settings; this window only sends the conversation.
+        const payload = await request("ask", {
+            messages: [{ role: "system", content: systemPrompt }, ...state.history]
         });
-        const payload = await response.json();
-        if (!response.ok) {
-            throw new Error(
-                payload?.error === "ai-not-configured"
-                    ? "请先在 Mengshee 的“通用 AI”设置里配置模型和 API 地址。"
-                    : payload?.error || `请求失败：${response.status}`
-            );
-        }
         const answer = payload?.choices?.[0]?.message?.content?.trim();
         if (!answer) {
             throw new Error(payload?.error?.message || "模型没有返回内容");
@@ -178,11 +158,51 @@ async function ask() {
         await typeset(node);
         elements.status.textContent = "";
     } catch (error) {
-        appendMessage("error", escapeHtml(String(error.message || error)));
+        const message = String(error.message || error);
+        appendMessage(
+            "error",
+            escapeHtml(message === "ai-not-configured" ? "请先在 Mengshee 的“通用 AI”设置里配置模型和 API 地址。" : message)
+        );
         state.history.pop();
         elements.status.textContent = "";
     } finally {
         state.busy = false;
+    }
+}
+
+// Copying text is something a model does reliably, unlike formatting: when no
+// anchor candidate can be located, ask it for the shortest verbatim quote.
+function parseQuote(content) {
+    const match = content.match(/\{[\s\S]*\}/);
+    if (!match) {
+        return "";
+    }
+    try {
+        const value = JSON.parse(match[0]);
+        return String(value.quote || "").trim();
+    } catch {
+        return "";
+    }
+}
+
+async function repairAnchor(page, claim) {
+    try {
+        const pageText = (await request("pageText", { page })).text || "";
+        if (!pageText.trim()) {
+            return "";
+        }
+        const payload = await request("ask", {
+            messages: [
+                {
+                    role: "system",
+                    content: 'You copy exact text. Reply with JSON only: {"quote":"..."} where quote is the shortest exact substring of the given page text that supports the claim. If nothing supports it, reply {"quote":""}.'
+                },
+                { role: "user", content: `Page text:\n${pageText}\n\nClaim: ${claim}` }
+            ]
+        });
+        return parseQuote(payload?.choices?.[0]?.message?.content || "");
+    } catch {
+        return "";
     }
 }
 
@@ -194,19 +214,38 @@ elements.chat.addEventListener("click", async (event) => {
         return;
     }
     try {
-        const body = { page: Number(link.dataset.page) };
+        const params = { page: Number(link.dataset.page) };
+        // Models do not always put the label in the quoted part; the visible
+        // link text often carries it. Try each candidate in the reader, which
+        // keeps the first one it can locate on the page.
+        const candidates = [];
         if (link.dataset.label) {
-            body.anchor = link.dataset.label;
+            candidates.push(link.dataset.label);
         }
-        const response = await bridge("/jump", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(body)
-        });
-        const result = await response.json();
+        const text = (link.textContent || "").trim();
+        if (text && text.length <= 80) {
+            candidates.push(text);
+        }
+        const parenthesized = text.match(/\(([^()]{1,24})\)/);
+        if (parenthesized) {
+            candidates.push(parenthesized[1]);
+        }
+        const numbered = text.match(/([A-Za-z]?\d+(?:[.\-]\d+)*)/);
+        if (numbered) {
+            candidates.push(numbered[1]);
+        }
+        params.anchors = [...new Set(candidates.filter((value) => value && value.trim()))];
+        let result = await request("jump", params);
+        if (!result.located) {
+            elements.status.textContent = "正在定位原文…";
+            const quote = await repairAnchor(params.page, text);
+            if (quote) {
+                result = await request("jump", { page: params.page, anchors: [quote] });
+            }
+        }
         elements.status.textContent = result.located
-            ? `已跳到第 ${link.dataset.page} 页并高亮`
-            : `已跳到第 ${link.dataset.page} 页`;
+            ? `已跳到第 ${params.page} 页并高亮`
+            : `已跳到第 ${params.page} 页`;
     } catch (error) {
         elements.status.textContent = String(error.message || error);
     }
@@ -226,14 +265,19 @@ elements.question.addEventListener("input", () => {
 
 connect();
 
-// The window belongs to one document: when the reader closes it, or the
-// reader itself goes away, the window closes too.
+// The window belongs to one document of the running application: when the
+// document closes, or the application goes away, the window closes too.
 let missingDocumentCount = 0;
+
 function closeWindow() {
-    const current = window.__TAURI__?.window?.getCurrentWindow?.();
-    if (current) {
-        current.close();
-    } else {
+    try {
+        const current = window.__TAURI__?.window?.getCurrentWindow?.();
+        if (current) {
+            current.close();
+        } else {
+            window.close();
+        }
+    } catch {
         window.close();
     }
 }
@@ -243,12 +287,16 @@ setInterval(async () => {
         return;
     }
     try {
-        const documentState = await (await bridge("/state")).json();
-        const next = documentState.document?.pages ? documentState.document : null;
-        missingDocumentCount = next ? 0 : missingDocumentCount + 1;
-        if (missingDocumentCount >= 3) {
-            closeWindow();
-            return;
+        const result = await request("state");
+        const next = result.document?.pages ? result.document : null;
+        if (!next) {
+            missingDocumentCount += 1;
+            if (missingDocumentCount >= 5) {
+                closeWindow();
+                return;
+            }
+        } else {
+            missingDocumentCount = 0;
         }
         if (JSON.stringify(next) !== JSON.stringify(state.document)) {
             state.document = next;
@@ -256,13 +304,9 @@ setInterval(async () => {
             renderDocumentState();
         }
     } catch {
-        state.bridge = null;
         missingDocumentCount += 1;
-        if (missingDocumentCount >= 3) {
+        if (missingDocumentCount >= 5) {
             closeWindow();
-            return;
         }
-        elements.title.textContent = "正在等待 Mengshee…";
-        await connect();
     }
 }, 1500);

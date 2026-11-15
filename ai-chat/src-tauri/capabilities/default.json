@@ -4,6 +4,7 @@
   "description": "Chat window: model API over the network, loopback bridge via plain fetch.",
   "windows": ["main"],
   "permissions": [
-    "core:default"
+    "core:default",
+    "core:window:allow-close"
   ]
 }

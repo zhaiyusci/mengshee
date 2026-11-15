@@ -613,15 +613,10 @@ Part::Part(QObject *parent, const QVariantList &args)
     m_findBar = new FindBar(m_document, rightContainer);
     m_findBar->setSearchView(m_pageView);
     rightLayout->addWidget(m_findBar);
-    // Loopback bridge for the separate chat front end.
-    m_aiBridge = new AiBridge(m_document, this);
+    // The chat window is this application's own window; it talks to the
+    // reader over its standard input and output.
+    m_aiBridge = new AiBridge(m_document, AiBridge::Sender(), this);
     m_aiBridge->setPathProvider([this] { return url().toLocalFile(); });
-    {
-        QString bridgeError;
-        if (!m_aiBridge->start(&bridgeError)) {
-            qWarning() << "AI bridge did not start:" << bridgeError;
-        }
-    }
     connectWorkspacePageView(m_pageView);
     m_bottomBar = new QWidget(rightContainer);
     QHBoxLayout *bottomBarLayout = new QHBoxLayout(m_bottomBar);
@@ -3436,6 +3431,10 @@ void Part::stopAiChatWindow()
     if (!m_aiChatProcess) {
         return;
     }
+    if (m_aiBridge) {
+        m_aiBridge->setSender(AiBridge::Sender());
+    }
+    m_aiChatOutput.clear();
     QProcess *process = m_aiChatProcess;
     m_aiChatProcess = nullptr;
     if (process->state() != QProcess::NotRunning) {
@@ -3453,11 +3452,6 @@ void Part::slotShowAiChatWindow()
     if (!m_aiBridge) {
         return;
     }
-    QString bridgeError;
-    if (!m_aiBridge->start(&bridgeError)) {
-        KMessageBox::information(widget(), i18n("The chat bridge could not start: %1", bridgeError));
-        return;
-    }
     if (m_aiChatProcess && m_aiChatProcess->state() != QProcess::NotRunning) {
         return;
     }
@@ -3469,16 +3463,51 @@ void Part::slotShowAiChatWindow()
     m_aiChatProcess = new QProcess(this);
     m_aiChatProcess->setProgram(executable);
     m_aiChatProcess->setWorkingDirectory(QFileInfo(executable).absolutePath());
-    connect(m_aiChatProcess, &QProcess::finished, this, [this] {
+    const QString documentPath = url().toLocalFile();
+    if (!documentPath.isEmpty()) {
+        m_aiChatProcess->setArguments({QStringLiteral("--document"), documentPath});
+    }
+    // The window talks to this reader over its standard streams: one JSON
+    // object per line. This is the same on every platform.
+    QProcess *process = m_aiChatProcess;
+    m_aiChatOutput.clear();
+    m_aiBridge->setSender([process](const QByteArray &line) {
+        if (process->state() == QProcess::Running) {
+            process->write(line);
+        }
+    });
+    connect(process, &QProcess::readyReadStandardOutput, this, [this, process] {
+        m_aiChatOutput += process->readAllStandardOutput();
+        int newline = m_aiChatOutput.indexOf('\n');
+        while (newline >= 0) {
+            const QByteArray line = m_aiChatOutput.left(newline);
+            m_aiChatOutput.remove(0, newline + 1);
+            if (m_aiBridge) {
+                m_aiBridge->receive(line);
+            }
+            newline = m_aiChatOutput.indexOf('\n');
+        }
+    });
+    connect(process, &QProcess::readyReadStandardError, this, [process] {
+        const QByteArray error = process->readAllStandardError().trimmed();
+        if (!error.isEmpty()) {
+            qWarning() << "AI chat window:" << error;
+        }
+    });
+    connect(process, &QProcess::finished, this, [this] {
+        if (m_aiBridge) {
+            m_aiBridge->setSender(AiBridge::Sender());
+        }
+        m_aiChatOutput.clear();
         if (m_aiChatProcess) {
             m_aiChatProcess->deleteLater();
             m_aiChatProcess = nullptr;
         }
     });
-    m_aiChatProcess->start();
-    if (!m_aiChatProcess->waitForStarted(3000)) {
+    process->start();
+    if (!process->waitForStarted(3000)) {
         KMessageBox::information(widget(), i18n("The AI chat window could not be started."));
-        m_aiChatProcess->deleteLater();
+        process->deleteLater();
         m_aiChatProcess = nullptr;
     }
 }
