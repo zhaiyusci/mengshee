@@ -30,8 +30,30 @@ header, footer {
 
 footer { border-top: 1px solid var(--border); border-bottom: none; }
 
+#composer { display: grid; gap: 6px; width: 100%; }
+
+.composer-row { display: flex; gap: 8px; align-items: center; }
+
+#attachments { display: flex; gap: 6px; flex-wrap: wrap; }
+#attachments:empty { display: none; }
+.attachment { position: relative; }
+.attachment img { height: 56px; border: 1px solid var(--border); border-radius: 6px; display: block; }
+.attachment button {
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    padding: 0 6px;
+    border-radius: 999px;
+    font-size: 12px;
+    line-height: 18px;
+}
+.inline-image { max-height: 96px; border-radius: 6px; margin: 4px 4px 0 0; border: 1px solid var(--border); }
+
 #document-title { font-weight: 600; }
 #document-meta, #status { color: var(--muted); font-size: 12px; }
+#usage { margin-left: auto; color: var(--muted); font-size: 12px; }
+#images-option { display: inline-flex; gap: 4px; align-items: center; font-size: 12px; color: var(--muted); }
+.usage { color: var(--muted); font-size: 12px; margin-top: 2px; }
 
 #chat {
     overflow-y: auto;
@@ -51,12 +73,15 @@ footer { border-top: 1px solid var(--border); border-bottom: none; }
 #question {
     flex: 1;
     resize: none;
+    min-height: 44px;
+    max-height: 200px;
     padding: 8px 10px;
     font: inherit;
     border: 1px solid var(--border);
     border-radius: 8px;
     background: Field;
     color: FieldText;
+    overflow-y: auto;
 }
 
 button {

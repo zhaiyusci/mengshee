@@ -17,14 +17,23 @@
 <header>
     <span id="document-title">未连接</span>
     <span id="document-meta"></span>
+    <span id="usage"></span>
 </header>
 
 <main id="chat"></main>
 
 <footer>
-    <textarea id="question" rows="1" placeholder="就当前文档提问，回车发送"></textarea>
-    <button id="send">发送</button>
-    <span id="status"></span>
+    <div id="composer">
+        <div id="attachments"></div>
+        <textarea id="question" rows="2" placeholder="就当前文档提问，Shift+Enter 换行"></textarea>
+        <div class="composer-row">
+            <button id="attach" title="添加图片">图片</button>
+            <input id="file" type="file" accept="image/*" multiple hidden />
+            <button id="send">发送</button>
+            <label id="images-option"><input type="checkbox" id="use-images" /> 页面用图片</label>
+            <span id="status"></span>
+        </div>
+    </div>
 </footer>
 
 <script src="app.js" defer></script>

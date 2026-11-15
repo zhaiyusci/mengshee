@@ -145,11 +145,21 @@ void AiBridge::dispatch(const QJsonObject &request)
             replyError(id, error);
             return;
         }
-        QByteArray png;
-        QBuffer buffer(&png);
+        // JPEG keeps the request small: a page in PNG is often several times
+        // larger, and every image is sent on each turn.
+        const QString format = params.value(QStringLiteral("format")).toString().toLower();
+        const bool jpeg = format != QLatin1String("png");
+        QByteArray bytes;
+        QBuffer buffer(&bytes);
         buffer.open(QIODevice::WriteOnly);
-        image.save(&buffer, "PNG");
-        reply(id, {{QStringLiteral("png"), QJsonValue(QString::fromLatin1(png.toBase64()))}});
+        if (jpeg) {
+            image.save(&buffer, "JPEG", 85);
+        } else {
+            image.save(&buffer, "PNG");
+        }
+        reply(id,
+              {{QStringLiteral("mime"), QJsonValue(jpeg ? QStringLiteral("image/jpeg") : QStringLiteral("image/png"))},
+               {QStringLiteral("data"), QJsonValue(QString::fromLatin1(bytes.toBase64()))}});
         return;
     }
 
