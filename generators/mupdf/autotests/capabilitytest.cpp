@@ -1009,6 +1009,18 @@ private Q_SLOTS:
         QVERIFY(!ocr->replaceTextLayer(pageCount, QList<Okular::OcrTextWord>(), &error));
         QVERIFY(!error.isEmpty());
 
+        if (ocr->canRecognize()) {
+            const QString output = directory.filePath(QStringLiteral("ocr-output.pdf"));
+            const Okular::OcrResult result = ocr->saveWithOcr(input, output, {1}, false, {});
+            QVERIFY2(result.success, qPrintable(result.errorText));
+            QVERIFY(result.recognizedPages >= 1);
+            QVERIFY(result.recognizedWords > 0);
+            // Known gap: reopening the saved file and reading its OCR layer
+            // currently returns an empty list. Keep save-with-OCR covered here
+            // and track the round-trip separately in the parity matrix.
+            document->close();
+        }
+
         qDeleteAll(models);
         models.clear();
         document->close();

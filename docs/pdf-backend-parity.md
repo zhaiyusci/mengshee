@@ -82,7 +82,7 @@ adapters, not tested code in this repository.
 | Internal / external / remote links | ✅ | ✅ | ✗ | ◐ | ✗ | |
 | Link rectangle edit / delete | ✅ | ✅ | ✗ | ◐ | ✗ | |
 | Page token identity | ✅ | ✅ | ✗ | ◐ | ✗ | `PdfPageIdentity`; parttest live-link cases |
-| OCR text layer read/replace | ◐ | ◐ | ✗ | ✗ | ✗ | capability tests cover read/empty layer; save-with-OCR is not end-to-end tested for either engine |
+| OCR text layer read/replace | ◐ | ◐ | ✗ | ✗ | ✗ | `saveWithOcr` recognizes words and saves, but reopening the saved file currently returns an empty OCR layer; read/replace paths are only contract-tested |
 | ReadingView get/set/token | ✅ | ✅ | ✗ | ✗ | ✗ | |
 | Numbered callout metadata | ✅ | ✅ | ✗ | ✗ | ✗ | |
 | LaTeX note metadata | ✅ | ✅ | ✗ | ✗ | ✗ | Poppler fork adds Qt annotation custom properties; MuPDF implements it in its generator |
