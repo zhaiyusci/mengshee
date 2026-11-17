@@ -65,18 +65,38 @@ Okular::Document::PrintError MuPDFGenerator::printWithLayout(QPrinter &printer, 
         return Okular::Document::NoPrintError;
 
     const int renderDpi = std::min(printer.resolution(), 300);
-    QHash<int, QImage> pageCache;
-    const auto pageImage = [&](int page) -> QImage {
+    QHash<int, QSizeF> pageSizes;
+    QHash<quint64, QImage> pageCache;
+    const auto pageSize = [&](int page) -> QSizeF {
+        if (auto it = pageSizes.constFind(page); it != pageSizes.constEnd())
+            return *it;
+        QSizeF size;
+        if (!readOperation([&] {
+                const auto bounds = pdf_bound_page(m_context, m_pages.at(page), FZ_CROP_BOX);
+                size = QSizeF(bounds.x1 - bounds.x0, bounds.y1 - bounds.y0);
+            }, nullptr))
+            return {};
+        pageSizes.insert(page, size);
+        return size;
+    };
+    const auto pageImage = [&](int page, const QSize &maximumPixels = {}) -> QImage {
         if (page < 0)
             return {};
-        auto it = pageCache.constFind(page);
-        if (it != pageCache.constEnd())
+        int dpi = renderDpi;
+        const QSizeF size = pageSize(page);
+        if (maximumPixels.isValid() && size.width() > 0 && size.height() > 0) {
+            dpi = std::min(dpi, int(std::ceil(std::min(maximumPixels.width() * 72.0 / size.width(),
+                                                      maximumPixels.height() * 72.0 / size.height()))));
+            dpi = qMax(36, dpi);
+        }
+        const quint64 key = (quint64(page) << 32) | quint64(dpi);
+        if (auto it = pageCache.constFind(key); it != pageCache.constEnd())
             return *it;
         QString error;
-        QImage image = renderToImage(page, renderDpi, m_printAnnotations, &error);
+        QImage image = renderToImage(page, dpi, m_printAnnotations, &error);
         if (printer.colorMode() == QPrinter::GrayScale && !image.isNull() && !image.isGrayscale())
             image = image.convertToFormat(QImage::Format_Grayscale8);
-        pageCache.insert(page, image);
+        pageCache.insert(key, image);
         return image;
     };
 
@@ -156,18 +176,17 @@ Okular::Document::PrintError MuPDFGenerator::printWithLayout(QPrinter &printer, 
         painter.setRenderHints(QPainter::Antialiasing | QPainter::TextAntialiasing | QPainter::SmoothPixmapTransform);
 
         if (options.mode == Okular::PrintLayout::Poster) {
-            const QImage image = pageImage(sheet.posterPage);
-            if (!image.isNull()) {
-                QSizeF pageSize;
-                readOperation([&] {
-                    const auto bounds = pdf_bound_page(m_context, m_pages.at(sheet.posterPage), FZ_CROP_BOX);
-                    pageSize = QSizeF(bounds.x1 - bounds.x0, bounds.y1 - bounds.y0);
-                }, nullptr);
+            const QSizeF page = pageSize(sheet.posterPage);
+            if (page.isValid()) {
                 const qreal overlap = qMax(0.0, options.posterOverlapMm) * printer.resolution() / 25.4;
                 const qreal stepWidth = qMax(1.0, sheetRect.width() - overlap);
                 const qreal stepHeight = qMax(1.0, sheetRect.height() - overlap);
-                const QSizeF posterSize(pageSize.width() * printer.resolution() / 72.0 * options.posterScale,
-                                        pageSize.height() * printer.resolution() / 72.0 * options.posterScale);
+                const QSizeF posterSize(page.width() * printer.resolution() / 72.0 * options.posterScale,
+                                        page.height() * printer.resolution() / 72.0 * options.posterScale);
+                const QSize posterPixels(qCeil(posterSize.width()), qCeil(posterSize.height()));
+                const QImage image = pageImage(sheet.posterPage, posterPixels);
+                if (image.isNull())
+                    continue;
                 const QRectF target(sheetRect.left() - sheet.tileColumn * stepWidth,
                                     sheetRect.top() - sheet.tileRow * stepHeight,
                                     posterSize.width(),
@@ -219,7 +238,7 @@ Okular::Document::PrintError MuPDFGenerator::printWithLayout(QPrinter &printer, 
                               sheetRect.top() + gap + row * (cellHeight + gap),
                               cellWidth,
                               cellHeight);
-            const QImage image = pageImage(page);
+            const QImage image = pageImage(page, cell.size().toSize());
             if (image.isNull())
                 continue;
             QSizeF target = image.size();

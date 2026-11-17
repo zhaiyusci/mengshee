@@ -160,17 +160,16 @@ PrintPreviewImage composePreviewSheet(const PrintPreviewRenderer &renderer,
     const qreal gap = qMin(bounds.width(), bounds.height()) * 0.015;
     const qreal cellWidth = (bounds.width() - gap * (columns + 1)) / columns;
     const qreal cellHeight = (bounds.height() - gap * (rows + 1)) / rows;
-    QString error;
+
+    struct Cell {
+        int page;
+        QRectF rectangle;
+    };
+    QList<Cell> cells;
     for (int index = 0; index < sheet.pages.size(); ++index) {
         const int page = sheet.pages.at(index);
         if (page < 0)
             continue;
-        const PrintPreviewImage rendered = renderer(page, QSize(2048, 2048));
-        if (rendered.image.isNull()) {
-            if (!rendered.error.isEmpty())
-                error = rendered.error;
-            continue;
-        }
         int column = 0;
         int row = 0;
         if (pageOrder == PrintLayout::Vertical) {
@@ -185,19 +184,35 @@ PrintPreviewImage composePreviewSheet(const PrintPreviewRenderer &renderer,
             if (pageOrder == PrintLayout::HorizontalReversed)
                 column = columns - 1 - column;
         }
-        const QRectF cell(bounds.left() + gap + column * (cellWidth + gap),
-                          bounds.top() + gap + row * (cellHeight + gap),
-                          cellWidth,
-                          cellHeight);
+        cells.append({page, QRectF(bounds.left() + gap + column * (cellWidth + gap),
+                                   bounds.top() + gap + row * (cellHeight + gap),
+                                   cellWidth,
+                                   cellHeight)});
+    }
+
+    QString error;
+    const qreal borderWidth = qMax(1.0, sheetPixels.width() / 1200.0);
+    for (const Cell &cell : std::as_const(cells)) {
+        // The page box is known before the renderer is called. Request only
+        // the pixels this cell can actually show instead of a full-page image.
+        const QSize maximumPixels(qMax(1, qCeil(cell.rectangle.width())),
+                                  qMax(1, qCeil(cell.rectangle.height())));
+        const PrintPreviewImage rendered = renderer(cell.page, maximumPixels);
+        if (rendered.image.isNull()) {
+            if (!rendered.error.isEmpty())
+                error = rendered.error;
+            continue;
+        }
         QSizeF target = rendered.image.size();
-        target.scale(cell.size(), Qt::KeepAspectRatio);
-        const QRectF targetRect(cell.center().x() - target.width() / 2,
-                                cell.center().y() - target.height() / 2,
+        target.scale(cell.rectangle.size(), Qt::KeepAspectRatio);
+        const QRectF targetRect(cell.rectangle.center().x() - target.width() / 2,
+                                cell.rectangle.center().y() - target.height() / 2,
                                 target.width(),
                                 target.height());
+        painter.fillRect(targetRect, Qt::white);
         painter.drawImage(targetRect, rendered.image);
-        if (pageBorder)
-            painter.drawRect(cell.adjusted(-gap / 2, -gap / 2, gap / 2, gap / 2));
+        painter.setPen(QPen(pageBorder ? Qt::black : QColor(150, 150, 150), pageBorder ? borderWidth * 2 : borderWidth));
+        painter.drawRect(targetRect);
     }
     painter.end();
     return {canvas, error};

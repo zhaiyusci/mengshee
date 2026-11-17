@@ -29,7 +29,7 @@ private Q_SLOTS:
         auto calls = std::make_shared<std::atomic<int>>(0);
         dialog.setPreviewRenderer([calls](int, QSize) {
             ++*calls;
-            QImage image(120, 160, QImage::Format_RGB32);
+            QImage image(595, 842, QImage::Format_RGB32);
             image.fill(Qt::red);
             return Okular::PrintPreviewImage{image, {}};
         }, {});
