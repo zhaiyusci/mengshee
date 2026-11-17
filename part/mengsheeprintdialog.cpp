@@ -6,6 +6,7 @@
 
 #include "mengsheeprintdialog.h"
 
+#include "core/printlayout.h"
 #include "core/printoptionswidget.h"
 #include "core/printjob.h"
 
@@ -46,25 +47,12 @@
 #include <KLocalizedString>
 
 #include <utility>
-#include <algorithm>
 
 using namespace Okular;
 
 namespace
 {
 constexpr int previewResolutionDpi = 72;
-int layoutGridColumns(int pagesPerSheet)
-{
-    return pagesPerSheet >= 16 ? 4
-        : pagesPerSheet >= 9 ? 3
-        : pagesPerSheet >= 6 ? 3
-        : pagesPerSheet >= 2 ? 2
-        : 1;
-}
-int layoutGridRows(int pagesPerSheet)
-{
-    return qMax(1, (pagesPerSheet + layoutGridColumns(pagesPerSheet) - 1) / layoutGridColumns(pagesPerSheet));
-}
 class PagePreview final : public QWidget {
 public:
     using QWidget::QWidget;
@@ -109,87 +97,45 @@ protected:
     }
 };
 
-struct PreviewSheet {
-    QList<int> pages;
-};
-
-QList<PreviewSheet> buildPreviewSheets(const QList<int> &pages, int mode, int pagesPerSheet, int bookletSubset, int bookletBinding)
-{
-    QList<PreviewSheet> sheets;
-    if (mode == PrintLayout::Multiple) {
-        const int perSheet = qMax(1, pagesPerSheet);
-        for (int first = 0; first < pages.size(); first += perSheet) {
-            PreviewSheet sheet;
-            sheet.pages = pages.mid(first, qMin(perSheet, int(pages.size()) - first));
-            sheets.append(sheet);
-        }
-    } else if (mode == PrintLayout::Booklet) {
-        QList<int> booklet = pages;
-        while (booklet.size() % 4 != 0)
-            booklet.append(-1);
-        for (int i = 0; i < booklet.size() / 4; ++i) {
-            PreviewSheet front;
-            front.pages = {booklet.at(booklet.size() - 1 - 2 * i), booklet.at(2 * i)};
-            PreviewSheet back;
-            back.pages = {booklet.at(2 * i + 1), booklet.at(booklet.size() - 2 - 2 * i)};
-            if (bookletBinding == PrintLayout::BindRight) {
-                std::reverse(front.pages.begin(), front.pages.end());
-                std::reverse(back.pages.begin(), back.pages.end());
-            }
-            if (bookletSubset != PrintLayout::BackSides)
-                sheets.append(front);
-            if (bookletSubset != PrintLayout::FrontSides)
-                sheets.append(back);
-        }
-    } else {
-        for (int page : pages) {
-            PreviewSheet sheet;
-            sheet.pages = {page};
-            sheets.append(sheet);
-        }
-    }
-    return sheets;
-}
-
 PrintPreviewImage composePreviewSheet(const PrintPreviewRenderer &renderer,
-                                      const PreviewSheet &sheet,
+                                      const PrintSheet &sheet,
                                       const QSize &sheetPixels,
-                                      int pagesPerSheet,
-                                      int pageOrder,
-                                      bool pageBorder)
+                                      const PrintLayoutOptions &options)
 {
     QImage canvas(sheetPixels, QImage::Format_RGB32);
     canvas.fill(Qt::white);
     QPainter painter(&canvas);
     painter.setRenderHints(QPainter::Antialiasing | QPainter::TextAntialiasing | QPainter::SmoothPixmapTransform);
     const QRectF bounds(QPointF(0, 0), QSizeF(sheetPixels));
-    const int columns = layoutGridColumns(pagesPerSheet);
-    const int rows = layoutGridRows(pagesPerSheet);
+    const bool singlePage = options.mode == PrintLayout::Size || options.mode == PrintLayout::Poster;
+    const int columns = singlePage ? 1 : options.mode == PrintLayout::Booklet ? 2 : printLayoutColumns(options.pagesPerSheet);
+    const int rows = singlePage ? 1 : options.mode == PrintLayout::Booklet ? 1 : printLayoutRows(options.pagesPerSheet);
     const qreal gap = qMin(bounds.width(), bounds.height()) * 0.015;
     const qreal cellWidth = (bounds.width() - gap * (columns + 1)) / columns;
     const qreal cellHeight = (bounds.height() - gap * (rows + 1)) / rows;
+    const QList<int> sheetPages = sheet.pages.isEmpty() && sheet.posterPage >= 0 ? QList<int> {sheet.posterPage} : sheet.pages;
 
     struct Cell {
         int page;
         QRectF rectangle;
     };
     QList<Cell> cells;
-    for (int index = 0; index < sheet.pages.size(); ++index) {
-        const int page = sheet.pages.at(index);
+    for (int index = 0; index < sheetPages.size(); ++index) {
+        const int page = sheetPages.at(index);
         if (page < 0)
             continue;
         int column = 0;
         int row = 0;
-        if (pageOrder == PrintLayout::Vertical) {
+        if (options.pageOrder == PrintLayout::Vertical) {
             column = index / rows;
             row = index % rows;
-        } else if (pageOrder == PrintLayout::VerticalReversed) {
+        } else if (options.pageOrder == PrintLayout::VerticalReversed) {
             column = index / rows;
             row = rows - 1 - index % rows;
         } else {
             column = index % columns;
             row = index / columns;
-            if (pageOrder == PrintLayout::HorizontalReversed)
+            if (options.pageOrder == PrintLayout::HorizontalReversed)
                 column = columns - 1 - column;
         }
         cells.append({page, QRectF(bounds.left() + gap + column * (cellWidth + gap),
@@ -219,7 +165,7 @@ PrintPreviewImage composePreviewSheet(const PrintPreviewRenderer &renderer,
                                 target.height());
         painter.fillRect(targetRect, Qt::white);
         painter.drawImage(targetRect, rendered.image);
-        painter.setPen(QPen(pageBorder ? Qt::black : QColor(150, 150, 150), pageBorder ? borderWidth * 2 : borderWidth));
+        painter.setPen(QPen(options.pageBorder ? Qt::black : QColor(150, 150, 150), options.pageBorder ? borderWidth * 2 : borderWidth));
         painter.drawRect(targetRect);
     }
     painter.end();
@@ -820,30 +766,27 @@ void MengsheePrintDialog::startPreviewRender()
     for (const auto &range : ranges.toRangeList())
         for (int page = qMax(1, range.from); page <= qMin(m_documentPageCount, range.to); ++page) pages.append(page - 1);
 
-    const int layoutMode = m_printOptionsWidget ? m_printOptionsWidget->property(PrintLayout::modeProperty).toInt() : PrintLayout::Size;
-    if (layoutMode != PrintLayout::Size && !pages.isEmpty()) {
-        const int pagesPerSheet = m_printOptionsWidget ? qMax(1, m_printOptionsWidget->property(PrintLayout::pagesPerSheetProperty).toInt()) : 2;
-        const int pageOrder = m_printOptionsWidget ? m_printOptionsWidget->property(PrintLayout::pageOrderProperty).toInt() : PrintLayout::Horizontal;
-        const bool pageBorder = m_printOptionsWidget && m_printOptionsWidget->property(PrintLayout::pageBorderProperty).toBool();
-        const int bookletSubset = m_printOptionsWidget ? m_printOptionsWidget->property(PrintLayout::bookletSubsetProperty).toInt() : PrintLayout::BothSides;
-        const int bookletBinding = m_printOptionsWidget ? m_printOptionsWidget->property(PrintLayout::bookletBindingProperty).toInt() : PrintLayout::BindLeft;
-        const QList<PreviewSheet> sheets = buildPreviewSheets(pages, layoutMode, pagesPerSheet, bookletSubset, bookletBinding);
+    const PrintLayoutOptions layout = printLayoutOptionsFromWidget(m_printOptionsWidget);
+    if (layout.mode != PrintLayout::Size && !pages.isEmpty()) {
+        const QList<PrintSheet> sheets = buildPrintSheets(pages, layout);
         m_previewSheetCount = qMax(1, sheets.size());
         updatePreviewNavigation();
         if (sheets.isEmpty())
             return;
-        const PreviewSheet &sheet = sheets.at(qBound(0, m_previewSheet - 1, sheets.size() - 1));
+        const PrintSheet &sheet = sheets.at(qBound(0, m_previewSheet - 1, sheets.size() - 1));
         const QSizeF paper = previewPageLayout().fullRect(QPageLayout::Point).size();
         const int sheetWidth = 1600;
         const QSize sheetPixels(sheetWidth, paper.width() > 0 ? qMax(1, int(sheetWidth * paper.height() / paper.width())) : sheetWidth);
         QStringList sheetPages;
         for (int page : sheet.pages)
             sheetPages.append(QString::number(page));
+        if (sheetPages.isEmpty() && sheet.posterPage >= 0)
+            sheetPages.append(QString::number(sheet.posterPage));
         const QString key = QStringLiteral("sheet:%1:%2:%3:%4:%5:%6")
-                                .arg(layoutMode)
-                                .arg(pagesPerSheet)
-                                .arg(pageOrder)
-                                .arg(pageBorder)
+                                .arg(layout.mode)
+                                .arg(layout.pagesPerSheet)
+                                .arg(layout.pageOrder)
+                                .arg(layout.pageBorder)
                                 .arg(sheetPixels.width())
                                 .arg(sheetPages.join(QLatin1Char(',')));
         if (const auto *cached = m_previewCache.object(key)) {
@@ -875,8 +818,8 @@ void MengsheePrintDialog::startPreviewRender()
                 m_previewDescription->setText(result.error);
         });
         const auto renderer = m_previewRenderer;
-        m_previewWatcher->setFuture(QtConcurrent::run([renderer, sheet, sheetPixels, pagesPerSheet, pageOrder, pageBorder]() {
-            return composePreviewSheet(renderer, sheet, sheetPixels, pagesPerSheet, pageOrder, pageBorder);
+        m_previewWatcher->setFuture(QtConcurrent::run([renderer, sheet, sheetPixels, layout]() {
+            return composePreviewSheet(renderer, sheet, sheetPixels, layout);
         }));
         return;
     }
@@ -1028,8 +971,8 @@ void MengsheePrintDialog::refreshPreview()
     canvas->layout = previewPageLayout();
     // A composed layout sheet is already a full sheet; "original page size"
     // only applies to the single-page Size mode.
-    const int layoutMode = m_printOptionsWidget ? m_printOptionsWidget->property(PrintLayout::modeProperty).toInt() : PrintLayout::Size;
-    canvas->originalSize = layoutMode == PrintLayout::Size && originalPageSizeSelected();
+    const PrintLayoutOptions layout = printLayoutOptionsFromWidget(m_printOptionsWidget);
+    canvas->originalSize = layout.mode == PrintLayout::Size && originalPageSizeSelected();
     canvas->originalPageSizePoints = canvas->originalSize && !m_previewImage.isNull() ? QSizeF(m_previewImage.size()) : QSizeF();
     canvas->setProperty("previewOriginalSize", canvas->originalSize);
     canvas->update();
@@ -1165,19 +1108,9 @@ QPageLayout::Orientation MengsheePrintDialog::selectedOrientation() const
         return QPageLayout::Portrait;
     }
 
-    const int layoutMode = m_printOptionsWidget ? m_printOptionsWidget->property(PrintLayout::modeProperty).toInt() : PrintLayout::Size;
-    if (layoutMode == PrintLayout::Multiple) {
-        const int pagesPerSheet = m_printOptionsWidget ? qMax(1, m_printOptionsWidget->property(PrintLayout::pagesPerSheetProperty).toInt()) : 2;
-        const int columns = layoutGridColumns(pagesPerSheet);
-        const int rows = layoutGridRows(pagesPerSheet);
-        if (columns > rows)
-            return QPageLayout::Landscape;
-        if (rows > columns)
-            return QPageLayout::Portrait;
-        return m_documentOrientation;
-    }
-    if (layoutMode == PrintLayout::Booklet)
-        return QPageLayout::Landscape;
+    const PrintLayoutOptions options = printLayoutOptionsFromWidget(m_printOptionsWidget);
+    if (options.mode == PrintLayout::Multiple || options.mode == PrintLayout::Booklet)
+        return printLayoutOrientation(options, m_documentOrientation);
 
     return m_previewImage.isNull() ? m_documentOrientation : paperOrientationForPage(m_previewImage.size());
 }

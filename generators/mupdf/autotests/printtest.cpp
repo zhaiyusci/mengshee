@@ -59,7 +59,7 @@ private Q_SLOTS:
         QCOMPARE(input.loadDocumentWithPassword(source, pages, {}), Okular::Document::OpenSuccess);
         QCOMPARE(pages.size(), 4);
 
-        const auto printWith = [&](const MuPDFGenerator::PrintLayoutOptions &options, const QString &output) {
+        const auto printWith = [&](const Okular::PrintLayoutOptions &options, const QString &output) {
             Okular::PrintJobPrinter printer;
             printer.setOutputFormat(QPrinter::PdfFormat);
             printer.setOutputFileName(output);
@@ -78,16 +78,16 @@ private Q_SLOTS:
             return count;
         };
 
-        MuPDFGenerator::PrintLayoutOptions multiple;
+        Okular::PrintLayoutOptions multiple;
         multiple.mode = Okular::PrintLayout::Multiple;
         multiple.pagesPerSheet = 2;
         QCOMPARE(printWith(multiple, dir.filePath(QStringLiteral("multiple.pdf"))), 2);
 
-        MuPDFGenerator::PrintLayoutOptions booklet;
+        Okular::PrintLayoutOptions booklet;
         booklet.mode = Okular::PrintLayout::Booklet;
         QCOMPARE(printWith(booklet, dir.filePath(QStringLiteral("booklet.pdf"))), 2);
 
-        MuPDFGenerator::PrintLayoutOptions poster;
+        Okular::PrintLayoutOptions poster;
         poster.mode = Okular::PrintLayout::Poster;
         poster.posterScale = 4.0;
         QVERIFY(printWith(poster, dir.filePath(QStringLiteral("poster.pdf"))) > 1);

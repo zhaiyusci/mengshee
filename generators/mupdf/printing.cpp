@@ -15,38 +15,6 @@
 
 namespace
 {
-struct PrintSheet {
-    QList<int> pages;
-    int posterPage = -1;
-    int tileColumn = 0;
-    int tileRow = 0;
-    int tileColumns = 1;
-    int tileRows = 1;
-};
-
-int gridColumns(int count)
-{
-    switch (count) {
-    case 2:
-        return 2;
-    case 4:
-        return 2;
-    case 6:
-        return 3;
-    case 9:
-        return 3;
-    case 16:
-        return 4;
-    default:
-        return 1;
-    }
-}
-
-int gridRows(int count)
-{
-    return count <= 0 ? 1 : (count + gridColumns(count) - 1) / gridColumns(count);
-}
-
 QList<int> selectedPages(const QPrinter &printer, int pageCount)
 {
     QList<int> pages;
@@ -58,7 +26,7 @@ QList<int> selectedPages(const QPrinter &printer, int pageCount)
 }
 }
 
-Okular::Document::PrintError MuPDFGenerator::printWithLayout(QPrinter &printer, const PrintLayoutOptions &options)
+Okular::Document::PrintError MuPDFGenerator::printWithLayout(QPrinter &printer, const Okular::PrintLayoutOptions &options)
 {
     const QList<int> pages = selectedPages(printer, m_pages.size());
     if (pages.isEmpty())
@@ -100,63 +68,33 @@ Okular::Document::PrintError MuPDFGenerator::printWithLayout(QPrinter &printer, 
         return image;
     };
 
-    QList<PrintSheet> sheets;
-    if (options.mode == Okular::PrintLayout::Multiple) {
-        const int pagesPerSheet = qMax(1, options.pagesPerSheet);
-        for (int first = 0; first < pages.size(); first += pagesPerSheet) {
-            PrintSheet sheet;
-            sheet.pages = pages.mid(first, qMin(pagesPerSheet, int(pages.size()) - first));
-            sheets.append(sheet);
-        }
-    } else if (options.mode == Okular::PrintLayout::Booklet) {
-        QList<int> booklet = pages;
-        while (booklet.size() % 4 != 0)
-            booklet.append(-1);
-        for (int i = 0; i < booklet.size() / 4; ++i) {
-            PrintSheet front;
-            front.pages = {booklet.at(booklet.size() - 1 - 2 * i), booklet.at(2 * i)};
-            PrintSheet back;
-            back.pages = {booklet.at(2 * i + 1), booklet.at(booklet.size() - 2 - 2 * i)};
-            if (options.bookletBinding == Okular::PrintLayout::BindRight) {
-                std::reverse(front.pages.begin(), front.pages.end());
-                std::reverse(back.pages.begin(), back.pages.end());
-            }
-            if (options.bookletSubset != Okular::PrintLayout::BackSides)
-                sheets.append(front);
-            if (options.bookletSubset != Okular::PrintLayout::FrontSides)
-                sheets.append(back);
-        }
-    } else if (options.mode == Okular::PrintLayout::Poster) {
+    QList<Okular::PrintSheet> sheets = Okular::buildPrintSheets(pages, options);
+    if (options.mode == Okular::PrintLayout::Poster) {
         const qreal overlap = qMax(0.0, options.posterOverlapMm) * printer.resolution() / 25.4;
         const qreal stepWidth = qMax(1.0, printer.width() - overlap);
         const qreal stepHeight = qMax(1.0, printer.height() - overlap);
-        for (int page : pages) {
-            QSizeF pageSize;
-            if (!readOperation([&] {
-                    const auto bounds = pdf_bound_page(m_context, m_pages.at(page), FZ_CROP_BOX);
-                    pageSize = QSizeF(bounds.x1 - bounds.x0, bounds.y1 - bounds.y0);
-                }, nullptr))
-                return Okular::Document::UnknownPrintError;
-            if (!pageSize.isValid())
+        QList<Okular::PrintSheet> tiled;
+        for (const Okular::PrintSheet &base : std::as_const(sheets)) {
+            const QSizeF page = pageSize(base.posterPage);
+            if (!page.isValid())
                 continue;
-            const qreal width = pageSize.width() * printer.resolution() / 72.0 * options.posterScale;
-            const qreal height = pageSize.height() * printer.resolution() / 72.0 * options.posterScale;
+            const qreal width = page.width() * printer.resolution() / 72.0 * options.posterScale;
+            const qreal height = page.height() * printer.resolution() / 72.0 * options.posterScale;
             const int columns = qMax(1, int(std::ceil(qMax(0.0, width - overlap) / stepWidth)));
             const int rows = qMax(1, int(std::ceil(qMax(0.0, height - overlap) / stepHeight)));
             for (int row = 0; row < rows; ++row) {
                 for (int column = 0; column < columns; ++column) {
-                    PrintSheet sheet;
-                    sheet.posterPage = page;
+                    Okular::PrintSheet sheet;
+                    sheet.posterPage = base.posterPage;
                     sheet.tileColumn = column;
                     sheet.tileRow = row;
                     sheet.tileColumns = columns;
                     sheet.tileRows = rows;
-                    sheets.append(sheet);
+                    tiled.append(sheet);
                 }
             }
         }
-    } else {
-        return Okular::Document::NoPrintError;
+        sheets = tiled;
     }
 
     QPainter painter;
@@ -165,7 +103,7 @@ Okular::Document::PrintError MuPDFGenerator::printWithLayout(QPrinter &printer, 
         return first ? painter.begin(&printer) : printer.newPage();
     };
     bool firstSheet = true;
-    for (const PrintSheet &sheet : std::as_const(sheets)) {
+    for (const Okular::PrintSheet &sheet : std::as_const(sheets)) {
         if (!startSheet(firstSheet)) {
             if (painter.isActive())
                 painter.end();
@@ -211,8 +149,8 @@ Okular::Document::PrintError MuPDFGenerator::printWithLayout(QPrinter &printer, 
             continue;
         }
 
-        const int columns = gridColumns(sheet.pages.size());
-        const int rows = gridRows(sheet.pages.size());
+        const int columns = options.mode == Okular::PrintLayout::Booklet ? 2 : Okular::printLayoutColumns(options.pagesPerSheet);
+        const int rows = options.mode == Okular::PrintLayout::Booklet ? 1 : Okular::printLayoutRows(options.pagesPerSheet);
         const qreal gap = qMin(sheetRect.width(), sheetRect.height()) * 0.015;
         const qreal cellWidth = (sheetRect.width() - gap * (columns + 1)) / columns;
         const qreal cellHeight = (sheetRect.height() - gap * (rows + 1)) / rows;
@@ -372,7 +310,7 @@ bool MuPDFGenerator::printAnnotations() const
     return m_printAnnotations;
 }
 
-void MuPDFGenerator::setPrintLayoutOptions(const PrintLayoutOptions &options)
+void MuPDFGenerator::setPrintLayoutOptions(const Okular::PrintLayoutOptions &options)
 {
     m_printLayoutOptions = options;
 }

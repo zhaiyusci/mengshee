@@ -4,6 +4,7 @@
 #include "mengshee_pdf_runtime_export.h"
 #include <core/generator.h>
 #include <core/numberedcalloutnumberinginterface.h>
+#include <core/printlayout.h>
 #include <core/printoptionswidget.h>
 #include <core/readingvieweditinginterface.h>
 #include <interfaces/saveinterface.h>
@@ -24,17 +25,6 @@ class MENGSHEE_PDF_RUNTIME_EXPORT MuPDFGenerator : public Okular::Generator, pub
     Q_OBJECT
     Q_INTERFACES(Okular::Generator Okular::SaveInterface)
 public:
-    struct PrintLayoutOptions {
-        int mode = Okular::PrintLayout::Size;
-        int pagesPerSheet = 2;
-        int pageOrder = Okular::PrintLayout::Horizontal;
-        bool pageBorder = false;
-        double posterScale = 1.0;
-        double posterOverlapMm = 0.0;
-        bool posterCutMarks = false;
-        int bookletSubset = Okular::PrintLayout::BothSides;
-        int bookletBinding = Okular::PrintLayout::BindLeft;
-    };
     MuPDFGenerator(QObject *parent, const QVariantList &args);
     ~MuPDFGenerator() override;
     Okular::Document::OpenResult loadDocumentWithPassword(const QString &, QList<Okular::Page *> &, const QString &) override;
@@ -78,7 +68,7 @@ public:
     bool exportTo(const QString &fileName, const Okular::ExportFormat &format) override;
     void setPrintAnnotations(bool enabled);
     bool printAnnotations() const;
-    void setPrintLayoutOptions(const PrintLayoutOptions &options);
+    void setPrintLayoutOptions(const Okular::PrintLayoutOptions &options);
     QVariant metaData(const QString &key, const QVariant &option) const override;
     bool isAllowed(Okular::Permission permission) const override;
     Okular::Document::PrintError print(QPrinter &printer) override;
@@ -239,7 +229,7 @@ private:
     Okular::Document::OpenResult authenticateOpen(const QString &password);
     Okular::Document::OpenResult finishOpen(QList<Okular::Page *> &, const QString &);
     QImage render(int page, int width, int height, bool annotations, QString *error, const QRect &region = {}, fz_cookie *cookie = nullptr);
-    Okular::Document::PrintError printWithLayout(QPrinter &printer, const PrintLayoutOptions &options);
+    Okular::Document::PrintError printWithLayout(QPrinter &printer, const Okular::PrintLayoutOptions &options);
     void clearDisplayList();
     fz_display_list *pageDisplayList(int number, pdf_page *page, fz_cookie *cookie);
     void clearAnnotationLists();
@@ -255,7 +245,7 @@ private:
     QList<pdf_page *> m_pages;
     QString m_editError;
     bool m_printAnnotations = true;
-    PrintLayoutOptions m_printLayoutOptions;
+    Okular::PrintLayoutOptions m_printLayoutOptions;
     QHash<quint64, pdf_obj *> m_detached;
     quint64 m_nextEdit = 1;
     Okular::Page *createPage(int index);

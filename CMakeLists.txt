@@ -483,6 +483,7 @@ install( FILES
            core/utils.h
            core/fileprinter.h
            core/printpreviewrenderer.h
+           core/printlayout.h
            core/printoptionswidget.h
            core/observer.h
            ${CMAKE_CURRENT_BINARY_DIR}/core/version.h

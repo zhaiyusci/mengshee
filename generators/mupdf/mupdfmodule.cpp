@@ -652,22 +652,9 @@ public:
 
     Okular::Document::PrintError print(QPrinter &printerDevice) override
     {
-        PrintLayoutOptions options;
-        if (m_printOptions) {
+        if (m_printOptions)
             setPrintAnnotations(m_printOptions->printAnnotations());
-            options.mode = m_printOptions->property(Okular::PrintLayout::modeProperty).toInt();
-            options.pagesPerSheet = qMax(1, m_printOptions->property(Okular::PrintLayout::pagesPerSheetProperty).toInt());
-            options.pageOrder = m_printOptions->property(Okular::PrintLayout::pageOrderProperty).toInt();
-            options.pageBorder = m_printOptions->property(Okular::PrintLayout::pageBorderProperty).toBool();
-            options.posterScale = m_printOptions->property(Okular::PrintLayout::posterScaleProperty).toDouble() / 100.0;
-            if (options.posterScale <= 0)
-                options.posterScale = 1.0;
-            options.posterOverlapMm = m_printOptions->property(Okular::PrintLayout::posterOverlapProperty).toDouble();
-            options.posterCutMarks = m_printOptions->property(Okular::PrintLayout::posterCutMarksProperty).toBool();
-            options.bookletSubset = m_printOptions->property(Okular::PrintLayout::bookletSubsetProperty).toInt();
-            options.bookletBinding = m_printOptions->property(Okular::PrintLayout::bookletBindingProperty).toInt();
-        }
-        setPrintLayoutOptions(options);
+        setPrintLayoutOptions(Okular::printLayoutOptionsFromWidget(m_printOptions));
         return MuPDFGenerator::print(printerDevice);
     }
 

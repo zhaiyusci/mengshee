@@ -27,13 +27,19 @@ private Q_SLOTS:
         options->setProperty(Okular::PrintLayout::supportsProperty, true);
         Okular::MengsheePrintDialog dialog(nullptr, 4, 1, QPageLayout::Portrait, false, options);
         auto calls = std::make_shared<std::atomic<int>>(0);
-        dialog.setPreviewRenderer([calls](int, QSize) {
+        auto lastWidth = std::make_shared<std::atomic<int>>(0);
+        dialog.setPreviewRenderer([calls, lastWidth](int, QSize maximumPixels) {
             ++*calls;
+            lastWidth->store(maximumPixels.width());
             QImage image(595, 842, QImage::Format_RGB32);
             image.fill(Qt::red);
             return Okular::PrintPreviewImage{image, {}};
         }, {});
         QTRY_VERIFY(calls->load() > 0);
+        auto *pagesPerSheet = dialog.findChild<QComboBox *>(QStringLiteral("pagesPerSheetCombo"));
+        QVERIFY(pagesPerSheet);
+        // Leave Multiple's 6-up setting behind; Booklet must still use 2x1.
+        pagesPerSheet->setCurrentIndex(pagesPerSheet->findData(6));
         QToolButton *booklet = nullptr;
         const auto buttons = dialog.findChildren<QToolButton *>();
         if (buttons.size() > 3)
@@ -44,6 +50,7 @@ private Q_SLOTS:
         QVERIFY(slider);
         QTRY_COMPARE(slider->maximum(), 2);
         QTRY_VERIFY(calls->load() >= 2);
+        QTRY_VERIFY(lastWidth->load() > 600);
         dialog.close();
         QTest::qWait(100);
     }
