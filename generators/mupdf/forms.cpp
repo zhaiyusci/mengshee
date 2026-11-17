@@ -321,7 +321,12 @@ public:
     }
     QString editChoice() const override
     {
-        return access->value();
+        const QString value = access->value();
+        // For an editable combo box, /V may name one of the predefined
+        // choices; that is a selected choice, not free text. Poppler exposes
+        // the free-text editor value separately, so keep editChoice empty
+        // while the value matches a choice.
+        return choices().contains(value) ? QString() : value;
     }
     void setEditChoice(const QString &text) override
     {

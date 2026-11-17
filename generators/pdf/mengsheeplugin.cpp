@@ -22,7 +22,7 @@ class MengsheePdfGenerator final : public Mengshee::Pdf::PdfGeneratorBase,
                                    public Okular::PrintPreviewInterface
 {
     Q_OBJECT
-    Q_INTERFACES(Okular::ConfigInterface Okular::PrintInterface)
+    Q_INTERFACES(Okular::Generator Okular::SaveInterface Okular::ConfigInterface Okular::PrintInterface)
 
 public:
     MengsheePdfGenerator(QObject *parent, const QVariantList &args)

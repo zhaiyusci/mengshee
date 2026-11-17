@@ -8,8 +8,11 @@
 */
 
 #include <QMimeDatabase>
+#include <QTemporaryDir>
 #include <QTemporaryFile>
 #include <QTest>
+
+#include <algorithm>
 
 #include <threadweaver/queue.h>
 
@@ -196,9 +199,16 @@ void DocumentTest::testDocdataMigration()
     const QMimeType mime = db.mimeTypeForFile(testFilePath);
     QCOMPARE(m_document->openDocument(testFilePath, testFileUrl, mime), Okular::Document::OpenSuccess);
 
-    // Check that the annotation from file1-docdata.xml was loaded
-    QCOMPARE(m_document->page(0)->annotations().size(), 1);
-    QCOMPARE(m_document->page(0)->annotations().constFirst()->uniqueName(), QStringLiteral("testannot"));
+    // Check that the annotation from file1-docdata.xml was loaded. file1.pdf
+    // itself already carries one annotation, so the merged model has two.
+    const auto hasTestAnnotation = [m_document]() {
+        const auto annotations = m_document->page(0)->annotations();
+        return std::any_of(annotations.cbegin(), annotations.cend(), [](const Okular::Annotation *annotation) {
+            return annotation->uniqueName() == QStringLiteral("testannot");
+        });
+    };
+    QCOMPARE(m_document->page(0)->annotations().size(), 2);
+    QVERIFY(hasTestAnnotation());
 
     // Check that we detect that it must be migrated
     QVERIFY(m_document->isDocdataMigrationNeeded());
@@ -207,30 +217,34 @@ void DocumentTest::testDocdataMigration()
     // Reopen the document and check that the annotation is still present
     // (because we have not migrated)
     QCOMPARE(m_document->openDocument(testFilePath, testFileUrl, mime), Okular::Document::OpenSuccess);
-    QCOMPARE(m_document->page(0)->annotations().size(), 1);
-    QCOMPARE(m_document->page(0)->annotations().constFirst()->uniqueName(), QStringLiteral("testannot"));
+    QCOMPARE(m_document->page(0)->annotations().size(), 2);
+    QVERIFY(hasTestAnnotation());
     QVERIFY(m_document->isDocdataMigrationNeeded());
 
     // Do the migration
-    QTemporaryFile migratedSaveFile(QStringLiteral("%1/okrXXXXXX.pdf").arg(QDir::tempPath()));
-    QVERIFY(migratedSaveFile.open());
-    migratedSaveFile.close();
+    QTemporaryDir migratedSaveDir;
+    QVERIFY(migratedSaveDir.isValid());
+    const QString migratedSavePath = migratedSaveDir.filePath(QStringLiteral("migrated.pdf"));
     QString errorString;
-    QVERIFY(m_document->saveChanges(migratedSaveFile.fileName(), &errorString));
+    QVERIFY(m_document->saveChanges(migratedSavePath, &errorString));
     QVERIFY(errorString.isEmpty());
     m_document->docdataMigrationDone();
     QVERIFY(!m_document->isDocdataMigrationNeeded());
     m_document->closeDocument();
 
-    // Now the docdata file should have no annotations, let's check
+    // Now the docdata file should have no annotations, but the PDF annotation
+    // that was already in file1.pdf must remain.
     QCOMPARE(m_document->openDocument(testFilePath, testFileUrl, mime), Okular::Document::OpenSuccess);
-    QCOMPARE(m_document->page(0)->annotations().size(), 0);
+    QCOMPARE(m_document->page(0)->annotations().size(), 1);
+    QVERIFY(!hasTestAnnotation());
     QVERIFY(!m_document->isDocdataMigrationNeeded());
     m_document->closeDocument();
 
-    // And the new file should have 1 annotation, let's check
-    QCOMPARE(m_document->openDocument(migratedSaveFile.fileName(), QUrl::fromLocalFile(migratedSaveFile.fileName()), mime), Okular::Document::OpenSuccess);
-    QCOMPARE(m_document->page(0)->annotations().size(), 1);
+    // And the migrated file should contain both the original PDF annotation
+    // and the annotation that came from the docdata file.
+    QCOMPARE(m_document->openDocument(migratedSavePath, QUrl::fromLocalFile(migratedSavePath), mime), Okular::Document::OpenSuccess);
+    QCOMPARE(m_document->page(0)->annotations().size(), 2);
+    QVERIFY(hasTestAnnotation());
     QVERIFY(!m_document->isDocdataMigrationNeeded());
     m_document->closeDocument();
 

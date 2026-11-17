@@ -45,6 +45,24 @@ private:
     }
 
 private Q_SLOTS:
+    void extractsSimpleMultipageText()
+    {
+        QString error;
+        EnginePtr engine = createEngine(&error);
+        QVERIFY2(engine, qPrintable(error));
+        PdfDocument *document = engine->document();
+        QVERIFY(document);
+        const QString file = QDir(QStringLiteral(QT_TESTCASE_SOURCEDIR)).filePath(QStringLiteral("../../autotests/data/simple-multipage.pdf"));
+        QCOMPARE(status(document->openFile(file, QString())), status(OpenStatus::Success));
+        QVERIFY(document->pageCount() > 15);
+        Okular::TextPage *text = document->textPage(15);
+        QVERIFY(text);
+        qInfo() << text->text();
+        QVERIFY2(text->text().contains(QStringLiteral("Page")), qPrintable(text->text()));
+        delete text;
+        document->close();
+    }
+
     void rendersExtremeTile()
     {
         QString error;

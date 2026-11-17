@@ -11,6 +11,7 @@
 #include <QDir>
 #include <QMimeDatabase>
 #include <QMimeType>
+#include <QTemporaryDir>
 #include <QTemporaryFile>
 #include <core/form.h>
 #include <core/page.h>
@@ -439,13 +440,13 @@ void EditFormsTest::testEditAfterSwapBackingFile()
 
     QVERIFY(m_document->canSwapBackingFile());
 
-    QTemporaryFile saveFile1(QStringLiteral("%1/editformstestXXXXXX.pdf").arg(QDir::tempPath()));
-    QVERIFY(saveFile1.open());
-    saveFile1.close();
+    QTemporaryDir swapDir;
+    QVERIFY(swapDir.isValid());
+    const QString savePath1 = swapDir.filePath(QStringLiteral("editforms-save1.pdf"));
     QString errorText;
-    QVERIFY(m_document->saveChanges(saveFile1.fileName(), &errorText));
+    QVERIFY(m_document->saveChanges(savePath1, &errorText));
     QVERIFY(errorText.isEmpty());
-    QVERIFY(m_document->swapBackingFile(saveFile1.fileName(), QUrl::fromLocalFile(saveFile1.fileName())));
+    QVERIFY(m_document->swapBackingFile(savePath1, QUrl::fromLocalFile(savePath1)));
 
     // The Page objects survive the swap, so the swapped-in form fields
     // must point at them, not at the pages that were just deleted
@@ -467,12 +468,10 @@ void EditFormsTest::testEditAfterSwapBackingFile()
 
     // Saving again used to crash in refreshInternalPageReferences when
     // the undo stack was refreshed with a garbage page number
-    QTemporaryFile saveFile2(QStringLiteral("%1/editformstestXXXXXX.pdf").arg(QDir::tempPath()));
-    QVERIFY(saveFile2.open());
-    saveFile2.close();
-    QVERIFY(m_document->saveChanges(saveFile2.fileName(), &errorText));
+    const QString savePath2 = swapDir.filePath(QStringLiteral("editforms-save2.pdf"));
+    QVERIFY(m_document->saveChanges(savePath2, &errorText));
     QVERIFY(errorText.isEmpty());
-    QVERIFY(m_document->swapBackingFile(saveFile2.fileName(), QUrl::fromLocalFile(saveFile2.fileName())));
+    QVERIFY(m_document->swapBackingFile(savePath2, QUrl::fromLocalFile(savePath2)));
 
     const Okular::Page *pageAfterSecondSave = m_document->page(0);
     const QList<Okular::FormField *> fieldsAfterSecondSave = pageAfterSecondSave->formFields();
