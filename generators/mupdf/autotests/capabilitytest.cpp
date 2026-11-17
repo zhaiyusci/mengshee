@@ -1011,13 +1011,17 @@ private Q_SLOTS:
 
         if (ocr->canRecognize()) {
             const QString output = directory.filePath(QStringLiteral("ocr-output.pdf"));
-            const Okular::OcrResult result = ocr->saveWithOcr(input, output, {1}, false, {});
+            const Okular::OcrResult result = ocr->saveWithOcr(input, output, {0}, false, {});
             QVERIFY2(result.success, qPrintable(result.errorText));
             QVERIFY(result.recognizedPages >= 1);
             QVERIFY(result.recognizedWords > 0);
-            // Known gap: reopening the saved file and reading its OCR layer
-            // currently returns an empty list. Keep save-with-OCR covered here
-            // and track the round-trip separately in the parity matrix.
+            QCOMPARE(static_cast<int>(document->openFile(output, QString())), static_cast<int>(OpenStatus::Success));
+            Okular::Page *ocrPage = document->createPageModel(0);
+            QVERIFY(ocrPage);
+            QList<Okular::OcrTextWord> recognized;
+            QVERIFY2(ocr->readTextLayer(0, &recognized, &error), qPrintable(error));
+            QVERIFY(!recognized.isEmpty());
+            delete ocrPage;
             document->close();
         }
 

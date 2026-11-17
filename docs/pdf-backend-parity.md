@@ -82,7 +82,7 @@ adapters, not tested code in this repository.
 | Internal / external / remote links | ✅ | ✅ | ✗ | ◐ | ✗ | |
 | Link rectangle edit / delete | ✅ | ✅ | ✗ | ◐ | ✗ | |
 | Page token identity | ✅ | ✅ | ✗ | ◐ | ✗ | `PdfPageIdentity`; parttest live-link cases |
-| OCR text layer read/replace | ◐ | ◐ | ✗ | ✗ | ✗ | `saveWithOcr` recognizes words and saves, but reopening the saved file currently returns an empty OCR layer; read/replace paths are only contract-tested |
+| OCR text layer read/replace | ✅ | ◐ | ✗ | ✗ | ✗ | MuPDF save-with-OCR round-trip is covered by `capabilitytest`; Poppler is only contract-tested |
 | ReadingView get/set/token | ✅ | ✅ | ✗ | ✗ | ✗ | |
 | Numbered callout metadata | ✅ | ✅ | ✗ | ✗ | ✗ | |
 | LaTeX note metadata | ✅ | ✅ | ✗ | ✗ | ✗ | Poppler fork adds Qt annotation custom properties; MuPDF implements it in its generator |
@@ -124,14 +124,13 @@ Remaining parity gaps are narrower:
 
 1. **Actual signing** is not implemented (`canSign()` false); display of
    signed fields is implemented.
-2. **OCR save-with-OCR** is not end-to-end tested.
-3. **Text export formats** exist only in Poppler.
-4. **Poppler-specific configuration page** has no MuPDF equivalent.
-5. Some behavior differences remain in annotation appearance/font fallback,
+2. **Text export formats** exist only in Poppler.
+3. **Poppler-specific configuration page** has no MuPDF equivalent.
+4. Some behavior differences remain in annotation appearance/font fallback,
    media links and page-bound handling; they need a per-document corpus, not
    only unit tests.
 
-If the product does not care about signing/OCR export, MuPDF can be the
+If the product does not care about signing, MuPDF can be the
 canonical backend and Poppler can become read-only or be dropped.
 
 ## 6. Adding PDFium or PDF.js
