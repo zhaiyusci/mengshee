@@ -850,6 +850,16 @@ public:
      */
     virtual Okular::Action *additionalDocumentAction(Document::DocumentAdditionalActionType type);
 
+    /**
+     * Internal bridge for a generator that forwards to an inner generator.
+     * Makes Generator::document() return @p document in the inner generator
+     * without attaching the inner object to the Document lifecycle. Not for
+     * plugins.
+     *
+     * @since internal
+     */
+    void setWrapperDocument(Document *document);
+
 Q_SIGNALS:
     /**
      * This signal should be emitted whenever an error occurred in the generator.

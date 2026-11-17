@@ -39,7 +39,7 @@ QByteArray appearanceStream(const QRectF &sourceBox, const Options &options, int
     const QSizeF outer = options.outerSize.isValid() ? options.outerSize : sourceBox.size();
     const bool framed = options.frameRect.isValid();
     const QRectF frame = framed ? options.frameRect : QRectF(QPointF(0, 0), sourceBox.size());
-    const QRectF layout = options.sourceLayoutBox.isValid() ? options.sourceLayoutBox : sourceBox;
+    const QRectF layout = sourceBox;
     QPointF offset = options.contentOffset;
     if (framed && options.alignContentToFrameTopLeft) {
         offset = QPointF(frame.x() + options.contentFrameInset, frame.y() + frame.height() - options.contentFrameInset - layout.height());

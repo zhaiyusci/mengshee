@@ -27,6 +27,26 @@ public:
     ~MuPDFGenerator() override;
     Okular::Document::OpenResult loadDocumentWithPassword(const QString &, QList<Okular::Page *> &, const QString &) override;
     Okular::Document::OpenResult loadDocumentFromDataWithPassword(const QByteArray &, QList<Okular::Page *> &, const QString &) override;
+
+    /**
+     * Transitional phase-1 narrow-load support for the engine module.
+     *
+     * Opens and authenticates the document without building Okular::Page
+     * models; the caller creates them one at a time with createPageModel() and
+     * owns them. The legacy loadDocument* methods keep building every model
+     * themselves through finishOpen().
+     */
+    Okular::Document::OpenResult openDocumentForNarrowLoad(const QString &path, const QString &password);
+    Okular::Document::OpenResult openDocumentFromDataForNarrowLoad(const QByteArray &data, const QString &password);
+
+    /**
+     * Builds one Okular::Page model for native page @p index: loads the native
+     * page into the generator cache and attaches its annotations, links and
+     * form fields. Returns nullptr for an invalid index or a MuPDF error.
+     * Ownership of the returned model passes to the caller.
+     */
+    Okular::Page *createPageModel(int index);
+
     SwapBackingFileResult swapBackingFile(const QString &, QList<Okular::Page *> &) override;
     Okular::DocumentInfo generateDocumentInfo(const QSet<Okular::DocumentInfo::Key> &) const override;
     Okular::FontInfo::List fontsForPage(int) override;
@@ -52,6 +72,12 @@ public:
         return true;
     }
     QImage renderToImage(int page, int dpi, bool includeAnnotations, QString *error = nullptr) override;
+    /**
+     * Render only @p region of the page at the full-page scale described by
+     * @p width and @p height. Used by the narrow tile path so one tile does
+     * not allocate the whole zoomed page.
+     */
+    QImage renderRegionForWorker(int page, int width, int height, const QRect &region, bool includeAnnotations, const std::function<bool()> &shouldAbort, QString *error = nullptr);
     bool supportsOption(SaveOption) const override;
     bool save(const QString &, SaveOptions, QString *) override;
     Okular::AnnotationProxy *annotationProxy() const override;
@@ -89,6 +115,19 @@ public:
     bool setReadingViews(int pageNumber, const QList<Okular::ReadingView> &views, QString *errorText) override;
     QString readingViewPageToken(int pageNumber) const override;
     int readingViewPageForToken(const QString &token) const override;
+    /**
+     * Public narrow-interface view of the legacy page-token resolver.
+     *
+     * Okular calls this protected Generator hook for GotoAction page tokens;
+     * the MuPDF engine module also forwards it through PdfPageIdentity so the
+     * shared front end can resolve the same token format. The token is the
+     * per-page /MengsheeViews /PageId UUID written by setReadingViews(); a
+     * page without that metadata has no identity and resolves to -1.
+     */
+    int pageNumberForPageToken(const QString &token) const override
+    {
+        return readingViewPageForToken(token);
+    }
 
     bool canEditPdfLinks() const override;
     bool setNamedDestination(const QString &name, int pageNumber, double normalizedX, double normalizedY, QString *errorText) override;
@@ -161,15 +200,26 @@ public:
 protected:
     bool doCloseDocument() override;
     Okular::TextPage *textPage(Okular::TextRequest *) override;
-    int pageNumberForPageToken(const QString &token) const override
-    {
-        return readingViewPageForToken(token);
-    }
+    /** Extracts the text layer of a native page without needing a page model. */
+    Okular::TextPage *textPageForNumber(int number);
+    /** Native page count for the narrow PdfDocument path. */
+    int nativePageCount() const;
+    /** Native page geometry in PDF points for the narrow PdfDocument path. */
+    bool nativePageGeometry(int index, double *width, double *height, int *rotation) const;
+    /**
+     * True when the narrow page cache already holds native page @p index.
+     * createPageModel() fills it; link refreshing and OCR editing use the
+     * cached native page and must not index the list blindly when a caller
+     * skipped model creation.
+     */
+    bool hasNativePage(int index) const;
 
 private:
     friend class MuPDFAnnotationProxy;
     friend class MuPDFFormAccess;
     friend class MuPDFEmbeddedFile;
+    Okular::Document::OpenResult openFromData(const QByteArray &data);
+    Okular::Document::OpenResult authenticateOpen(const QString &password);
     Okular::Document::OpenResult finishOpen(QList<Okular::Page *> &, const QString &);
     QImage render(int page, int width, int height, bool annotations, QString *error, const QRect &region = {}, fz_cookie *cookie = nullptr);
     void clearDisplayList();

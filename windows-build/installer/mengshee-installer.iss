@@ -71,13 +71,31 @@ Source: "{#SourceDir}\*"; DestDir: "{app}"; Components: core; Flags: ignoreversi
 Source: "{#StemTeXSupportDir}\*"; DestDir: "{app}"; Components: stemtexsupport; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [InstallDelete]
-#if FileExists(AddBackslash(SourceDir) + "bin\plugins\okular_generators\okularGenerator_mupdf.dll")
-; An upgrade must not leave the former PDF plugin eligible for loading.
+; Cleanup is stage-driven: remove a previous PDF subsystem only when the new
+; stage ships neither its legacy plugin nor its runtime engine module. This
+; keeps the phase-2 dual-engine stage intact and still cleans up a real rollback.
+#if !FileExists(AddBackslash(SourceDir) + "bin\plugins\okular_generators\okularGenerator_mupdf.dll") && !FileExists(AddBackslash(SourceDir) + "bin\plugins\mengshee_pdf\MengsheePdfEngineMuPdf.dll")
+Type: files; Name: "{app}\bin\plugins\okular_generators\okularGenerator_mupdf.dll"
+Type: files; Name: "{app}\bin\plugins\mengshee_pdf\MengsheePdfEngineMuPdf.dll"
+Type: files; Name: "{app}\bin\MengsheePdfRuntime.dll"
+#endif
+#if !FileExists(AddBackslash(SourceDir) + "bin\plugins\okular_generators\okularGenerator_poppler.dll") && !FileExists(AddBackslash(SourceDir) + "bin\plugins\mengshee_pdf\MengsheePdfEnginePoppler.dll")
 Type: files; Name: "{app}\bin\plugins\okular_generators\okularGenerator_poppler.dll"
+Type: files; Name: "{app}\bin\plugins\mengshee_pdf\MengsheePdfEnginePoppler.dll"
 Type: files; Name: "{app}\bin\tesseract55.dll"
 Type: files; Name: "{app}\bin\leptonica-1.87.0.dll"
 Type: files; Name: "{app}\bin\poppler.dll"
 Type: files; Name: "{app}\bin\poppler-qt6.dll"
+#endif
+; A single-backend stage must remove a previous phase-2 single plugin; otherwise
+; its higher priority would keep winning after a rollback.
+#if !FileExists(AddBackslash(SourceDir) + "bin\plugins\okular_generators\okularGenerator_mengshee_pdf.dll")
+Type: files; Name: "{app}\bin\plugins\okular_generators\okularGenerator_mengshee_pdf.dll"
+#endif
+; Remove the whole engine directory only when the new stage ships no engine
+; module at all; otherwise this would delete a module the stage needs.
+#if !FileExists(AddBackslash(SourceDir) + "bin\plugins\mengshee_pdf\MengsheePdfEngineMuPdf.dll") && !FileExists(AddBackslash(SourceDir) + "bin\plugins\mengshee_pdf\MengsheePdfEnginePoppler.dll")
+Type: filesandordirs; Name: "{app}\bin\plugins\mengshee_pdf"
 #endif
 Type: filesandordirs; Name: "{app}\StemTeX\runtime\texmf-dist"
 

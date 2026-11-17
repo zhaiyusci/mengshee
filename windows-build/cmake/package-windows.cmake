@@ -5,6 +5,7 @@ get_filename_component(_windows_build_dir "${_script_dir}/.." ABSOLUTE)
 get_filename_component(_default_source_root "${_windows_build_dir}/.." ABSOLUTE)
 get_filename_component(_default_workspace_root "${_default_source_root}/windows-build-workspace" ABSOLUTE)
 include("${_script_dir}/run-tree-common.cmake")
+include("${_script_dir}/pdf-engine-modules.cmake")
 
 function(mengshee_default_path variable default_value)
     if(NOT DEFINED ${variable} OR "${${variable}}" STREQUAL "")
@@ -83,6 +84,7 @@ mengshee_default_path(WORKSPACE_ROOT "${_default_workspace_root}")
 mengshee_default_path(INSTALL_PREFIX "${WORKSPACE_ROOT}/install/mengshee")
 mengshee_default_path(STAGE_ROOT "${WORKSPACE_ROOT}/dist/mengshee-pdf/app")
 mengshee_default_path(STEMTEX_COMPONENT_STAGE_ROOT "${WORKSPACE_ROOT}/dist/mengshee-pdf/optional/stemtex-support")
+mengshee_pdf_engine_modules_enabled(MENGSHEE_PDF_ENGINE_MODULES)
 
 if(NOT DEFINED VERSION OR "${VERSION}" STREQUAL "")
     file(READ "${SOURCE_ROOT}/VERSION.txt" VERSION)
@@ -123,12 +125,38 @@ if(_debug_artifacts)
 endif()
 file(REMOVE "${STAGE_ROOT}/bin/vc_redist.x64.exe" "${STAGE_ROOT}/bin/Mengshee-Test.cmd")
 
+# License texts live under share/licenses, outside the bin tree. Sync them
+# explicitly so a clean stage carries both engine licenses instead of relying
+# on files left behind by an older stage.
+if(IS_DIRECTORY "${INSTALL_PREFIX}/share/licenses")
+    mengshee_sync_tree("${INSTALL_PREFIX}/share/licenses" "${STAGE_ROOT}/share/licenses" "${STAGE_ROOT}")
+else()
+    mengshee_remove_inside("${STAGE_ROOT}/share/licenses" "${STAGE_ROOT}")
+endif()
+
+# The stage decides its PDF shape: a single plugin means the phase-2 runtime,
+# everything else keeps the legacy single-backend validation below. A partially
+# installed phase-2 layout is rejected rather than packaged.
+set(_stage_single_plugin "${STAGE_ROOT}/bin/plugins/okular_generators/okularGenerator_mengshee_pdf.dll")
+set(_stage_mupdf_module "${STAGE_ROOT}/bin/plugins/mengshee_pdf/MengsheePdfEngineMuPdf.dll")
+set(_stage_poppler_module "${STAGE_ROOT}/bin/plugins/mengshee_pdf/MengsheePdfEnginePoppler.dll")
+if(MENGSHEE_PDF_ENGINE_MODULES OR EXISTS "${_stage_single_plugin}" OR EXISTS "${_stage_mupdf_module}" OR EXISTS "${_stage_poppler_module}")
+    set(_stage_engine_modules ON)
+else()
+    set(_stage_engine_modules OFF)
+endif()
+
 # These fonts belong to the mandatory core component, never StemTeX support.
 include("${CMAKE_CURRENT_LIST_DIR}/pdf-base14-fonts.cmake")
 mengshee_stage_pdf_base14_fonts("${SOURCE_ROOT}" "${INSTALL_PREFIX}" "${STAGE_ROOT}")
 
 if(IS_DIRECTORY "${INSTALL_PREFIX}/share/poppler")
     mengshee_sync_tree("${INSTALL_PREFIX}/share/poppler" "${STAGE_ROOT}/share/poppler" "${STAGE_ROOT}")
+elseif(_stage_engine_modules)
+    message(FATAL_ERROR
+        "The staged runtime contains PDF engine modules but no Poppler CMap/CID data under "
+        "${INSTALL_PREFIX}/share/poppler. Redeploy with MENGSHEE_PDF_ENGINE_MODULES=ON."
+    )
 else()
     mengshee_remove_inside("${STAGE_ROOT}/share/poppler" "${STAGE_ROOT}")
     if(NOT MENGSHEE_PDF_BACKEND STREQUAL "MuPDF")
@@ -211,7 +239,28 @@ foreach(_required IN ITEMS
     mengshee_validate_file("${STAGE_ROOT}" "${_required}")
 endforeach()
 
-if(EXISTS "${STAGE_ROOT}/bin/plugins/okular_generators/okularGenerator_mupdf.dll")
+if(_stage_engine_modules)
+    # Phase-2 shape: the single plugin, both engine modules, both runtimes and
+    # both licenses. The legacy plugins are still required for the fallback path.
+    foreach(_required IN ITEMS
+        "bin/plugins/okular_generators/okularGenerator_mengshee_pdf.dll"
+        "bin/plugins/mengshee_pdf/MengsheePdfEngineMuPdf.dll"
+        "bin/plugins/mengshee_pdf/MengsheePdfEnginePoppler.dll"
+        "bin/MengsheePdfRuntime.dll"
+        "bin/poppler.dll"
+        "bin/poppler-qt6.dll"
+        "bin/tesseract55.dll"
+        "bin/leptonica-1.87.0.dll"
+        "share/poppler/cMap/Adobe-GB1/UniGB-UTF16-H"
+        "share/poppler/cidToUnicode/Adobe-GB1"
+        "share/licenses/mupdf/COPYING"
+        "share/licenses/poppler/COPYING"
+        "bin/plugins/okular_generators/okularGenerator_mupdf.dll"
+        "bin/plugins/okular_generators/okularGenerator_poppler.dll"
+    )
+        mengshee_validate_file("${STAGE_ROOT}" "${_required}")
+    endforeach()
+elseif(EXISTS "${STAGE_ROOT}/bin/plugins/okular_generators/okularGenerator_mupdf.dll")
     mengshee_validate_file("${STAGE_ROOT}" "bin/MengsheePdfRuntime.dll")
     # Older install trees may still contain the former dynamically linked OCR engine.
     file(REMOVE "${STAGE_ROOT}/bin/tesseract55.dll" "${STAGE_ROOT}/bin/leptonica-1.87.0.dll")

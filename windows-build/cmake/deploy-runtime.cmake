@@ -5,6 +5,7 @@ get_filename_component(_windows_build_dir "${_script_dir}/.." ABSOLUTE)
 get_filename_component(_default_source_root "${_windows_build_dir}/.." ABSOLUTE)
 get_filename_component(_default_workspace_root "${_default_source_root}/windows-build-workspace" ABSOLUTE)
 include("${_script_dir}/stemtex-common.cmake")
+include("${_script_dir}/pdf-engine-modules.cmake")
 
 function(mengshee_default_path variable default_value)
     if(NOT DEFINED ${variable} OR "${${variable}}" STREQUAL "")
@@ -195,6 +196,19 @@ function(mengshee_copy_file source destination)
     file(COPY_FILE "${source}" "${destination}" ONLY_IF_DIFFERENT)
 endfunction()
 
+# Copies the first existing license source and reports (but never fails on) a
+# missing third-party license text. The engine licenses themselves are required
+# separately because those sources are part of the repository.
+function(mengshee_copy_first_existing destination description)
+    foreach(_source IN LISTS ARGN)
+        if(NOT "${_source}" STREQUAL "" AND EXISTS "${_source}")
+            mengshee_copy_file("${_source}" "${destination}")
+            return()
+        endif()
+    endforeach()
+    message(WARNING "License text not found for ${description}; see docs/pdf-backend-deployment.md.")
+endfunction()
+
 function(mengshee_remove_empty_gettext_catalogs root)
     if(NOT IS_DIRECTORY "${root}")
         return()
@@ -295,6 +309,10 @@ mengshee_default_path(SOURCE_ROOT "${_default_source_root}")
 mengshee_default_path(WORKSPACE_ROOT "${_default_workspace_root}")
 mengshee_default_path(SDK_PREFIX "${WORKSPACE_ROOT}/sdk")
 mengshee_default_path(INSTALL_PREFIX "${WORKSPACE_ROOT}/install/mengshee")
+mengshee_pdf_engine_modules_enabled(MENGSHEE_PDF_ENGINE_MODULES)
+if(NOT MENGSHEE_PDF_BACKEND)
+    set(MENGSHEE_PDF_BACKEND MuPDF)
+endif()
 mengshee_find_qt_prefix(QT_PREFIX_RESOLVED)
 set(QT_PREFIX "${QT_PREFIX_RESOLVED}")
 mengshee_find_qscintilla_root(QSCINTILLA_ROOT_RESOLVED)
@@ -316,28 +334,113 @@ if(NOT EXISTS "${_exe}")
     message(FATAL_ERROR "Cannot find installed Mengshee executable: ${_exe}. Build first.")
 endif()
 
+# Phase-2 runtime: one Okular plugin plus loadable MuPDF and Poppler engine
+# modules. The two engines come from separate configurations (MuPDF and Poppler
+# cannot be configured together because okularpart still links one backend), so
+# each engine tree is resolved independently. Either backend may be primary.
+set(_mupdf_engine_root "")
+set(_poppler_engine_root "")
+set(_mupdf_engine_module "")
+set(_poppler_engine_module "")
+set(_mupdf_engine_runtime "")
+set(_mupdf_legacy_plugin "")
+set(_poppler_legacy_plugin "")
+set(_single_pdf_plugin "")
+if(MENGSHEE_PDF_ENGINE_MODULES)
+    foreach(_engine IN ITEMS MuPDF Poppler)
+        mengshee_pdf_require_engine_root(_engine_root "${_engine}")
+        mengshee_pdf_engine_module_path(_engine_module "${_engine_root}" "${_engine}")
+        mengshee_pdf_legacy_plugin_path(_engine_legacy "${_engine_root}" "${_engine}")
+        if(NOT _engine_legacy)
+            message(FATAL_ERROR
+                "The ${_engine} tree ${_engine_root} contains ${_engine_module} but not its legacy "
+                "generator plugin. Deploy the compatibility path from a complete ${_engine} build."
+            )
+        endif()
+        if(_engine STREQUAL "MuPDF")
+            set(_mupdf_engine_root "${_engine_root}")
+            set(_mupdf_engine_module "${_engine_module}")
+            set(_mupdf_legacy_plugin "${_engine_legacy}")
+            mengshee_pdf_engine_runtime_path(_mupdf_engine_runtime "${_engine_root}")
+            if(NOT _mupdf_engine_runtime)
+                message(FATAL_ERROR
+                    "The MuPDF engine module needs MengsheePdfRuntime.dll in the same tree, but none "
+                    "was found under ${_engine_root}/bin or ${_engine_root}/bin/plugins/mengshee_pdf."
+                )
+            endif()
+        else()
+            set(_poppler_engine_root "${_engine_root}")
+            set(_poppler_engine_module "${_engine_module}")
+            set(_poppler_legacy_plugin "${_engine_legacy}")
+        endif()
+    endforeach()
+
+    mengshee_pdf_single_plugin_path(_single_pdf_plugin "${INSTALL_PREFIX}")
+    if(NOT _single_pdf_plugin AND DEFINED BUILD_DIR AND NOT "${BUILD_DIR}" STREQUAL "")
+        mengshee_pdf_single_plugin_path(_single_pdf_plugin "${BUILD_DIR}")
+    endif()
+    if(NOT _single_pdf_plugin)
+        # The phase-1 plugin is built but not installed yet; accept it from
+        # either engine tree so a build-tree-only deployment still works.
+        mengshee_pdf_single_plugin_path(_single_pdf_plugin "${_mupdf_engine_root}")
+    endif()
+    if(NOT _single_pdf_plugin)
+        mengshee_pdf_single_plugin_path(_single_pdf_plugin "${_poppler_engine_root}")
+    endif()
+    if(NOT _single_pdf_plugin)
+        message(FATAL_ERROR
+            "No okularGenerator_mengshee_pdf.dll was found in ${INSTALL_PREFIX}, ${BUILD_DIR}, "
+            "${_mupdf_engine_root}, or ${_poppler_engine_root}. Configure/build with "
+            "-DMENGSHEE_PDF_ENGINE_MODULES=ON so the install rules are active."
+        )
+    endif()
+endif()
+
 message(STATUS "Mengshee runtime deploy")
 message(STATUS "  QtPrefix  : ${QT_PREFIX}")
 message(STATUS "  SdkPrefix : ${SDK_PREFIX}")
 message(STATUS "  Install   : ${INSTALL_PREFIX}")
 message(STATUS "  StemStage : ${STEMTEX_STAGE_ROOT_RESOLVED}")
 message(STATUS "  QScintilla: ${QSCINTILLA_ROOT_RESOLVED}")
+message(STATUS "  PdfEngines: ${MENGSHEE_PDF_ENGINE_MODULES}")
+if(MENGSHEE_PDF_ENGINE_MODULES)
+    message(STATUS "    plugin  : ${_single_pdf_plugin}")
+    message(STATUS "    MuPDF   : ${_mupdf_engine_module} (root ${_mupdf_engine_root})")
+    message(STATUS "    Poppler : ${_poppler_engine_module} (root ${_poppler_engine_root})")
+endif()
+
+if(MENGSHEE_PDF_ENGINE_MODULES)
+    # The MuPDF engine module imports this runtime DLL. When Mengshee is built
+    # with the Poppler backend, okularpart does not install it, so the MuPDF
+    # tree is the only source.
+    set(_runtime_target "${_bin_dir}/MengsheePdfRuntime.dll")
+    get_filename_component(_runtime_source "${_mupdf_engine_runtime}" ABSOLUTE)
+    get_filename_component(_runtime_target_absolute "${_runtime_target}" ABSOLUTE)
+    if(NOT _runtime_source STREQUAL _runtime_target_absolute)
+        mengshee_copy_file("${_runtime_source}" "${_runtime_target}")
+    endif()
+endif()
 
 mengshee_remove_inside("${INSTALL_PREFIX}/bin/data/mengshee/microtex" "${INSTALL_PREFIX}")
 file(REMOVE "${INSTALL_PREFIX}/bin/LaTeX.dll" "${INSTALL_PREFIX}/lib/LaTeX.lib")
 
 file(GLOB _sdk_dlls "${SDK_PREFIX}/bin/*.dll")
-if(NOT MENGSHEE_PDF_BACKEND)
-    set(MENGSHEE_PDF_BACKEND MuPDF)
-endif()
 foreach(_dll IN LISTS _sdk_dlls)
     get_filename_component(_name "${_dll}" NAME)
-    if(MENGSHEE_PDF_BACKEND STREQUAL "MuPDF" AND _name MATCHES "^(poppler.*|tesseract55|leptonica-1\\.87\\.0)\\.dll$")
+    if(NOT MENGSHEE_PDF_ENGINE_MODULES AND MENGSHEE_PDF_BACKEND STREQUAL "MuPDF" AND _name MATCHES "^(poppler.*|tesseract55|leptonica-1\\.87\\.0)\\.dll$")
         continue()
     endif()
     mengshee_copy_file("${_dll}" "${_bin_dir}/${_name}")
 endforeach()
-if(MENGSHEE_PDF_BACKEND STREQUAL "MuPDF")
+if(MENGSHEE_PDF_ENGINE_MODULES)
+    # The Poppler engine module imports all four; MuPDF statically links its
+    # own copies, so the DLLs only serve the Poppler module here.
+    foreach(_required_runtime IN ITEMS poppler.dll poppler-qt6.dll leptonica-1.87.0.dll tesseract55.dll)
+        if(NOT EXISTS "${_bin_dir}/${_required_runtime}")
+            message(FATAL_ERROR "Dual-engine deployment is missing the Poppler runtime DLL: ${_required_runtime}")
+        endif()
+    endforeach()
+elseif(MENGSHEE_PDF_BACKEND STREQUAL "MuPDF")
     # OCR is linked into MengsheePdfRuntime; remove DLLs left by older deployments.
     file(REMOVE "${_bin_dir}/tesseract55.dll" "${_bin_dir}/leptonica-1.87.0.dll")
 else()
@@ -365,7 +468,52 @@ include("${CMAKE_CURRENT_LIST_DIR}/pdf-base14-fonts.cmake")
 mengshee_deploy_pdf_base14_fonts("${SOURCE_ROOT}" "${SDK_PREFIX}")
 mengshee_deploy_pdf_base14_fonts("${SOURCE_ROOT}" "${INSTALL_PREFIX}")
 
-if(MENGSHEE_PDF_BACKEND STREQUAL "MuPDF")
+if(MENGSHEE_PDF_ENGINE_MODULES)
+    # Both engines are shipped, so neither the Poppler DLLs nor the CMap data
+    # may be filtered out. The MuPDF engine statically embeds MuPDF and
+    # Tesseract; the Poppler engine needs the SDK DLLs copied above.
+    if(NOT IS_DIRECTORY "${SDK_PREFIX}/share/poppler")
+        message(FATAL_ERROR
+            "Dual-engine deployment needs the Poppler CMap/CID data under ${SDK_PREFIX}/share/poppler. "
+            "Run windows-build/cmake/build-poppler-data-sdk.cmake first."
+        )
+    endif()
+    mengshee_sync_tree("${SDK_PREFIX}/share/poppler" "${INSTALL_PREFIX}/share/poppler" "${INSTALL_PREFIX}")
+
+    mengshee_copy_file("${SOURCE_ROOT}/external/mupdf/COPYING" "${INSTALL_PREFIX}/share/licenses/mupdf/COPYING")
+    mengshee_copy_file("${SOURCE_ROOT}/external/poppler/COPYING" "${INSTALL_PREFIX}/share/licenses/poppler/COPYING")
+    if(EXISTS "${SOURCE_ROOT}/external/poppler/COPYING3")
+        mengshee_copy_file("${SOURCE_ROOT}/external/poppler/COPYING3" "${INSTALL_PREFIX}/share/licenses/poppler/COPYING3")
+    endif()
+
+    # Optional third-party license texts: present in a full SDK build workspace,
+    # absent in a pruned one. The deployment stays usable either way, but the
+    # packager copies whatever is staged and the deployment document lists the
+    # full transitive set.
+    mengshee_copy_first_existing(
+        "${INSTALL_PREFIX}/share/licenses/tesseract/LICENSE" "Tesseract"
+        "${WORKSPACE_ROOT}/sources/tesseract/LICENSE"
+        "${WORKSPACE_ROOT}/build/thirdparty/tesseract/LICENSE"
+    )
+    mengshee_copy_first_existing(
+        "${INSTALL_PREFIX}/share/licenses/leptonica/leptonica-license.txt" "Leptonica"
+        "${WORKSPACE_ROOT}/sources/leptonica/leptonica-license.txt"
+    )
+    file(GLOB _poppler_data_licenses
+        "${WORKSPACE_ROOT}/build/thirdparty/poppler-data-*/COPYING"
+        "${WORKSPACE_ROOT}/build/thirdparty/poppler-data-*/COPYING.adobe"
+        "${WORKSPACE_ROOT}/build/thirdparty/poppler-data-*/COPYING.gpl2"
+        "${WORKSPACE_ROOT}/build/thirdparty/poppler-data-*/COPYING.gpl3"
+    )
+    if(_poppler_data_licenses)
+        foreach(_license IN LISTS _poppler_data_licenses)
+            get_filename_component(_license_name "${_license}" NAME)
+            mengshee_copy_file("${_license}" "${INSTALL_PREFIX}/share/licenses/poppler-data/${_license_name}")
+        endforeach()
+    else()
+        message(WARNING "poppler-data license texts were not found under ${WORKSPACE_ROOT}/build/thirdparty; see docs/pdf-backend-deployment.md.")
+    endif()
+elseif(MENGSHEE_PDF_BACKEND STREQUAL "MuPDF")
     file(REMOVE "${_bin_dir}/poppler.dll" "${_bin_dir}/poppler-qt6.dll")
     mengshee_remove_inside("${INSTALL_PREFIX}/share/poppler" "${INSTALL_PREFIX}")
     mengshee_copy_file("${SOURCE_ROOT}/external/mupdf/COPYING" "${INSTALL_PREFIX}/share/licenses/mupdf/COPYING")
@@ -391,8 +539,27 @@ else()
         mengshee_copy_plugin("${_bin_dir}/plugins" "okular_generators/okularGenerator_poppler.dll" "${_staged_plugins}")
     endif()
 endif()
-if(MENGSHEE_PDF_BACKEND STREQUAL "MuPDF")
-    file(REMOVE "${_staged_plugins}/okular_generators/okularGenerator_poppler.dll")
+
+if(MENGSHEE_PDF_ENGINE_MODULES)
+    # Both legacy plugins stay installed so Okular can fall back to them when
+    # the single plugin or one of its engine modules cannot load.
+    mengshee_copy_file("${_mupdf_legacy_plugin}"
+        "${_staged_plugins}/okular_generators/okularGenerator_mupdf.dll")
+    mengshee_copy_file("${_poppler_legacy_plugin}"
+        "${_staged_plugins}/okular_generators/okularGenerator_poppler.dll")
+    mengshee_copy_file("${_single_pdf_plugin}"
+        "${_staged_plugins}/okular_generators/okularGenerator_mengshee_pdf.dll")
+    mengshee_copy_file("${_mupdf_engine_module}"
+        "${_staged_plugins}/mengshee_pdf/MengsheePdfEngineMuPdf.dll")
+    mengshee_copy_file("${_poppler_engine_module}"
+        "${_staged_plugins}/mengshee_pdf/MengsheePdfEnginePoppler.dll")
+else()
+    # A legacy stage must not inherit phase-2 artifacts from an earlier install.
+    file(REMOVE "${_staged_plugins}/okular_generators/okularGenerator_mengshee_pdf.dll")
+    mengshee_remove_inside("${_staged_plugins}/mengshee_pdf" "${_staged_plugins}")
+    if(MENGSHEE_PDF_BACKEND STREQUAL "MuPDF")
+        file(REMOVE "${_staged_plugins}/okular_generators/okularGenerator_poppler.dll")
+    endif()
 endif()
 
 mengshee_remove_inside("${_bin_dir}/plugins" "${INSTALL_PREFIX}")

@@ -45,9 +45,10 @@ whitespace, ordinary line metrics, current/explicit colours and Chinese text.
 ## Preserve the SDK artifact
 
 The LaTeX rendering path consumes the SDK PDF without rewriting its page boxes.
-It no longer calls `LatexPdfBounds::expandInPlace`. Logical bounds, profile
-preview border and content positions come from StemTeX, not glyph-bound cropping
-or host geometry correction. The native regression compares page dimensions and
+The former `LatexPdfBounds::expandInPlace` path and its `MengsheeLayoutBox`
+support were retired. Logical bounds, profile preview border and content
+positions come from StemTeX, not glyph-bound cropping or host geometry
+correction. The native regression compares page dimensions and
 text origins against a second renderer using the SDK's default worker with the same four
 zero display skips supplied in its source.
 
@@ -112,8 +113,8 @@ is not successful-request isolation and no such sandbox is claimed.
 
 ## Verification evidence
 
-Automated tests: `latexrenderguardstest`, `latexsourcepreparationtest`,
-`latexpdfboundstest`, and `latexframeclippingtest`.
+Automated tests: `latexrenderguardstest`, `latexsourcepreparationtest`, and
+`latexframeclippingtest`.
 
 The new frame regression uses synthetic vector content, independent of TeX:
 widths 0/1/4, padding 0/2, boxed/callout, opacity 1/.5, zero content offset and

@@ -165,8 +165,6 @@ void write(fz_context *ctx, pdf_document *doc, pdf_annot *native, const Okular::
                 part = nullptr;
             }
             raw = pdf_new_xobject(ctx, doc, sourceBox, fz_identity, sourceResources, content);
-            if (auto *layout = pdf_dict_gets(ctx, sourcePage, "MengsheeLayoutBox"))
-                pdf_dict_puts_drop(ctx, raw, "MengsheeLayoutBox", pdf_graft_object(ctx, doc, layout));
             fz_drop_buffer(ctx, content);
             content = nullptr;
         } else {
@@ -185,8 +183,6 @@ void write(fz_context *ctx, pdf_document *doc, pdf_annot *native, const Okular::
             }
         }
         const auto sourceBox = qtRect(pdf_dict_get_rect(ctx, raw, PDF_NAME(BBox)));
-        if (auto *layout = pdf_dict_gets(ctx, raw, "MengsheeLayoutBox"))
-            options.sourceLayoutBox = qtRect(pdf_to_rect(ctx, layout));
         const auto bytes = appearanceStream(sourceBox, options, annotation->orderedCalloutNumber(), annotation->numberedCalloutLabel());
         resources = pdf_new_dict(ctx, doc, 3);
         auto *forms = pdf_dict_put_dict(ctx, resources, PDF_NAME(XObject), 1);

@@ -2086,6 +2086,11 @@ void Part::setWindowTitleFromDocument()
         }
     }
 
+    const QString backend = m_document->generatorBackend();
+    if (!backend.isEmpty()) {
+        title += QStringLiteral(" [%1]").arg(backend);
+    }
+
     Q_EMIT setWindowCaption(title);
 }
 

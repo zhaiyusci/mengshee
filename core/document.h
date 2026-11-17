@@ -1072,6 +1072,13 @@ public:
     KPluginMetaData generatorInfo() const;
 
     /**
+     * Human-readable name of the active PDF backend, when the generator
+     * exposes one (for example "MuPDF" or "Poppler"). Empty for other
+     * generators.
+     */
+    QString generatorBackend() const;
+
+    /**
      * Returns whether the generator supports hot-swapping the current file
      * with another identical file
      *
@@ -1872,6 +1879,7 @@ Q_SIGNALS:
 private:
     /// @cond PRIVATE
     friend class DocumentPrivate;
+    friend class Generator;
     friend class DocumentViewSession;
     friend class ::DocumentItem;
     friend class EditAnnotationContentsCommand;

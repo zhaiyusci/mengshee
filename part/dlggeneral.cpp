@@ -17,6 +17,7 @@
 #include <QGuiApplication>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QLineEdit>
 #include <QSpinBox>
 
 #include <config-okular.h>
@@ -155,6 +156,18 @@ DlgGeneral::DlgGeneral(QWidget *parent, Okular::EmbedMode embedMode)
     showBackendSelectionDialog->setText(i18nc("@option:check Config dialog, general page", "Show backend selection dialog"));
     showBackendSelectionDialog->setObjectName(QStringLiteral("kcfg_ChooseGenerators"));
     layout->addRow(programFeaturesLabel(), showBackendSelectionDialog);
+
+    // Combo: runtime PDF engine module used by the unified PDF backend.
+    QComboBox *pdfEngine = new QComboBox(this);
+    pdfEngine->addItem(QStringLiteral("MuPDF"));
+    pdfEngine->addItem(QStringLiteral("Poppler"));
+    // KConfigDialogManager stores the text for editable combos; keep the list
+    // closed so only the two known engine ids can be chosen.
+    pdfEngine->setEditable(true);
+    pdfEngine->lineEdit()->setReadOnly(true);
+    pdfEngine->setObjectName(QStringLiteral("kcfg_PdfEngine"));
+    pdfEngine->setToolTip(i18nc("@info:tooltip", "Engine used the next time a PDF document is opened."));
+    layout->addRow(i18nc("@label Config dialog, general page", "PDF engine:"), pdfEngine);
 
     if (embedMode != Okular::ViewerWidgetMode) { // TODO Makes sense?
         // Checkbox: RTL document layout

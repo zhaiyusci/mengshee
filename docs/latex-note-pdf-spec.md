@@ -268,11 +268,9 @@ preview margins must not be added to the requested paragraph width or padding.
 `layout.paddingPt`
 : Optional non-negative number in PDF points. Defaults to `3`. It is applied
 independently on every side between the annotation frame and LaTeX content.
-Positioning and reflow use the logical typesetting box, not glyph outlines or
-an expanded paint bounding box. Expanding the source PDF to retain overhangs
-must preserve that logical origin and size. Mengshee's source appearance Form
-may retain this box in its private `MengsheeLayoutBox` entry; it does not change
-the standard `BBox` used for painting and clipping.
+Positioning and reflow use the logical typesetting box supplied by StemTeX.
+Mengshee does not expand or rewrite the source page box and does not write a
+private layout-box entry; the standard `BBox` is the source's own box.
 
 `style.textColor`
 : Optional CSS-style ARGB hex string, `#aarrggbb`. Defaults to opaque black.

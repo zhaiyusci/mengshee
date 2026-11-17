@@ -73,6 +73,10 @@
   <entry key="ChooseGenerators" type="Bool" >
    <default>false</default>
   </entry>
+  <entry key="PdfEngine" type="String" >
+   <default>MuPDF</default>
+   <label>PDF engine module used by the unified PDF backend (MuPDF or Poppler).</label>
+  </entry>
   <entry key="ExternalEditor" type="Enum" >
    <default>Kate</default>
    <choices>

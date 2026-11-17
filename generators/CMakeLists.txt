@@ -11,6 +11,8 @@ endfunction()
 
 # let's enable the generators properly configured
 
+add_subdirectory(pdf)
+
 if(MENGSHEE_PDF_BACKEND STREQUAL "MuPDF")
   add_subdirectory(mupdf)
 elseif(Poppler_Qt6_FOUND)

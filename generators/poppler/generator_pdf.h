@@ -86,6 +86,11 @@ public:
     QImage image(Okular::PixmapRequest *request) override;
     bool canRenderToImage() const override;
     QImage renderToImage(int page, int dpi, bool includeAnnotations, QString *error = nullptr) override;
+    /**
+     * Worker-thread rendering for the narrow engine. Uses the page model for
+     * size/rotation and locks the Poppler document; no QObject/Document access.
+     */
+    QImage renderPageForWorker(Okular::Page *page, int width, int height, const QRect &region, bool includeAnnotations, bool applyViewRotation, const std::function<bool()> &shouldAbort, QString *error = nullptr);
 
     // [INHERITED] print page using an already configured kprinter
     Okular::Document::PrintError print(QPrinter &printer) override;
@@ -148,6 +153,20 @@ public:
     bool setReadingViews(int pageNumber, const QList<Okular::ReadingView> &views, QString *errorText) override;
     QString readingViewPageToken(int pageNumber) const override;
     int readingViewPageForToken(const QString &token) const override;
+    /**
+     * Page identity of an explicit link destination: the page object reference
+     * ("number generation") the PDF itself uses and that
+     * createLinkFromPopplerLink() writes into Okular::GotoAction::pageToken().
+     * Empty for an invalid page or when no document is open.
+     */
+    QString pageTokenForNativePage(int nativePage) const;
+    /**
+     * Resolves a token produced by pageTokenForNativePage() to a zero-based
+     * native page index, or -1. This is the native-page form of the private
+     * Generator::pageNumberForPageToken() override, which maps the result
+     * through the live logical page order for the legacy path.
+     */
+    int nativePageForPageToken(const QString &token) const;
     bool canEditPdfLinks() const override;
     bool setNamedDestination(const QString &name, int pageNumber, double normalizedX, double normalizedY, QString *errorText) override;
     bool renameNamedDestination(const QString &oldName, const QString &newName, QString *errorText) override;
@@ -225,6 +244,52 @@ public:
 
     QByteArray requestFontData(const Okular::FontInfo &font) override;
 
+    /**
+     * Phase-1 narrow read support for the engine module.
+     *
+     * openDocumentForNarrowLoad()/openDocumentFromDataForNarrowLoad() open and
+     * authenticate the PDF without building Okular::Page models. The caller
+     * creates them one at a time with createPageModelForNarrowLoad() and owns
+     * them. The legacy loadDocument* methods keep building every model through
+     * init()/loadPages() and their behavior is unchanged.
+     */
+    Okular::Document::OpenResult openDocumentForNarrowLoad(const QString &filePath, const QString &password);
+    Okular::Document::OpenResult openDocumentFromDataForNarrowLoad(const QByteArray &fileData, const QString &password);
+
+    /** Native page count, or 0 when no document is open. */
+    int nativePageCount() const;
+
+    /**
+     * Geometry of one native page in PDF points.
+     *
+     * width/height are Poppler::Page::pageSizeF(), that is the page's /CropBox
+     * with its own /Rotate already applied, so they are the displayed page
+     * size. rotation is /Rotate normalized to 0, 90, 180 or 270.
+     */
+    bool nativePageGeometry(int nativePage, double *width, double *height, int *rotation) const;
+
+    /**
+     * Builds one Okular::Page model for native page @p nativePage, including
+     * annotations, link rectangles, form fields, transition and page actions.
+     * Ownership of the returned model passes to the caller; the generator
+     * never stores or frees it.
+     */
+    Okular::Page *createPageModelForNarrowLoad(int nativePage);
+
+    /**
+     * Text of one native page. Unlike textPage(TextRequest *), this does not go
+     * through the logical page order, because PdfDocument page numbers are
+     * native indices.
+     */
+    Okular::TextPage *textPageForNumber(int nativePage);
+
+    /**
+     * Capability bridge for the narrow front end. Refreshes the link objects of
+     * one native page without going through the logical page order; the
+     * public Okular interface keeps its logical mapping above.
+     */
+    bool refreshPageLinksForEngine(Okular::Page *sourcePage, int nativePageNumber, QString *errorText);
+
     static void okularToPoppler(const Okular::NewSignatureData &oData, Poppler::PDFConverter::NewSignatureData *pData);
 
     enum DocumentAdditionalActionType {
@@ -243,10 +308,20 @@ protected:
 
 private:
     Okular::Document::OpenResult init(QList<Okular::Page *> &pagesVector, const QString &password);
+    // Shared by init() (legacy, builds every page model) and
+    // initForNarrowLoad() (opens and authenticates only).
+    Okular::Document::OpenResult prepareOpen(const QString &password, int *pageCount);
+    void finishOpen();
+    Okular::Document::OpenResult initForNarrowLoad(const QString &password);
+    // Signatures that belong to no page; loadPages() puts them on page 0.
+    QList<Okular::FormField *> pageLessSignatureFields();
     int nativePageForLogicalPage(int logicalPage) const;
     bool pageOrderIsIdentity() const;
     std::vector<int> oneBasedPageOrder() const;
-    Okular::Page *createPageModel(int logicalPageNumber);
+    // additionalFormFields are adopted by the created page, like the fields of
+    // the native page. They let the narrow loader put page-less signatures on
+    // page 0 before setFormFields() takes ownership for the first time.
+    Okular::Page *createPageModel(int logicalPageNumber, QList<Okular::FormField *> additionalFormFields = {});
     void forgetPageModel(Okular::Page *page);
     void resetPageTopologyCaches();
     quint64 rememberLivePageState(const std::shared_ptr<void> &state);

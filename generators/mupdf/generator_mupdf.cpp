@@ -72,6 +72,30 @@ Okular::Document::OpenResult MuPDFGenerator::loadDocumentWithPassword(const QStr
 
 Okular::Document::OpenResult MuPDFGenerator::loadDocumentFromDataWithPassword(const QByteArray &data, QList<Okular::Page *> &pages, const QString &password)
 {
+    const Okular::Document::OpenResult opened = openFromData(data);
+    if (opened != Okular::Document::OpenSuccess)
+        return opened;
+    return finishOpen(pages, password);
+}
+
+Okular::Document::OpenResult MuPDFGenerator::openDocumentForNarrowLoad(const QString &path, const QString &password)
+{
+    QFile input(path);
+    if (!input.open(QIODevice::ReadOnly))
+        return Okular::Document::OpenError;
+    return openDocumentFromDataForNarrowLoad(input.readAll(), password);
+}
+
+Okular::Document::OpenResult MuPDFGenerator::openDocumentFromDataForNarrowLoad(const QByteArray &data, const QString &password)
+{
+    const Okular::Document::OpenResult opened = openFromData(data);
+    if (opened != Okular::Document::OpenSuccess)
+        return opened;
+    return authenticateOpen(password);
+}
+
+Okular::Document::OpenResult MuPDFGenerator::openFromData(const QByteArray &data)
+{
     doCloseDocument();
     if (!m_context)
         return Okular::Document::OpenError;
@@ -93,10 +117,10 @@ Okular::Document::OpenResult MuPDFGenerator::loadDocumentFromDataWithPassword(co
         doCloseDocument();
         return Okular::Document::OpenError;
     }
-    return finishOpen(pages, password);
+    return Okular::Document::OpenSuccess;
 }
 
-Okular::Document::OpenResult MuPDFGenerator::finishOpen(QList<Okular::Page *> &pages, const QString &password)
+Okular::Document::OpenResult MuPDFGenerator::authenticateOpen(const QString &password)
 {
     const QByteArray encodedPassword = password.toUtf8();
     bool needsPassword = false;
@@ -104,23 +128,43 @@ Okular::Document::OpenResult MuPDFGenerator::finishOpen(QList<Okular::Page *> &p
     fz_try(m_context)
     {
         needsPassword = pdf_needs_password(m_context, m_document) && !pdf_authenticate_password(m_context, m_document, encodedPassword.constData());
-        if (!needsPassword) {
-            const int count = pdf_count_pages(m_context, m_document);
-            for (int i = 0; i < count; ++i) {
-                fz_rect box;
-                fz_matrix matrix;
-                pdf_page_obj_transform(m_context, pdf_lookup_page_obj(m_context, m_document, i), &box, &matrix);
-                box = fz_transform_rect(box, matrix);
-                const int degrees = pdf_dict_get_inheritable_int(m_context, pdf_lookup_page_obj(m_context, m_document, i), PDF_NAME(Rotate));
-                const auto orientation = static_cast<Okular::Rotation>(((degrees % 360 + 360) % 360) / 90);
-                auto *page = new Okular::Page(i, (box.x1 - box.x0) * dpi().width() / 72.0, (box.y1 - box.y0) * dpi().height() / 72.0, orientation);
-                pages.append(page);
-                auto *native = pdf_load_page(m_context, m_document, i);
-                m_pages.append(native);
-                m_annotations->load(native, page);
-                loadLinks(native, page);
-                loadForms(native, page);
-            }
+    }
+    fz_catch(m_context)
+    {
+        qWarning() << "MuPDF password:" << fz_caught_message(m_context);
+        doCloseDocument();
+        return Okular::Document::OpenError;
+    }
+    if (needsPassword) {
+        doCloseDocument();
+        return Okular::Document::OpenNeedsPassword;
+    }
+    return Okular::Document::OpenSuccess;
+}
+
+Okular::Document::OpenResult MuPDFGenerator::finishOpen(QList<Okular::Page *> &pages, const QString &password)
+{
+    const Okular::Document::OpenResult authenticated = authenticateOpen(password);
+    if (authenticated != Okular::Document::OpenSuccess)
+        return authenticated;
+
+    fz_try(m_context)
+    {
+        const int count = pdf_count_pages(m_context, m_document);
+        for (int i = 0; i < count; ++i) {
+            fz_rect box;
+            fz_matrix matrix;
+            pdf_page_obj_transform(m_context, pdf_lookup_page_obj(m_context, m_document, i), &box, &matrix);
+            box = fz_transform_rect(box, matrix);
+            const int degrees = pdf_dict_get_inheritable_int(m_context, pdf_lookup_page_obj(m_context, m_document, i), PDF_NAME(Rotate));
+            const auto orientation = static_cast<Okular::Rotation>(((degrees % 360 + 360) % 360) / 90);
+            auto *page = new Okular::Page(i, (box.x1 - box.x0) * dpi().width() / 72.0, (box.y1 - box.y0) * dpi().height() / 72.0, orientation);
+            pages.append(page);
+            auto *native = pdf_load_page(m_context, m_document, i);
+            m_pages.append(native);
+            m_annotations->load(native, page);
+            loadLinks(native, page);
+            loadForms(native, page);
         }
     }
     fz_catch(m_context)
@@ -131,11 +175,109 @@ Okular::Document::OpenResult MuPDFGenerator::finishOpen(QList<Okular::Page *> &p
         doCloseDocument();
         return Okular::Document::OpenError;
     }
-    if (needsPassword) {
-        doCloseDocument();
-        return Okular::Document::OpenNeedsPassword;
-    }
     return Okular::Document::OpenSuccess;
+}
+
+Okular::Page *MuPDFGenerator::createPageModel(int index)
+{
+    if (!m_document)
+        return nullptr;
+
+    bool valid = false;
+    fz_var(valid);
+    fz_try(m_context)
+    {
+        valid = index >= 0 && index < pdf_count_pages(m_context, m_document);
+    }
+    fz_catch(m_context)
+    {
+        qWarning() << "MuPDF page model:" << fz_caught_message(m_context);
+        return nullptr;
+    }
+    if (!valid)
+        return nullptr;
+
+    Okular::Page *page = nullptr;
+    fz_var(page);
+    fz_try(m_context)
+    {
+        page = createPage(index);
+    }
+    fz_catch(m_context)
+    {
+        qWarning() << "MuPDF page model:" << fz_caught_message(m_context);
+        delete page;
+        page = nullptr;
+    }
+    return page;
+}
+
+int MuPDFGenerator::nativePageCount() const
+{    if (!m_document)
+        return 0;
+    // renderPage()/pageGeometry() may run on a worker thread; the narrow
+    // PdfDocument contract makes the engine responsible for serializing the
+    // native MuPDF access.
+    QMutexLocker lock(userMutex());
+    int count = 0;
+    fz_var(count);
+    fz_try(m_context)
+    {
+        count = pdf_count_pages(m_context, m_document);
+    }
+    fz_catch(m_context)
+    {
+        qWarning() << "MuPDF page count:" << fz_caught_message(m_context);
+        count = 0;
+    }
+    return count;
+}
+
+bool MuPDFGenerator::hasNativePage(int index) const
+{
+    return index >= 0 && index < m_pages.size() && m_pages.at(index) != nullptr;
+}
+
+bool MuPDFGenerator::nativePageGeometry(int index, double *width, double *height, int *rotation) const
+{
+    if (!m_document || !width || !height || !rotation)
+        return false;
+
+    QMutexLocker lock(userMutex());
+    bool valid = false;
+    double pageWidth = 0.0;
+    double pageHeight = 0.0;
+    int pageRotation = 0;
+    fz_var(valid);
+    fz_var(pageWidth);
+    fz_var(pageHeight);
+    fz_var(pageRotation);
+    fz_try(m_context)
+    {
+        if (index < 0 || index >= pdf_count_pages(m_context, m_document))
+            fz_throw(m_context, FZ_ERROR_ARGUMENT, "page number out of range");
+        pdf_obj *pageObject = pdf_lookup_page_obj(m_context, m_document, index);
+        fz_rect box;
+        fz_matrix matrix;
+        pdf_page_obj_transform(m_context, pageObject, &box, &matrix);
+        box = fz_transform_rect(box, matrix);
+        pageWidth = box.x1 - box.x0;
+        pageHeight = box.y1 - box.y0;
+        const int degrees = pdf_dict_get_inheritable_int(m_context, pageObject, PDF_NAME(Rotate));
+        pageRotation = ((degrees % 360 + 360) % 360) / 90 * 90;
+        valid = pageWidth > 0.0 && pageHeight > 0.0;
+    }
+    fz_catch(m_context)
+    {
+        qWarning() << "MuPDF page geometry:" << fz_caught_message(m_context);
+    }
+    if (!valid)
+        return false;
+
+    *width = pageWidth;
+    *height = pageHeight;
+    *rotation = pageRotation;
+    return true;
 }
 
 void MuPDFGenerator::clearDisplayList()
@@ -246,6 +388,17 @@ QImage MuPDFGenerator::image(Okular::PixmapRequest *request)
     return request->shouldAbortRender() ? QImage() : result;
 }
 
+QImage MuPDFGenerator::renderRegionForWorker(int page, int width, int height, const QRect &region, bool includeAnnotations, const std::function<bool()> &shouldAbort, QString *error)
+{
+    QMutexLocker lock(userMutex());
+    if (shouldAbort && shouldAbort()) {
+        return {};
+    }
+    fz_cookie cookie{};
+    const QImage image = render(page, width, height, includeAnnotations, error, region, &cookie);
+    return (shouldAbort && shouldAbort()) ? QImage() : image;
+}
+
 QImage MuPDFGenerator::renderToImage(int page, int dpi, bool annotations, QString *error)
 {
     QMutexLocker lock(userMutex());
@@ -267,13 +420,18 @@ QImage MuPDFGenerator::renderToImage(int page, int dpi, bool annotations, QStrin
 
 Okular::TextPage *MuPDFGenerator::textPage(Okular::TextRequest *request)
 {
+    return textPageForNumber(request->page()->number());
+}
+
+Okular::TextPage *MuPDFGenerator::textPageForNumber(int number)
+{
     QMutexLocker lock(userMutex());
     auto *result = new Okular::TextPage;
     fz_stext_page *text = nullptr;
     fz_var(text);
     fz_try(m_context)
     {
-        text = fz_new_stext_page_from_page_number(m_context, reinterpret_cast<fz_document *>(m_document), request->page()->number(), nullptr);
+        text = fz_new_stext_page_from_page_number(m_context, reinterpret_cast<fz_document *>(m_document), number, nullptr);
         const float width = text->mediabox.x1 - text->mediabox.x0;
         const float height = text->mediabox.y1 - text->mediabox.y0;
         for (fz_stext_block *block = text->first_block; block; block = block->next) {

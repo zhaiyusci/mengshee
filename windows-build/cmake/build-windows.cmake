@@ -6,6 +6,7 @@ get_filename_component(_default_source_root "${_windows_build_dir}/.." ABSOLUTE)
 get_filename_component(_default_workspace_root "${_default_source_root}/windows-build-workspace" ABSOLUTE)
 include("${_script_dir}/stemtex-common.cmake")
 include("${_script_dir}/run-tree-common.cmake")
+include("${_script_dir}/pdf-engine-modules.cmake")
 
 function(mengshee_default_path variable default_value)
     if(NOT DEFINED ${variable} OR "${${variable}}" STREQUAL "")
@@ -155,6 +156,10 @@ mengshee_default_path(SDK_PREFIX "${WORKSPACE_ROOT}/sdk")
 if(NOT DEFINED MENGSHEE_PDF_BACKEND)
     set(MENGSHEE_PDF_BACKEND MuPDF)
 endif()
+# Phase-2 dual-engine deployment is opt-in until the switch is complete. It
+# installs the single plugin plus both engine modules and merges the other
+# backend's runtime into the same stage.
+mengshee_pdf_engine_modules_enabled(MENGSHEE_PDF_ENGINE_MODULES)
 mengshee_default_path(INSTALL_PREFIX "${WORKSPACE_ROOT}/install/mengshee")
 mengshee_default_path(BUILD_DIR "${WORKSPACE_ROOT}/build/mengshee-standalone")
 mengshee_find_qt_prefix(QT_PREFIX_RESOLVED)
@@ -219,6 +224,8 @@ message(STATUS "  SdkPrefix   : ${SDK_PREFIX}")
 message(STATUS "  BuildDir    : ${BUILD_DIR}")
 message(STATUS "  Install     : ${INSTALL_PREFIX}")
 message(STATUS "  QScintilla  : ${QSCINTILLA_ROOT_RESOLVED}")
+message(STATUS "  PdfBackend  : ${MENGSHEE_PDF_BACKEND}")
+message(STATUS "  PdfEngines  : ${MENGSHEE_PDF_ENGINE_MODULES} (single plugin and both modules when ON)")
 
 if(NOT DEFINED SKIP_BUILD OR NOT SKIP_BUILD)
     if(DEFINED CLEAN_BUILD AND CLEAN_BUILD)
@@ -237,6 +244,7 @@ if(NOT DEFINED SKIP_BUILD OR NOT SKIP_BUILD)
         "-DCMAKE_MAKE_PROGRAM=\"${NINJA_PROGRAM}\""
         "-DCMAKE_BUILD_TYPE=${BUILD_TYPE}"
         "-DMENGSHEE_PDF_BACKEND=${MENGSHEE_PDF_BACKEND}"
+        "-DMENGSHEE_PDF_ENGINE_MODULES=${MENGSHEE_PDF_ENGINE_MODULES}"
         "-DMuPDF_ROOT=\"${SDK_PREFIX}/mupdf\""
         "-DCMAKE_INSTALL_PREFIX=\"${INSTALL_PREFIX}\""
         "-DCMAKE_PREFIX_PATH=\"${_cmake_prefix_path}\""
@@ -250,6 +258,16 @@ if(NOT DEFINED SKIP_BUILD OR NOT SKIP_BUILD)
         -DKDE_INSTALL_PLUGINDIR=bin/plugins
         "-DFORCE_NOT_REQUIRED_DEPENDENCIES=\"${_force_not_required}\""
     )
+    if(MENGSHEE_PDF_BACKEND STREQUAL "Poppler" AND IS_DIRECTORY "${WORKSPACE_ROOT}/build/thirdparty/poppler-custom")
+        # generators/poppler defaults this to ${CMAKE_BINARY_DIR}/../thirdparty/
+        # poppler-custom (or ../poppler-local), which only resolves when BUILD_DIR
+        # sits directly under the canonical <workspace>/build tree. The SDK always
+        # builds the local Poppler fork into the workspace thirdparty tree, so
+        # point a custom BUILD_DIR at it explicitly; otherwise the build fails on
+        # the fork's generated config.h even though the SDK is complete.
+        list(APPEND _configure
+            "-DMENGSHEE_POPPLER_PRIVATE_BUILD_DIR=\"${WORKSPACE_ROOT}/build/thirdparty/poppler-custom\"")
+    endif()
     list(JOIN _configure " " _configure_command)
     mengshee_run_vs("${_configure_command}")
     mengshee_remove_empty_gettext_catalogs("${BUILD_DIR}/locale")
@@ -284,6 +302,55 @@ if(NOT DEFINED SKIP_BUILD OR NOT SKIP_BUILD)
 endif()
 
 if(NOT DEFINED SKIP_DEPLOY OR NOT SKIP_DEPLOY)
+    if(MENGSHEE_PDF_ENGINE_MODULES)
+        # The deploy step merges two configurations into one runtime, so verify
+        # the other backend was built before deployment starts removing files.
+        message(STATUS "Dual-engine PDF deployment: checking both engine trees.")
+        set(_mupdf_engine_root_resolved "")
+        set(_poppler_engine_root_resolved "")
+        foreach(_engine IN ITEMS MuPDF Poppler)
+            mengshee_pdf_require_engine_root(_engine_root "${_engine}")
+            mengshee_pdf_engine_module_path(_engine_module "${_engine_root}" "${_engine}")
+            mengshee_pdf_legacy_plugin_path(_legacy_plugin "${_engine_root}" "${_engine}")
+            if(NOT _legacy_plugin)
+                message(FATAL_ERROR
+                    "The ${_engine} tree at ${_engine_root} has an engine module but no "
+                    "${_engine} legacy generator plugin. Build and install that configuration completely."
+                )
+            endif()
+            if(_engine STREQUAL "MuPDF")
+                set(_mupdf_engine_root_resolved "${_engine_root}")
+                mengshee_pdf_engine_runtime_path(_engine_runtime "${_engine_root}")
+                if(NOT _engine_runtime)
+                    message(FATAL_ERROR
+                        "The MuPDF engine module at ${_engine_module} needs MengsheePdfRuntime.dll in the same tree, "
+                        "but it was not found under ${_engine_root}/bin."
+                    )
+                endif()
+            else()
+                set(_poppler_engine_root_resolved "${_engine_root}")
+            endif()
+            message(STATUS "  ${_engine}: ${_engine_module}")
+        endforeach()
+        mengshee_pdf_single_plugin_path(_single_pdf_plugin "${INSTALL_PREFIX}")
+        if(NOT _single_pdf_plugin AND DEFINED BUILD_DIR AND NOT "${BUILD_DIR}" STREQUAL "")
+            mengshee_pdf_single_plugin_path(_single_pdf_plugin "${BUILD_DIR}")
+        endif()
+        if(NOT _single_pdf_plugin)
+            mengshee_pdf_single_plugin_path(_single_pdf_plugin "${_mupdf_engine_root_resolved}")
+        endif()
+        if(NOT _single_pdf_plugin)
+            mengshee_pdf_single_plugin_path(_single_pdf_plugin "${_poppler_engine_root_resolved}")
+        endif()
+        if(NOT _single_pdf_plugin)
+            message(FATAL_ERROR
+                "MENGSHEE_PDF_ENGINE_MODULES is ON, but okularGenerator_mengshee_pdf.dll was not found "
+                "in ${INSTALL_PREFIX}, ${BUILD_DIR}, or either engine tree. Rebuild with the install rules enabled."
+            )
+        endif()
+        message(STATUS "  Single plugin: ${_single_pdf_plugin}")
+    endif()
+
     set(_deploy_args
         "${CMAKE_PROGRAM}"
         "-DSOURCE_ROOT=${SOURCE_ROOT}"
@@ -291,10 +358,17 @@ if(NOT DEFINED SKIP_DEPLOY OR NOT SKIP_DEPLOY)
         "-DSDK_PREFIX=${SDK_PREFIX}"
         "-DBUILD_DIR=${BUILD_DIR}"
         "-DMENGSHEE_PDF_BACKEND=${MENGSHEE_PDF_BACKEND}"
+        "-DMENGSHEE_PDF_ENGINE_MODULES=${MENGSHEE_PDF_ENGINE_MODULES}"
         "-DINSTALL_PREFIX=${INSTALL_PREFIX}"
         "-DQT_PREFIX=${QT_PREFIX}"
         "-DQSCINTILLA_ROOT=${QSCINTILLA_ROOT_RESOLVED}"
     )
+    if(DEFINED MUPDF_ENGINE_ROOT AND NOT "${MUPDF_ENGINE_ROOT}" STREQUAL "")
+        list(APPEND _deploy_args "-DMUPDF_ENGINE_ROOT=${MUPDF_ENGINE_ROOT}")
+    endif()
+    if(DEFINED POPPLER_ENGINE_ROOT AND NOT "${POPPLER_ENGINE_ROOT}" STREQUAL "")
+        list(APPEND _deploy_args "-DPOPPLER_ENGINE_ROOT=${POPPLER_ENGINE_ROOT}")
+    endif()
     if(DEFINED STEMTEX_STAGE_ROOT_RESOLVED AND NOT "${STEMTEX_STAGE_ROOT_RESOLVED}" STREQUAL "")
         list(APPEND _deploy_args "-DSTEMTEX_STAGE_ROOT=${STEMTEX_STAGE_ROOT_RESOLVED}")
     endif()
@@ -321,6 +395,7 @@ if(NOT DEFINED SKIP_PACKAGE OR NOT SKIP_PACKAGE)
         "-DINSTALL_PREFIX=${INSTALL_PREFIX}"
     )
     list(APPEND _package_args "-DMENGSHEE_PDF_BACKEND=${MENGSHEE_PDF_BACKEND}")
+    list(APPEND _package_args "-DMENGSHEE_PDF_ENGINE_MODULES=${MENGSHEE_PDF_ENGINE_MODULES}")
     if(DEFINED OUTPUT_DIR AND NOT "${OUTPUT_DIR}" STREQUAL "")
         list(APPEND _package_args "-DOUTPUT_DIR=${OUTPUT_DIR}")
     endif()

@@ -547,6 +547,12 @@ const Document *Generator::document() const
     return nullptr;
 }
 
+void Generator::setWrapperDocument(Document *document)
+{
+    Q_D(Generator);
+    d->m_document = document ? document->d : nullptr;
+}
+
 Okular::Action *Generator::additionalDocumentAction(Okular::Document::DocumentAdditionalActionType)
 {
     return nullptr;

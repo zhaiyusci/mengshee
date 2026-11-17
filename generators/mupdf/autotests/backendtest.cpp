@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "../../../part/closedtemporarypdffile.h"
-#include "../../poppler/pdfpagebounds.h"
 #include "../generator_mupdf.h"
 #include <QSignalSpy>
 #include <QElapsedTimer>
@@ -24,22 +23,6 @@ private:
         return m_directory.filePath(QStringLiteral("source.pdf"));
     }
 private Q_SLOTS:
-    void appearanceBounds()
-    {
-        const auto output = m_directory.filePath(QStringLiteral("expanded.pdf"));
-        const auto result = PdfPageBounds::expandAppearance(sample().toUtf8().toStdString(), output.toUtf8().toStdString());
-        QVERIFY2(result.ok, result.message.c_str());
-        QVERIFY(result.hasInk);
-        MuPDFGenerator original(nullptr, {}), expanded(nullptr, {});
-        QList<Okular::Page *> before, after;
-        QCOMPARE(original.loadDocumentWithPassword(sample(), before, {}), Okular::Document::OpenSuccess);
-        QCOMPARE(expanded.loadDocumentWithPassword(output, after, {}), Okular::Document::OpenSuccess);
-        QCOMPARE(expanded.renderToImage(0, 72, false), original.renderToImage(0, 72, false));
-        const auto repeated = PdfPageBounds::expandAppearance(sample().toUtf8().toStdString(), output.toUtf8().toStdString());
-        QVERIFY(!repeated.ok);
-        qDeleteAll(before);
-        qDeleteAll(after);
-    }
     void initTestCase()
     {
         QVERIFY(m_directory.isValid());

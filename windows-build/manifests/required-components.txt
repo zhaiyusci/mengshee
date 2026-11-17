@@ -1,4 +1,16 @@
-# Historical Poppler staging manifest; not the MuPDF runtime dependency list.
+# PDF runtime stage manifest.
+#
+# Two deployment shapes are valid:
+#   * legacy single-backend (MENGSHEE_PDF_ENGINE_MODULES=OFF):
+#     one legacy plugin and one backend's dependencies;
+#   * phase-2 dual-engine (MENGSHEE_PDF_ENGINE_MODULES=ON):
+#     the single plugin, both engine modules, both legacy plugins, both
+#     dependency sets and both engine licenses.
+# Entries whose reason starts with "phase-2" are required only by the
+# dual-engine shape. package-windows.cmake validates the shape that was staged;
+# the staged smoke test exercises both engines in the dual shape.
+#
+# Historical Poppler staging manifest; not the MuPDF dependency list by itself.
 # MuPDF dependencies are validated by package-windows.cmake and the stage smoke test.
 # Generated: 2026-06-13T19:07:20.6152213+08:00
 # Historical machine-specific stage path omitted.
@@ -68,6 +80,7 @@ bin\KF6WindowSystem.dll	DLL import required by mengshee.exe
 bin\KF6XmlGui.dll	DLL import required by Okular6Core.dll
 bin\kioworker.exe	KIO worker host executable required for file:// save/load operations
 bin\lcms2-2.dll	DLL import required by jxl_cms.dll
+bin\leptonica-1.87.0.dll	phase-2: OCR runtime imported by MengsheePdfEnginePoppler.dll
 bin\libassuan-9.dll	DLL import required by libgpgme-45.dll
 bin\libcrypto-3-x64.dll	DLL import required by Qt6Network.dll
 bin\libcurl.dll	DLL import required by poppler.dll
@@ -93,8 +106,8 @@ bin\Okular6Core.dll	Okular core library
 bin\openjp2.dll	DLL import required by kimg_jp2.dll
 bin\pcre2-16.dll	DLL import required by Qt6Core.dll
 bin\phonon4qt6.dll	DLL import required by Okular6Core.dll
-bin\poppler.dll	DLL import required by okularGenerator_poppler.dll
-bin\poppler-qt6.dll	DLL import required by okularpart.dll
+bin\poppler.dll	DLL import required by MengsheePdfEnginePoppler.dll and the legacy Poppler plugin
+bin\poppler-qt6.dll	DLL import required by the legacy Poppler plugin; phase-2: also imported by MengsheePdfEnginePoppler.dll
 bin\psl-5.dll	DLL import required by libcurl.dll
 bin\qt.conf	Qt path configuration for staged sibling plugin/data layout
 bin\Qt6Core5Compat.dll	DLL import required by phonon4qt6.dll
@@ -104,16 +117,22 @@ bin\Qt6Qml.dll	DLL import required by Okular6Core.dll
 bin\Qt6TextToSpeech.dll	DLL import required by okularpart.dll
 bin\Qt6Xml.dll	DLL import required by Okular6Core.dll
 bin\mengshee.exe	Application entry point
+bin\MengsheePdfRuntime.dll	MuPDF runtime/OCR implementation imported by MengsheePdfEngineMuPdf.dll and the legacy MuPDF plugin
 bin\smime3.dll	DLL import required by poppler.dll
 bin\SvtAv1Enc.dll	DLL import required by avcodec-62.dll
 bin\swresample-6.dll	DLL import required by avcodec-62.dll
+bin\tesseract55.dll	phase-2: OCR runtime imported by MengsheePdfEnginePoppler.dll
 bin\tiff.dll	DLL import required by qtiff.dll
 bin\VCOMP140.DLL	DLL import required by b2-1.dll
 bin\zlib1.dll	DLL import required by Okular6Core.dll
 bin\zstd.dll	DLL import required by Qt6Core.dll
 plugins\kf6\kio\kio_file.dll	KIO file protocol worker required for file:// save/load operations
 plugins\kf6\parts\okularpart.dll	Mengshee KParts UI plugin
-plugins\okular_generators\okularGenerator_poppler.dll	PDF generator
+plugins\mengshee_pdf\MengsheePdfEngineMuPdf.dll	phase-2: MuPDF runtime engine module
+plugins\mengshee_pdf\MengsheePdfEnginePoppler.dll	phase-2: Poppler runtime engine module
+plugins\okular_generators\okularGenerator_mengshee_pdf.dll	phase-2: single PDF plugin that selects a runtime engine module
+plugins\okular_generators\okularGenerator_mupdf.dll	Phase-1/legacy MuPDF generator kept for the compatibility path
+plugins\okular_generators\okularGenerator_poppler.dll	Phase-1/legacy Poppler generator kept for the compatibility path
 share\poppler	Poppler CMap/CID data required by CJK and other encoded PDFs
 share\fonts\FoxitFixed.cff	Mandatory PDF Courier substitute
 share\fonts\FoxitFixedBold.cff	Mandatory PDF Courier-Bold substitute
@@ -132,3 +151,6 @@ share\fonts\FoxitDingbats.cff	Mandatory PDF ZapfDingbats substitute
 share\fonts\LICENSE.pdfium	PDFium font redistribution license and disclaimer
 share\fonts\NOTICE.pdfium	PDFium and Foxit font attribution and provenance
 share\fonts\base14-manifest.json	Pinned Base14 font version and checksums
+share\licenses\mupdf\COPYING	MuPDF license text; required whenever the MuPDF engine is shipped
+share\licenses\poppler\COPYING	phase-2: Poppler license text
+share\licenses\poppler\COPYING3	phase-2: Poppler GPLv3 license text when the source provides it

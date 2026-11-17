@@ -8594,9 +8594,10 @@ void PartTest::testInsertBlankPageMatchesReferenceSize()
     QVERIFY(openDocument(&part, file));
     const QSizeF referencePt = part.m_document->pageSizeInPoints(0);
     QVERIFY(referencePt.isValid());
-    // Page::width()/height() are device pixels at the document DPI, so a page
-    // sized from them would be dpi/72 times too large.
-    QVERIFY(part.m_document->page(0)->width() > referencePt.width());
+    // Page::width()/height() may be device pixels on the legacy path or PDF
+    // points on the 72-DPI narrow path; it must never be smaller than the
+    // point size, otherwise inserting a page would scale the reference down.
+    QVERIFY(part.m_document->page(0)->width() >= referencePt.width() - 0.5);
 
     part.insertBlankPageAfterPage(0);
     QCOMPARE(part.m_document->pages(), 3u);

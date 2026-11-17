@@ -224,6 +224,7 @@ find_package(ZLIB REQUIRED)
 
 set(MENGSHEE_PDF_BACKEND "MuPDF" CACHE STRING "PDF backend: MuPDF or Poppler")
 set_property(CACHE MENGSHEE_PDF_BACKEND PROPERTY STRINGS MuPDF Poppler)
+option(MENGSHEE_PDF_ENGINE_MODULES "Install the single PDF plugin and the runtime engine modules (phase 2)" OFF)
 if(MENGSHEE_PDF_BACKEND STREQUAL "MuPDF")
     list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
     find_package(MuPDF 1.28 REQUIRED)
@@ -343,6 +344,36 @@ if(BUILD_DESKTOP)
     add_subdirectory( shell )
 endif()
 add_subdirectory( generators )
+
+# Phase-2 PDF runtime. The single Okular plugin and the MuPDF engine module are
+# targets; the Poppler engine module is the Poppler plugin DLL copied under its
+# discoverable name by generators/poppler/CMakeLists.txt. The legacy generator
+# install rules stay untouched: those DLLs remain the compatibility fallback.
+# Off by default so a single-backend install tree keeps the legacy runtime; the
+# Windows build driver turns it on with MENGSHEE_PDF_ENGINE_MODULES=ON.
+if(MENGSHEE_PDF_ENGINE_MODULES)
+    if(TARGET okularGenerator_mengshee_pdf)
+        install(TARGETS okularGenerator_mengshee_pdf
+            RUNTIME DESTINATION ${KDE_INSTALL_PLUGINDIR}/okular_generators
+            LIBRARY DESTINATION ${KDE_INSTALL_PLUGINDIR}/okular_generators
+            ARCHIVE DESTINATION ${KDE_INSTALL_LIBDIR}
+        )
+    endif()
+    if(MENGSHEE_PDF_BACKEND STREQUAL "MuPDF" AND TARGET mengshee_pdf_engine_mupdf)
+        install(TARGETS mengshee_pdf_engine_mupdf
+            RUNTIME DESTINATION ${KDE_INSTALL_PLUGINDIR}/mengshee_pdf
+            LIBRARY DESTINATION ${KDE_INSTALL_PLUGINDIR}/mengshee_pdf
+            ARCHIVE DESTINATION ${KDE_INSTALL_LIBDIR}
+        )
+    endif()
+    if(MENGSHEE_PDF_BACKEND STREQUAL "Poppler")
+        # The POST_BUILD copy runs before the install target; installing it here
+        # keeps a Poppler install tree self-describing for the dual-engine deploy.
+        install(FILES "${CMAKE_BINARY_DIR}/bin/MengsheePdfEnginePoppler.dll"
+            DESTINATION ${KDE_INSTALL_PLUGINDIR}/mengshee_pdf
+        )
+    endif()
+endif()
 
 if(BUILD_TESTING)
    add_subdirectory( autotests )
@@ -592,7 +623,6 @@ if(BUILD_DESKTOP)
     part/kleopatraintegration.cpp
     part/ktreeviewsearchline.cpp
     part/latexnoteutils.cpp
-    part/latexpdfbounds.cpp
     part/latexrenderer.cpp
     part/latexrenderguards.cpp
     part/latexsource.cpp
@@ -648,7 +678,6 @@ generate_export_header(okularpart BASE_NAME okularpart)
 
 target_link_libraries(okularpart okularcore
     ${MATH_LIB}
-    pdf_page_bounds
     Qt6::Svg
     Qt6::Concurrent
     Qt6::Network

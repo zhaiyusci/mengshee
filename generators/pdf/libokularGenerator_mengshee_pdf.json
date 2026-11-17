@@ -1,0 +1,13 @@
+{
+    "KPlugin": {
+        "Name": "Mengshee PDF",
+        "Description": "PDF backend with a runtime-selected engine (MuPDF or Poppler)",
+        "Id": "okularGenerator_mengshee_pdf",
+        "License": "AGPL-3.0-or-later",
+        "Version": "1.0",
+        "MimeTypes": ["application/pdf", "application/x-pdf"]
+    },
+    "X-KDE-Priority": 5,
+    "X-KDE-okularAPIVersion": 1,
+    "X-KDE-okularHasInternalSettings": false
+}

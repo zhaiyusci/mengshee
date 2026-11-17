@@ -491,7 +491,7 @@ static QString pageTokenForRef(const Ref &reference)
     return QStringLiteral("%1 %2").arg(reference.num).arg(reference.gen);
 }
 
-static int nativePageForPageToken(PDFDoc *document, const QString &pageToken)
+static int resolveNativePageForPageToken(PDFDoc *document, const QString &pageToken)
 {
     if (!document || pageToken.isEmpty()) {
         return -1;
@@ -855,8 +855,9 @@ Okular::Document::OpenResult PDFGenerator::loadDocumentFromDataWithPassword(cons
     return init(pagesVector, password);
 }
 
-Okular::Document::OpenResult PDFGenerator::init(QList<Okular::Page *> &pagesVector, const QString &password)
+Okular::Document::OpenResult PDFGenerator::prepareOpen(const QString &password, int *pageCount)
 {
+    Q_ASSERT(pageCount);
     if (!pdfdoc) {
         return Okular::Document::OpenError;
     }
@@ -895,26 +896,28 @@ Okular::Document::OpenResult PDFGenerator::init(QList<Okular::Page *> &pagesVect
         }
     }
 
-    // build Pages (currentPage was set -1 by deletePages)
-    int pageCount = pdfdoc->numPages();
-    if (pageCount < 0) {
+    // build the native page topology (currentPage was set -1 by deletePages)
+    const int count = pdfdoc->numPages();
+    if (count < 0) {
         pdfdoc.reset();
         return Okular::Document::OpenError;
     }
-    pagesVector.resize(pageCount);
-    rectsGenerated.fill(false, pageCount);
+    *pageCount = count;
+    rectsGenerated.fill(false, count);
     m_pageOrder.clear();
     m_livePageStates.clear();
     m_nextLivePageEditId = 1;
-    m_pageOrder.reserve(pageCount);
-    for (int pageIndex = 0; pageIndex < pageCount; ++pageIndex) {
+    m_pageOrder.reserve(count);
+    for (int pageIndex = 0; pageIndex < count; ++pageIndex) {
         m_pageOrder.append(pageIndex);
     }
 
     annotationsOnOpenHash.clear();
+    return Okular::Document::OpenSuccess;
+}
 
-    loadPages(pagesVector, 0, false);
-
+void PDFGenerator::finishOpen()
+{
     // update the configuration
     reparseConfig();
 
@@ -926,9 +929,231 @@ Okular::Document::OpenResult PDFGenerator::init(QList<Okular::Page *> &pagesVect
     setAdditionalDocumentAction(Okular::Document::SaveDocumentFinish, createLinkFromPopplerLink(pdfdoc->additionalAction(Poppler::Document::SaveDocumentFinish)));
     setAdditionalDocumentAction(Okular::Document::PrintDocumentStart, createLinkFromPopplerLink(pdfdoc->additionalAction(Poppler::Document::PrintDocumentStart)));
     setAdditionalDocumentAction(Okular::Document::PrintDocumentFinish, createLinkFromPopplerLink(pdfdoc->additionalAction(Poppler::Document::PrintDocumentFinish)));
+}
+
+Okular::Document::OpenResult PDFGenerator::init(QList<Okular::Page *> &pagesVector, const QString &password)
+{
+    int pageCount = 0;
+    const Okular::Document::OpenResult prepared = prepareOpen(password, &pageCount);
+    if (prepared != Okular::Document::OpenSuccess) {
+        return prepared;
+    }
+
+    pagesVector.resize(pageCount);
+    loadPages(pagesVector, 0, false);
+    finishOpen();
 
     // the file has been loaded correctly
     return Okular::Document::OpenSuccess;
+}
+
+Okular::Document::OpenResult PDFGenerator::initForNarrowLoad(const QString &password)
+{
+    int pageCount = 0;
+    const Okular::Document::OpenResult prepared = prepareOpen(password, &pageCount);
+    if (prepared != Okular::Document::OpenSuccess) {
+        return prepared;
+    }
+
+    // No page models are built here: the narrow caller asks for them one at a
+    // time through createPageModelForNarrowLoad(). Everything else that the
+    // legacy init() sets up (native page count, identity page order, resources,
+    // annotation proxy and document actions) is needed by the model factory,
+    // rendering and text extraction, so finishOpen() still runs.
+    qCDebug(OkularPdfDebug) << "PDFGenerator: narrow load opened" << pageCount << "native pages without page models";
+    finishOpen();
+    return Okular::Document::OpenSuccess;
+}
+
+Okular::Document::OpenResult PDFGenerator::openDocumentForNarrowLoad(const QString &filePath, const QString &password)
+{
+#ifndef NDEBUG
+    if (pdfdoc) {
+        qCDebug(OkularPdfDebug) << "PDFGenerator: multiple calls to loadDocument. Check it.";
+        return Okular::Document::OpenError;
+    }
+#endif
+    pdfdoc = Poppler::Document::load(filePath, nullptr, nullptr);
+    documentFilePath = filePath;
+    return initForNarrowLoad(password);
+}
+
+Okular::Document::OpenResult PDFGenerator::openDocumentFromDataForNarrowLoad(const QByteArray &fileData, const QString &password)
+{
+#ifndef NDEBUG
+    if (pdfdoc) {
+        qCDebug(OkularPdfDebug) << "PDFGenerator: multiple calls to loadDocument. Check it.";
+        return Okular::Document::OpenError;
+    }
+#endif
+    pdfdoc = Poppler::Document::loadFromData(fileData, nullptr, nullptr);
+    documentFilePath = QString();
+    return initForNarrowLoad(password);
+}
+
+int PDFGenerator::nativePageCount() const
+{
+    try {
+        QMutexLocker locker(userMutex());
+        if (!pdfdoc) {
+            return 0;
+        }
+        const int count = pdfdoc->numPages();
+        return count > 0 ? count : 0;
+    } catch (...) {
+        return 0;
+    }
+}
+
+bool PDFGenerator::nativePageGeometry(int nativePage, double *width, double *height, int *rotation) const
+{
+    if (!width || !height || !rotation) {
+        return false;
+    }
+    *width = 0.0;
+    *height = 0.0;
+    *rotation = 0;
+
+    try {
+        QMutexLocker locker(userMutex());
+        if (!pdfdoc || nativePage < 0 || nativePage >= pdfdoc->numPages()) {
+            return false;
+        }
+        const std::unique_ptr<Poppler::Page> popplerPage = pdfdoc->page(nativePage);
+        if (!popplerPage) {
+            return false;
+        }
+
+        // pageSizeF() is the /CropBox with the page's own /Rotate applied, i.e.
+        // the displayed page size; orientation() is /Rotate normalized to 90
+        // degree steps. This is exactly what loadPages()/createPageModel() use
+        // to size Okular::Page at 72 DPI.
+        const QSizeF pageSize = popplerPage->pageSizeF();
+        *width = pageSize.width();
+        *height = pageSize.height();
+        switch (popplerPage->orientation()) {
+        case Poppler::Page::Landscape:
+            *rotation = 90;
+            break;
+        case Poppler::Page::UpsideDown:
+            *rotation = 180;
+            break;
+        case Poppler::Page::Seascape:
+            *rotation = 270;
+            break;
+        case Poppler::Page::Portrait:
+            *rotation = 0;
+            break;
+        }
+        return *width > 0.0 && *height > 0.0;
+    } catch (...) {
+        *width = 0.0;
+        *height = 0.0;
+        *rotation = 0;
+        return false;
+    }
+}
+
+Okular::Page *PDFGenerator::createPageModelForNarrowLoad(int nativePage)
+{
+    if (!pdfdoc || nativePage < 0 || nativePage >= pdfdoc->numPages()) {
+        return nullptr;
+    }
+    // The private model factory takes a logical page number and maps it through
+    // m_pageOrder. A narrow load always builds the identity order, so a native
+    // index is the same logical index; refuse rather than attach the native page
+    // state to the wrong model if that invariant ever stops holding.
+    if (!pageOrderIsIdentity()) {
+        qCWarning(OkularPdfDebug) << "Narrow page model requested for a reordered document";
+        return nullptr;
+    }
+    const std::unique_ptr<Poppler::Page> popplerPage = pdfdoc->page(nativePage);
+    if (!popplerPage) {
+        return nullptr;
+    }
+
+    // Existing per-page creation logic: native page, annotations/transition/
+    // page actions, duration/label and form fields. The returned model is owned
+    // by the narrow caller.
+    qCDebug(OkularPdfDebug) << "Narrow page model: creating base model for page" << nativePage;
+    QList<Okular::FormField *> additionalFormFields;
+    if (nativePage == 0) {
+        // loadPages() puts signatures that are not attached to any page on page
+        // 0 after every other page model exists. The narrow caller asks for
+        // page 0 first, so collect them up front and let createPageModel()
+        // adopt them together with the page's own form fields.
+        additionalFormFields = pageLessSignatureFields();
+    }
+    // createPageModel() always returns a model, and adopts additionalFormFields
+    // on every path.
+    Okular::Page *page = createPageModel(nativePage, additionalFormFields);
+    qCDebug(OkularPdfDebug) << "Narrow page model: attaching links for page" << nativePage;
+
+    // The legacy loader generates link rectangles lazily on the first image()
+    // request. The narrow caller owns the model from now on and may never
+    // render it, so build the links here and mark them generated so a later
+    // image() call does not replace them.
+    page->setObjectRects(generateLinks(popplerCoreDocument(pdfdoc.get()), popplerPage->links()));
+    resolveMediaLinkReferences(page);
+    if (nativePage < rectsGenerated.size()) {
+        rectsGenerated[nativePage] = true;
+    }
+    return page;
+}
+
+QList<Okular::FormField *> PDFGenerator::pageLessSignatureFields()
+{
+    QList<Okular::FormField *> fields;
+    if (!pdfdoc) {
+        return fields;
+    }
+    std::vector<std::unique_ptr<Poppler::FormFieldSignature>> signatures = pdfdoc->signatures();
+    qCDebug(OkularPdfDebug) << "Narrow page model: native signatures" << signatures.size();
+    if (signatures.empty()) {
+        return fields;
+    }
+
+    // A signature attached to a native page is loaded by that page's own model.
+    // Only the leftovers are page-less signatures, and loadPages() puts those
+    // on page 0 because Okular needs a page for every form field.
+    //
+    // Check page 0 first: a document whose signatures all sit on page 0 (the
+    // common case) needs no additional page scan.
+    QSet<QString> attachedNames;
+    const auto collectAttachedSignatures = [&attachedNames](Poppler::Page *popplerPage) {
+        if (!popplerPage) {
+            return;
+        }
+        for (const auto &field : popplerPage->formFields()) {
+            if (field->type() == Poppler::FormField::FormSignature) {
+                attachedNames.insert(field->fullyQualifiedName());
+            }
+        }
+    };
+    collectAttachedSignatures(pdfdoc->page(0).get());
+
+    const auto allAttached = [&attachedNames, &signatures]() {
+        for (const auto &signature : signatures) {
+            if (!attachedNames.contains(signature->fullyQualifiedName())) {
+                return false;
+            }
+        }
+        return true;
+    };
+    if (!allAttached()) {
+        const int pageCount = pdfdoc->numPages();
+        for (int nativePage = 1; nativePage < pageCount && !allAttached(); ++nativePage) {
+            collectAttachedSignatures(pdfdoc->page(nativePage).get());
+        }
+    }
+
+    for (auto &signature : signatures) {
+        if (attachedNames.contains(signature->fullyQualifiedName())) {
+            continue;
+        }
+        fields.append(new PopplerFormFieldSignature(std::move(signature)));
+    }
+    return fields;
 }
 
 int PDFGenerator::nativePageForLogicalPage(int logicalPage) const
@@ -959,10 +1184,11 @@ std::vector<int> PDFGenerator::oneBasedPageOrder() const
     return pageOrder;
 }
 
-Okular::Page *PDFGenerator::createPageModel(int logicalPageNumber)
+Okular::Page *PDFGenerator::createPageModel(int logicalPageNumber, QList<Okular::FormField *> additionalFormFields)
 {
     std::unique_ptr<Poppler::Page> popplerPage = pdfdoc ? pdfdoc->page(nativePageForLogicalPage(logicalPageNumber)) : nullptr;
     if (!popplerPage) {
+        qDeleteAll(additionalFormFields);
         return new Okular::Page(logicalPageNumber, defaultPageWidth, defaultPageHeight, Okular::Rotation0);
     }
 
@@ -997,7 +1223,10 @@ Okular::Page *PDFGenerator::createPageModel(int logicalPageNumber)
     }
     page->setDuration(popplerPage->duration());
     page->setLabel(popplerPage->label());
-    const QList<Okular::FormField *> formFields = getFormFields(popplerPage.get());
+    QList<Okular::FormField *> formFields = getFormFields(popplerPage.get());
+    // The additional fields (page-less signatures for the narrow loader) are
+    // adopted here, before setFormFields() takes ownership for the first time.
+    formFields.append(additionalFormFields);
     if (!formFields.isEmpty()) {
         page->setFormFields(formFields);
     }
@@ -1870,6 +2099,102 @@ QImage PDFGenerator::image(Okular::PixmapRequest *request)
     return img;
 }
 
+QImage PDFGenerator::renderPageForWorker(Okular::Page *page,
+                                         int width,
+                                         int height,
+                                         const QRect &region,
+                                         bool includeAnnotations,
+                                         bool applyViewRotation,
+                                         const std::function<bool()> &shouldAbort,
+                                         QString *error)
+{
+    if (error) {
+        error->clear();
+    }
+    const auto fail = [error](const QString &message) -> QImage {
+        if (error) {
+            *error = message;
+        }
+        return {};
+    };
+    if (!page) {
+        return fail(i18n("The requested PDF page is unavailable."));
+    }
+    if (width <= 0 || height <= 0) {
+        return fail(i18n("The requested image has invalid dimensions."));
+    }
+    if (shouldAbort && shouldAbort()) {
+        return {};
+    }
+
+    double pageWidth = page->width();
+    double pageHeight = page->height();
+    if (static_cast<int>(page->rotation()) % 2) {
+        std::swap(pageWidth, pageHeight);
+    }
+    if (pageWidth <= 0.0 || pageHeight <= 0.0) {
+        return fail(i18n("The requested PDF page has an invalid size."));
+    }
+
+    const qreal fakeDpiX = width / pageWidth * dpi().width();
+    const qreal fakeDpiY = height / pageHeight * dpi().height();
+
+    QMutexLocker locker(userMutex());
+    if (!pdfdoc) {
+        return fail(i18n("No PDF document is open."));
+    }
+    const int nativePage = nativePageForLogicalPage(page->number());
+    if (nativePage < 0 || nativePage >= pdfdoc->numPages()) {
+        return fail(i18n("The requested PDF page is unavailable."));
+    }
+
+    try {
+        const std::unique_ptr<Poppler::Page> pdfPage = pdfdoc->page(nativePage);
+        if (!pdfPage) {
+            return fail(i18n("The requested PDF page is unavailable."));
+        }
+
+        const auto oldHints = pdfdoc->renderHints();
+        const QColor oldPaper = pdfdoc->paperColor();
+        const auto oldBackend = pdfdoc->renderBackend();
+        const auto restore = qScopeGuard([&] {
+            pdfdoc->setRenderHint(Poppler::Document::HideAnnotations, oldHints.testFlag(Poppler::Document::HideAnnotations));
+            pdfdoc->setRenderHint(Poppler::Document::Antialiasing, oldHints.testFlag(Poppler::Document::Antialiasing));
+            pdfdoc->setRenderHint(Poppler::Document::TextAntialiasing, oldHints.testFlag(Poppler::Document::TextAntialiasing));
+            pdfdoc->setRenderHint(Poppler::Document::IgnorePaperColor, oldHints.testFlag(Poppler::Document::IgnorePaperColor));
+            pdfdoc->setPaperColor(oldPaper);
+            pdfdoc->setRenderBackend(oldBackend);
+        });
+        pdfdoc->setRenderBackend(Poppler::Document::SplashBackend);
+        pdfdoc->setRenderHint(Poppler::Document::IgnorePaperColor, false);
+        pdfdoc->setRenderHint(Poppler::Document::HideAnnotations, !includeAnnotations);
+        pdfdoc->setRenderHint(Poppler::Document::Antialiasing, true);
+        pdfdoc->setRenderHint(Poppler::Document::TextAntialiasing, true);
+        pdfdoc->setPaperColor(Qt::white);
+
+        QImage image = pdfPage->renderToImage(fakeDpiX,
+                                              fakeDpiY,
+                                              region.isNull() ? -1 : region.x(),
+                                              region.isNull() ? -1 : region.y(),
+                                              region.isNull() ? -1 : region.width(),
+                                              region.isNull() ? -1 : region.height(),
+                                              applyViewRotation ? static_cast<Poppler::Page::Rotation>(static_cast<int>(page->rotation())) : Poppler::Page::Rotate0);
+        if (image.isNull()) {
+            return fail(i18n("Could not render the PDF page."));
+        }
+        if (shouldAbort && shouldAbort()) {
+            return {};
+        }
+        const QSize expectedSize = region.isNull() ? QSize(width, height) : region.size();
+        if (image.size() != expectedSize) {
+            image = image.scaled(expectedSize, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+        }
+        return image;
+    } catch (const std::exception &) {
+        return fail(i18n("Could not render the PDF page."));
+    }
+}
+
 bool PDFGenerator::canRenderToImage() const
 {
     if (QThread::currentThread() != thread()) {
@@ -1915,14 +2240,20 @@ QImage PDFGenerator::renderToImage(int page, int dpi, bool includeAnnotations, Q
 
     try {
         const std::unique_ptr<Poppler::Page> pdfPage = pdfdoc->page(nativePage);
-        const Okular::Page *modelPage = document() ? document()->page(page) : nullptr;
-        if (!pdfPage || !modelPage) {
+        // The page model provides the *view* rotation. It only exists once an
+        // Okular::Document owns this generator. A generator loaded directly
+        // (the phase-1 engine module bridge, export helpers and tests) has no
+        // Document, and then there is no view rotation to apply: pageSizeF()
+        // already includes the PDF's native /Rotate.
+        const Okular::Document *modelDocument = document();
+        const Okular::Page *modelPage = modelDocument ? modelDocument->page(page) : nullptr;
+        if (!pdfPage || (modelDocument && !modelPage)) {
             return fail(i18n("The requested PDF page is unavailable."));
         }
         // pageSizeF already includes the PDF's native /Rotate. Only add the
         // Okular view rotation, not totalOrientation(), which would apply it twice.
         QSizeF size = pdfPage->pageSizeF();
-        const int rotation = static_cast<int>(modelPage->rotation());
+        const int rotation = modelPage ? static_cast<int>(modelPage->rotation()) : 0;
         if (rotation % 2) {
             size.transpose();
         }
@@ -2098,6 +2429,33 @@ Okular::TextPage *PDFGenerator::textPage(Okular::TextRequest *request)
 
     Okular::TextPage *tp = abstractTextPage(textList, pageHeight, pageWidth, (Poppler::Page::Rotation)page->orientation());
     return tp;
+}
+
+Okular::TextPage *PDFGenerator::textPageForNumber(int nativePage)
+{
+    std::vector<std::unique_ptr<Poppler::TextBox>> textList;
+    double pageWidth = defaultPageWidth;
+    double pageHeight = defaultPageHeight;
+    int rotation = 0;
+    {
+        QMutexLocker locker(userMutex());
+        if (!pdfdoc || nativePage < 0 || nativePage >= pdfdoc->numPages()) {
+            return nullptr;
+        }
+        const std::unique_ptr<Poppler::Page> popplerPage = pdfdoc->page(nativePage);
+        if (!popplerPage) {
+            return nullptr;
+        }
+        textList = popplerPage->textList(Poppler::Page::Rotate0);
+        // pageSizeF() already includes /Rotate, so the normalized coordinates
+        // are computed against the displayed page size, like textPage().
+        const QSizeF pageSize = popplerPage->pageSizeF();
+        pageWidth = pageSize.width();
+        pageHeight = pageSize.height();
+        rotation = static_cast<int>(popplerPage->orientation());
+    }
+
+    return abstractTextPage(textList, pageHeight, pageWidth, rotation);
 }
 
 QByteArray PDFGenerator::requestFontData(const Okular::FontInfo &font)
@@ -3855,6 +4213,24 @@ int PDFGenerator::readingViewPageForToken(const QString &token) const
     return native < 0 ? -1 : m_pageOrder.indexOf(native);
 }
 
+QString PDFGenerator::pageTokenForNativePage(int nativePage) const
+{
+    QMutexLocker locker(userMutex());
+    PDFDoc *document = popplerCoreDocument(pdfdoc.get());
+    if (!document || nativePage < 0 || nativePage >= document->getNumPages()) {
+        return {};
+    }
+    // getPageRef() counts pages from one, so native page zero is entry one.
+    const Ref *pageRef = document->getCatalog()->getPageRef(nativePage + 1);
+    return pageRef ? pageTokenForRef(*pageRef) : QString();
+}
+
+int PDFGenerator::nativePageForPageToken(const QString &token) const
+{
+    QMutexLocker locker(userMutex());
+    return resolveNativePageForPageToken(popplerCoreDocument(pdfdoc.get()), token);
+}
+
 bool PDFGenerator::canEditPdfLinks() const
 {
     return true;
@@ -3896,7 +4272,7 @@ bool PDFGenerator::deleteNamedDestination(const QString &name, QString *errorTex
 int PDFGenerator::pageNumberForPageToken(const QString &pageToken) const
 {
     QMutexLocker locker(userMutex());
-    const int nativePage = nativePageForPageToken(popplerCoreDocument(pdfdoc.get()), pageToken);
+    const int nativePage = resolveNativePageForPageToken(popplerCoreDocument(pdfdoc.get()), pageToken);
     return nativePage < 0 ? -1 : m_pageOrder.indexOf(nativePage);
 }
 
@@ -3904,6 +4280,26 @@ bool PDFGenerator::refreshPageLinks(Okular::Page *page, int pageNumber, QString 
 {
     // The document model counts pages in display order, the PDF in file order.
     return refreshPdfLinkObjects(page, nativePageForLogicalPage(pageNumber), errorText);
+}
+
+bool PDFGenerator::refreshPageLinksForEngine(Okular::Page *sourcePage, int nativePageNumber, QString *errorText)
+{
+    // Narrow callers already have a native page index and must not be mapped
+    // through m_pageOrder a second time. Poppler Qt6 may throw, so keep the
+    // exception on this side of the engine boundary.
+    try {
+        return refreshPdfLinkObjects(sourcePage, nativePageNumber, errorText);
+    } catch (const std::exception &exception) {
+        if (errorText) {
+            *errorText = QString::fromLocal8Bit(exception.what());
+        }
+        return false;
+    } catch (...) {
+        if (errorText) {
+            *errorText = QStringLiteral("The PDF engine failed because of an unknown internal error.");
+        }
+        return false;
+    }
 }
 
 bool PDFGenerator::refreshPdfLinkObjects(Okular::Page *sourcePage, int nativePageNumber, QString *errorText)

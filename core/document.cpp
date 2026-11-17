@@ -6242,6 +6242,11 @@ KPluginMetaData Document::generatorInfo() const
     return genIt.value().metadata;
 }
 
+QString Document::generatorBackend() const
+{
+    return d->m_generator ? d->m_generator->property("mengsheePdfEngine").toString() : QString();
+}
+
 int Document::configurableGenerators() const
 {
     int configurableGenerators = 0;
