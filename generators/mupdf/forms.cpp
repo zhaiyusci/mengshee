@@ -1,7 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "generator_mupdf.h"
+#include <QDebug>
+#include <QHash>
+#include <QMutex>
+#include <atomic>
+#include <core/action.h>
 #include <core/form.h>
 #include <core/page.h>
+#include <cstring>
 
 class MuPDFFormAccess
 {
@@ -45,6 +51,22 @@ public:
     {
         QString result;
         read([&](auto *ctx, auto *, auto *w) { result = QString::fromUtf8(pdf_field_value(ctx, pdf_annot_obj(ctx, w))); });
+        return result;
+    }
+    /** JavaScript of the field's /AA/C calculate action, when it has one. */
+    QString calculateScript() const
+    {
+        QString result;
+        read([&](auto *ctx, auto *, auto *w) {
+            auto *script = pdf_dict_getp_inheritable(ctx, pdf_annot_obj(ctx, w), "AA/C/JS");
+            if (!script)
+                return;
+            char *code = pdf_load_stream_or_string_as_utf8(ctx, script);
+            if (code) {
+                result = QString::fromUtf8(code);
+                fz_free(ctx, code);
+            }
+        });
         return result;
     }
     void setValue(const QString &value)
@@ -162,6 +184,15 @@ public:
             int flags = pdf_annot_flags(ctx, w);
             pdf_set_annot_flags(ctx, w, value ? flags | 4 : flags & ~4);
         });
+    }
+    /**
+     * Publishes the field's /AA/C JavaScript as an Okular CalculateField
+     * action. DocumentPrivate::recalculateForms() executes these actions in
+     * the /CO order exposed through metaData("FormCalculateOrder").
+     */
+    void setCalculateScript(const QString &script)
+    {
+        this->setAdditionalAction(Okular::FormField::CalculateField, new Okular::ScriptAction(Okular::JavaScript, script));
     }
 
 protected:
@@ -345,6 +376,94 @@ public:
         return !(access->flags() & PDF_CH_FIELD_IS_DO_NOT_SPELL_CHECK);
     }
 };
+class SignatureField final : public Field<Okular::FormFieldSignature>
+{
+public:
+    using Field::Field;
+    SignatureType signatureType() const override
+    {
+        SignatureType result = Okular::FormFieldSignature::UnsignedSignature;
+        access->read([&](auto *ctx, auto *doc, auto *w) {
+            auto *object = pdf_annot_obj(ctx, w);
+            if (!pdf_signature_is_signed(ctx, doc, object)) {
+                result = Okular::FormFieldSignature::UnsignedSignature;
+                return;
+            }
+            // The SubFilter lives in the signature dictionary referenced by
+            // /V. MuPDF only knows the ADBE detached name, so compare the
+            // remaining standard names by value.
+            auto *subFilter = pdf_dict_getp(ctx, object, "V/SubFilter");
+            if (!pdf_is_name(ctx, subFilter)) {
+                result = Okular::FormFieldSignature::UnknownType;
+                return;
+            }
+            const char *name = pdf_to_name(ctx, subFilter);
+            if (std::strcmp(name, "adbe.pkcs7.detached") == 0) {
+                result = Okular::FormFieldSignature::AdbePkcs7detached;
+            } else if (std::strcmp(name, "adbe.pkcs7.sha1") == 0) {
+                result = Okular::FormFieldSignature::AdbePkcs7sha1;
+            } else if (std::strcmp(name, "ETSI.CAdES.detached") == 0) {
+                result = Okular::FormFieldSignature::EtsiCAdESdetached;
+            } else {
+                result = Okular::FormFieldSignature::UnknownType;
+            }
+        });
+        return result;
+    }
+    Okular::SignatureInfo signatureInfo() const override
+    {
+        Okular::SignatureInfo info;
+        access->read([&](auto *ctx, auto *doc, auto *w) {
+            auto *object = pdf_annot_obj(ctx, w);
+            if (!pdf_signature_is_signed(ctx, doc, object)) {
+                info.setSignatureStatus(Okular::SignatureInfo::SignatureNotFound);
+                return;
+            }
+            // MuPDF offers no certificate chain validation here. Expose the
+            // signing dictionary's descriptive entries and let the GUI treat
+            // the cryptographic status as not verified.
+            info.setSignatureStatus(Okular::SignatureInfo::SignatureNotVerified);
+            info.setCertificateStatus(Okular::SignatureInfo::CertificateNotVerified);
+            const auto text = [&](const char *path) {
+                return QString::fromUtf8(pdf_to_text_string(ctx, pdf_dict_getp(ctx, object, path)));
+            };
+            info.setSignerName(text("V/Name"));
+            info.setReason(text("V/Reason"));
+            info.setLocation(text("V/Location"));
+        });
+        return info;
+    }
+    std::pair<Okular::SigningResult, QString> sign(const Okular::NewSignatureData &, const QString &) const override
+    {
+        return {Okular::SigningResult::UnsupportedSignatureType, QStringLiteral("Signing is not supported by the MuPDF backend.")};
+    }
+    SubscriptionHandle subscribeUpdates(const std::function<void()> &callback) const override
+    {
+        static std::atomic<SubscriptionHandle> nextHandle{0};
+        const SubscriptionHandle handle = ++nextHandle;
+        m_subscriptions.insert(handle, callback);
+        return handle;
+    }
+    bool unsubscribeUpdates(const SubscriptionHandle &handle) const override
+    {
+        return m_subscriptions.remove(handle);
+    }
+
+private:
+    // Kept for interface completeness: MuPDF does not run asynchronous
+    // certificate validation, so no callback is ever invoked.
+    mutable QHash<SubscriptionHandle, std::function<void()>> m_subscriptions;
+};
+
+namespace {
+/** Attaches /AA/C as the Okular action DocumentPrivate::recalculateForms() runs. */
+template<class FieldType> void attachCalculateAction(FieldType *field, const std::shared_ptr<MuPDFFormAccess> &access)
+{
+    const QString script = access->calculateScript();
+    if (!script.isEmpty())
+        field->setCalculateScript(script);
+}
+}
 
 void MuPDFGenerator::loadForms(pdf_page *native, Okular::Page *page)
 {
@@ -359,17 +478,29 @@ void MuPDFGenerator::loadForms(pdf_page *native, Okular::Page *page)
             Okular::NormalizedRect((box.x0 - bounds.x0) / (bounds.x1 - bounds.x0), (box.y0 - bounds.y0) / (bounds.y1 - bounds.y0), (box.x1 - bounds.x0) / (bounds.x1 - bounds.x0), (box.y1 - bounds.y0) / (bounds.y1 - bounds.y0)));
         accesses.append(access);
         switch (pdf_widget_type(m_context, widget)) {
-        case PDF_WIDGET_TYPE_TEXT:
-            fields.append(new TextField(access));
+        case PDF_WIDGET_TYPE_TEXT: {
+            auto *field = new TextField(access);
+            attachCalculateAction(field, access);
+            fields.append(field);
             break;
+        }
         case PDF_WIDGET_TYPE_BUTTON:
         case PDF_WIDGET_TYPE_CHECKBOX:
-        case PDF_WIDGET_TYPE_RADIOBUTTON:
-            fields.append(new ButtonField(access));
+        case PDF_WIDGET_TYPE_RADIOBUTTON: {
+            auto *field = new ButtonField(access);
+            attachCalculateAction(field, access);
+            fields.append(field);
             break;
+        }
         case PDF_WIDGET_TYPE_COMBOBOX:
-        case PDF_WIDGET_TYPE_LISTBOX:
-            fields.append(new ChoiceField(access));
+        case PDF_WIDGET_TYPE_LISTBOX: {
+            auto *field = new ChoiceField(access);
+            attachCalculateAction(field, access);
+            fields.append(field);
+            break;
+        }
+        case PDF_WIDGET_TYPE_SIGNATURE:
+            fields.append(new SignatureField(access));
             break;
         default:
             break;
@@ -378,4 +509,52 @@ void MuPDFGenerator::loadForms(pdf_page *native, Okular::Page *page)
     page->setFormFields(fields);
     for (const auto &access : accesses)
         access->initializing = false;
+}
+
+namespace {
+/**
+ * Appends the widget object numbers of one /CO entry. The calculation array
+ * normally names terminal fields, but a field without /Kids is added as-is so
+ * non-widget terminal fields do not hide their descendants.
+ */
+void collectCalculateFieldIds(fz_context *ctx, pdf_obj *entry, QList<int> *ids)
+{
+    if (!pdf_is_dict(ctx, entry))
+        return;
+    if (pdf_name_eq(ctx, pdf_dict_get(ctx, entry, PDF_NAME(Subtype)), PDF_NAME(Widget))) {
+        const int id = pdf_to_num(ctx, entry);
+        if (id > 0 && !ids->contains(id))
+            ids->append(id);
+        return;
+    }
+    auto *kids = pdf_dict_get(ctx, entry, PDF_NAME(Kids));
+    if (!pdf_is_array(ctx, kids)) {
+        const int id = pdf_to_num(ctx, entry);
+        if (id > 0 && !ids->contains(id))
+            ids->append(id);
+        return;
+    }
+    for (int i = 0; i < pdf_array_len(ctx, kids); ++i)
+        collectCalculateFieldIds(ctx, pdf_array_get(ctx, kids, i), ids);
+}
+}
+
+QList<int> MuPDFGenerator::formCalculateOrder() const
+{
+    QList<int> ids;
+    QMutexLocker lock(userMutex());
+    if (!m_document)
+        return ids;
+    fz_try(m_context)
+    {
+        auto *order = pdf_dict_getp(m_context, pdf_trailer(m_context, m_document), "Root/AcroForm/CO");
+        for (int i = 0; i < pdf_array_len(m_context, order); ++i)
+            collectCalculateFieldIds(m_context, pdf_array_get(m_context, order, i), &ids);
+    }
+    fz_catch(m_context)
+    {
+        qWarning() << "MuPDF form calculate order:" << fz_caught_message(m_context);
+        ids.clear();
+    }
+    return ids;
 }

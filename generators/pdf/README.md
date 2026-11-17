@@ -93,8 +93,12 @@ directory paths stay unchanged.
 - Done: explicit logical→native page mapping in `PdfGeneratorBase`; page
   topology changes and page tokens are exercised by the reorder/insert/rotate
   tests.
-- Next: replace the modules' internal legacy inheritance with direct backend
-  implementations; the front-end interface work is complete.
+- Done: MuPDF now matches Poppler on view-session search, form calculation and
+  signature fields: word-level text entities, `/AA/C` + `/CO` calculation
+  order, and `PDF_WIDGET_TYPE_SIGNATURE` mapping.
+- Next: page editing parity is complete enough that Poppler can be considered
+  for a stock/read-only build; keep the fork only for features that are still
+  fork-specific.
 - The old `okularGenerator_mupdf` / `okularGenerator_poppler` plugins remain the
   active ones unless a phase-2 stage is deployed with
   `MENGSHEE_PDF_ENGINE_MODULES=ON`.

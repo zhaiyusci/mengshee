@@ -249,6 +249,12 @@ private:
     void reportAnnotationError(const QString &);
     bool m_annotationWarningShown = false;
     void loadForms(pdf_page *, Okular::Page *);
+    /**
+     * Field ids in the order of the AcroForm /CO calculation array. The core
+     * Document executes the CalculateField actions of these fields; this is
+     * the same contract the Poppler backend fulfils.
+     */
+    QList<int> formCalculateOrder() const;
     Okular::DocumentSynopsis m_synopsis;
     mutable QList<Okular::EmbeddedFile *> m_embeddedFiles;
     mutable bool m_embeddedLoaded = false;

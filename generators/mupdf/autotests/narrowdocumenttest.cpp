@@ -57,9 +57,12 @@ private Q_SLOTS:
         QVERIFY(document->pageCount() > 15);
         Okular::TextPage *text = document->textPage(15);
         QVERIFY(text);
-        qInfo() << text->text();
         QVERIFY2(text->text().contains(QStringLiteral("Page")), qPrintable(text->text()));
-        delete text;
+        Okular::Page model(15, 595.276, 841.89, Okular::Rotation0);
+        model.setTextPage(text);
+        Okular::RegularAreaRect *match = model.findText(1, QStringLiteral("Page"), Okular::FromTop, Qt::CaseSensitive);
+        QVERIFY2(match, "the extracted text must be searchable");
+        delete match;
         document->close();
     }
 

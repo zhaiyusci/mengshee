@@ -432,18 +432,43 @@ Okular::TextPage *MuPDFGenerator::textPageForNumber(int number)
     fz_try(m_context)
     {
         text = fz_new_stext_page_from_page_number(m_context, reinterpret_cast<fz_document *>(m_document), number, nullptr);
-        const float width = text->mediabox.x1 - text->mediabox.x0;
-        const float height = text->mediabox.y1 - text->mediabox.y0;
         for (fz_stext_block *block = text->first_block; block; block = block->next) {
             if (block->type != FZ_STEXT_BLOCK_TEXT)
                 continue;
             for (fz_stext_line *line = block->u.t.first_line; line; line = line->next) {
+                // Append whole words rather than one entity per glyph.
+                // Okular's text ordering inserts a space between entities
+                // when the geometric gap is large; per-glyph entities can
+                // therefore split "Page" into "P age" and break search.
+                QString word;
+                fz_rect wordRect = fz_empty_rect;
+                const auto flushWord = [&] {
+                    if (word.isEmpty())
+                        return;
+                    const float w = text->mediabox.x1 - text->mediabox.x0;
+                    const float h = text->mediabox.y1 - text->mediabox.y0;
+                    result->append(word,
+                                   Okular::NormalizedRect((wordRect.x0 - text->mediabox.x0) / w,
+                                                          (wordRect.y0 - text->mediabox.y0) / h,
+                                                          (wordRect.x1 - text->mediabox.x0) / w,
+                                                          (wordRect.y1 - text->mediabox.y0) / h));
+                    word.clear();
+                    wordRect = fz_empty_rect;
+                };
                 for (fz_stext_char *ch = line->first_char; ch; ch = ch->next) {
                     const fz_rect rect = fz_rect_from_quad(ch->quad);
+                    if (ch->c == ' ' || ch->c == '\t' || ch->c == '\n' || ch->c == '\r') {
+                        flushWord();
+                        continue;
+                    }
+                    if (!word.isEmpty() && rect.x0 - wordRect.x1 > 0.5f * ch->size) {
+                        flushWord();
+                    }
                     const char32_t codepoint = ch->c;
-                    result->append(QString::fromUcs4(&codepoint, 1),
-                                   Okular::NormalizedRect((rect.x0 - text->mediabox.x0) / width, (rect.y0 - text->mediabox.y0) / height, (rect.x1 - text->mediabox.x0) / width, (rect.y1 - text->mediabox.y0) / height));
+                    word.append(QString::fromUcs4(&codepoint, 1));
+                    wordRect = fz_union_rect(wordRect, rect);
                 }
+                flushWord();
             }
         }
     }

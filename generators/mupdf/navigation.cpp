@@ -410,6 +410,9 @@ bool MuPDFGenerator::setDocumentSynopsis(const Okular::DocumentSynopsis &synopsi
 
 QVariant MuPDFGenerator::metaData(const QString &key, const QVariant &option) const
 {
+    if (key == QLatin1String("FormCalculateOrder")) {
+        return QVariant::fromValue<QList<int>>(formCalculateOrder());
+    }
     if (key == QLatin1String("NamedViewports")) {
         QVariantList result;
         const_cast<MuPDFGenerator *>(this)->readOperation(
