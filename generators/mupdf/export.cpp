@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "generator_mupdf.h"
+#include <core/textpage.h>
 #include <QFileInfo>
+#include <QSaveFile>
 #include <QSet>
 #include <QTemporaryDir>
 #include <QThread>
@@ -174,4 +176,35 @@ bool MuPDFGenerator::exportFlattenedPdf(const QString &output, QString *error, i
     if (preserved)
         *preserved = retainedCount;
     return true;
+}
+
+Okular::ExportFormat::List MuPDFGenerator::exportFormats() const
+{
+    static const Okular::ExportFormat::List formats = {Okular::ExportFormat::standardFormat(Okular::ExportFormat::PlainText)};
+    return formats;
+}
+
+bool MuPDFGenerator::exportTo(const QString &fileName, const Okular::ExportFormat &format)
+{
+    if (!format.mimeType().inherits(QStringLiteral("text/plain")))
+        return false;
+    if (!m_document || m_pages.isEmpty())
+        return false;
+
+    QSaveFile output(fileName);
+    if (!output.open(QIODevice::WriteOnly))
+        return false;
+
+    for (int i = 0; i < m_pages.size(); ++i) {
+        Okular::TextPage *page = textPageForNumber(i);
+        if (!page)
+            return false;
+        const QByteArray text = page->text().toUtf8();
+        delete page;
+        if (output.write(text) != text.size())
+            return false;
+        if (i + 1 < m_pages.size() && output.write("\n\f\n", 3) != 3)
+            return false;
+    }
+    return output.commit();
 }

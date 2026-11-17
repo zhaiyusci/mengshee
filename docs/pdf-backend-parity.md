@@ -58,9 +58,9 @@ adapters, not tested code in this repository.
 | Certificate validation | ◐ | ✅ | ✅ | ◐ | ◐ | MuPDF currently reports `SignatureNotVerified`; no chain validation |
 | Actual signing | ✗ | ◐ | ◐ | ◐ | ✗ | MuPDF `canSign()` is false; Poppler has the legacy signing path, but no real certificate is exercised in this repository |
 | Native print | ✅ | ✅ | ✅ | n/a | n/a | `mupdf_print_test` |
-| Print options widget | ✗ | ✅ | ✅ | n/a | n/a | MuPDF uses the default widget |
+| Print options widget | ✅ | ✅ | ✅ | n/a | n/a | MuPDF exposes print annotations + scale mode (`mupdf_capability_test`) |
 | Print preview renderer | ✅ | ✗ | ✗ | n/a | n/a | MuPDF provides a snapshot renderer |
-| Export text formats | ✗ | ✅ | ✅ | ◐ | ✗ | Poppler exposes text export; MuPDF does not |
+| Export text formats | ✅ | ✅ | ✅ | ◐ | ✗ | Both engines export plain text (`exportFormats`/`exportTo`) |
 
 ## 3. Save / editing / product metadata
 
@@ -112,19 +112,22 @@ Therefore:
 
 ## 5. Switching to MuPDF
 
-After the 2026-11-17 parity fixes, the three previously failing MuPDF tests
-pass:
+After the 2026-11-17 parity fixes, the previously failing MuPDF tests and the
+two menu-level gaps are covered:
 
 - `searchtest`: word-level text entities, 21/21.
 - `calculatetexttest`: `/AA/C` + `/CO` calculation, 3/3.
 - `signatureformtest`: signature widget mapping, 3/3.
+- Print options: annotations checkbox and scale mode.
+- Plain-text export through `PdfSaver::exportFormats()`/`exportTo()`.
 
 MuPDF is therefore a credible **single read + edit backend** for PDFs.
 Remaining parity gaps are narrower:
 
-1. **Actual signing** is not implemented (`canSign()` false); display of
+1. **Certificate validation** is not performed; signed fields show
+   `SignatureNotVerified`/`CertificateNotVerified`.
+2. **Actual signing** is not implemented (`canSign()` false); display of
    signed fields is implemented.
-2. **Text export formats** exist only in Poppler.
 3. **Poppler-specific configuration page** has no MuPDF equivalent.
 4. Some behavior differences remain in annotation appearance/font fallback,
    media links and page-bound handling; they need a per-document corpus, not

@@ -13,11 +13,14 @@
 #include <core/document.h>
 #include <core/generator.h>
 #include <core/page.h>
+#include <core/printoptionswidget.h>
 #include <core/readingview.h>
 #include <core/textpage.h>
 
 #include <settings_core.h>
 
+#include <QCheckBox>
+#include <QComboBox>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -967,6 +970,63 @@ private Q_SLOTS:
         qDeleteAll(reopenedModels);
         reopenedModels.clear();
         reopenedDocument->close();
+    }
+
+    void exportsPlainTextThroughCapability()
+    {
+        QTemporaryDir directory;
+        QVERIFY2(directory.isValid(), qPrintable(directory.errorString()));
+        const QString input = copyOfTestPdf(directory);
+        QVERIFY2(!input.isEmpty(), "could not copy the test PDF");
+
+        QString error;
+        EnginePtr engine = createEngine(&error);
+        QVERIFY2(engine, qPrintable(error));
+        PdfDocument *const document = engine->document();
+        QVERIFY(document);
+        PdfSaver *const saver = engine->saver();
+        QVERIFY(saver);
+
+        const Okular::ExportFormat::List formats = saver->exportFormats();
+        QVERIFY(!formats.isEmpty());
+        QVERIFY(formats.first().mimeType().inherits(QStringLiteral("text/plain")));
+
+        QList<Okular::Page *> models;
+        QVERIFY2(openNativeDocument(document, input, &models, &error), qPrintable(error));
+        const QString output = directory.filePath(QStringLiteral("export.txt"));
+        QVERIFY(saver->exportTo(output, formats.first()));
+        QFile file(output);
+        QVERIFY(file.open(QIODevice::ReadOnly));
+        const QString text = QString::fromUtf8(file.readAll());
+        QVERIFY2(!text.trimmed().isEmpty(), "the plain-text export must contain page text");
+        QVERIFY2(text.contains(QStringLiteral("Hola")), qPrintable(text.left(200)));
+
+        qDeleteAll(models);
+        models.clear();
+        document->close();
+    }
+
+    void exposesPrintOptions()
+    {
+        QString error;
+        EnginePtr engine = createEngine(&error);
+        QVERIFY2(engine, qPrintable(error));
+        PdfPrintConfigurator *const configurator = engine->printConfigurator();
+        QVERIFY(configurator);
+
+        Okular::PrintOptionsWidget *const widget = configurator->printConfigurationWidget();
+        QVERIFY(widget);
+        QVERIFY(!widget->ignorePrintMargins());
+        QVERIFY(!widget->originalPageSize());
+
+        auto *combo = widget->findChild<QComboBox *>();
+        QVERIFY(combo);
+        combo->setCurrentIndex(1);
+        QVERIFY(widget->ignorePrintMargins());
+
+        auto *annotations = widget->findChild<QCheckBox *>();
+        QVERIFY(annotations);
+        QVERIFY(annotations->isChecked());
     }
 
     void readsOcrLayerThroughCapability()

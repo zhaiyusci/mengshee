@@ -62,6 +62,10 @@ public:
     bool setDocumentSynopsis(const Okular::DocumentSynopsis &, QString *) override;
     bool canExportFlattenedPdf() const override;
     bool exportFlattenedPdf(const QString &, QString *, int *, int *) override;
+    Okular::ExportFormat::List exportFormats() const override;
+    bool exportTo(const QString &fileName, const Okular::ExportFormat &format) override;
+    void setPrintAnnotations(bool enabled);
+    bool printAnnotations() const;
     QVariant metaData(const QString &key, const QVariant &option) const override;
     bool isAllowed(Okular::Permission permission) const override;
     Okular::Document::PrintError print(QPrinter &printer) override;
@@ -236,6 +240,7 @@ private:
     std::unique_ptr<MuPDFAnnotationProxy> m_annotations;
     QList<pdf_page *> m_pages;
     QString m_editError;
+    bool m_printAnnotations = true;
     QHash<quint64, pdf_obj *> m_detached;
     quint64 m_nextEdit = 1;
     Okular::Page *createPage(int index);

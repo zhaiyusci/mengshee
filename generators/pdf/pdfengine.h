@@ -293,8 +293,8 @@ public:
     virtual bool canExportFlattenedPdf() const = 0;
     virtual bool exportFlattenedPdf(const QString &fileName, QString *errorText, int *flattenedAnnotations, int *preservedAnnotations) = 0;
 
-    // Text export belongs to the Poppler engine today; the defaults keep the
-    // MuPDF engine free of an export menu entry.
+    // Optional text export. Engines that can produce a text layer advertise
+    // PlainText here; the default keeps the menu entry hidden.
     virtual Okular::ExportFormat::List exportFormats() const
     {
         return {};

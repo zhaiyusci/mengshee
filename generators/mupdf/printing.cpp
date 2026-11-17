@@ -11,8 +11,7 @@
 
 Okular::Document::PrintError MuPDFGenerator::print(QPrinter &printer)
 {
-    if (!isAllowed(Okular::AllowPrint)) return Okular::Document::UnknownPrintError;
-    QPainter painter;
+    if (!isAllowed(Okular::AllowPrint)) return Okular::Document::UnknownPrintError;    QPainter painter;
     const auto *job = dynamic_cast<const Okular::PrintJobPrinter *>(&printer);
     const bool automaticOrientation = job && job->automaticPageOrientation;
     const bool originalPageSize = job && job->originalPageSize;
@@ -60,10 +59,15 @@ Okular::Document::PrintError MuPDFGenerator::print(QPrinter &printer)
             painter.setClipRect(QRectF(target.x0,target.y0,target.x1-target.x0,target.y1-target.y0));
             list = fz_new_display_list(m_context,bounds);
             device = fz_new_list_device(m_context,list);
-            pdf_run_page_with_usage(m_context,page,device,fz_identity,"Print",nullptr);
-            auto *annots = pdf_dict_get(m_context,page->obj,PDF_NAME(Annots));
-            for (int n=0; n<pdf_array_len(m_context,annots); ++n)
-                renderLinkAppearance(page,pdf_array_get(m_context,annots,n),device,true);
+            if (m_printAnnotations)
+                pdf_run_page_with_usage(m_context,page,device,fz_identity,"Print",nullptr);
+            else
+                pdf_run_page_contents_with_usage(m_context,page,device,fz_identity,"Print",nullptr);
+            if (m_printAnnotations) {
+                auto *annots = pdf_dict_get(m_context,page->obj,PDF_NAME(Annots));
+                for (int n=0; n<pdf_array_len(m_context,annots); ++n)
+                    renderLinkAppearance(page,pdf_array_get(m_context,annots,n),device,true);
+            }
             fz_close_device(m_context,device);
             fz_drop_device(m_context,device); device = nullptr;
             painter.setRenderHints(QPainter::Antialiasing | QPainter::SmoothPixmapTransform);
@@ -105,4 +109,14 @@ Okular::Document::PrintError MuPDFGenerator::print(QPrinter &printer)
         }
     }
     return painter.end() ? Okular::Document::NoPrintError : Okular::Document::UnknownPrintError;
+}
+
+void MuPDFGenerator::setPrintAnnotations(bool enabled)
+{
+    m_printAnnotations = enabled;
+}
+
+bool MuPDFGenerator::printAnnotations() const
+{
+    return m_printAnnotations;
 }
