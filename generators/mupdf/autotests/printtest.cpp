@@ -69,6 +69,12 @@ private Q_SLOTS:
             input.setPrintLayoutOptions(options);
             if (input.print(printer) != Okular::Document::NoPrintError)
                 return -1;
+            QFile printedFile(output);
+            if (!printedFile.open(QIODevice::ReadOnly))
+                return -1;
+            // The composed layout must stay vector: no page-wide raster image.
+            if (printedFile.readAll().contains("/Subtype/Image"))
+                return -2;
             MuPDFGenerator result(nullptr, {});
             QList<Okular::Page *> sheets;
             if (result.loadDocumentWithPassword(output, sheets, {}) != Okular::Document::OpenSuccess)

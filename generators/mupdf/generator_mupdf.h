@@ -13,6 +13,9 @@
 #include <mupdf/pdf.h>
 
 class MuPDFAnnotationProxy;
+class QPainter;
+class QRect;
+class QRectF;
 
 class MENGSHEE_PDF_RUNTIME_EXPORT MuPDFGenerator : public Okular::Generator, public Okular::PrintPreviewInterface,
                        public Okular::SaveInterface,
@@ -230,6 +233,7 @@ private:
     Okular::Document::OpenResult finishOpen(QList<Okular::Page *> &, const QString &);
     QImage render(int page, int width, int height, bool annotations, QString *error, const QRect &region = {}, fz_cookie *cookie = nullptr);
     Okular::Document::PrintError printWithLayout(QPrinter &printer, const Okular::PrintLayoutOptions &options);
+    bool drawPageVector(QPainter &painter, int index, const QSizeF &pageSize, const QRectF &targetRect, const QRect &sheetArea, QString *error);
     void clearDisplayList();
     fz_display_list *pageDisplayList(int number, pdf_page *page, fz_cookie *cookie);
     void clearAnnotationLists();
