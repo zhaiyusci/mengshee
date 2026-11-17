@@ -47,6 +47,7 @@ private Q_SLOTS:
         QVERIFY(slider);
         QTRY_COMPARE(slider->maximum(), 3);
         QVERIFY(dialog.findChild<QLabel *>(QStringLiteral("previewPageNumber"))->text().contains(QStringLiteral("3")));
+        QTRY_VERIFY(dialog.findChild<QLabel *>(QStringLiteral("previewDescription"))->text().contains(QStringLiteral("Landscape")));
         QTRY_VERIFY(calls->load() >= 6);
         dialog.close();
         QTest::qWait(100);

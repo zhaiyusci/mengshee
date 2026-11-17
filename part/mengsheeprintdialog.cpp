@@ -53,6 +53,18 @@ using namespace Okular;
 namespace
 {
 constexpr int previewResolutionDpi = 72;
+int layoutGridColumns(int pagesPerSheet)
+{
+    return pagesPerSheet >= 16 ? 4
+        : pagesPerSheet >= 9 ? 3
+        : pagesPerSheet >= 6 ? 3
+        : pagesPerSheet >= 2 ? 2
+        : 1;
+}
+int layoutGridRows(int pagesPerSheet)
+{
+    return qMax(1, (pagesPerSheet + layoutGridColumns(pagesPerSheet) - 1) / layoutGridColumns(pagesPerSheet));
+}
 class PagePreview final : public QWidget {
 public:
     using QWidget::QWidget;
@@ -151,12 +163,8 @@ PrintPreviewImage composePreviewSheet(const PrintPreviewRenderer &renderer,
     QPainter painter(&canvas);
     painter.setRenderHints(QPainter::Antialiasing | QPainter::TextAntialiasing | QPainter::SmoothPixmapTransform);
     const QRectF bounds(QPointF(0, 0), QSizeF(sheetPixels));
-    const int columns = pagesPerSheet >= 16 ? 4
-        : pagesPerSheet >= 9 ? 3
-        : pagesPerSheet >= 6 ? 3
-        : pagesPerSheet >= 4 ? 2
-        : qMax(1, sheet.pages.size());
-    const int rows = qMax(1, (qMax(1, sheet.pages.size()) + columns - 1) / columns);
+    const int columns = layoutGridColumns(pagesPerSheet);
+    const int rows = layoutGridRows(pagesPerSheet);
     const qreal gap = qMin(bounds.width(), bounds.height()) * 0.015;
     const qreal cellWidth = (bounds.width() - gap * (columns + 1)) / columns;
     const qreal cellHeight = (bounds.height() - gap * (rows + 1)) / rows;
@@ -1156,6 +1164,21 @@ QPageLayout::Orientation MengsheePrintDialog::selectedOrientation() const
     if (m_portraitRadio->isChecked()) {
         return QPageLayout::Portrait;
     }
+
+    const int layoutMode = m_printOptionsWidget ? m_printOptionsWidget->property(PrintLayout::modeProperty).toInt() : PrintLayout::Size;
+    if (layoutMode == PrintLayout::Multiple) {
+        const int pagesPerSheet = m_printOptionsWidget ? qMax(1, m_printOptionsWidget->property(PrintLayout::pagesPerSheetProperty).toInt()) : 2;
+        const int columns = layoutGridColumns(pagesPerSheet);
+        const int rows = layoutGridRows(pagesPerSheet);
+        if (columns > rows)
+            return QPageLayout::Landscape;
+        if (rows > columns)
+            return QPageLayout::Portrait;
+        return m_documentOrientation;
+    }
+    if (layoutMode == PrintLayout::Booklet)
+        return QPageLayout::Landscape;
+
     return m_previewImage.isNull() ? m_documentOrientation : paperOrientationForPage(m_previewImage.size());
 }
 
