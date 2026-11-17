@@ -3,6 +3,7 @@
 #include "core/printoptionswidget.h"
 #include "core/printjob.h"
 #include <QTest>
+#include <QToolButton>
 #include <QLabel>
 #include <QComboBox>
 #include <QRadioButton>
@@ -20,6 +21,37 @@
 class PrintPreviewTest : public QObject {
     Q_OBJECT
 private Q_SLOTS:
+    void multipleLayoutPreviewCountsSheets()
+    {
+        auto *options = new Okular::DefaultPrintOptionsWidget;
+        options->setProperty(Okular::PrintLayout::supportsProperty, true);
+        Okular::MengsheePrintDialog dialog(nullptr, 13, 1, QPageLayout::Portrait, false, options);
+        auto calls = std::make_shared<std::atomic<int>>(0);
+        dialog.setPreviewRenderer([calls](int, QSize) {
+            ++*calls;
+            QImage image(120, 160, QImage::Format_RGB32);
+            image.fill(Qt::red);
+            return Okular::PrintPreviewImage{image, {}};
+        }, {});
+        QTRY_VERIFY(calls->load() > 0);
+        auto *pagesPerSheet = dialog.findChild<QComboBox *>(QStringLiteral("pagesPerSheetCombo"));
+        QVERIFY(pagesPerSheet);
+        pagesPerSheet->setCurrentIndex(pagesPerSheet->findData(6));
+        QToolButton *multiple = nullptr;
+        const auto layoutButtons = dialog.findChildren<QToolButton *>();
+        if (layoutButtons.size() > 2)
+            multiple = layoutButtons.at(2);
+        QVERIFY(multiple);
+        multiple->click();
+        auto *slider = dialog.findChild<QSlider *>(QStringLiteral("previewPageSlider"));
+        QVERIFY(slider);
+        QTRY_COMPARE(slider->maximum(), 3);
+        QVERIFY(dialog.findChild<QLabel *>(QStringLiteral("previewPageNumber"))->text().contains(QStringLiteral("3")));
+        QTRY_VERIFY(calls->load() >= 6);
+        dialog.close();
+        QTest::qWait(100);
+    }
+
     void asynchronousLatestRequestAndCache() {
         Okular::MengsheePrintDialog dialog(nullptr, 3, 1, QPageLayout::Portrait, false, new Okular::DefaultPrintOptionsWidget);
         struct State { std::atomic<int> calls{0}; std::atomic<int> last{-1}; std::atomic<bool> worker{false}; };
