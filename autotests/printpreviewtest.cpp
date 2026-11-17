@@ -21,6 +21,33 @@
 class PrintPreviewTest : public QObject {
     Q_OBJECT
 private Q_SLOTS:
+    void bookletLayoutPreview()
+    {
+        auto *options = new Okular::DefaultPrintOptionsWidget;
+        options->setProperty(Okular::PrintLayout::supportsProperty, true);
+        Okular::MengsheePrintDialog dialog(nullptr, 4, 1, QPageLayout::Portrait, false, options);
+        auto calls = std::make_shared<std::atomic<int>>(0);
+        dialog.setPreviewRenderer([calls](int, QSize) {
+            ++*calls;
+            QImage image(595, 842, QImage::Format_RGB32);
+            image.fill(Qt::red);
+            return Okular::PrintPreviewImage{image, {}};
+        }, {});
+        QTRY_VERIFY(calls->load() > 0);
+        QToolButton *booklet = nullptr;
+        const auto buttons = dialog.findChildren<QToolButton *>();
+        if (buttons.size() > 3)
+            booklet = buttons.at(3);
+        QVERIFY(booklet);
+        booklet->click();
+        auto *slider = dialog.findChild<QSlider *>(QStringLiteral("previewPageSlider"));
+        QVERIFY(slider);
+        QTRY_COMPARE(slider->maximum(), 2);
+        QTRY_VERIFY(calls->load() >= 2);
+        dialog.close();
+        QTest::qWait(100);
+    }
+
     void multipleLayoutPreviewCountsSheets()
     {
         auto *options = new Okular::DefaultPrintOptionsWidget;
