@@ -38,6 +38,63 @@ class PrintTest : public QObject
         QFile output(file); QVERIFY(output.open(QIODevice::WriteOnly)); QCOMPARE(output.write(data),data.size());
     }
 private Q_SLOTS:
+    void layoutModes()
+    {
+        QTemporaryDir dir;
+        const auto source = dir.filePath(QStringLiteral("source.pdf"));
+        {
+            QPdfWriter writer(source);
+            writer.setPageSize(QPageSize(QPageSize::A4));
+            writer.setResolution(72);
+            QPainter painter(&writer);
+            for (int i = 0; i < 4; ++i) {
+                if (i > 0)
+                    QVERIFY(writer.newPage());
+                painter.drawText(100, 100, QStringLiteral("Page %1").arg(i + 1));
+            }
+        }
+
+        MuPDFGenerator input(nullptr, {});
+        QList<Okular::Page *> pages;
+        QCOMPARE(input.loadDocumentWithPassword(source, pages, {}), Okular::Document::OpenSuccess);
+        QCOMPARE(pages.size(), 4);
+
+        const auto printWith = [&](const MuPDFGenerator::PrintLayoutOptions &options, const QString &output) {
+            Okular::PrintJobPrinter printer;
+            printer.setOutputFormat(QPrinter::PdfFormat);
+            printer.setOutputFileName(output);
+            printer.setResolution(150);
+            printer.setPageSize(QPageSize(QPageSize::A4));
+            printer.setFullPage(true);
+            input.setPrintLayoutOptions(options);
+            if (input.print(printer) != Okular::Document::NoPrintError)
+                return -1;
+            MuPDFGenerator result(nullptr, {});
+            QList<Okular::Page *> sheets;
+            if (result.loadDocumentWithPassword(output, sheets, {}) != Okular::Document::OpenSuccess)
+                return -1;
+            const int count = sheets.size();
+            qDeleteAll(sheets);
+            return count;
+        };
+
+        MuPDFGenerator::PrintLayoutOptions multiple;
+        multiple.mode = Okular::PrintLayout::Multiple;
+        multiple.pagesPerSheet = 2;
+        QCOMPARE(printWith(multiple, dir.filePath(QStringLiteral("multiple.pdf"))), 2);
+
+        MuPDFGenerator::PrintLayoutOptions booklet;
+        booklet.mode = Okular::PrintLayout::Booklet;
+        QCOMPARE(printWith(booklet, dir.filePath(QStringLiteral("booklet.pdf"))), 2);
+
+        MuPDFGenerator::PrintLayoutOptions poster;
+        poster.mode = Okular::PrintLayout::Poster;
+        poster.posterScale = 4.0;
+        QVERIFY(printWith(poster, dir.filePath(QStringLiteral("poster.pdf"))) > 1);
+
+        qDeleteAll(pages);
+    }
+
     void mixedPaperOrientation_data()
     {
         QTest::addColumn<int>("mode");

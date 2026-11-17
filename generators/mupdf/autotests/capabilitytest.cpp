@@ -1016,6 +1016,7 @@ private Q_SLOTS:
 
         Okular::PrintOptionsWidget *const widget = configurator->printConfigurationWidget();
         QVERIFY(widget);
+        QVERIFY(widget->property(Okular::PrintLayout::supportsProperty).toBool());
         QVERIFY(!widget->ignorePrintMargins());
         QVERIFY(!widget->originalPageSize());
 

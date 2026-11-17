@@ -58,7 +58,7 @@ adapters, not tested code in this repository.
 | Certificate validation | ◐ | ✅ | ✅ | ◐ | ◐ | MuPDF currently reports `SignatureNotVerified`; no chain validation |
 | Actual signing | ✗ | ◐ | ◐ | ◐ | ✗ | MuPDF `canSign()` is false; Poppler has the legacy signing path, but no real certificate is exercised in this repository |
 | Native print | ✅ | ✅ | ✅ | n/a | n/a | `mupdf_print_test` |
-| Print options widget | ✅ | ✅ | ✅ | n/a | n/a | MuPDF exposes print annotations + scale mode (`mupdf_capability_test`) |
+| Print options widget | ✅ | ✅ | ✅ | n/a | n/a | MuPDF exposes annotations, scale mode, Multiple/Booklet/Poster (`mupdf_capability_test`, `mupdf_print_test`) |
 | Print preview renderer | ✅ | ✗ | ✗ | n/a | n/a | MuPDF provides a snapshot renderer |
 | Export text formats | ✅ | ✅ | ✅ | ◐ | ✗ | Both engines export plain text (`exportFormats`/`exportTo`) |
 

@@ -34,6 +34,7 @@ class MuPDFPrintOptionsWidget final : public Okular::DefaultPrintOptionsWidget
 public:
     MuPDFPrintOptionsWidget()
     {
+        setProperty(Okular::PrintLayout::supportsProperty, true);
         m_printAnnotations = new QCheckBox(QCoreApplication::translate("MuPDFPrintOptionsWidget", "Print annotations"), this);
         m_printAnnotations->setChecked(true);
         if (auto *layout = qobject_cast<QFormLayout *>(this->layout()))
@@ -651,7 +652,22 @@ public:
 
     Okular::Document::PrintError print(QPrinter &printerDevice) override
     {
-        setPrintAnnotations(!m_printOptions || m_printOptions->printAnnotations());
+        PrintLayoutOptions options;
+        if (m_printOptions) {
+            setPrintAnnotations(m_printOptions->printAnnotations());
+            options.mode = m_printOptions->property(Okular::PrintLayout::modeProperty).toInt();
+            options.pagesPerSheet = qMax(1, m_printOptions->property(Okular::PrintLayout::pagesPerSheetProperty).toInt());
+            options.pageOrder = m_printOptions->property(Okular::PrintLayout::pageOrderProperty).toInt();
+            options.pageBorder = m_printOptions->property(Okular::PrintLayout::pageBorderProperty).toBool();
+            options.posterScale = m_printOptions->property(Okular::PrintLayout::posterScaleProperty).toDouble() / 100.0;
+            if (options.posterScale <= 0)
+                options.posterScale = 1.0;
+            options.posterOverlapMm = m_printOptions->property(Okular::PrintLayout::posterOverlapProperty).toDouble();
+            options.posterCutMarks = m_printOptions->property(Okular::PrintLayout::posterCutMarksProperty).toBool();
+            options.bookletSubset = m_printOptions->property(Okular::PrintLayout::bookletSubsetProperty).toInt();
+            options.bookletBinding = m_printOptions->property(Okular::PrintLayout::bookletBindingProperty).toInt();
+        }
+        setPrintLayoutOptions(options);
         return MuPDFGenerator::print(printerDevice);
     }
 
