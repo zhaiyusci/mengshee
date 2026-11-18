@@ -492,6 +492,8 @@ private:
     AiBridge *m_aiBridge = nullptr;
     QProcess *m_aiChatProcess = nullptr;
     QByteArray m_aiChatOutput;
+    QString m_aiDocumentId;
+    QString m_aiDocumentTitle;
     KMessageWidget *m_migrationMessage;
     KMessageWidget *m_topMessage;
     KMessageWidget *m_formsMessage;

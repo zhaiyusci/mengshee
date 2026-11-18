@@ -50,6 +50,7 @@ footer { border-top: 1px solid var(--border); border-bottom: none; }
 .inline-image { max-height: 96px; border-radius: 6px; margin: 4px 4px 0 0; border: 1px solid var(--border); }
 
 #document-title { font-weight: 600; }
+#document-id { color: var(--muted); font-size: 11px; font-family: ui-monospace, monospace; }
 #document-meta, #status { color: var(--muted); font-size: 12px; }
 #usage { margin-left: auto; color: var(--muted); font-size: 12px; }
 #images-option { display: inline-flex; gap: 4px; align-items: center; font-size: 12px; color: var(--muted); }

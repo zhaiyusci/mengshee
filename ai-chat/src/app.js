@@ -7,6 +7,7 @@ const invoke = tauri?.core?.invoke;
 
 const elements = {
     title: document.getElementById("document-title"),
+    id: document.getElementById("document-id"),
     meta: document.getElementById("document-meta"),
     usage: document.getElementById("usage"),
     chat: document.getElementById("chat"),
@@ -105,10 +106,12 @@ async function connect() {
 function renderDocumentState() {
     if (!state.document) {
         elements.title.textContent = "没有打开的文档";
+        elements.id.textContent = "";
         elements.meta.textContent = "";
         return;
     }
     elements.title.textContent = state.document.title || state.document.path;
+    elements.id.textContent = state.document.id ? `#${state.document.id.slice(0, 8)}` : "";
     elements.meta.textContent = `${state.document.pages} 页 · 当前第 ${state.document.page} 页`;
 }
 

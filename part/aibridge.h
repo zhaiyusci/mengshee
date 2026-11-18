@@ -44,6 +44,9 @@ public:
     /** Supplies the document path on demand; the part decides what is open. */
     void setPathProvider(std::function<QString()> provider);
 
+    /** The document identity this bridge belongs to, for the window title. */
+    void setDocumentIdentity(const QString &id, const QString &title);
+
 private:
     void dispatch(const QJsonObject &request);
     void reply(int id, const QJsonObject &result);
@@ -55,6 +58,8 @@ private:
     Sender m_sender;
     QNetworkAccessManager *m_network = nullptr;
     std::function<QString()> m_pathProvider;
+    QString m_documentId;
+    QString m_documentTitle;
     AiSearch::Index m_index;
     int m_indexPages = -1;
     QString m_indexPath;

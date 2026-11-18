@@ -39,6 +39,23 @@ void AiBridge::setPathProvider(std::function<QString()> provider)
     m_pathProvider = std::move(provider);
 }
 
+void AiBridge::setDocumentIdentity(const QString &id, const QString &title)
+{
+    if (m_documentId == id && m_documentTitle == title)
+        return;
+    m_documentId = id;
+    m_documentTitle = title;
+    if (m_sender) {
+        QJsonObject params;
+        params.insert(QStringLiteral("id"), QJsonValue(id));
+        params.insert(QStringLiteral("title"), QJsonValue(title));
+        QJsonObject request;
+        request.insert(QStringLiteral("method"), QJsonValue(QStringLiteral("documentIdentity")));
+        request.insert(QStringLiteral("params"), QJsonValue(params));
+        m_sender(QJsonDocument(request).toJson(QJsonDocument::Compact) + '\n');
+    }
+}
+
 QString AiBridge::currentPath() const
 {
     return m_pathProvider ? m_pathProvider() : QString();
@@ -112,7 +129,8 @@ void AiBridge::dispatch(const QJsonObject &request)
         if (m_document && m_document->pages() > 0) {
             const QString path = currentPath();
             document.insert(QStringLiteral("path"), QJsonValue(path));
-            document.insert(QStringLiteral("title"), QJsonValue(QFileInfo(path).fileName()));
+            document.insert(QStringLiteral("title"), QJsonValue(m_documentTitle.isEmpty() ? QFileInfo(path).fileName() : m_documentTitle));
+            document.insert(QStringLiteral("id"), QJsonValue(m_documentId));
             document.insert(QStringLiteral("pages"), QJsonValue(int(m_document->pages())));
             document.insert(QStringLiteral("page"), QJsonValue(int(m_document->currentPage()) + 1));
         }

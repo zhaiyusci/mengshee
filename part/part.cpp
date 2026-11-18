@@ -78,6 +78,10 @@
 #include <QStandardPaths>
 #include <QTemporaryFile>
 #include "closedtemporarypdffile.h"
+
+#ifdef Q_OS_WIN
+#include <windows.h>
+#endif
 #include <QTimer>
 #include <QToolButton>
 #include <QUndoCommand>
@@ -408,6 +412,7 @@ Part::Part(QObject *parent, const QVariantList &args)
     // make sure that the component name is okular otherwise the XMLGUI .rc files are not found
     // when this part is used in an application other than okular (e.g. unit tests)
     setComponentName(QStringLiteral("okular"), QString());
+    m_aiDocumentId = QUuid::createUuid().toString(QUuid::WithoutBraces);
 
     setupConfigSkeleton(args);
     m_latexStemtexProfileName = Okular::Settings::latexStemtexProfileName();
@@ -2091,6 +2096,11 @@ void Part::setWindowTitleFromDocument()
         title += QStringLiteral(" [%1]").arg(backend);
     }
 
+    if (m_aiBridge) {
+        m_aiDocumentTitle = title;
+        m_aiBridge->setDocumentIdentity(m_aiDocumentId, title);
+    }
+
     Q_EMIT setWindowCaption(title);
 }
 
@@ -3403,6 +3413,42 @@ void Part::slotHideFindBar()
 
 namespace
 {
+QString aiDocumentTitle(const QUrl &url)
+{
+    const QString name = url.fileName();
+    return name.isEmpty() ? i18n("Untitled") : name;
+}
+
+#ifdef Q_OS_WIN
+struct ActivateChatWindowData {
+    DWORD processId;
+    bool found;
+};
+
+BOOL CALLBACK activateChatWindowProc(HWND window, LPARAM parameter)
+{
+    auto *data = reinterpret_cast<ActivateChatWindowData *>(parameter);
+    DWORD processId = 0;
+    GetWindowThreadProcessId(window, &processId);
+    if (processId == data->processId && IsWindowVisible(window)) {
+        ShowWindow(window, SW_RESTORE);
+        SetForegroundWindow(window);
+        BringWindowToTop(window);
+        data->found = true;
+        return FALSE;
+    }
+    return TRUE;
+}
+
+void activateAiChatWindow(qint64 processId)
+{
+    if (processId <= 0)
+        return;
+    ActivateChatWindowData data{DWORD(processId), false};
+    EnumWindows(activateChatWindowProc, reinterpret_cast<LPARAM>(&data));
+}
+#endif
+
 // The chat window ships next to the application once packaged; during
 // development it lives in the checkout. Search upward for both layouts.
 QString findAiChatExecutable()
@@ -3458,6 +3504,9 @@ void Part::slotShowAiChatWindow()
         return;
     }
     if (m_aiChatProcess && m_aiChatProcess->state() != QProcess::NotRunning) {
+#ifdef Q_OS_WIN
+        activateAiChatWindow(m_aiChatProcess->processId());
+#endif
         return;
     }
     const QString executable = findAiChatExecutable();
@@ -3465,13 +3514,26 @@ void Part::slotShowAiChatWindow()
         KMessageBox::information(widget(), i18n("The AI chat window was not found. Set MENGSHEE_AI_CHAT to its path, or build it in ai-chat."));
         return;
     }
+    const QString documentPath = url().toLocalFile();
+    const QString documentTitle = m_aiDocumentTitle.isEmpty() ? aiDocumentTitle(url()) : m_aiDocumentTitle;
+    if (m_aiBridge) {
+        m_aiBridge->setDocumentIdentity(m_aiDocumentId, documentTitle);
+    }
     m_aiChatProcess = new QProcess(this);
     m_aiChatProcess->setProgram(executable);
     m_aiChatProcess->setWorkingDirectory(QFileInfo(executable).absolutePath());
-    const QString documentPath = url().toLocalFile();
+    QStringList arguments;
     if (!documentPath.isEmpty()) {
-        m_aiChatProcess->setArguments({QStringLiteral("--document"), documentPath});
+        arguments << QStringLiteral("--document") << documentPath;
     }
+    arguments << QStringLiteral("--document-id") << m_aiDocumentId;
+    arguments << QStringLiteral("--document-title") << documentTitle;
+#ifdef Q_OS_WIN
+    if (QWidget *topLevel = widget()->window()) {
+        arguments << QStringLiteral("--parent-hwnd") << QString::number(quintptr(topLevel->effectiveWinId()));
+    }
+#endif
+    m_aiChatProcess->setArguments(arguments);
     // The window talks to this reader over its standard streams: one JSON
     // object per line. This is the same on every platform.
     QProcess *process = m_aiChatProcess;

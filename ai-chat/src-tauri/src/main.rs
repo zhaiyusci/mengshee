@@ -6,15 +6,20 @@ use std::io::{BufRead, Write};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::Sender;
 use std::sync::{Mutex, OnceLock};
+use tauri::Manager;
 
 /// Everything the window needs is handed over by Mengshee when it starts it:
 /// this is the reader's own window, not a program that looks for a partner.
 #[derive(Clone)]
 struct Launch {
     document: String,
+    document_id: String,
+    document_title: String,
+    parent_hwnd: String,
 }
 
 static LAUNCH: OnceLock<Launch> = OnceLock::new();
+static APP_HANDLE: OnceLock<tauri::AppHandle> = OnceLock::new();
 
 type Pending = Mutex<HashMap<u64, Sender<Result<serde_json::Value, String>>>>;
 
@@ -24,16 +29,37 @@ static NEXT_ID: AtomicU64 = AtomicU64::new(1);
 fn launch_info() -> Launch {
     let arguments: Vec<String> = std::env::args().collect();
     let mut document = String::new();
+    let mut document_id = String::new();
+    let mut document_title = String::new();
+    let mut parent_hwnd = String::new();
     let mut index = 1;
     while index < arguments.len() {
-        if arguments[index] == "--document" {
-            document = arguments.get(index + 1).cloned().unwrap_or_default();
-            index += 2;
-        } else {
-            index += 1;
+        match arguments[index].as_str() {
+            "--document" => {
+                document = arguments.get(index + 1).cloned().unwrap_or_default();
+                index += 2;
+            }
+            "--document-id" => {
+                document_id = arguments.get(index + 1).cloned().unwrap_or_default();
+                index += 2;
+            }
+            "--document-title" => {
+                document_title = arguments.get(index + 1).cloned().unwrap_or_default();
+                index += 2;
+            }
+            "--parent-hwnd" => {
+                parent_hwnd = arguments.get(index + 1).cloned().unwrap_or_default();
+                index += 2;
+            }
+            _ => index += 1,
         }
     }
-    Launch { document }
+    Launch {
+        document,
+        document_id,
+        document_title,
+        parent_hwnd,
+    }
 }
 
 /// A per-user writable directory. The application may live in Program Files,
@@ -74,6 +100,44 @@ fn document_title(document: &str) -> String {
     }
 }
 
+fn window_title(launch: &Launch) -> String {
+    format_window_title(&launch.document_title, &launch.document_id, &launch.document)
+}
+
+fn format_window_title(title: &str, document_id: &str, document: &str) -> String {
+    let configured = title.trim();
+    let base = if !configured.is_empty() {
+        configured.to_string()
+    } else {
+        let fallback = document_title(document);
+        fallback
+            .strip_prefix("Mengshee · AI — ")
+            .unwrap_or("Document")
+            .to_string()
+    };
+    let id = document_id
+        .chars()
+        .filter(|character| character.is_ascii_alphanumeric())
+        .take(8)
+        .collect::<String>();
+    if id.is_empty() {
+        format!("Mengshee · AI — {base}")
+    } else {
+        format!("Mengshee · AI — {base} [{id}]")
+    }
+}
+
+fn webview_data_directory(launch: &Launch) -> std::path::PathBuf {
+    let id = launch
+        .document_id
+        .chars()
+        .filter(|character| character.is_ascii_alphanumeric() || *character == '-' || *character == '_')
+        .collect::<String>();
+    data_root()
+        .join("webview")
+        .join(if id.is_empty() { "default".to_string() } else { id })
+}
+
 /// Reads the reader's replies from standard input and hands each one to the
 /// request that is waiting for it.
 fn start_reader() {
@@ -84,6 +148,17 @@ fn start_reader() {
             let Ok(value) = serde_json::from_str::<serde_json::Value>(&line) else {
                 continue;
             };
+            if value["method"].as_str() == Some("documentIdentity") {
+                if let Some(app) = APP_HANDLE.get() {
+                    if let Some(window) = app.get_webview_window("main") {
+                        let title = value["params"]["title"].as_str().unwrap_or_default();
+                        let id = value["params"]["id"].as_str().unwrap_or_default();
+                        let document = LAUNCH.get().map(|launch| launch.document.as_str()).unwrap_or_default();
+                        let _ = window.set_title(&format_window_title(title, id, document));
+                    }
+                }
+                continue;
+            }
             let Some(id) = value["id"].as_u64() else { continue };
             let Some(pending) = PENDING.get() else { continue };
             let sender = pending.lock().ok().and_then(|mut map| map.remove(&id));
@@ -145,6 +220,8 @@ async fn bridge_request(method: String, params: serde_json::Value) -> Result<ser
 #[derive(Serialize)]
 struct WindowInfo {
     document: String,
+    document_id: String,
+    document_title: String,
 }
 
 #[tauri::command]
@@ -153,6 +230,14 @@ fn window_info() -> WindowInfo {
         document: LAUNCH
             .get()
             .map(|launch| launch.document.clone())
+            .unwrap_or_default(),
+        document_id: LAUNCH
+            .get()
+            .map(|launch| launch.document_id.clone())
+            .unwrap_or_default(),
+        document_title: LAUNCH
+            .get()
+            .map(|launch| launch.document_title.clone())
             .unwrap_or_default(),
     }
 }
@@ -170,15 +255,26 @@ fn main() {
     let result = tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![bridge_request, window_info])
         .setup(move |app| {
-            let data_directory = data_root().join("webview");
+            let _ = APP_HANDLE.set(app.handle().clone());
+            let data_directory = webview_data_directory(&launch);
             let _ = std::fs::create_dir_all(&data_directory);
-            match tauri::WebviewWindowBuilder::new(app, "main", tauri::WebviewUrl::App("index.html".into()))
-                .title(document_title(&launch.document))
+            let mut builder = tauri::WebviewWindowBuilder::new(app, "main", tauri::WebviewUrl::App("index.html".into()))
+                .title(window_title(&launch))
                 .inner_size(720.0, 860.0)
-                .data_directory(data_directory)
-                .build()
+                .data_directory(data_directory);
+            #[cfg(windows)]
             {
-                Ok(_) => log("window created"),
+                if let Ok(raw) = launch.parent_hwnd.parse::<isize>() {
+                    if raw != 0 {
+                        builder = builder.owner_raw(windows::Win32::Foundation::HWND(raw as *mut core::ffi::c_void));
+                    }
+                }
+            }
+            match builder.build() {
+                Ok(window) => {
+                    let _ = window.set_focus();
+                    log("window created");
+                }
                 Err(error) => {
                     log(&format!("window error: {error}"));
                     return Err(Box::new(error));
