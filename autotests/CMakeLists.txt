@@ -16,6 +16,13 @@ ecm_add_test(latexsourcepreparationtest.cpp ../part/latexsource.cpp
     LINK_LIBRARIES Qt6::Test Qt6::Gui
 )
 
+if (BUILD_DESKTOP)
+    ecm_add_test(latexnotesizetest.cpp
+        TEST_NAME "latexnotesizetest"
+        LINK_LIBRARIES Qt6::Widgets Qt6::Test okularcore okularpart
+    )
+endif()
+
 macro(add_conf_unittest _source)
   set(_test ${_source} ../part/editdrawingtooldialog.cpp)
   get_filename_component(_name ${_source} NAME_WE)

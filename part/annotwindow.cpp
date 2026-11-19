@@ -58,11 +58,14 @@
 
 // local includes
 #include "core/annotations.h"
+#include "core/annotationframe.h"
 #include "core/document.h"
+#include "core/latexnotegeometry.h"
 #include "core/page.h"
 #include "gui/guiutils.h"
 #include "latexnoteutils.h"
 #include "latexrenderer.h"
+#include "latexsource.h"
 #include "settings.h"
 #include <KMessageBox>
 #include <core/utils.h>
@@ -125,6 +128,38 @@ void disableCaretBlink(QsciScintilla *editor)
 bool latexAnnotation(Okular::Annotation *annotation)
 {
     return LatexNoteUtils::annotationIsLatex(annotation);
+}
+
+bool latexAppearanceNeedsRefresh(const Okular::Annotation *annotation, const Okular::Page *page)
+{
+    if (!annotation || !page)
+        return true;
+    if (GuiUtils::LatexSource::sourceForLayout(annotation->contents()) != annotation->contents())
+        return true;
+
+    const QString appearance = annotation->latexAppearancePdfFileName();
+    const QSizeF pdfSize = GuiUtils::pdfPageSizeInPoints(appearance);
+    if (!pdfSize.isValid() || pdfSize.isEmpty())
+        return true;
+
+    const double padding = LatexNoteUtils::paddingForLatexAnnotation(annotation);
+    double layoutWidth = 0.0;
+    if (const auto *stamp = LatexNoteUtils::annotationAsLatexStampAnnotation(annotation)) {
+        layoutWidth = stamp->latexLayoutWidth();
+        if (!std::isfinite(layoutWidth) || layoutWidth <= 0.0) {
+            layoutWidth = LatexNoteUtils::layoutWidthForLatexTextVisibleWidth(
+                LatexNoteUtils::annotationWidthInPoints(annotation, page), padding);
+        }
+    } else if (const auto *text = LatexNoteUtils::annotationAsLatexTextAnnotation(annotation)) {
+        layoutWidth = LatexNoteUtils::layoutWidthForLatexTextAnnotation(text, page);
+    }
+    const QSizeF expected = Okular::LatexNoteGeometry::visualSizeForContent(pdfSize, layoutWidth, padding);
+    if (!expected.isValid() || expected.isEmpty())
+        return true;
+
+    const QSizeF pageSize(LatexNoteUtils::pageWidthInPoints(page), LatexNoteUtils::pageHeightInPoints(page));
+    const QSizeF actual = Okular::AnnotationFrame::localSize(annotation->boundingRectangle(), pageSize, annotation->appearanceRotation());
+    return qAbs(expected.width() - actual.width()) > 1.0 || qAbs(expected.height() - actual.height()) > 1.0;
 }
 
 #if HAVE_QSCINTILLA
@@ -474,6 +509,10 @@ AnnotWindow::AnnotWindow(QWidget *parent, QRect initialViewportBounds, Okular::A
     setFocusProxy(m_editorWidget);
     m_lastLatexNoteCompileSource = m_annot->contents();
     m_editorWidget->installEventFilter(this);
+    if (latexAnnotation(m_annot) && latexAppearanceNeedsRefresh(m_annot, m_document->page(m_page))) {
+        m_lastLatexNoteCompileSource.clear();
+        QTimer::singleShot(0, this, &AnnotWindow::updateLatexNoteAppearance);
+    }
 
     m_prevCursorPos = editorCursorPosition();
     m_prevAnchorPos = editorAnchorPosition();
@@ -972,7 +1011,12 @@ void AnnotWindow::updateLatexNoteAppearance()
 
     const Okular::Page *page = m_document->page(m_page);
     const QColor textColor = LatexNoteUtils::colorForLatexAnnotation(m_annot);
+    const double frameLayoutWidth = page ? LatexNoteUtils::layoutWidthForLatexTextVisibleWidth(
+        LatexNoteUtils::annotationWidthInPoints(m_annot, page), LatexNoteUtils::paddingForLatexAnnotation(m_annot)) : 0.0;
     if (Okular::TextAnnotation *textAnnotation = LatexNoteUtils::annotationAsLatexTextAnnotation(m_annot)) {
+        double layoutWidth = LatexNoteUtils::layoutWidthForLatexTextAnnotation(textAnnotation, page);
+        if (frameLayoutWidth > layoutWidth + 1.0)
+            layoutWidth = frameLayoutWidth;
         LatexNoteUtils::updateLatexTextAnnotationAppearanceAsync(this,
                                                                  m_document,
                                                                  m_page,
@@ -981,7 +1025,7 @@ void AnnotWindow::updateLatexNoteAppearance()
                                                                  textColor,
                                                                  textAnnotation->style().color(),
                                                                  textAnnotation->inplaceBorderColor(),
-                                                                 LatexNoteUtils::layoutWidthForLatexTextAnnotation(textAnnotation, page),
+                                                                 layoutWidth,
                                                                  textAnnotation->inplaceIntent() != Okular::TextAnnotation::TypeWriter);
     } else if (Okular::StampAnnotation *stampAnnotation = LatexNoteUtils::annotationAsLatexStampAnnotation(m_annot)) {
         Q_UNUSED(page);
@@ -994,6 +1038,9 @@ void AnnotWindow::updateLatexNoteAppearance()
         if (boxed && (!borderColor.isValid() || borderColor.alpha() == 0)) {
             borderColor = textColor;
         }
+        double layoutWidth = stampAnnotation->latexLayoutWidth();
+        if (frameLayoutWidth > layoutWidth + 1.0)
+            layoutWidth = frameLayoutWidth;
         LatexNoteUtils::updateLatexStampAnnotationAppearanceAsync(this,
                                                                   m_document,
                                                                   m_page,
@@ -1002,7 +1049,7 @@ void AnnotWindow::updateLatexNoteAppearance()
                                                                   textColor,
                                                                   fillColor,
                                                                   borderColor,
-                                                                  stampAnnotation->latexLayoutWidth(),
+                                                                  layoutWidth,
                                                                   boxed);
     }
 }
