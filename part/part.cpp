@@ -2091,11 +2091,6 @@ void Part::setWindowTitleFromDocument()
         }
     }
 
-    const QString backend = m_document->generatorBackend();
-    if (!backend.isEmpty()) {
-        title += QStringLiteral(" [%1]").arg(backend);
-    }
-
     if (m_aiBridge) {
         m_aiDocumentTitle = title;
         m_aiBridge->setDocumentIdentity(m_aiDocumentId, title);
