@@ -7,6 +7,7 @@
 #include <QJsonObject>
 #include <QtTest>
 using GuiUtils::LatexSource::requestSetup;
+using GuiUtils::LatexSource::sourceForLayout;
 class LatexSourcePreparationTest : public QObject
 {
     Q_OBJECT
@@ -21,6 +22,17 @@ private Q_SLOTS:
         // Colour setup must not add layout material or alter authored spacing.
         for (const auto &token : {"\\everypar", "\\everydisplay", "\\strut", "\\vbox", "\\noindent", "\\hrule", "\\belowdisplay", "\\vskip"})
             QVERIFY(!red.contains(QString::fromLatin1(token)));
+    }
+    void trailingLayoutBreaks()
+    {
+        QCOMPARE(sourceForLayout(QStringLiteral("a")), QStringLiteral("a"));
+        QCOMPARE(sourceForLayout(QStringLiteral("a\n\n")), QStringLiteral("a"));
+        QCOMPARE(sourceForLayout(QStringLiteral("a\\\\")), QStringLiteral("a"));
+        QCOMPARE(sourceForLayout(QStringLiteral("a\\\\\n\\\\")), QStringLiteral("a"));
+        QCOMPARE(sourceForLayout(QStringLiteral("a\\newline\n")), QStringLiteral("a"));
+        QCOMPARE(sourceForLayout(QStringLiteral("a\\linebreak")), QStringLiteral("a"));
+        // A trailing escaped space is content, not an empty layout line.
+        QCOMPARE(sourceForLayout(QStringLiteral("a\\ ")), QStringLiteral("a\\ "));
     }
     void exportFixtures();
 };

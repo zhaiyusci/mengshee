@@ -33,18 +33,22 @@ public:
         transform.translate(-(rect.left + rect.right) * page.width() / 2, -(rect.top + rect.bottom) * page.height() / 2);
         return transform;
     }
-    // Keep the local layout origin and width when fitting content height.
-    static NormalizedRect withLocalHeight(const NormalizedRect &rect, QSizeF page, int angle, double height)
+    // Keep the local layout origin when fitting content size.
+    static NormalizedRect withLocalSize(const NormalizedRect &rect, QSizeF page, int angle, QSizeF size)
     {
-        if (page.width() <= 0 || page.height() <= 0 || !std::isfinite(height) || height <= 0) return rect;
+        if (page.width() <= 0 || page.height() <= 0 || !std::isfinite(size.width()) || !std::isfinite(size.height()) || size.width() <= 0 || size.height() <= 0) return rect;
         const auto local = localSize(rect, page, angle);
         QTransform rotation;
         rotation.rotate(angle);
         const auto oldBox = rotation.mapRect(QRectF(QPointF(), local));
-        const auto newBox = rotation.mapRect(QRectF(QPointF(), QSizeF(local.width(), height)));
+        const auto newBox = rotation.mapRect(QRectF(QPointF(), size));
         const QPointF origin(rect.left * page.width() - oldBox.left(), rect.top * page.height() - oldBox.top());
         const auto box = newBox.translated(origin);
         return {box.left()/page.width(),box.top()/page.height(),box.right()/page.width(),box.bottom()/page.height()};
+    }
+    static NormalizedRect withLocalHeight(const NormalizedRect &rect, QSizeF page, int angle, double height)
+    {
+        return withLocalSize(rect, page, angle, QSizeF(localSize(rect, page, angle).width(), height));
     }
     static NormalizedPoint mapPoint(NormalizedPoint point, QSizeF page, const QTransform &transform)
     {

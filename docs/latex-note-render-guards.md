@@ -2,9 +2,12 @@
 
 ## Source and block geometry
 
-Mengshee passes the original note source unchanged to StemTeX 0.15.2's
-`stemtex_renderer_render_block`. The SDK owns uniform block layout,
-fixed-width layout, natural display spacing and minimum text-line metrics.
+Mengshee passes the note source to StemTeX 0.15.2's
+`stemtex_renderer_render_block` after removing empty trailing layout lines and
+trailing explicit line-break commands (`\\`, `\newline`, `\linebreak`). Those
+commands only add a blank row at the end of the block; the annotation keeps the
+author's original source. The SDK owns uniform block layout, fixed-width layout,
+natural display spacing and minimum text-line metrics.
 Do not prepend a host colour wrapper, width anchor, strut or paragraph hook:
 that can alter the SDK's paragraph and box layout or add empty vertical space.
 Do not trim authored display skips or crop to glyph outlines.
@@ -163,13 +166,14 @@ tall formulas, multiple paragraphs, Chinese, and inherited/overridden colours.
 
 ## Automatic-height editing policy
 
-Mengshee currently always fits LaTeX note height to the rendered logical height
-plus twice the annotation padding. This is an application editing policy, not
-an obligation of the PDF note format; no fixed/automatic-height mode is stored.
+Mengshee currently fits both the width and height of a LaTeX note to the
+rendered logical size plus twice the annotation padding. The local top-left
+origin is preserved. This is an application editing policy, not an obligation
+of the PDF note format; no fixed/automatic-size mode is stored.
 
 New notes start with `\LaTeX` and render asynchronously without loading a
 prebuilt appearance. Creation, content edits and width reflow fit the local
-frame height while preserving the local top-left origin and width. The pending
+frame width and height while preserving the local top-left origin. The pending
 render uses an empty source appearance so backend registration succeeds without
 synthesizing a stock Draft stamp.
 

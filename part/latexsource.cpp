@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 #include "latexsource.h"
 #include <QColor>
+#include <QStringList>
 
 namespace GuiUtils::LatexSource
 {
@@ -25,5 +26,26 @@ QString requestSetup(const QColor &textColor)
         "\\AddToHookNext{shipout/foreground}{\\special{color pop}}%\n"
         "\\fi%\n")
         .arg(QString::number(color.redF(), 'f', 6), QString::number(color.greenF(), 'f', 6), QString::number(color.blueF(), 'f', 6));
+}
+
+QString sourceForLayout(const QString &source)
+{
+    QString layout = source;
+    const QStringList trailingBreaks = {QStringLiteral("\\\\"), QStringLiteral("\\newline"), QStringLiteral("\\linebreak")};
+    for (;;) {
+        while (layout.endsWith(QLatin1Char('\n')) || layout.endsWith(QLatin1Char('\r')))
+            layout.chop(1);
+        bool removed = false;
+        for (const QString &command : trailingBreaks) {
+            if (layout.endsWith(command)) {
+                layout.chop(command.size());
+                removed = true;
+                break;
+            }
+        }
+        if (!removed)
+            break;
+    }
+    return layout.isEmpty() ? source : layout;
 }
 }

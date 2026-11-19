@@ -41,6 +41,7 @@
 #include "gui/debug_ui.h"
 #include "gui/guiutils.h"
 #include "latexrenderer.h"
+#include "latexsource.h"
 
 namespace
 {
@@ -403,9 +404,9 @@ bool applyRenderedLatexTextAnnotationAppearance(QWidget *parent,
     }
 
     const auto previousRect = textAnnotation->boundingRectangle();
-    const auto updatedRect = Okular::AnnotationFrame::withLocalHeight(previousRect,
-        QSizeF(pageWidthInPoints(page),pageHeightInPoints(page)),textAnnotation->appearanceRotation(),
-        rendered.pdfSizePoints.height()+2*paddingForLatexAnnotation(textAnnotation));
+    const QSizeF visualSize = Okular::LatexNoteGeometry::visualSizeForContent(rendered.pdfSizePoints, layoutWidthPoints, paddingForLatexAnnotation(textAnnotation));
+    const auto updatedRect = Okular::AnnotationFrame::withLocalSize(previousRect,
+        QSizeF(pageWidthInPoints(page),pageHeightInPoints(page)),textAnnotation->appearanceRotation(), visualSize);
     const Okular::TextAnnotation::InplaceIntent targetIntent =
         textAnnotation->inplaceIntent() == Okular::TextAnnotation::Callout ? Okular::TextAnnotation::Callout : (boxed ? Okular::TextAnnotation::Unknown : Okular::TextAnnotation::TypeWriter);
     const double targetBorderWidth = boxed ? qMax(0.0, textAnnotation->style().width()) : 0.0;
@@ -479,9 +480,9 @@ bool applyRenderedLatexStampAnnotationAppearance(QWidget *parent,
     }
 
     const auto previousRect = stampAnnotation->boundingRectangle();
-    const auto updatedRect = Okular::AnnotationFrame::withLocalHeight(previousRect,
-        QSizeF(pageWidthInPoints(page),pageHeightInPoints(page)),stampAnnotation->appearanceRotation(),
-        rendered.pdfSizePoints.height()+2*paddingForLatexAnnotation(stampAnnotation));
+    const QSizeF visualSize = Okular::LatexNoteGeometry::visualSizeForContent(rendered.pdfSizePoints, layoutWidthPoints, paddingForLatexAnnotation(stampAnnotation));
+    const auto updatedRect = Okular::AnnotationFrame::withLocalSize(previousRect,
+        QSizeF(pageWidthInPoints(page),pageHeightInPoints(page)),stampAnnotation->appearanceRotation(), visualSize);
     const double targetBorderWidth = boxed ? qMax(0.0, stampAnnotation->style().width()) : 0.0;
     showRenderWarning(parent, rendered.warning);
     if (rendered.pdfFileName == stampAnnotation->latexAppearancePdfFileName() && updatedRect == stampAnnotation->boundingRectangle() && qAbs(stampAnnotation->latexLayoutWidth() - layoutWidthPoints) < 1e-3 &&
@@ -537,7 +538,8 @@ RenderResult renderAppearancePdf(const QString &latexInput, const QColor &textCo
     GuiUtils::LatexRenderer renderer;
     QString latexOutput;
     QString temporaryPdfFile;
-    const GuiUtils::LatexRenderer::Error errorCode = renderer.renderLatexToPdf(latexInput, textColor, temporaryPdfFile, latexOutput, layoutWidthPoints, fontSizePoints);
+    const QString layoutSource = GuiUtils::LatexSource::sourceForLayout(latexInput);
+    const GuiUtils::LatexRenderer::Error errorCode = renderer.renderLatexToPdf(layoutSource, textColor, temporaryPdfFile, latexOutput, layoutWidthPoints, fontSizePoints);
     if (errorCode != GuiUtils::LatexRenderer::NoError) {
         qCWarning(OkularUiDebug) << "LaTeX note PDF render failed; backend:" << renderer.lastBackendName() << "layout width:" << layoutWidthPoints << "font size:" << fontSizePoints << "error:" << errorCode
                                  << "message:" << latexErrorMessage(errorCode, latexOutput);
@@ -562,7 +564,7 @@ RenderResult renderAppearancePdf(const QString &latexInput, const QColor &textCo
         return result;
     }
 
-    const QString noteBaseName = latexNoteBaseName(latexInput, textColor, layoutWidthPoints, fontSizePoints, renderer.lastBackendName());
+    const QString noteBaseName = latexNoteBaseName(layoutSource, textColor, layoutWidthPoints, fontSizePoints, renderer.lastBackendName());
     const QString appearancePdfFileName = dataDir.filePath(QStringLiteral("%1.pdf").arg(noteBaseName));
     if (QFile::exists(appearancePdfFileName)) {
         QFile::remove(appearancePdfFileName);

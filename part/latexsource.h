@@ -7,5 +7,9 @@ namespace GuiUtils::LatexSource
 {
 // Executed in the worker before the unchanged source reaches its layout box.
 QString requestSetup(const QColor &textColor);
+
+// Drops empty trailing lines and explicit trailing line-break commands.
+// The annotation keeps the author's source; only the layout copy is trimmed.
+QString sourceForLayout(const QString &source);
 }
 #endif
