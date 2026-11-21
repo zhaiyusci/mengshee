@@ -102,6 +102,13 @@ public:
     double height() const;
 
     /**
+     * Physical dimensions in 1/72-inch points, including native orientation
+     * but excluding viewer rotation. These are independent of screen DPI.
+     * Returns an empty size when the page is not attached to a document.
+     */
+    QSizeF sizeInPoints() const;
+
+    /**
      * Returns the ration (height / width) of the page.
      */
     double ratio() const;

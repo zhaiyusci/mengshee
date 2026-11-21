@@ -19,7 +19,9 @@
 #include <QBoxLayout>
 #include <QCloseEvent>
 #include <QDateTime>
+#include <QDir>
 #include <QEvent>
+#include <QFile>
 #include <QFont>
 #include <QFontMetrics>
 #include <QHBoxLayout>
@@ -143,16 +145,7 @@ bool latexAppearanceNeedsRefresh(const Okular::Annotation *annotation, const Oku
         return true;
 
     const double padding = LatexNoteUtils::paddingForLatexAnnotation(annotation);
-    double layoutWidth = 0.0;
-    if (const auto *stamp = LatexNoteUtils::annotationAsLatexStampAnnotation(annotation)) {
-        layoutWidth = stamp->latexLayoutWidth();
-        if (!std::isfinite(layoutWidth) || layoutWidth <= 0.0) {
-            layoutWidth = LatexNoteUtils::layoutWidthForLatexTextVisibleWidth(
-                LatexNoteUtils::annotationWidthInPoints(annotation, page), padding);
-        }
-    } else if (const auto *text = LatexNoteUtils::annotationAsLatexTextAnnotation(annotation)) {
-        layoutWidth = LatexNoteUtils::layoutWidthForLatexTextAnnotation(text, page);
-    }
+    const double layoutWidth = LatexNoteUtils::layoutWidthForLatexAnnotation(annotation, page);
     const QSizeF expected = Okular::LatexNoteGeometry::visualSizeForContent(pdfSize, layoutWidth, padding);
     if (!expected.isValid() || expected.isEmpty())
         return true;
@@ -1011,44 +1004,17 @@ void AnnotWindow::updateLatexNoteAppearance()
 
     const Okular::Page *page = m_document->page(m_page);
     const QColor textColor = LatexNoteUtils::colorForLatexAnnotation(m_annot);
-    const double frameLayoutWidth = page ? LatexNoteUtils::layoutWidthForLatexTextVisibleWidth(
-        LatexNoteUtils::annotationWidthInPoints(m_annot, page), LatexNoteUtils::paddingForLatexAnnotation(m_annot)) : 0.0;
-    if (Okular::TextAnnotation *textAnnotation = LatexNoteUtils::annotationAsLatexTextAnnotation(m_annot)) {
-        double layoutWidth = LatexNoteUtils::layoutWidthForLatexTextAnnotation(textAnnotation, page);
-        if (frameLayoutWidth > layoutWidth + 1.0)
-            layoutWidth = frameLayoutWidth;
-        LatexNoteUtils::updateLatexTextAnnotationAppearanceAsync(this,
-                                                                 m_document,
-                                                                 m_page,
-                                                                 annotationUniqueName,
-                                                                 latexSource,
-                                                                 textColor,
-                                                                 textAnnotation->style().color(),
-                                                                 textAnnotation->inplaceBorderColor(),
-                                                                 layoutWidth,
-                                                                 textAnnotation->inplaceIntent() != Okular::TextAnnotation::TypeWriter);
-    } else if (Okular::StampAnnotation *stampAnnotation = LatexNoteUtils::annotationAsLatexStampAnnotation(m_annot)) {
-        Q_UNUSED(page);
+    const double layoutWidth = LatexNoteUtils::layoutWidthForLatexAnnotation(m_annot, page);
+    if (Okular::StampAnnotation *stampAnnotation = LatexNoteUtils::annotationAsLatexStampAnnotation(m_annot)) {
         const bool boxed = stampAnnotation->latexNoteType() != Okular::Annotation::LatexNotePlain;
-        QColor fillColor = boxed ? stampAnnotation->latexFillColor() : Qt::transparent;
-        if (boxed && (!fillColor.isValid() || fillColor.alpha() == 0)) {
-            fillColor = Qt::yellow;
-        }
-        QColor borderColor = boxed ? stampAnnotation->latexBorderColor() : Qt::transparent;
-        if (boxed && (!borderColor.isValid() || borderColor.alpha() == 0)) {
-            borderColor = textColor;
-        }
-        double layoutWidth = stampAnnotation->latexLayoutWidth();
-        if (frameLayoutWidth > layoutWidth + 1.0)
-            layoutWidth = frameLayoutWidth;
         LatexNoteUtils::updateLatexStampAnnotationAppearanceAsync(this,
                                                                   m_document,
                                                                   m_page,
                                                                   annotationUniqueName,
                                                                   latexSource,
                                                                   textColor,
-                                                                  fillColor,
-                                                                  borderColor,
+                                                                  LatexNoteUtils::fillColorForLatexAnnotation(stampAnnotation),
+                                                                  LatexNoteUtils::borderColorForLatexAnnotation(stampAnnotation),
                                                                   layoutWidth,
                                                                   boxed);
     }

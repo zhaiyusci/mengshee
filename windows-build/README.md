@@ -168,6 +168,10 @@ windows-build-workspace\dist\mengshee-<version>\Mengshee-<version>-Setup.exe
 
 ## Running The Build Before Packaging
 
+Keep `VERSION.txt` unchanged during unreleased development and staging iterations.
+Distinguish staging snapshots by their directory names; change the version only
+when preparing an actual release.
+
 The install tree and the package stage are complete runtimes, so a developer can
 start one and try a change before it is packaged:
 

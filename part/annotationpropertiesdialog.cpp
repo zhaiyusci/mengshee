@@ -36,34 +36,9 @@ struct LatexStampRenderState {
     QColor textColor;
     QColor fillColor;
     QColor borderColor;
-    double borderWidth = 0.0;
     double padding = Okular::LatexNoteGeometry::defaultPaddingPoints();
     double fontSize = 0.0;
 };
-
-QColor validLatexStampTextColor(const Okular::StampAnnotation *annotation)
-{
-    const QColor textColor = annotation ? annotation->latexTextColor() : QColor();
-    return textColor.isValid() && textColor.alpha() != 0 ? textColor : Qt::black;
-}
-
-QColor validLatexStampFillColor(const Okular::StampAnnotation *annotation, bool boxed)
-{
-    if (!boxed) {
-        return Qt::transparent;
-    }
-    const QColor fillColor = annotation ? annotation->latexFillColor() : QColor();
-    return fillColor.isValid() && fillColor.alpha() != 0 ? fillColor : Qt::yellow;
-}
-
-QColor validLatexStampBorderColor(const Okular::StampAnnotation *annotation, bool boxed)
-{
-    if (!boxed) {
-        return Qt::transparent;
-    }
-    const QColor borderColor = annotation ? annotation->latexBorderColor() : QColor();
-    return borderColor.isValid() && borderColor.alpha() != 0 ? borderColor : validLatexStampTextColor(annotation);
-}
 
 LatexStampRenderState latexStampRenderState(const Okular::StampAnnotation *annotation)
 {
@@ -74,10 +49,9 @@ LatexStampRenderState latexStampRenderState(const Okular::StampAnnotation *annot
 
     state.latex = true;
     state.boxed = annotation->latexNoteType() != Okular::Annotation::LatexNotePlain;
-    state.textColor = validLatexStampTextColor(annotation);
-    state.fillColor = validLatexStampFillColor(annotation, state.boxed);
-    state.borderColor = validLatexStampBorderColor(annotation, state.boxed);
-    state.borderWidth = state.boxed ? qMax(0.0, annotation->style().width()) : 0.0;
+    state.textColor = LatexNoteUtils::colorForLatexAnnotation(annotation);
+    state.fillColor = LatexNoteUtils::fillColorForLatexAnnotation(annotation);
+    state.borderColor = LatexNoteUtils::borderColorForLatexAnnotation(annotation);
     state.padding = LatexNoteUtils::paddingForLatexAnnotation(annotation);
     state.fontSize = LatexNoteUtils::fontSizeForLatexAnnotation(annotation);
     return state;
@@ -274,6 +248,7 @@ void AnnotsPropertiesDialog::slotapply()
 
     const auto *stampBefore = LatexNoteUtils::annotationAsLatexStampAnnotation(m_annot);
     const LatexStampRenderState latexRenderStateBefore = latexStampRenderState(stampBefore);
+    const double previousLayoutWidth = LatexNoteUtils::layoutWidthForLatexAnnotation(stampBefore, m_document->page(m_page));
 
     m_document->prepareToModifyAnnotationProperties(m_annot);
     m_annot->setAuthor(AuthorEdit->text());
@@ -288,8 +263,10 @@ void AnnotsPropertiesDialog::slotapply()
         const LatexStampRenderState latexRenderStateAfter = latexStampRenderState(stampAnnotation);
         bool appearanceUpdated = false;
         if (latexStampRenderStateChanged(latexRenderStateBefore, latexRenderStateAfter)) {
-            const Okular::Page *page = m_document->page(m_page);
-            const double layoutWidth = LatexNoteUtils::layoutWidthForLatexTextVisibleWidth(LatexNoteUtils::annotationWidthInPoints(stampAnnotation, page), latexRenderStateAfter.padding);
+            // Preserve the paragraph width on style/font edits. Padding changes
+            // redistribute space within the existing frame, without folding
+            // the appearance PDF's preview border into the paragraph.
+            const double layoutWidth = qMax(1.0, previousLayoutWidth + 2.0 * (latexRenderStateBefore.padding - latexRenderStateAfter.padding));
             stampAnnotation->setLatexLayoutWidth(layoutWidth);
             appearanceUpdated = LatexNoteUtils::updateLatexStampAnnotationAppearance(this,
                                                                                     m_document,

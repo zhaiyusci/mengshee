@@ -93,16 +93,6 @@ bool clipboardFormatVersionSupported(const QDomElement &root)
     return versionIsNumber && clipboardFormatVersion == AnnotationPopup::annotationClipboardFormatVersion;
 }
 
-Okular::TextAnnotation *latexTextAnnotation(Okular::Annotation *annotation)
-{
-    return LatexNoteUtils::annotationAsLatexTextAnnotation(annotation);
-}
-
-Okular::StampAnnotation *latexStampAnnotation(Okular::Annotation *annotation)
-{
-    return LatexNoteUtils::annotationAsLatexStampAnnotation(annotation);
-}
-
 void translateAnnotationForPaste(Okular::Annotation *annotation, const Okular::NormalizedPoint &offset)
 {
     std::array<Okular::NormalizedPoint, 3> calloutPoints;
@@ -182,144 +172,6 @@ QString templateReferenceText()
                  "${pad(pageNumber, 2)}\n"
                  "${roman(pageNumber)}\n"
                  "${upperRoman(pageNumber)}");
-}
-
-QColor latexTextColorForTextAnnotation(const Okular::TextAnnotation *annotation)
-{
-    if (!annotation) {
-        return Qt::black;
-    }
-
-    QColor textColor = annotation->textColor();
-    if (!textColor.isValid() || textColor.alpha() == 0) {
-        textColor = Qt::black;
-    }
-    return textColor;
-}
-
-QColor latexFillColorForTextAnnotation(const Okular::TextAnnotation *annotation)
-{
-    if (!annotation || annotation->inplaceIntent() == Okular::TextAnnotation::TypeWriter) {
-        return Qt::transparent;
-    }
-
-    QColor fillColor = annotation->style().color();
-    if (!fillColor.isValid()) {
-        fillColor = Qt::yellow;
-    }
-    return fillColor;
-}
-
-QColor latexBorderColorForTextAnnotation(const Okular::TextAnnotation *annotation)
-{
-    if (!annotation || annotation->inplaceIntent() == Okular::TextAnnotation::TypeWriter) {
-        return Qt::transparent;
-    }
-
-    QColor borderColor = annotation->inplaceBorderColor();
-    if (!borderColor.isValid()) {
-        borderColor = latexTextColorForTextAnnotation(annotation);
-    }
-    return borderColor;
-}
-
-bool latexNoteBoxedForTextAnnotation(const Okular::TextAnnotation *annotation)
-{
-    return annotation && annotation->inplaceIntent() != Okular::TextAnnotation::TypeWriter;
-}
-
-bool latexTextAnnotationSupportsFrameToggle(const Okular::TextAnnotation *annotation)
-{
-    return annotation && annotation->inplaceIntent() != Okular::TextAnnotation::Callout;
-}
-
-bool latexStampAnnotationBoxed(const Okular::StampAnnotation *annotation)
-{
-    return annotation && annotation->latexNoteType() != Okular::Annotation::LatexNotePlain;
-}
-
-QColor latexTextColorForStampAnnotation(const Okular::StampAnnotation *annotation)
-{
-    if (!annotation) {
-        return Qt::black;
-    }
-
-    QColor textColor = annotation->latexTextColor();
-    if (!textColor.isValid() || textColor.alpha() == 0) {
-        textColor = Qt::black;
-    }
-    return textColor;
-}
-
-QColor fillColorForLatexStampAnnotation(const Okular::StampAnnotation *annotation, bool boxed)
-{
-    if (!boxed) {
-        return Qt::transparent;
-    }
-
-    QColor fillColor = annotation ? annotation->latexFillColor() : QColor();
-    if (!fillColor.isValid() || fillColor.alpha() == 0) {
-        fillColor = Qt::yellow;
-    }
-    return fillColor;
-}
-
-QColor borderColorForLatexStampAnnotation(const Okular::StampAnnotation *annotation, bool boxed)
-{
-    if (!boxed) {
-        return Qt::transparent;
-    }
-
-    QColor borderColor = annotation ? annotation->latexBorderColor() : QColor();
-    if (!borderColor.isValid() || borderColor.alpha() == 0) {
-        borderColor = latexTextColorForStampAnnotation(annotation);
-    }
-    return borderColor;
-}
-
-double latexTextAnnotationLayoutWidth(const Okular::TextAnnotation *annotation, const Okular::Page *page)
-{
-    return LatexNoteUtils::layoutWidthForLatexTextAnnotation(annotation, page);
-}
-
-QColor fillColorForLatexTextAnnotation(const Okular::TextAnnotation *annotation, bool boxed)
-{
-    if (!boxed) {
-        return Qt::transparent;
-    }
-
-    QColor fillColor = annotation ? annotation->style().color() : QColor();
-    if (!fillColor.isValid() || fillColor.alpha() == 0) {
-        fillColor = Qt::yellow;
-    }
-    return fillColor;
-}
-
-QColor borderColorForLatexTextAnnotation(const Okular::TextAnnotation *annotation, bool boxed)
-{
-    if (!boxed) {
-        return Qt::transparent;
-    }
-
-    QColor borderColor = annotation ? annotation->inplaceBorderColor() : QColor();
-    if (!borderColor.isValid() || borderColor.alpha() == 0) {
-        borderColor = latexTextColorForTextAnnotation(annotation);
-    }
-    return borderColor;
-}
-
-bool updateLatexTextAnnotationAppearance(QWidget *parent,
-                                         Okular::Document *document,
-                                         int pageNumber,
-                                         Okular::TextAnnotation *textAnnotation,
-                                         const QColor &textColor,
-                                         const QColor &fillColor,
-                                         const QColor &borderColor,
-                                         double layoutWidthPoints,
-                                         bool boxed,
-                                         bool prepareModification = true)
-{
-    return LatexNoteUtils::updateLatexTextAnnotationAppearance(parent, document, pageNumber, textAnnotation, textColor, fillColor, borderColor, layoutWidthPoints, boxed, prepareModification);
 }
 
 QTransform pageRotationMatrix(Okular::Rotation rotation)
@@ -443,7 +295,6 @@ void AnnotationPopup::addActionsToMenu(QMenu *menu)
 
         if (onlyOne) {
             addRotationActions(menu, pair);
-            addLatexAnnotationActions(menu, pair);
             addTemplateAnnotationActions(menu, pair);
         }
 
@@ -517,7 +368,6 @@ void AnnotationPopup::addActionsToMenu(QMenu *menu)
             }
 
             addRotationActions(menu, pair);
-            addLatexAnnotationActions(menu, pair);
             addTemplateAnnotationActions(menu, pair);
 
             action = menu->addAction(QIcon::fromTheme(QStringLiteral("list-remove")), i18n("&Delete"));
@@ -618,25 +468,6 @@ void AnnotationPopup::addRotationActions(QMenu *menu, AnnotPagePair pair)
     }
 }
 
-void AnnotationPopup::addLatexAnnotationActions(QMenu *menu, AnnotPagePair pair)
-{
-    if (!menu || !LatexNoteUtils::annotationIsLatex(pair.annotation)) {
-        return;
-    }
-
-    const bool canModify = mDocument->isAllowed(Okular::AllowNotes) && mDocument->canModifyPageAnnotation(pair.annotation);
-    const auto *textAnnotation = latexTextAnnotation(pair.annotation);
-    QAction *action = nullptr;
-
-    if (latexTextAnnotationSupportsFrameToggle(textAnnotation)) {
-        const bool boxed = latexNoteBoxedForTextAnnotation(textAnnotation);
-        action = menu->addAction(QIcon::fromTheme(QStringLiteral("note")), boxed ? i18nc("@action:inmenu", "Remove Inline Note Frame") : i18nc("@action:inmenu", "Use Inline Note Frame"));
-        action->setEnabled(canModify);
-        connect(action, &QAction::triggered, menu, [this, pair] { doToggleLatexAnnotationFrame(pair); });
-    }
-
-}
-
 void AnnotationPopup::addTemplateAnnotationActions(QMenu *menu, AnnotPagePair pair)
 {
     if (!menu || !TemplateNoteUtils::annotationIsTemplateNote(pair.annotation)) {
@@ -717,34 +548,6 @@ void AnnotationPopup::doEditTemplateAnnotation(AnnotPagePair pair)
     textAnnotation->setTemplateNoteData(newTemplateData);
     textAnnotation->setContents(expandedText);
     mDocument->modifyPageAnnotationProperties(pair.pageNumber, textAnnotation);
-}
-
-void AnnotationPopup::doToggleLatexAnnotationFrame(AnnotPagePair pair)
-{
-    if (pair.pageNumber == -1 || !mDocument->isAllowed(Okular::AllowNotes) || !mDocument->canModifyPageAnnotation(pair.annotation)) {
-        return;
-    }
-
-    Okular::TextAnnotation *textAnnotation = latexTextAnnotation(pair.annotation);
-    if (!textAnnotation) {
-        return;
-    }
-
-    const Okular::Page *page = mDocument->page(pair.pageNumber);
-    if (!latexTextAnnotationSupportsFrameToggle(textAnnotation)) {
-        return;
-    }
-
-    const bool boxed = !latexNoteBoxedForTextAnnotation(textAnnotation);
-    updateLatexTextAnnotationAppearance(mParent,
-                                        mDocument,
-                                        pair.pageNumber,
-                                        textAnnotation,
-                                        latexTextColorForTextAnnotation(textAnnotation),
-                                        fillColorForLatexTextAnnotation(textAnnotation, boxed),
-                                        borderColorForLatexTextAnnotation(textAnnotation, boxed),
-                                        latexTextAnnotationLayoutWidth(textAnnotation, page),
-                                        boxed);
 }
 
 void AnnotationPopup::pasteAnnotationToPage(int pageNumber, const Okular::NormalizedPoint *targetPoint)

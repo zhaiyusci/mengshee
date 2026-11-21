@@ -86,10 +86,8 @@ private:
     void doCopyAnnotationText(AnnotPagePair pair);
     void doPasteAnnotation(AnnotPagePair pair);
     void addRotationActions(QMenu *menu, AnnotPagePair pair);
-    void addLatexAnnotationActions(QMenu *menu, AnnotPagePair pair);
     void addTemplateAnnotationActions(QMenu *menu, AnnotPagePair pair);
     void doEditTemplateAnnotation(AnnotPagePair pair);
-    void doToggleLatexAnnotationFrame(AnnotPagePair pair);
     void doRemovePageAnnotation(AnnotPagePair pair);
     void doOpenAnnotationWindow(AnnotPagePair pair);
     void doOpenPropertiesDialog(AnnotPagePair pair);

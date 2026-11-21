@@ -206,6 +206,11 @@ double Page::height() const
     return d->m_height;
 }
 
+QSizeF Page::sizeInPoints() const
+{
+    return d->m_doc ? d->m_doc->m_parent->pageSizeInPoints(d->m_number) : QSizeF();
+}
+
 double Page::ratio() const
 {
     return d->m_height / d->m_width;

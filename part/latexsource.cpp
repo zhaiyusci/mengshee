@@ -30,22 +30,65 @@ QString requestSetup(const QColor &textColor)
 
 QString sourceForLayout(const QString &source)
 {
-    QString layout = source;
-    const QStringList trailingBreaks = {QStringLiteral("\\\\"), QStringLiteral("\\newline"), QStringLiteral("\\linebreak")};
-    for (;;) {
-        while (layout.endsWith(QLatin1Char('\n')) || layout.endsWith(QLatin1Char('\r')))
-            layout.chop(1);
-        bool removed = false;
-        for (const QString &command : trailingBreaks) {
-            if (layout.endsWith(command)) {
-                layout.chop(command.size());
-                removed = true;
-                break;
+    // Only discard a suffix made of ordinary whitespace and line-break tokens.
+    // A control space and a verbatim delimiter are source, not layout padding.
+    qsizetype lastContent = 0;
+    qsizetype i = 0;
+    int groupDepth = 0;
+    bool trailingBreak = false;
+    const auto keep = [&] {
+        lastContent = i;
+        trailingBreak = false;
+    };
+    while (i < source.size()) {
+        const QChar ch = source.at(i++);
+        if (ch == QLatin1Char('%')) {
+            // Keep the comment terminator too, so later TeX cannot be commented out.
+            while (i < source.size() && source.at(i) != QLatin1Char('\n') && source.at(i) != QLatin1Char('\r'))
+                ++i;
+            if (i < source.size() && source.at(i) == QLatin1Char('\r'))
+                ++i;
+            if (i < source.size() && source.at(i) == QLatin1Char('\n'))
+                ++i;
+            keep();
+        } else if (ch == QLatin1Char('\\')) {
+            const qsizetype start = i;
+            if (i < source.size() && source.at(i).isLetter()) {
+                while (i < source.size() && source.at(i).isLetter())
+                    ++i;
+            } else if (i < source.size()) {
+                ++i;
             }
+            const QString command = source.mid(start, i - start);
+            if (command == QLatin1String("verb")) {
+                if (i < source.size() && source.at(i) == QLatin1Char('*'))
+                    ++i;
+                if (i >= source.size() || source.at(i) == QLatin1Char('\n') || source.at(i) == QLatin1Char('\r'))
+                    return source;
+                const qsizetype end = source.indexOf(source.at(i), i + 1);
+                if (end < 0)
+                    return source;
+                i = end + 1;
+                keep();
+            } else if (command == QLatin1String("catcode")) {
+                // Token meanings can change; leave such snippets to TeX unchanged.
+                return source;
+            } else if (groupDepth == 0 && (command == QLatin1String("\\") || command == QLatin1String("newline") || command == QLatin1String("linebreak"))) {
+                trailingBreak = true;
+            } else {
+                keep();
+            }
+        } else if (groupDepth == 0 && (ch == QLatin1Char(' ') || ch == QLatin1Char('\t') || ch == QLatin1Char('\n') || ch == QLatin1Char('\r'))) {
+            trailingBreak |= ch == QLatin1Char('\n') || ch == QLatin1Char('\r');
+        } else {
+            if (ch == QLatin1Char('{'))
+                ++groupDepth;
+            else if (ch == QLatin1Char('}') && groupDepth > 0)
+                --groupDepth;
+            keep();
         }
-        if (!removed)
-            break;
     }
-    return layout.isEmpty() ? source : layout;
+    // Ordinary trailing spaces alone do not add an empty line. Preserve them.
+    return trailingBreak && lastContent > 0 ? source.left(lastContent) : source;
 }
 }

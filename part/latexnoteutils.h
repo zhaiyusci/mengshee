@@ -22,7 +22,6 @@ class Annotation;
 class Document;
 class Page;
 class StampAnnotation;
-class TextAnnotation;
 }
 
 namespace LatexNoteUtils
@@ -36,60 +35,39 @@ struct RenderResult {
     GuiUtils::LatexRenderWarning warning;
 };
 
-Okular::TextAnnotation *annotationAsLatexTextAnnotation(Okular::Annotation *annotation);
-const Okular::TextAnnotation *annotationAsLatexTextAnnotation(const Okular::Annotation *annotation);
 Okular::StampAnnotation *annotationAsLatexStampAnnotation(Okular::Annotation *annotation);
 const Okular::StampAnnotation *annotationAsLatexStampAnnotation(const Okular::Annotation *annotation);
-bool annotationIsLatex(Okular::Annotation *annotation);
 bool annotationIsLatex(const Okular::Annotation *annotation);
 
 QColor colorForLatexAnnotation(const Okular::Annotation *annotation);
+QColor fillColorForLatexAnnotation(const Okular::Annotation *annotation);
+QColor borderColorForLatexAnnotation(const Okular::Annotation *annotation);
 
 double pageWidthInPoints(const Okular::Page *page);
 double pageHeightInPoints(const Okular::Page *page);
-double rectWidthInPoints(const Okular::NormalizedRect &rect, const Okular::Page *page);
-double rectHeightInPoints(const Okular::NormalizedRect &rect, const Okular::Page *page);
 OKULARPART_EXPORT double annotationWidthInPoints(const Okular::Annotation *annotation, const Okular::Page *page);
-double layoutWidthForLatexTextVisibleWidth(double visibleWidthPoints, double padding);
-double layoutWidthForLatexFrame(const Okular::NormalizedRect &frame, const Okular::Page *page, double padding);
 double paddingForLatexAnnotation(const Okular::Annotation *annotation);
 double fontSizeForLatexAnnotation(const Okular::Annotation *annotation);
-double layoutWidthForLatexTextAnnotation(const Okular::TextAnnotation *annotation, const Okular::Page *page);
-QSizeF visualSizeForLatexTextAnnotation(const QSizeF &contentPdfSizePoints, double layoutWidthPoints, double padding);
 
+double layoutWidthForLatexAnnotation(const Okular::Annotation *annotation, const Okular::Page *page);
+Okular::NormalizedRect frameForLatexContent(const Okular::Annotation *annotation,
+                                          const Okular::Page *page,
+                                          const Okular::NormalizedRect &anchorRect,
+                                          const QSizeF &contentPdfSizePoints,
+                                          double layoutWidthPoints);
 RenderResult renderAppearancePdf(const QString &latexInput, const QColor &textColor, double layoutWidthPoints);
 RenderResult renderAppearancePdf(const QString &latexInput, const QColor &textColor, double layoutWidthPoints, bool callout);
 OKULARPART_EXPORT RenderResult renderAppearancePdf(const QString &latexInput, const QColor &textColor, double layoutWidthPoints, bool callout, double fontSizePoints);
-bool updateLatexTextAnnotationAppearance(QWidget *parent,
-                                         Okular::Document *document,
-                                         int pageNumber,
-                                         Okular::TextAnnotation *textAnnotation,
-                                         const QColor &textColor,
-                                         const QColor &fillColor,
-                                         const QColor &borderColor,
-                                         double layoutWidthPoints,
-                                         bool boxed,
-                                         bool prepareModification = true);
-bool updateLatexStampAnnotationAppearance(QWidget *parent,
-                                          Okular::Document *document,
-                                          int pageNumber,
-                                          Okular::StampAnnotation *stampAnnotation,
-                                          const QColor &textColor,
-                                          const QColor &fillColor,
-                                          const QColor &borderColor,
-                                          double layoutWidthPoints,
-                                          bool boxed,
-                                          bool prepareModification = true);
-void updateLatexTextAnnotationAppearanceAsync(QWidget *parent,
-                                              Okular::Document *document,
-                                              int pageNumber,
-                                              const QString &annotationUniqueName,
-                                              const QString &latexInput,
-                                              const QColor &textColor,
-                                              const QColor &fillColor,
-                                              const QColor &borderColor,
-                                              double layoutWidthPoints,
-                                              bool boxed);
+OKULARPART_EXPORT bool updateLatexStampAnnotationAppearance(QWidget *parent,
+                                                             Okular::Document *document,
+                                                             int pageNumber,
+                                                             Okular::StampAnnotation *stampAnnotation,
+                                                             const QColor &textColor,
+                                                             const QColor &fillColor,
+                                                             const QColor &borderColor,
+                                                             double layoutWidthPoints,
+                                                             bool boxed,
+                                                             bool prepareModification = true);
 void updateLatexStampAnnotationAppearanceAsync(QWidget *parent,
                                                Okular::Document *document,
                                                int pageNumber,

@@ -151,6 +151,16 @@ At 90/270 degrees, local layout width maps to the vertical page extent,
 and local frame height maps to the horizontal page extent. The format does
 not prescribe resize handles or an automatic-height editing policy.
 
+Mengshee keeps the paragraph layout width distinct from the rendered PDF's
+width and the padded outer frame. A TeX preview border or overfull content can
+make the PDF wider than the paragraph. Content and font edits reuse the stored
+layout width; only a resize or padding change derives a new width. Subtracting
+padding from an existing outer frame is a fallback for missing layout metadata,
+not a way to recover a valid stored width on every edit. Otherwise repeated
+edits accumulate the PDF's extra width. Editing and dragging share the same
+frame calculation: `max(layoutWidth, pdfWidth) + 2 * padding` by
+`pdfHeight + 2 * padding`, in physical page points.
+
 LaTeX APs and `/LatexNoteData.rotation` encode the content direction defined above.
 Image stamps encode equivalent orientation in their AP and editing metadata.
 Saving/reopening must preserve this without source images or temporary TeX PDFs.

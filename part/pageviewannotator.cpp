@@ -152,9 +152,9 @@ public:
             const double configuredPadding = m_annotElement.attribute(QStringLiteral("latexPadding")).toDouble(&paddingOk);
             const double padding = paddingOk && configuredPadding >= 0.0 ? configuredPadding : Okular::LatexNoteGeometry::defaultPaddingPoints();
             if (ok && layoutWidth > 0.0) {
-                latexSizePoints = LatexNoteUtils::visualSizeForLatexTextAnnotation(latexSizePoints, layoutWidth, padding);
+                latexSizePoints = Okular::LatexNoteGeometry::visualSizeForContent(latexSizePoints, layoutWidth, padding);
             } else {
-                latexSizePoints = LatexNoteUtils::visualSizeForLatexTextAnnotation(latexSizePoints, 0.0, padding);
+                latexSizePoints = Okular::LatexNoteGeometry::visualSizeForContent(latexSizePoints, 0.0, padding);
             }
             if (latexSizePoints.isValid() && !latexSizePoints.isEmpty()) {
                 intrinsicStampSizeInPoints = latexSizePoints;
@@ -172,11 +172,13 @@ public:
     {
         xscale = xScale;
         yscale = yScale;
-        const QSizeF dpi = Okular::Utils::realDpi(nullptr);
-        const double dpiX = dpi.width() > 0.0 && std::isfinite(dpi.width()) ? dpi.width() : 72.0;
-        const double dpiY = dpi.height() > 0.0 && std::isfinite(dpi.height()) ? dpi.height() : 72.0;
-        pagewidth = page->width() * 72.0 / dpiX;
-        pageheight = page->height() * 72.0 / dpiY;
+        QSizeF pageSize = page->sizeInPoints();
+        // Event coordinates follow the currently rotated view. The annotation
+        // is mapped back to canonical page axes when creation finishes.
+        if (int(page->rotation()) % 2)
+            pageSize.transpose();
+        pagewidth = pageSize.width();
+        pageheight = pageSize.height();
         // only proceed if pressing left button
         if (button != Left) {
             return QRect();
@@ -506,7 +508,7 @@ public:
             const int ml = (rcf.bottomRight() - rcf.topLeft()).toPoint().manhattanLength();
             if (latexStamp && !latexAppearancePdfFileName.isEmpty() && ml <= QApplication::startDragDistance()) {
                 const QSizeF pdfSizePoints = GuiUtils::pdfPageSizeInPoints(latexAppearancePdfFileName);
-                const QSizeF visualSizePoints = LatexNoteUtils::visualSizeForLatexTextAnnotation(pdfSizePoints, sa->latexLayoutWidth(), LatexNoteUtils::paddingForLatexAnnotation(sa));
+                const QSizeF visualSizePoints = Okular::LatexNoteGeometry::visualSizeForContent(pdfSizePoints, sa->latexLayoutWidth(), LatexNoteUtils::paddingForLatexAnnotation(sa));
                 if (visualSizePoints.isValid() && !visualSizePoints.isEmpty() && pagewidth > 0.0 && pageheight > 0.0) {
                     rect.right = rect.left + visualSizePoints.width() / pagewidth;
                     rect.bottom = rect.top + visualSizePoints.height() / pageheight;
@@ -555,7 +557,7 @@ public:
             }
             if (latexStamp && pagewidth > 0.0 && pageheight > 0.0) {
                 if (ml > QApplication::startDragDistance()) {
-                    sa->setLatexLayoutWidth(LatexNoteUtils::layoutWidthForLatexTextVisibleWidth(rect.width()*pagewidth,LatexNoteUtils::paddingForLatexAnnotation(sa)));
+                    sa->setLatexLayoutWidth(Okular::LatexNoteGeometry::layoutWidthForVisibleWidth(rect.width()*pagewidth,LatexNoteUtils::paddingForLatexAnnotation(sa)));
                 } else {
                     rect.right = rect.left + (sa->latexLayoutWidth()+2*LatexNoteUtils::paddingForLatexAnnotation(sa))/pagewidth;
                     // The background block render supplies the actual height.
@@ -679,7 +681,7 @@ private:
             bool ok = false;
             const double configuredPadding = m_annotElement.attribute(QStringLiteral("latexPadding")).toDouble(&ok);
             const double padding = ok && configuredPadding >= 0.0 ? configuredPadding : Okular::LatexNoteGeometry::defaultPaddingPoints();
-            const QSizeF visualSizePoints = LatexNoteUtils::visualSizeForLatexTextAnnotation(pdfSizePoints, 0.0, padding);
+            const QSizeF visualSizePoints = Okular::LatexNoteGeometry::visualSizeForContent(pdfSizePoints, 0.0, padding);
             if (visualSizePoints.isValid() && !visualSizePoints.isEmpty()) {
                 boxWidth = qBound(0.01, qMax(boxWidth, visualSizePoints.width() / pagewidth), 1.0);
                 boxHeight = qBound(0.01, qMax(boxHeight, visualSizePoints.height() / pageheight), 1.0);

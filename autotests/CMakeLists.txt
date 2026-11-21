@@ -21,6 +21,12 @@ if (BUILD_DESKTOP)
         TEST_NAME "latexnotesizetest"
         LINK_LIBRARIES Qt6::Widgets Qt6::Test okularcore okularpart
     )
+    set_tests_properties(latexnotesizetest PROPERTIES TIMEOUT 180)
+    ecm_add_test(latexnotedragtest.cpp
+        TEST_NAME "latexnotedragtest"
+        LINK_LIBRARIES Qt6::Widgets Qt6::Test Qt6::Xml okularcore okularpart
+    )
+    set_tests_properties(latexnotedragtest PROPERTIES TIMEOUT 180)
 endif()
 
 macro(add_conf_unittest _source)

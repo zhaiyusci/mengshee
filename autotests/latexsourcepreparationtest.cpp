@@ -28,11 +28,35 @@ private Q_SLOTS:
         QCOMPARE(sourceForLayout(QStringLiteral("a")), QStringLiteral("a"));
         QCOMPARE(sourceForLayout(QStringLiteral("a\n\n")), QStringLiteral("a"));
         QCOMPARE(sourceForLayout(QStringLiteral("a\\\\")), QStringLiteral("a"));
+        QCOMPARE(sourceForLayout(QStringLiteral("a\\\\   \n")), QStringLiteral("a"));
+        QCOMPARE(sourceForLayout(QStringLiteral("a\n  \n")), QStringLiteral("a"));
         QCOMPARE(sourceForLayout(QStringLiteral("a\\\\\n\\\\")), QStringLiteral("a"));
         QCOMPARE(sourceForLayout(QStringLiteral("a\\newline\n")), QStringLiteral("a"));
         QCOMPARE(sourceForLayout(QStringLiteral("a\\linebreak")), QStringLiteral("a"));
-        // A trailing escaped space is content, not an empty layout line.
-        QCOMPARE(sourceForLayout(QStringLiteral("a\\ ")), QStringLiteral("a\\ "));
+        // Spaces can be TeX input; only empty trailing lines are discarded.
+        QCOMPARE(sourceForLayout(QStringLiteral("a  ")), QStringLiteral("a  "));
+    }
+    void significantTrailingTokens()
+    {
+        for (const QString &source : {
+                 QStringLiteral("a\\ "),
+                 QStringLiteral("a\\\t"),
+                 QStringLiteral("\\verb text "),
+                 QStringLiteral("\\verb* text "),
+                 QStringLiteral("\\verb|text\\\\|"),
+                 QStringLiteral("a % comment \\\\ \n"),
+                 QStringLiteral("a\\newlinefoo"),
+                 QStringLiteral("{a\\\\}"),
+                 QStringLiteral("a\u00a0"),
+                 QStringLiteral("a\\"),
+                 QStringLiteral("\\catcode`\\ =12 a \n"),
+             }) {
+            QCOMPARE(sourceForLayout(source), source);
+        }
+        QCOMPARE(sourceForLayout(QStringLiteral("a\\ \n\n")), QStringLiteral("a\\ "));
+        QCOMPARE(sourceForLayout(QStringLiteral("\\verb text \n\n")), QStringLiteral("\\verb text "));
+        QCOMPARE(sourceForLayout(QStringLiteral("a\\\\\\ \n")), QStringLiteral("a\\\\\\ "));
+        QCOMPARE(sourceForLayout(QStringLiteral("a\\\\[4pt]")), QStringLiteral("a\\\\[4pt]"));
     }
     void exportFixtures();
 };
