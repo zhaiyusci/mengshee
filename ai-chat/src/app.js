@@ -22,27 +22,37 @@ const elements = {
 
 const state = {
     document: null,
-    pageTexts: new Map(),
+    pageBlocks: new Map(),
     history: [],
+    context: null,
     busy: false,
     attachments: [],
-    useImages: localStorage.getItem("mengshee-ai-use-images") === "1",
+    useImages: localStorage.getItem("mengshee-ai-use-images") !== "0",
     usage: { prompt: 0, completion: 0, cached: 0, total: 0 }
 };
 
 const maxImagePages = 16;
 
-const systemPrompt = `You answer questions about one PDF. The first user message contains that document page by page:
-text as "[page N] text", or, when the user chose images, images preceded by "PDF page N:".
+const systemPrompt = `You answer questions about one PDF. The first user message contains indexed source text lines,
+grouped by physical PDF page, optionally alongside the corresponding full-page images.
+Each source line is written as an exact block ID, a tab, and its text. The reader already knows its coordinates.
 Use only that document; never use outside knowledge. If it does not contain the answer, say so plainly.
 Answer in the language of the question. Be concrete and direct; do not explain your reasoning.
 
-Format: Markdown prose. Support each claim with an inline link to the document:
-[three or more words copied exactly](pdf:12)
-The link text must be copied character for character from page 12, so the reader can find it
-and highlight it. Do not paraphrase inside the link text.
-If the page also prints a label for that object, add it in quotes:
-[the counterpoise correction is](pdf:7 "(12)")
+Format: Markdown prose. Support each claim with an inclusive source range:
+[evidence description](cite:START_ID..END_ID)
+Use the exact first and last block IDs of the complete evidence passage. The reader includes EVERY
+intervening block in the supplied reading order, including continuation into the next column.
+For one block, use the same ID as both endpoints. Never enumerate individual lines of one passage.
+For genuinely separate passages, use separate links or comma-separated ranges in one link:
+[evidence description](cite:START_ID_1..END_ID_1,START_ID_2..END_ID_2)
+Replace these placeholders with exact IDs from the supplied index. Never invent IDs or coordinates.
+Choose complete sentences, including introductory context and continuation across line breaks.
+Use separate ranges across page headers/footers or unrelated material; do not omit a line inside a sentence.
+Do not cite a header or footer unless it actually provides the evidence. Link text may describe the evidence;
+it is never used to search the PDF. If evidence is visible in an image but has no indexed text line,
+use [第 N 页](pdf:N) and explain that only page-level navigation is available. N is the physical page index,
+not the printed page label. If evidence is absent, say so and do not invent a citation.
 Write formulas as ASCII LaTeX: inline $...$, display $$...$$. Never paste Unicode math letters.
 Follow-up questions continue the same conversation.`;
 
@@ -93,14 +103,34 @@ function accumulateUsage(usage) {
 async function connect() {
     try {
         const result = await request("state");
-        state.document = result.document?.pages ? result.document : null;
-        renderDocumentState();
+        updateDocument(result.document?.pages ? result.document : null);
         return true;
     } catch {
         state.document = null;
         renderDocumentState();
         return false;
     }
+}
+
+function documentKey(document) {
+    return JSON.stringify(document && [document.id, document.path, document.pages, document.revision]);
+}
+
+function updateDocument(next) {
+    if (documentKey(next) !== documentKey(state.document)) {
+        state.pageBlocks.clear();
+        state.context = null;
+        if (state.history.length) {
+            appendMessage("assistant", "<p>文档内容已更新，后续问答将使用更新后的文档，重新开始上下文。</p>");
+        }
+        state.history = [];
+    }
+    state.document = next;
+    renderDocumentState();
+}
+
+function documentParams(params = {}) {
+    return state.document?.revision === undefined ? params : { ...params, revision: state.document.revision };
 }
 
 function renderDocumentState() {
@@ -119,40 +149,52 @@ async function documentText() {
     if (!state.document) {
         return "";
     }
-    // The whole document is sent, so page texts are cached after the first ask.
-    for (let page = 1; page <= state.document.pages; page += 1) {
-        if (state.pageTexts.has(page)) {
-            continue;
-        }
-        const result = await request("pageText", { page });
-        state.pageTexts.set(page, result.text || "");
-    }
     let context = "";
     for (let page = 1; page <= state.document.pages; page += 1) {
-        context += `[page ${page}]\n${state.pageTexts.get(page)}\n\n`;
+        context += await indexedPage(page) + "\n\n";
     }
     return context;
 }
 
+async function indexedPage(page) {
+    if (!state.pageBlocks.has(page)) {
+        const result = await request("pageBlocks", documentParams({ page }));
+        if (result.revision !== undefined && result.revision !== state.document?.revision) {
+            throw new Error("document-changed");
+        }
+        state.pageBlocks.set(page, result.blocks || []);
+    }
+    const blocks = state.pageBlocks.get(page);
+    const lines = blocks.map(block => `${block.id}\t${block.text}`).join("\n");
+    return `Physical PDF page ${page}:\n${lines || "(No indexed text on this page; page-level citations only.)"}`;
+}
+
 async function documentImages() {
-    const pages = Math.min(state.document.pages, maxImagePages);
-    const note = state.document.pages > pages
-        ? `（文档共 ${state.document.pages} 页，这里只发送前 ${pages} 页）`
-        : "";
-    const content = [{
-        type: "text",
-        text: `下面 ${pages} 张图片是一份 PDF 的页面。每页前面有一行「PDF page N:」，紧跟的图片就是该页，引用时使用 N。${note}`
-    }];
+    const current = Math.max(1, Math.min(state.document.pages, state.document.page || 1));
+    // Send the current page first, then nearby pages. Even a byte-limited
+    // request should contain the page the reader is looking at.
+    const pages = Array.from({ length: state.document.pages }, (_, i) => i + 1)
+        .sort((a, b) => Math.abs(a - current) - Math.abs(b - current) || a - b)
+        .slice(0, maxImagePages);
+    const content = [];
+    const sentPages = [];
     let sentBytes = 0;
-    for (let page = 1; page <= pages; page += 1) {
-        const image = await request("pageImage", { page, dpi: 140, format: "jpeg" });
+    for (const page of pages) {
+        const image = await request("pageImage", documentParams({ page, dpi: 140, format: "jpeg" }));
         sentBytes += image.data.length;
         if (sentBytes > 24 * 1024 * 1024) {
             break;
         }
-        content.push({ type: "text", text: `PDF page ${page}:` });
+        content.push({ type: "text", text: await indexedPage(page) });
         content.push({ type: "image_url", image_url: { url: `data:${image.mime};base64,${image.data}` } });
+        sentPages.push(page);
     }
+    if (!sentPages.length) {
+        throw new Error("页面图片超过大小限制，请改用文本模式。");
+    }
+    const note = `文档共 ${state.document.pages} 页，本次发送 ${sentPages.length} 张页面图片：第 ${sentPages.join("、")} 页。`;
+    content.unshift({ type: "text", text: `${note} 每张图片前的「PDF page N:」表示页码，引用时使用 N。` });
+    appendMessage("assistant", `<p>${note}</p>`);
     return content;
 }
 
@@ -210,15 +252,15 @@ function escapeHtml(text) {
 }
 
 // Markdown-lite: enough for answers, then MathJax renders the formulas.
-function renderMarkdown(markdown) {
-    const linkPattern = /\[([^\]]+)\]\(pdf:(\d+)(?:\s+"([^"]*)")?\)/g;
+function renderMarkdown(markdown, revision = state.document?.revision) {
+    const linkPattern = /\[([^\]]+)\]\((?:cite:([A-Za-z0-9_-]+(?:\.\.[A-Za-z0-9_-]+)?(?:,[A-Za-z0-9_-]+(?:\.\.[A-Za-z0-9_-]+)?)*)|pdf:(\d+))\)/g;
     let html = "";
     let last = 0;
     for (const match of markdown.matchAll(linkPattern)) {
         html += escapeHtml(markdown.slice(last, match.index));
-        const page = Number(match[2]);
-        const label = match[3] ? match[3] : "";
-        html += `<a data-page="${page}" data-label="${escapeHtml(label)}">${escapeHtml(match[1])}</a>`;
+        const destination = match[2] ? `data-ranges="${match[2]}"` : `data-page="${Number(match[3])}"`;
+        const version = revision === undefined ? "" : ` data-revision="${escapeHtml(String(revision))}"`;
+        html += `<a ${destination}${version}>${escapeHtml(match[1])}</a>`;
         last = match.index + match[0].length;
     }
     html += escapeHtml(markdown.slice(last));
@@ -263,44 +305,69 @@ async function ask() {
     await runAsk(question || "请描述这张图片。", attachments);
 }
 
-async function firstContent(question, attachments) {
-    if (state.useImages && state.document) {
-        const content = await documentImages();
-        content.push({ type: "text", text: `Question: ${question}` });
-        content.push(...attachmentImages(attachments));
-        return content;
+async function documentContext() {
+    const key = JSON.stringify([documentKey(state.document), state.useImages, state.useImages ? state.document?.page : null]);
+    if (state.context?.key !== key) {
+        const content = state.useImages && state.document ? await documentImages() : await documentText();
+        state.context = { key, content };
     }
-    const text = `${await documentText()}\n\nQuestion: ${question}`;
-    const images = attachmentImages(attachments);
-    return images.length ? [{ type: "text", text }, ...images] : text;
+    return state.context.content;
 }
 
-async function runAsk(question, attachments = [], imagesAllowed = true) {
+async function runAsk(question, attachments = []) {
     state.busy = true;
+    elements.useImages.disabled = true;
     elements.status.textContent = "读取文档…";
     try {
-        if (!state.history.length) {
-            if (state.useImages && imagesAllowed && state.document) {
-                elements.status.textContent = "把页面转成图片…";
+        // Refresh before every question; polling alone can miss a recent edit.
+        const result = await request("state");
+        updateDocument(result.document?.pages ? result.document : null);
+        if (!state.document) throw new Error("没有打开的文档。");
+        const images = attachmentImages(attachments);
+        const pending = { role: "user", content: images.length ? [{ type: "text", text: question }, ...images] : question };
+        const history = [...state.history, pending];
+        const hasAttachments = history.some(message => Array.isArray(message.content) && message.content.some(item => item.type === "image_url"));
+        let payload;
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+            const content = await documentContext();
+            elements.status.textContent = "生成回答…";
+            try {
+                payload = await request("ask", documentParams({
+                    messages: [{ role: "system", content: systemPrompt }, { role: "user", content }, ...history]
+                }));
+                break;
+            } catch (error) {
+                // Document images live outside conversation history, so a
+                // text retry cannot accidentally keep images from older turns.
+                if (attempt || !state.useImages || hasAttachments || !/image|multimodal|content|400/i.test(String(error.message || error))) throw error;
+                state.useImages = false;
+                state.context = null;
+                elements.useImages.checked = false;
+                localStorage.setItem("mengshee-ai-use-images", "0");
+                appendMessage("assistant", "<p>该模型不接受页面图片，已改用文本重试。</p>");
             }
-            state.history.push({ role: "user", content: await firstContent(question, attachments) });
-        } else {
-            const images = attachmentImages(attachments);
-            state.history.push({ role: "user", content: images.length ? [{ type: "text", text: question }, ...images] : question });
         }
-
-        elements.status.textContent = "生成回答…";
-        // Mengshee owns the model settings; this window only sends the conversation.
-        const payload = await request("ask", {
-            messages: [{ role: "system", content: systemPrompt }, ...state.history]
-        });
         const answer = payload?.choices?.[0]?.message?.content?.trim();
         if (!answer) {
             throw new Error(payload?.error?.message || "模型没有返回内容");
         }
-        state.history.push({ role: "assistant", content: answer });
+        state.history = [...history, { role: "assistant", content: answer }];
         const node = appendMessage("assistant", renderMarkdown(answer));
-        await typeset(node);
+        try {
+            await typeset(node);
+        } catch {
+            // Presentation errors must never remove a successful model turn.
+            const warning = document.createElement("div");
+            warning.className = "usage";
+            warning.textContent = "公式排版失败，回答已保留，可查看原始公式。";
+            node.append(warning);
+        }
+        if (payload?.choices?.[0]?.finish_reason === "length") {
+            const warning = document.createElement("div");
+            warning.className = "usage";
+            warning.textContent = "回答达到输出长度限制，内容尚未完整。可以继续追问。";
+            node.append(warning);
+        }
 
         const usage = usageFrom(payload);
         if (usage.prompt || usage.completion) {
@@ -311,112 +378,61 @@ async function runAsk(question, attachments = [], imagesAllowed = true) {
             accumulateUsage(usage);
         }
         elements.status.textContent = "";
-        state.busy = false;
     } catch (error) {
         const message = String(error.message || error);
-        // Some services do not accept page images; retry once as text rather
-        // than failing the question.
-        if (imagesAllowed && state.useImages && !attachments.length && /image|multimodal|content|400/i.test(message)) {
-            state.history.pop();
-            state.useImages = false;
-            elements.useImages.checked = false;
-            localStorage.setItem("mengshee-ai-use-images", "0");
-            appendMessage("assistant", "<p>该模型不接受图片输入，已改用文本重试。</p>");
-            state.busy = false;
-            await runAsk(question, [], false);
-            return;
+        if (message === "document-changed") {
+            state.pageBlocks.clear();
+            state.context = null;
+            state.history = [];
         }
         appendMessage(
             "error",
             escapeHtml(
-                message === "ai-not-configured"
+                message === "document-changed"
+                    ? "文档在问答过程中发生变化，请重新提问。"
+                    : message === "ai-not-configured"
                     ? "请先在 Mengshee 的“通用 AI”设置里配置模型和 API 地址。"
                     : attachments.length && /image|multimodal|400/i.test(message)
                       ? "该模型不接受图片输入，请移除附件后再试。"
                       : message
             )
         );
-        state.history.pop();
         elements.status.textContent = "";
+    } finally {
         state.busy = false;
+        elements.useImages.disabled = false;
     }
 }
 
-// Copying text is something a model does reliably, unlike formatting: when no
-// anchor candidate can be located, ask it for the shortest verbatim quote.
-function parseQuote(content) {
-    const match = content.match(/\{[\s\S]*\}/);
-    if (!match) {
-        return "";
-    }
-    try {
-        const value = JSON.parse(match[0]);
-        return String(value.quote || "").trim();
-    } catch {
-        return "";
-    }
-}
-
-async function repairAnchor(page, claim) {
-    try {
-        const pageText = (await request("pageText", { page })).text || "";
-        if (!pageText.trim()) {
-            return "";
-        }
-        const payload = await request("ask", {
-            messages: [
-                {
-                    role: "system",
-                    content: 'You copy exact text. Reply with JSON only: {"quote":"..."} where quote is the shortest exact substring of the given page text that supports the claim. If nothing supports it, reply {"quote":""}.'
-                },
-                { role: "user", content: `Page text:\n${pageText}\n\nClaim: ${claim}` }
-            ]
-        });
-        return parseQuote(payload?.choices?.[0]?.message?.content || "");
-    } catch {
-        return "";
-    }
-}
-
-// Clicking a citation opens the page in the reader and asks it to highlight
-// the named label or anchor.
+// The citation contains source IDs, not text to search or repair.
 elements.chat.addEventListener("click", async (event) => {
-    const link = event.target.closest("a[data-page]");
+    const link = event.target.closest("a[data-ranges], a[data-block-ids], a[data-page]");
     if (!link) {
         return;
     }
     try {
-        const params = { page: Number(link.dataset.page) };
-        const candidates = [];
-        if (link.dataset.label) {
-            candidates.push(link.dataset.label);
-        }
-        const text = (link.textContent || "").trim();
-        if (text && text.length <= 80) {
-            candidates.push(text);
-        }
-        const parenthesized = text.match(/\(([^()]{1,24})\)/);
-        if (parenthesized) {
-            candidates.push(parenthesized[1]);
-        }
-        const numbered = text.match(/([A-Za-z]?\d+(?:[.\-]\d+)*)/);
-        if (numbered) {
-            candidates.push(numbered[1]);
-        }
-        params.anchors = [...new Set(candidates.filter((value) => value && value.trim()))];
-        let result = await request("jump", params);
-        if (!result.located) {
-            elements.status.textContent = "正在定位原文…";
-            const quote = await repairAnchor(params.page, text);
-            if (quote) {
-                result = await request("jump", { page: params.page, anchors: [quote] });
-            }
-        }
+        const params = link.dataset.ranges !== undefined
+            ? { ranges: link.dataset.ranges.split(",").map(range => {
+                const [startId, endId = startId] = range.split("..");
+                return { startId, endId };
+            }) }
+            : link.dataset.blockIds !== undefined
+            ? { blockIds: [...new Set(link.dataset.blockIds.split(","))] }
+            : { page: Number(link.dataset.page) };
+        if (link.dataset.revision !== undefined) params.revision = link.dataset.revision;
+        const result = await request("jump", params);
         elements.status.textContent = result.located
-            ? `已跳到第 ${params.page} 页并高亮`
-            : `已跳到第 ${params.page} 页`;
+            ? `已跳到第 ${result.page} 页并高亮${result.pages > 1 ? `（共 ${result.pages} 页证据）` : ""}`
+            : `已跳到第 ${result.page} 页（此引用没有文字高亮）`;
     } catch (error) {
-        elements.status.textContent = String(error.message || error);
+        const message = String(error.message || error);
+        elements.status.textContent = message === "document-changed"
+            ? "文档已更新，这条引用已失效，请重新提问。"
+            : message === "citation-range-invalid"
+              ? "这条引用的起止范围无效，请重新提问。"
+            : message === "citation-unavailable"
+              ? "无法定位这条引用：证据编号无效或已失效，请重新提问。"
+              : message;
     }
 });
 
@@ -427,7 +443,7 @@ function resizeQuestion() {
 
 elements.send.addEventListener("click", ask);
 elements.question.addEventListener("keydown", (event) => {
-    if (event.key === "Enter" && !event.shiftKey) {
+    if (event.key === "Enter" && !event.shiftKey && !event.isComposing && event.keyCode !== 229) {
         event.preventDefault();
         ask();
     }
@@ -483,6 +499,8 @@ setInterval(async () => {
     }
     try {
         const result = await request("state");
+        // An ask may have started while this polling request was in flight.
+        if (state.busy) return;
         const next = result.document?.pages ? result.document : null;
         if (!next) {
             missingDocumentCount += 1;
@@ -493,11 +511,7 @@ setInterval(async () => {
         } else {
             missingDocumentCount = 0;
         }
-        if (JSON.stringify(next) !== JSON.stringify(state.document)) {
-            state.document = next;
-            state.pageTexts.clear();
-            renderDocumentState();
-        }
+        updateDocument(next);
     } catch {
         missingDocumentCount += 1;
         if (missingDocumentCount >= 5) {

@@ -161,6 +161,12 @@ edits accumulate the PDF's extra width. Editing and dragging share the same
 frame calculation: `max(layoutWidth, pdfWidth) + 2 * padding` by
 `pdfHeight + 2 * padding`, in physical page points.
 
+Resizing inverts that frame calculation, including the measured difference
+between PDF width and paragraph width. It must not assume a fixed TeX preview
+border or merely subtract the annotation padding: either would make the frame
+jump after releasing the handle. The newly rendered PDF is checked against the
+requested outer width; unbreakable content still keeps its full visible extent.
+
 LaTeX APs and `/LatexNoteData.rotation` encode the content direction defined above.
 Image stamps encode equivalent orientation in their AP and editing metadata.
 Saving/reopening must preserve this without source images or temporary TeX PDFs.

@@ -443,6 +443,7 @@ struct LatexResizeUpdate {
     double visibleWidthPoints = 0.0;
     double layoutWidthPoints = 0.0;
     double fontSizePoints = 0.0;
+    double paddingPoints = 0.0;
     QString pdfFileName;
     QSizeF pdfSize;
 };
@@ -475,6 +476,7 @@ prepareLatexResizeUpdate(Okular::Document *document, int pageNumber, Okular::Ann
     update->pdfSize = GuiUtils::pdfPageSizeInPoints(update->pdfFileName);
     update->layoutWidthPoints = LatexNoteUtils::layoutWidthForLatexAnnotation(annotation, page);
     update->fontSizePoints = LatexNoteUtils::fontSizeForLatexAnnotation(annotation);
+    update->paddingPoints = LatexNoteUtils::paddingForLatexAnnotation(annotation);
     update->callout = annotation->isLatexCallout();
 
     if (!std::isfinite(update->layoutWidthPoints) || update->layoutWidthPoints <= 0.0) {
@@ -482,7 +484,12 @@ prepareLatexResizeUpdate(Okular::Document *document, int pageNumber, Okular::Ann
     }
 
     if (update->adjustsLayoutWidth) {
-        update->layoutWidthPoints = Okular::LatexNoteGeometry::layoutWidthForVisibleWidth(update->visibleWidthPoints, LatexNoteUtils::paddingForLatexAnnotation(annotation));
+        // Invert the same frame calculation used after rendering. The PDF can
+        // contain its own preview border in addition to the annotation padding.
+        // Measure that extra width; it depends on the renderer/profile, not on
+        // a fixed number of points or the display DPI.
+        const double pdfExtraWidth = update->pdfSize.isValid() ? qMax(0.0, update->pdfSize.width() - update->layoutWidthPoints) : 0.0;
+        update->layoutWidthPoints = qMax(1.0, update->visibleWidthPoints - 2.0 * update->paddingPoints - pdfExtraWidth);
         update->needsRender = true;
     } else if (!update->pdfSize.isValid() || update->pdfSize.isEmpty() || update->pdfFileName.isEmpty()) {
         update->needsRender = true;
@@ -645,6 +652,31 @@ bool MouseAnnotation::updateLatexNoteAfterResizeAsync(const AnnotationDescriptio
                 LatexNoteUtils::RenderResult rendered;
                 try {
                     rendered = LatexNoteUtils::renderAppearancePdf(update.contents, update.textColor, update.layoutWidthPoints, update.callout, update.fontSizePoints);
+                    // Recheck against the newly rendered PDF too: its extra
+                    // width may have changed with wrapping or the TeX profile.
+                    // Bound the correction for content that cannot fit (for
+                    // example an unbreakable formula); never clip its PDF.
+                    for (int attempt = 0; update.adjustsLayoutWidth && attempt < 2 && rendered.ok && rendered.errorMessage.isEmpty(); ++attempt) {
+                        const double width = Okular::LatexNoteGeometry::visualSizeForContent(rendered.pdfSizePoints, update.layoutWidthPoints, update.paddingPoints).width();
+                        const double error = width - update.visibleWidthPoints;
+                        if (qAbs(error) < 0.02) {
+                            break; // PDF page boxes are rounded to hundredths of a point.
+                        }
+                        const double correctedWidth = qMax(1.0, update.layoutWidthPoints - error);
+                        if (qAbs(correctedWidth - update.layoutWidthPoints) < 0.02) {
+                            break;
+                        }
+                        auto corrected = LatexNoteUtils::renderAppearancePdf(update.contents, update.textColor, correctedWidth, update.callout, update.fontSizePoints);
+                        if (!corrected.ok || !corrected.errorMessage.isEmpty()) {
+                            break;
+                        }
+                        const double correctedFrameWidth = Okular::LatexNoteGeometry::visualSizeForContent(corrected.pdfSizePoints, correctedWidth, update.paddingPoints).width();
+                        if (qAbs(correctedFrameWidth - update.visibleWidthPoints) >= qAbs(error)) {
+                            break;
+                        }
+                        update.layoutWidthPoints = correctedWidth;
+                        rendered = std::move(corrected);
+                    }
                 } catch (const std::exception &exception) {
                     rendered.errorMessage = i18n("LaTeX rendering failed unexpectedly: %1", QString::fromLocal8Bit(exception.what()));
                     qCCritical(OkularUiDebug) << rendered.errorMessage;

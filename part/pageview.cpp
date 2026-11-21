@@ -448,6 +448,7 @@ public:
 
     // view layout (columns in Settings), zoom and mouse
     PageView::ZoomMode zoomMode = PageView::ZoomFitWidth;
+    bool citationCentering = false;
     float zoomFactor = 1.0;
     QPoint mouseGrabOffset;
     QPointF mousePressPos;
@@ -2721,6 +2722,9 @@ void PageView::createAnnotationsVideoWidgets(PageViewItem *item, const QList<Oku
 // BEGIN DocumentObserver inherited methods
 void PageView::notifySetup(const QList<Okular::Page *> &pageSet, int setupFlags)
 {
+    if (setupFlags & Okular::DocumentObserver::DocumentChanged) {
+        d->citationCentering = false;
+    }
     const QString oldReadingIdentity = d->items.value(d->currentDisplayIndex) ? d->items[d->currentDisplayIndex]->readingIdentity : QString();
     // Drop editor previews before any PageViewItem is rebound or destroyed.
     // Do not run cursor hit testing against the previous document's items here.
@@ -8093,6 +8097,24 @@ void PageView::slotRelayoutPages()
 #endif
     }
 
+    // A citation may be near an edge of the first/last page, or anywhere on a
+    // page that fits entirely in the viewport. Leave half a viewport around
+    // the layout so scrollbar clamping cannot move its requested center.
+    // Keep this space while reading the document; removing it on the next
+    // layout would make the citation jump back again.
+    if (d->citationCentering) {
+        const int marginX = viewportWidth / 2;
+        const int marginY = viewportHeight / 2;
+        for (PageViewItem *item : std::as_const(d->items)) {
+            if (item->isVisible()) {
+                const QRect geometry = item->croppedGeometry();
+                item->moveTo(geometry.left() + marginX, geometry.top() + marginY);
+            }
+        }
+        fullWidth = qMax(fullWidth, viewportWidth) + 2 * marginX;
+        fullHeight = qMax(fullHeight, viewportHeight) + 2 * marginY;
+    }
+
     delete[] colWidth;
     delete[] rowHeight;
 
@@ -8896,6 +8918,15 @@ void PageView::goToDocumentViewport(const Okular::DocumentViewport &viewport, bo
         }
     }
     setDocumentViewport(viewport, nullptr, smoothMove, updateHistory);
+}
+
+void PageView::goToCenteredDocumentViewport(const Okular::DocumentViewport &viewport)
+{
+    if (viewport.rePos.enabled && !d->citationCentering) {
+        d->citationCentering = true;
+        d->dirtyLayout = true;
+    }
+    goToDocumentViewport(viewport, false);
 }
 
 void PageView::restoreReadingHistory(int direction)

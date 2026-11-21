@@ -77,6 +77,75 @@ QList<Okular::NormalizedRect> mergeLineRectangles(const QList<Okular::Normalized
 }
 }
 
+QList<TextBlock> textBlocks(const Okular::Page *page)
+{
+    QList<TextBlock> blocks;
+    if (!page) {
+        return blocks;
+    }
+    TextBlock block;
+    Okular::NormalizedRect previous;
+    bool separated = false;
+    const auto flush = [&] {
+        if (!block.text.trimmed().isEmpty()) {
+            block.text = block.text.trimmed();
+            blocks.append(block);
+        }
+        block = TextBlock();
+        separated = false;
+    };
+    const auto entities = page->words(nullptr, Okular::TextPage::AnyPixelTextAreaInclusionBehaviour);
+    for (const auto &entity : entities) {
+        const QString raw = entity.text();
+        const QString text = raw.simplified();
+        const auto rectangle = entity.area();
+        if (text.isEmpty()) {
+            if (raw.contains(QLatin1Char('\n'))) {
+                flush();
+            } else {
+                separated = true;
+            }
+            continue;
+        }
+        if (rectangle.isNull()) {
+            continue;
+        }
+        const double height = rectangle.bottom - rectangle.top;
+        if (!block.text.isEmpty()) {
+            const double previousHeight = previous.bottom - previous.top;
+            const double overlap = std::min(previous.bottom, rectangle.bottom) - std::max(previous.top, rectangle.top);
+            const double gap = rectangle.left - previous.right;
+            // Preserve reading order and never join separate columns, lines or footers.
+            if (overlap <= 0.5 * std::min(height, previousHeight)
+                || gap > 2.0 * std::max(height, previousHeight)
+                || rectangle.right < previous.left) {
+                flush();
+            } else {
+                const bool bothCjk = isCjkCharacter(block.text.back()) && isCjkCharacter(text.front());
+                if (separated || raw.front().isSpace() || (gap > 0.18 * height && !bothCjk)) {
+                    block.text += QLatin1Char(' ');
+                }
+            }
+        }
+        if (block.text.isEmpty()) {
+            block.rectangle = rectangle;
+        } else {
+            block.rectangle.left = std::min(block.rectangle.left, rectangle.left);
+            block.rectangle.top = std::min(block.rectangle.top, rectangle.top);
+            block.rectangle.right = std::max(block.rectangle.right, rectangle.right);
+            block.rectangle.bottom = std::max(block.rectangle.bottom, rectangle.bottom);
+        }
+        block.text += text;
+        previous = rectangle;
+        separated = raw.back().isSpace();
+        if (raw.endsWith(QLatin1Char('\n'))) {
+            flush();
+        }
+    }
+    flush();
+    return blocks;
+}
+
 QList<Token> tokensWithPositions(const QString &text)
 {
     QList<Token> tokens;
@@ -457,7 +526,11 @@ QList<Okular::NormalizedRect> Index::locate(int page, const QString &quote, QStr
 {
     // Flatten the page into one glyph sequence. Matching then tolerates the
     // differences that survive between a model's quote and a PDF text layer:
-    // Unicode form (NFKC), dash variants, and any amount of whitespace.
+    // dash variants and whitespace. Keep the word separators inserted by the
+    // index: concatenating glyph text turns "Page 2" into "Page2".
+    if (locatedText) {
+        locatedText->clear();
+    }
     QList<Glyph> glyphs;
     QList<int> glyphAtOffset;
     QString text;
@@ -469,13 +542,11 @@ QList<Okular::NormalizedRect> Index::locate(int page, const QString &quote, QStr
             text += QLatin1Char(' ');
             glyphAtOffset.append(-1);
         }
-        for (const Glyph &glyph : passage.glyphs) {
-            const int index = glyphs.size();
-            glyphs.append(glyph);
-            for (const QChar character : glyph.text) {
-                text += character;
-                glyphAtOffset.append(index);
-            }
+        const int base = glyphs.size();
+        glyphs.append(passage.glyphs);
+        text += passage.text;
+        for (int glyph : passage.glyphAtOffset) {
+            glyphAtOffset.append(glyph < 0 ? -1 : base + glyph);
         }
     }
     if (text.isEmpty() || quote.trimmed().isEmpty()) {
@@ -550,6 +621,10 @@ QList<Okular::NormalizedRect> Index::locate(int page, const QString &quote, QStr
             const int length = std::min<int>(needle.size(), haystack.size() - at);
             const auto span = spanFrom(offsets, at, length);
             if (span.first >= 0) {
+                // A numeric label must not match inside a page number such as
+                // 12 or 20; use boundaries from the original spaced text.
+                if (needle.front().isLetterOrNumber() && span.first > 0 && text.at(span.first - 1).isLetterOrNumber()) continue;
+                if (needle.back().isLetterOrNumber() && span.second + 1 < text.size() && text.at(span.second + 1).isLetterOrNumber()) continue;
                 spans.append({span.first, span.second});
             }
         }
@@ -605,65 +680,42 @@ QList<Okular::NormalizedRect> Index::locate(int page, const QString &quote, QStr
         const QString tightNeedle = normalize(quote, nullptr, true);
         if (tightNeedle.size() >= 6) {
             candidates = collect(tight, tightNeedle, tightOffsets);
-            if (candidates.isEmpty()) {
-                // Models often drop or add a character at the edges; match a
-                // solid inner prefix instead of giving up.
-                const int prefix = std::max<int>(6, tightNeedle.size() * 3 / 5);
-                candidates = collect(tight, tightNeedle.left(prefix), tightOffsets);
-            }
         }
     }
     if (!candidates.isEmpty()) {
-        QPair<int, int> best = candidates.first();
+        QPair<int, int> best{-1, -1};
         double bestScore = -1.0;
         for (const auto &span : std::as_const(candidates)) {
+            const auto rectangles = rectanglesFor(span.first, span.second);
+            bool connected = !rectangles.isEmpty();
+            for (int i = 1; i < rectangles.size(); ++i) {
+                const auto &previous = rectangles.at(i - 1);
+                const auto &current = rectangles.at(i);
+                const double lineHeight = std::max(previous.height(), current.height());
+                if (current.top - previous.bottom > 3 * lineHeight) {
+                    connected = false;
+                    break;
+                }
+            }
+            // Page text includes running headers/footers. A quote spanning a
+            // large blank region is not one passage, even if its text matches.
+            if (!connected) continue;
             const double score = lineEndingScore(span);
             if (score > bestScore) {
                 bestScore = score;
                 best = span;
             }
         }
+        if (best.first < 0) return {};
         if (locatedText) {
             *locatedText = text.mid(best.first, best.second - best.first + 1);
         }
         return rectanglesFor(best.first, best.second);
     }
 
-    // Last resort: the window of the page that shares the most terms with the
-    // quote. The returned text is page text, never the model's wording.
-    const QList<Token> pageTokens = tokensWithPositions(text);
-    const QList<Token> quoteTokens = tokensWithPositions(quote);
-    if (quoteTokens.isEmpty() || pageTokens.isEmpty()) {
-        return {};
-    }
-    QSet<QString> quoteTerms;
-    for (const Token &token : quoteTokens) {
-        quoteTerms.insert(token.text);
-    }
-    const int windowSize = std::min<int>(pageTokens.size(), std::max<int>(quoteTokens.size(), 12));
-    int bestStart = -1;
-    int bestScore = 0;
-    for (int start = 0; start + windowSize <= pageTokens.size(); ++start) {
-        int score = 0;
-        for (int index = start; index < start + windowSize; ++index) {
-            if (quoteTerms.contains(pageTokens.at(index).text)) {
-                ++score;
-            }
-        }
-        if (score > bestScore) {
-            bestScore = score;
-            bestStart = start;
-        }
-    }
-    if (bestStart < 0 || bestScore < std::max(2, int(quoteTerms.size() / 3))) {
-        return {};
-    }
-    const int firstOffset = pageTokens.at(bestStart).start;
-    const int lastOffset = pageTokens.at(bestStart + windowSize - 1).start + pageTokens.at(bestStart + windowSize - 1).length - 1;
-    if (locatedText) {
-        *locatedText = text.mid(firstOffset, lastOffset - firstOffset + 1);
-    }
-    return rectanglesFor(firstOffset, lastOffset);
+    // A citation is evidence, not a keyword search. Let the caller repair the
+    // quote rather than highlighting an approximate window (including footers).
+    return {};
 }
 
 bool Index::mostlyCjk() const

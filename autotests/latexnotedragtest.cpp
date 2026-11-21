@@ -31,9 +31,17 @@ private Q_SLOTS:
     {
         QTest::addColumn<double>("padding");
         QTest::addColumn<bool>("leftHandle");
+        QTest::addColumn<int>("previewBorder");
+        QTest::addColumn<int>("appearanceRotation");
         for (double padding : {3.0, 12.0}) {
-            for (bool left : {false, true})
-                QTest::newRow(qPrintable(QStringLiteral("padding-%1-%2").arg(padding).arg(left ? "left" : "right"))) << padding << left;
+            for (bool left : {false, true}) {
+                for (int border : {1, 4}) {
+                    for (int rotation : {0, 90}) {
+                        QTest::newRow(qPrintable(QStringLiteral("padding-%1-%2-border-%3-rotation-%4").arg(padding).arg(left ? "left" : "right").arg(border).arg(rotation)))
+                            << padding << left << border << rotation;
+                    }
+                }
+            }
         }
     }
 
@@ -43,6 +51,8 @@ private Q_SLOTS:
             QSKIP("Set OKULAR_TEST_LATEX_ASYNC=1 to run native drag/reflow integration tests");
         QFETCH(double, padding);
         QFETCH(bool, leftHandle);
+        QFETCH(int, previewBorder);
+        QFETCH(int, appearanceRotation);
         QTemporaryDir directory;
         QVERIFY(directory.isValid());
         qputenv("MENGSHEE_LATEX_TEMP_ROOT", directory.filePath(QStringLiteral("appearances")).toUtf8());
@@ -63,13 +73,14 @@ private Q_SLOTS:
         auto *document = part.m_document;
         auto *note = new StampAnnotation;
         note->setBoundingRectangle({.2, .2, .75, .4});
-        note->setContents(QStringLiteral("\\LaTeX{} national scientific foundation of China"));
+        note->setContents(QStringLiteral("\\global\\PreviewBorder=%1pt \\LaTeX{} national scientific foundation of China").arg(previewBorder));
         note->setOkularLatex(true);
         note->setLatexNoteType(Annotation::LatexNoteBoxed);
         note->setLatexPadding(padding);
         note->setLatexFontSize(12);
         note->style().setWidth(1);
         document->addPageAnnotation(0, note);
+        note->setAppearanceRotation(appearanceRotation);
         LatexNoteUtils::RenderResult rendered;
         QElapsedTimer timer;
         timer.start();
@@ -79,6 +90,7 @@ private Q_SLOTS:
             QTest::qWait(100);
         } while (timer.elapsed() < 60000);
         QVERIFY2(rendered.ok && rendered.errorMessage.isEmpty(), qPrintable(rendered.errorMessage));
+        QVERIFY2(rendered.pdfSizePoints.width() - 300.0 > previewBorder * 1.9, "The fixture must exercise the requested PDF preview border");
         QVERIFY(LatexNoteUtils::updateLatexStampAnnotationAppearance(nullptr, document, 0, note, Qt::black, Qt::yellow, Qt::red, 300, true));
         auto *view = part.m_pageView.data();
         auto *viewport = view->viewport();
@@ -105,13 +117,24 @@ private Q_SLOTS:
             const auto before = note->boundingRectangle();
             const QString oldAppearance = note->latexAppearancePdfFileName();
             QTest::mouseClick(viewport, Qt::LeftButton, Qt::NoModifier, position((before.left + before.right) / 2, (before.top + before.bottom) / 2));
-            const QPoint handle = position(leftHandle ? before.left : before.right, (before.top + before.bottom) / 2);
-            drag(handle, handle + QPoint(leftHandle ? -delta : delta, 0));
+            const bool vertical = appearanceRotation == 90;
+            const QPoint handle = vertical ? position((before.left + before.right) / 2, leftHandle ? before.top : before.bottom)
+                                          : position(leftHandle ? before.left : before.right, (before.top + before.bottom) / 2);
+            const int movement = leftHandle ? -delta : delta;
+            drag(handle, handle + (vertical ? QPoint(0, movement) : QPoint(movement, 0)));
             QTRY_VERIFY_WITH_TIMEOUT(note->latexAppearancePdfFileName() != oldAppearance, 30000);
             const double layoutWidth = note->latexLayoutWidth();
             const auto content = LatexNoteUtils::renderAppearancePdf(note->contents(), Qt::black, layoutWidth, false, 12);
             QVERIFY2(content.ok && content.errorMessage.isEmpty(), qPrintable(content.errorMessage));
             const QSizeF actual = AnnotationFrame::localSize(note->boundingRectangle(), document->pageSizeInPoints(0), note->appearanceRotation());
+            const double requestedWidth = vertical ? before.height() * 800.0 + delta * 800.0 / displayed.height()
+                                                   : before.width() * 600.0 + delta * 600.0 / displayed.width();
+            QVERIFY2(qAbs(actual.width() - requestedWidth) < .02,
+                     qPrintable(QStringLiteral("Released at width %1 pt, but settled at %2 pt").arg(requestedWidth).arg(actual.width())));
+            const auto settled = note->boundingRectangle();
+            const double oppositeEdgeShift = vertical ? (leftHandle ? settled.bottom - before.bottom : settled.top - before.top) * 800.0
+                                                      : (leftHandle ? settled.right - before.right : settled.left - before.left) * 600.0;
+            QVERIFY(qAbs(oppositeEdgeShift) < .02);
             const double rightPadding = actual.width() - padding - content.pdfSizePoints.width();
             qInfo() << "Dragged width:" << actual.width() << "layout:" << layoutWidth << "content PDF:" << content.pdfSizePoints << "padding left/right:" << padding << rightPadding;
             QVERIFY2(rightPadding >= padding - .02, qPrintable(QStringLiteral("Right padding %1 pt, expected at least %2 pt").arg(rightPadding).arg(padding)));

@@ -4,9 +4,11 @@
 
 #include <QHash>
 #include <QObject>
+#include <QPointer>
 #include <functional>
 
 #include "aisearch.h"
+#include "core/observer.h"
 
 class QJsonObject;
 class QNetworkAccessManager;
@@ -14,6 +16,7 @@ class QNetworkAccessManager;
 namespace Okular
 {
 class Document;
+class DocumentViewport;
 }
 
 /**
@@ -27,7 +30,7 @@ class Document;
  * Requests and replies:
  *   {"id": 1, "method": "state", "params": {}} -> {"id": 1, "ok": true, "result": {...}}
  */
-class AiBridge : public QObject
+class AiBridge : public QObject, public Okular::DocumentObserver
 {
     Q_OBJECT
 
@@ -36,6 +39,10 @@ public:
     using Sender = std::function<void(const QByteArray &line)>;
 
     explicit AiBridge(Okular::Document *document, Sender sender, QObject *parent = nullptr);
+    ~AiBridge() override;
+
+    void notifySetup(const QList<Okular::Page *> &pages, int flags) override;
+    void notifyPageChanged(int page, int flags) override;
 
     void setSender(Sender sender);
     /** Feeds one line read from the child's standard output. */
@@ -43,6 +50,7 @@ public:
 
     /** Supplies the document path on demand; the part decides what is open. */
     void setPathProvider(std::function<QString()> provider);
+    void setNavigator(std::function<void(const Okular::DocumentViewport &)> navigator);
 
     /** The document identity this bridge belongs to, for the window title. */
     void setDocumentIdentity(const QString &id, const QString &title);
@@ -51,18 +59,26 @@ private:
     void dispatch(const QJsonObject &request);
     void reply(int id, const QJsonObject &result);
     void replyError(int id, const QString &error);
-    void ensureIndex();
+    void ensureBlocks(int page);
+    void invalidateDocument();
     QString currentPath() const;
 
-    Okular::Document *m_document = nullptr;
+    QPointer<Okular::Document> m_document;
     Sender m_sender;
     QNetworkAccessManager *m_network = nullptr;
     std::function<QString()> m_pathProvider;
+    std::function<void(const Okular::DocumentViewport &)> m_navigator;
     QString m_documentId;
     QString m_documentTitle;
-    AiSearch::Index m_index;
-    int m_indexPages = -1;
-    QString m_indexPath;
+    struct CitationBlock {
+        int page;
+        AiSearch::TextBlock block;
+    };
+    QHash<QString, CitationBlock> m_blocks;
+    QHash<int, QStringList> m_pageBlocks;
+    QString m_blockScope;
+    quint64 m_session = 0;
+    quint64 m_revision = 0;
 };
 
 #endif

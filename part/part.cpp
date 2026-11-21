@@ -622,6 +622,11 @@ Part::Part(QObject *parent, const QVariantList &args)
     // reader over its standard input and output.
     m_aiBridge = new AiBridge(m_document, AiBridge::Sender(), this);
     m_aiBridge->setPathProvider([this] { return url().toLocalFile(); });
+    m_aiBridge->setNavigator([this](const DocumentViewport &viewport) {
+        if (PageView *view = workspaceActivePageView()) {
+            view->goToCenteredDocumentViewport(viewport);
+        }
+    });
     connectWorkspacePageView(m_pageView);
     m_bottomBar = new QWidget(rightContainer);
     QHBoxLayout *bottomBarLayout = new QHBoxLayout(m_bottomBar);
@@ -2385,6 +2390,7 @@ Document::OpenResult Part::doOpenFile(const QMimeType &mimeA, const QString &fil
 
 bool Part::openFile()
 {
+    const bool swappedBackingFile = m_swapInsteadOfOpening;
     QList<QMimeType> mimes;
     QString fileNameToOpen = localFilePath();
     const bool isstdin = url().isLocalFile() && url().fileName() == QLatin1String("-");
@@ -2444,8 +2450,11 @@ bool Part::openFile()
     m_find->setEnabled(ok && canSearch);
     m_findNext->setEnabled(ok && canSearch);
     m_findPrev->setEnabled(ok && canSearch);
-    // The chat window belongs to the document it was opened for.
-    stopAiChatWindow();
+    // The chat window belongs to the document it was opened for. Saving with
+    // a backing-file swap updates that same document, so keep its chat alive.
+    if (!swappedBackingFile) {
+        stopAiChatWindow();
+    }
     m_aiChatWindow->setEnabled(ok);    if (m_save) {
         m_save->setEnabled(ok && !(isstdin || mime.inherits(QStringLiteral("inode/directory"))));
     }
@@ -3539,6 +3548,9 @@ void Part::slotShowAiChatWindow()
         }
     });
     connect(process, &QProcess::readyReadStandardOutput, this, [this, process] {
+        if (m_aiChatProcess != process) {
+            return;
+        }
         m_aiChatOutput += process->readAllStandardOutput();
         int newline = m_aiChatOutput.indexOf('\n');
         while (newline >= 0) {
@@ -3556,18 +3568,20 @@ void Part::slotShowAiChatWindow()
             qWarning() << "AI chat window:" << error;
         }
     });
-    connect(process, &QProcess::finished, this, [this] {
+    connect(process, &QProcess::finished, this, [this, process] {
+        process->deleteLater();
+        if (m_aiChatProcess != process) {
+            return;
+        }
         if (m_aiBridge) {
             m_aiBridge->setSender(AiBridge::Sender());
         }
         m_aiChatOutput.clear();
-        if (m_aiChatProcess) {
-            m_aiChatProcess->deleteLater();
-            m_aiChatProcess = nullptr;
-        }
+        m_aiChatProcess = nullptr;
     });
     process->start();
     if (!process->waitForStarted(3000)) {
+        m_aiBridge->setSender(AiBridge::Sender());
         KMessageBox::information(widget(), i18n("The AI chat window could not be started."));
         process->deleteLater();
         m_aiChatProcess = nullptr;

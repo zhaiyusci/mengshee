@@ -2,6 +2,19 @@ add_definitions( -DKDESRCDIR="${CMAKE_CURRENT_SOURCE_DIR}/" )
 
 include_directories(${CMAKE_CURRENT_BINARY_DIR}/..)
 
+ecm_add_test(aibridgetest.cpp ../part/aibridge.cpp ../part/aichat.cpp ../part/aisearch.cpp
+    TEST_NAME "aibridgetest"
+    LINK_LIBRARIES Qt6::Widgets Qt6::Network Qt6::PrintSupport Qt6::Xml KF6::I18n okularcore
+)
+# Keep model settings isolated from the user's real configuration and keys.
+target_include_directories(aibridgetest BEFORE PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/ai-settings-stub")
+set_tests_properties(aibridgetest PROPERTIES TIMEOUT 90)
+
+ecm_add_test(aicitationanchortest.cpp ../part/aisearch.cpp
+    TEST_NAME "aicitationanchortest"
+    LINK_LIBRARIES Qt6::Widgets Qt6::Xml Qt6::PrintSupport okularcore
+)
+
 ecm_add_test(readingviewlayouttest.cpp
     TEST_NAME "readingviewlayouttest"
     LINK_LIBRARIES Qt6::Test Qt6::Core
@@ -17,6 +30,10 @@ ecm_add_test(latexsourcepreparationtest.cpp ../part/latexsource.cpp
 )
 
 if (BUILD_DESKTOP)
+    ecm_add_test(aicitationviewtest.cpp
+        TEST_NAME "aicitationviewtest"
+        LINK_LIBRARIES Qt6::Widgets Qt6::Test Qt6::Xml Qt6::PrintSupport okularcore okularpart
+    )
     ecm_add_test(latexnotesizetest.cpp
         TEST_NAME "latexnotesizetest"
         LINK_LIBRARIES Qt6::Widgets Qt6::Test okularcore okularpart

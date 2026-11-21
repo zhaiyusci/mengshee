@@ -243,6 +243,8 @@ public:
     OKULARPART_EXPORT bool viewportHistoryAtBegin() const;
     OKULARPART_EXPORT bool viewportHistoryAtEnd() const;
     OKULARPART_EXPORT void goToDocumentViewport(const Okular::DocumentViewport &viewport, bool smoothMove = true, bool updateHistory = true);
+    /** Center a citation even near a page edge or when the whole page fits. */
+    OKULARPART_EXPORT void goToCenteredDocumentViewport(const Okular::DocumentViewport &viewport);
     OKULARPART_EXPORT void goToPreviousViewport();
     OKULARPART_EXPORT void goToNextViewport();
 

@@ -39,6 +39,11 @@ to try a build before it is packaged. See
   passed through `-VcVars`.
 - Qt for MSVC, for example `C:\Qt\6.11.1\msvc2022_64`.
 - Git.
+- Node.js/npm and Rust (MSVC target) for the AI chat window. Run `npm ci` in
+  `ai-chat` once to install the locked frontend dependencies. Normal builds run
+  `npm run build` before staging the chat executable; a chat build failure stops
+  packaging instead of silently shipping an older executable. `SKIP_BUILD` is
+  only for redeploying an already built installation.
 - Inno Setup 6, only when building the installer `.exe`.
 - Python 3, only for the workspace venv that `breeze-icons` needs for its 24x24
   icon generation; the from-scratch driver creates the venv and installs `lxml`.
@@ -168,9 +173,13 @@ windows-build-workspace\dist\mengshee-<version>\Mengshee-<version>-Setup.exe
 
 ## Running The Build Before Packaging
 
-Keep `VERSION.txt` unchanged during unreleased development and staging iterations.
-Distinguish staging snapshots by their directory names; change the version only
-when preparing an actual release.
+Keep `VERSION.txt` at the latest published GitHub Release version during unreleased
+development, hotfix verification, staging, and local installer builds. Building
+another local installer does not require a version increment. Distinguish these
+snapshots by dated or descriptive stage/output directory names, without replacing
+an already published release artifact. Before preparing an actual release, check
+the repository's GitHub Releases and choose the next version from the published
+versions, not from local experimental installers.
 
 The install tree and the package stage are complete runtimes, so a developer can
 start one and try a change before it is packaged:

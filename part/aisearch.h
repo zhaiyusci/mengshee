@@ -10,6 +10,7 @@
 namespace Okular
 {
 class Document;
+class Page;
 }
 
 /**
@@ -27,6 +28,15 @@ class Document;
  */
 namespace AiSearch
 {
+struct TextBlock
+{
+    QString text;
+    Okular::NormalizedRect rectangle;
+};
+
+/** Visual text lines for deterministic citations. The caller loads the text page first. */
+QList<TextBlock> textBlocks(const Okular::Page *page);
+
 struct Glyph
 {
     QString text;

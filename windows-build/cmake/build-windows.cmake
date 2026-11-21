@@ -276,14 +276,16 @@ if(NOT DEFINED SKIP_BUILD OR NOT SKIP_BUILD)
     set(_build_command "\"${CMAKE_PROGRAM}\" --build \"${BUILD_DIR}\" --target install --parallel ${JOBS}")
     mengshee_run_vs("${_build_command}")
 
-    # The AI chat window is a separate Tauri application. When a release build of
-    # it exists, ship it next to the reader so the menu can start it.
+    # Build embedded web assets and Rust together before staging. An existing
+    # executable is not evidence that it contains the current frontend.
+    find_program(NPM_PROGRAM NAMES npm.cmd npm REQUIRED)
+    mengshee_run_vs("cd /d \"${SOURCE_ROOT}/ai-chat\"\ncall \"${NPM_PROGRAM}\" run build")
     set(_ai_chat_exe "${SOURCE_ROOT}/ai-chat/src-tauri/target/release/mengshee-ai-chat.exe")
     if(EXISTS "${_ai_chat_exe}")
         file(COPY_FILE "${_ai_chat_exe}" "${INSTALL_PREFIX}/bin/mengshee-ai-chat.exe" ONLY_IF_DIFFERENT)
         message(STATUS "AI chat window staged: ${INSTALL_PREFIX}/bin/mengshee-ai-chat.exe")
     else()
-        message(STATUS "AI chat window not built; build it with: cd ai-chat && npm install && cd src-tauri && cargo build --release")
+        message(FATAL_ERROR "AI chat build did not produce ${_ai_chat_exe}")
     endif()
 
     if(IS_DIRECTORY "${INSTALL_PREFIX}/plugins")
