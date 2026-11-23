@@ -10,11 +10,6 @@ ecm_add_test(aibridgetest.cpp ../part/aibridge.cpp ../part/aichat.cpp ../part/ai
 target_include_directories(aibridgetest BEFORE PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/ai-settings-stub")
 set_tests_properties(aibridgetest PROPERTIES TIMEOUT 90)
 
-ecm_add_test(aicitationanchortest.cpp ../part/aisearch.cpp
-    TEST_NAME "aicitationanchortest"
-    LINK_LIBRARIES Qt6::Widgets Qt6::Xml Qt6::PrintSupport okularcore
-)
-
 ecm_add_test(readingviewlayouttest.cpp
     TEST_NAME "readingviewlayouttest"
     LINK_LIBRARIES Qt6::Test Qt6::Core

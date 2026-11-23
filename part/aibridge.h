@@ -5,6 +5,7 @@
 #include <QHash>
 #include <QObject>
 #include <QPointer>
+#include <QStringList>
 #include <functional>
 
 #include "aisearch.h"
@@ -62,6 +63,7 @@ private:
     void ensureBlocks(int page);
     void invalidateDocument();
     QString currentPath() const;
+    QString revisionToken() const;
 
     QPointer<Okular::Document> m_document;
     Sender m_sender;
@@ -76,7 +78,8 @@ private:
     };
     QHash<QString, CitationBlock> m_blocks;
     QHash<int, QStringList> m_pageBlocks;
-    QString m_blockScope;
+    QHash<int, QString> m_pageFingerprints;
+    QString m_revisionScope;
     quint64 m_session = 0;
     quint64 m_revision = 0;
 };

@@ -260,6 +260,7 @@ public:
     std::list<DocumentViewport>::iterator m_viewportIterator;
     DocumentViewport m_nextDocumentViewport; // see Link::Goto for an explanation
     QString m_nextDocumentDestination;
+    bool m_alignNextDocumentTarget = false;
 
     // observers / requests / allocator stuff
     QSet<DocumentObserver *> m_observers;

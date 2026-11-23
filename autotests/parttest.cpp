@@ -175,7 +175,7 @@ private Q_SLOTS:
     void testEditExternalPdfLink();
     void testOpenAuxiliaryViewWithoutLink();
     void testAuxiliaryDocumentWorkspace();
-    void testAuxiliaryTopAlignedDestinationMargin();
+    void testAuxiliaryInsetDestination();
     void testFindBarDoesNotConsumeWorkspaceHeight();
     void testScrollBarAndMouseWheel();
     void testOpenUrlArguments();
@@ -1616,7 +1616,7 @@ void PartTest::testOpenAuxiliaryViewWithoutLink()
     QTRY_COMPARE(workspace->activeView(), mainView);
 }
 
-void PartTest::testAuxiliaryTopAlignedDestinationMargin()
+void PartTest::testAuxiliaryInsetDestination()
 {
     Okular::Part part(nullptr, {});
     QVERIFY(openDocument(&part, QStringLiteral(KDESRCDIR "data/pdf_with_internal_links.pdf")));
@@ -1635,10 +1635,12 @@ void PartTest::testAuxiliaryTopAlignedDestinationMargin()
     DocumentViewport target(1);
     target.rePos.enabled = true;
     target.rePos.pos = DocumentViewport::TopLeft;
-    target.rePos.normalizedX = 0.0;
+    target.rePos.normalizedX = 0.3;
     target.rePos.normalizedY = 0.5;
     const QString originalTarget = target.toString();
-    part.openAuxiliaryView(mainView, target, QStringLiteral("Top-aligned destination"));
+    auto expected = target;
+    expected.rePos.pos = DocumentViewport::TopInset;
+    part.openAuxiliaryView(mainView, target, QStringLiteral("Inset destination"));
     QTRY_COMPARE(part.m_documentWorkspace->auxiliaryViewCount(), 1);
     PageView *auxiliaryView = part.m_documentWorkspace->auxiliaryViews().constFirst();
     QVERIFY(auxiliaryView);
@@ -1660,7 +1662,7 @@ void PartTest::testAuxiliaryTopAlignedDestinationMargin()
     for (int i = 0; i < 3; ++i) {
         QVERIFY(QMetaObject::invokeMethod(auxiliaryView, "slotZoomIn"));
     }
-    auxiliaryView->goToDocumentViewport(target, false);
+    auxiliaryView->goToDocumentTarget(target, false);
     // Large zoom levels use tiles, so a full-page hasPixmap() check with
     // default dimensions cannot indicate readiness. Wait for layout instead.
     QTRY_VERIFY(auxiliaryView->verticalScrollBar()->maximum() > 0);
@@ -1684,21 +1686,21 @@ void PartTest::testAuxiliaryTopAlignedDestinationMargin()
         }
         return y + (target.rePos.normalizedY - first.y) * 10.0 / (second.y - first.y);
     };
-    QTRY_VERIFY(qAbs(targetScreenY() - 48.0) <= 2.0);
-    QCOMPARE(auxiliaryView->documentViewport().toString(), originalTarget);
+    QTRY_VERIFY(qAbs(targetScreenY() - qRound(40.0 * auxiliaryView->logicalDpiY() / 72.0)) <= 2.0);
+    QCOMPARE(auxiliaryView->documentViewport().toString(), expected.toString());
     QVERIFY(auxiliaryView->verticalScrollBar()->value() > 0);
     QVERIFY(auxiliaryView->verticalScrollBar()->value() < auxiliaryView->verticalScrollBar()->maximum());
 
-    // Repeated navigation must not accumulate the presentation-only inset.
+    // Repeated navigation must preserve the top inset without accumulating an offset.
     const int auxiliaryScroll = auxiliaryView->verticalScrollBar()->value();
     for (int i = 0; i < 3; ++i) {
         DocumentViewport away = target;
         away.rePos.normalizedY = 0.6;
-        auxiliaryView->goToDocumentViewport(away, false);
-        auxiliaryView->goToDocumentViewport(target, false);
-        QTRY_VERIFY(qAbs(targetScreenY() - 48.0) <= 2.0);
+        auxiliaryView->goToDocumentTarget(away, false);
+        auxiliaryView->goToDocumentTarget(target, false);
+        QTRY_VERIFY(qAbs(targetScreenY() - qRound(40.0 * auxiliaryView->logicalDpiY() / 72.0)) <= 2.0);
         QCOMPARE(auxiliaryView->verticalScrollBar()->value(), auxiliaryScroll);
-        QCOMPARE(auxiliaryView->documentViewport().toString(), originalTarget);
+        QCOMPARE(auxiliaryView->documentViewport().toString(), expected.toString());
     }
 
     DocumentViewport centered = target;
@@ -1773,7 +1775,11 @@ void PartTest::testAuxiliaryDocumentWorkspace()
     auxiliaryAdvancedMode->setChecked(true);
     QVERIFY(firstAuxiliaryView->advancedModeEnabled());
     QVERIFY(originalMainView->advancedModeEnabled());
-    QTRY_VERIFY(firstAuxiliaryView->documentViewport() == modifiedClickTarget);
+    auto alignedClickTarget = modifiedClickTarget;
+    if (alignedClickTarget.rePos.enabled) {
+        alignedClickTarget.rePos.pos = DocumentViewport::TopInset;
+    }
+    QTRY_VERIFY(firstAuxiliaryView->documentViewport() == alignedClickTarget);
     DocumentViewport firstAuxiliaryTarget = firstAuxiliaryView->documentViewport();
     QCOMPARE(workspace->viewTitle(firstAuxiliaryView), modifiedClickTitle);
     QVERIFY(!firstAuxiliaryView->viewportHistoryAtBegin());
@@ -1802,7 +1808,7 @@ void PartTest::testAuxiliaryDocumentWorkspace()
     QTRY_COMPARE(workspace->auxiliaryViewCount(), 2);
     QPointer<PageView> controlClickAuxiliaryView = workspace->auxiliaryViews().constLast();
     QVERIFY(controlClickAuxiliaryView);
-    QVERIFY(controlClickAuxiliaryView->documentViewport() == controlClickTarget);
+    QVERIFY(controlClickAuxiliaryView->documentViewport() == alignedClickTarget);
     QCOMPARE(workspace->viewTitle(controlClickAuxiliaryView.data()), controlClickTitle);
     QCOMPARE(originalMainView->documentViewport().pageNumber, originalMainPage);
 

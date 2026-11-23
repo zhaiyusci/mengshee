@@ -274,19 +274,19 @@ void Reviews::activated(const QModelIndex &index)
     int pageNumber = m_model->data(annotIndex, AnnotationModel::PageRole).toInt();
     const Okular::Page *page = m_document->page(pageNumber);
 
-    // calculating the right coordinates to center the view on the annotation
+    // Navigate to the top of the annotation with the standard reading inset.
     QRect rect = Okular::AnnotationUtils::annotationGeometry(annotation, page->width(), page->height());
     Okular::NormalizedRect nr(rect, (int)page->width(), (int)page->height());
     // set the viewport parameters
     Okular::DocumentViewport vp;
     vp.pageNumber = pageNumber;
     vp.rePos.enabled = true;
-    vp.rePos.pos = Okular::DocumentViewport::Center;
+    vp.rePos.pos = Okular::DocumentViewport::TopInset;
     vp.rePos.normalizedX = (nr.right + nr.left) / 2.0;
-    vp.rePos.normalizedY = (nr.bottom + nr.top) / 2.0;
+    vp.rePos.normalizedY = nr.top;
     // Navigate the workspace frame that owns the active annotations panel.
     if (m_pageView) {
-        m_pageView->goToDocumentViewport(vp, true, true);
+        m_pageView->goToDocumentTarget(vp, true, true);
     } else {
         m_document->setViewport(vp, nullptr, true);
     }

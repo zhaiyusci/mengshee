@@ -1117,6 +1117,9 @@ DocumentViewport DocumentPrivate::nextDocumentViewport() const
             ret = vp;
         }
     }
+    if (m_alignNextDocumentTarget && ret.rePos.enabled) {
+        ret.rePos.pos = DocumentViewport::TopInset;
+    }
     return ret;
 }
 
@@ -3041,6 +3044,7 @@ Document::OpenResult Document::openDocument(const QString &docFile, const QUrl &
         setViewport(nextViewport);
         d->m_nextDocumentViewport = DocumentViewport();
         d->m_nextDocumentDestination = QString();
+        d->m_alignNextDocumentTarget = false;
     }
 
     AudioPlayer::instance()->setDocument(fromFileDescriptor ? QUrl() : d->m_url, this);
@@ -4892,11 +4896,13 @@ void Document::setNextViewport()
 void Document::setNextDocumentViewport(const DocumentViewport &viewport)
 {
     d->m_nextDocumentViewport = viewport;
+    d->m_alignNextDocumentTarget = false;
 }
 
 void Document::setNextDocumentDestination(const QString &namedDestination)
 {
     d->m_nextDocumentDestination = namedDestination;
+    d->m_alignNextDocumentTarget = true;
 }
 
 void Document::searchText(int searchID, const QString &text, bool fromStart, Qt::CaseSensitivity caseSensitivity, SearchType type, bool moveViewport, const QColor &color)
@@ -5351,7 +5357,10 @@ void Document::processAction(const Action *action, DocumentViewSession *viewSess
         const GotoAction *go = static_cast<const GotoAction *>(action);
 
         if (viewSession && !go->isExternal()) {
-            const DocumentViewport target = gotoTarget(go);
+            DocumentViewport target = gotoTarget(go);
+            if (target.rePos.enabled) {
+                target.rePos.pos = DocumentViewport::TopInset;
+            }
             if (target.isValid() && target.pageNumber >= 0 && target.pageNumber < int(d->m_pagesVector.count())) {
                 viewSession->setViewport(target, nullptr, true);
             }
@@ -5360,6 +5369,7 @@ void Document::processAction(const Action *action, DocumentViewSession *viewSess
 
         d->m_nextDocumentViewport = gotoTarget(go);
         d->m_nextDocumentDestination = go->destinationName();
+        d->m_alignNextDocumentTarget = true;
 
         // Explanation of why d->m_nextDocumentViewport is needed:
         // all openRelativeFile does is launch a signal telling we
@@ -5403,6 +5413,7 @@ void Document::processAction(const Action *action, DocumentViewSession *viewSess
             }
             d->m_nextDocumentViewport = DocumentViewport();
             d->m_nextDocumentDestination = QString();
+            d->m_alignNextDocumentTarget = false;
         }
 
     } break;
@@ -8353,8 +8364,11 @@ DocumentViewport::DocumentViewport(const QString &xmlDesc)
             rePos.enabled = true;
             rePos.normalizedX = token.section(QLatin1Char(':'), 1, 1).toDouble();
             rePos.normalizedY = token.section(QLatin1Char(':'), 2, 2).toDouble();
-            if (token.section(QLatin1Char(':'), 3, 3).toInt() == 1) {
+            const int position = token.section(QLatin1Char(':'), 3, 3).toInt();
+            if (position == Center) {
                 rePos.pos = Center;
+            } else if (position == TopInset) {
+                rePos.pos = TopInset;
             } else {
                 rePos.pos = TopLeft;
             }

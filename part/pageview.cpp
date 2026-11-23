@@ -17,6 +17,7 @@
 */
 
 #include "pageview.h"
+#include <QScopedValueRollback>
 #include "ocrtextlayout.h"
 #include "rectangleinteraction.h"
 
@@ -448,7 +449,7 @@ public:
 
     // view layout (columns in Settings), zoom and mouse
     PageView::ZoomMode zoomMode = PageView::ZoomFitWidth;
-    bool citationCentering = false;
+    bool targetTopInset = false;
     float zoomFactor = 1.0;
     QPoint mouseGrabOffset;
     QPointF mousePressPos;
@@ -2723,7 +2724,7 @@ void PageView::createAnnotationsVideoWidgets(PageViewItem *item, const QList<Oku
 void PageView::notifySetup(const QList<Okular::Page *> &pageSet, int setupFlags)
 {
     if (setupFlags & Okular::DocumentObserver::DocumentChanged) {
-        d->citationCentering = false;
+        d->targetTopInset = false;
     }
     const QString oldReadingIdentity = d->items.value(d->currentDisplayIndex) ? d->items[d->currentDisplayIndex]->readingIdentity : QString();
     // Drop editor previews before any PageViewItem is rebound or destroyed.
@@ -3142,6 +3143,13 @@ void PageView::slotRealNotifyViewportChanged(bool smoothMove)
 #ifdef PAGEVIEW_DEBUG
     qCDebug(OkularUiDebug) << "document viewport changed";
 #endif
+    // Navigation targets need vertical scroll room at the first/last page.
+    // Keep ordinary Center/TopLeft viewports unchanged for reading history.
+    if (vp.rePos.enabled && vp.rePos.pos == Okular::DocumentViewport::TopInset && !d->targetTopInset) {
+        d->targetTopInset = true;
+        d->dirtyLayout = true;
+    }
+
     // relayout in "Single Pages" mode or if a relayout is pending
     d->blockPixmapsRequest = true;
     if (!getContinuousMode() || d->dirtyLayout) {
@@ -6862,6 +6870,13 @@ void PageView::scrollPosIntoView(const QPoint pos)
     }
 }
 
+int PageView::navigationTopInset() const
+{
+    // Qt logical DPI converts typographic points to logical pixels; do not
+    // multiply by devicePixelRatio again on high-DPI displays.
+    return qMin(qRound(40.0 * logicalDpiY() / 72.0), qMax(0, viewport()->height() - 1));
+}
+
 QPoint PageView::viewportToContentArea(const Okular::DocumentViewport &vp) const
 {
     Q_ASSERT(vp.pageNumber >= 0);
@@ -6879,20 +6894,21 @@ QPoint PageView::viewportToContentArea(const Okular::DocumentViewport &vp) const
         const double normalized_on_crop_x = (vp.rePos.normalizedX - crop.left) / (crop.right - crop.left);
         const double normalized_on_crop_y = (vp.rePos.normalizedY - crop.top) / (crop.bottom - crop.top);
 
-        if (vp.rePos.pos == Okular::DocumentViewport::Center) {
+        if (vp.rePos.pos == Okular::DocumentViewport::TopInset) {
+            // Fit-width reading keeps the whole page horizontally aligned.
+            // At larger manual zoom, bring the target into view without adding
+            // horizontal whitespace around the document.
+            const int halfWidth = viewport()->width() / 2;
+            c.rx() += r.width() <= viewport()->width() ? r.width() / 2
+                : qBound(halfWidth, qRound(normClamp(normalized_on_crop_x, 0.5) * r.width()), r.width() - halfWidth);
+            c.ry() += qRound(normClamp(normalized_on_crop_y, 0.0) * r.height()) + viewport()->height() / 2 - navigationTopInset();
+        } else if (vp.rePos.pos == Okular::DocumentViewport::Center) {
             c.rx() += qRound(normClamp(normalized_on_crop_x, 0.5) * (double)r.width());
             c.ry() += qRound(normClamp(normalized_on_crop_y, 0.0) * (double)r.height());
         } else {
             // TopLeft
             c.rx() += qRound(normClamp(normalized_on_crop_x, 0.0) * (double)r.width() + viewport()->width() / 2.0);
             c.ry() += qRound(normClamp(normalized_on_crop_y, 0.0) * (double)r.height() + viewport()->height() / 2.0);
-            if (d->viewSession && !d->workspaceMainView) {
-                // PDF destinations may sit on a formula's baseline. Leave room
-                // above it in auxiliary panes rather than clipping its upper part.
-                // This is a view-only inset in logical pixels, not a change to the
-                // stored destination; center positioning and the main view stay exact.
-                c.ry() -= qMin(48, viewport()->height() / 4);
-            }
         }
     } else {
         // exact repositioning disabled, align page top margin with viewport top border by default
@@ -7963,6 +7979,11 @@ void PageView::zoomWithFixedCenter(PageView::ZoomMode newZoomMode, QPointF zoomC
 void PageView::slotRelayoutPages()
 // called by: notifySetup, viewportResizeEvent, slotViewMode, slotContinuousToggled, updateZoom
 {
+    // Layout-generated scrollbar changes must not replace a navigation anchor
+    // with the page nearest the viewport center, or append history entries.
+    const auto &anchor = documentViewport();
+    const bool alignTarget = anchor.rePos.enabled && anchor.rePos.pos == Okular::DocumentViewport::TopInset;
+    const QScopedValueRollback<bool> preserveTarget(d->blockViewport, d->blockViewport || alignTarget);
     // set an empty container if we have no pages
     const int pageCount = d->items.count();
     if (pageCount < 1) {
@@ -8097,22 +8118,19 @@ void PageView::slotRelayoutPages()
 #endif
     }
 
-    // A citation may be near an edge of the first/last page, or anywhere on a
-    // page that fits entirely in the viewport. Leave half a viewport around
-    // the layout so scrollbar clamping cannot move its requested center.
-    // Keep this space while reading the document; removing it on the next
-    // layout would make the citation jump back again.
-    if (d->citationCentering) {
-        const int marginX = viewportWidth / 2;
-        const int marginY = viewportHeight / 2;
+    // Allow a target at either document edge to sit below the viewport top.
+    // Keep this vertical space across relayouts to prevent snapping back.
+    // No horizontal padding: fit-width reading must retain the full page.
+    if (d->targetTopInset) {
+        const int marginTop = navigationTopInset();
+        const int marginBottom = qMax(0, viewportHeight - marginTop);
         for (PageViewItem *item : std::as_const(d->items)) {
             if (item->isVisible()) {
                 const QRect geometry = item->croppedGeometry();
-                item->moveTo(geometry.left() + marginX, geometry.top() + marginY);
+                item->moveTo(geometry.left(), geometry.top() + marginTop);
             }
         }
-        fullWidth = qMax(fullWidth, viewportWidth) + 2 * marginX;
-        fullHeight = qMax(fullHeight, viewportHeight) + 2 * marginY;
+        fullHeight = qMax(fullHeight, viewportHeight) + marginTop + marginBottom;
     }
 
     delete[] colWidth;
@@ -8123,7 +8141,9 @@ void PageView::slotRelayoutPages()
 
     // 4) update scrollview's contents size and recenter view
     bool wasUpdatesEnabled = viewport()->updatesEnabled();
-    if (fullWidth != contentAreaWidth() || fullHeight != contentAreaHeight()) {
+    // Fit-width relayout can move pages while padded content extents stay the
+    // same (especially in a tall auxiliary pane). Reapply the anchor anyway.
+    if (fullWidth != contentAreaWidth() || fullHeight != contentAreaHeight() || alignTarget) {
         const Okular::DocumentViewport vp = documentViewport();
         // disable updates and resize the viewportContents
         if (wasUpdatesEnabled) {
@@ -8920,13 +8940,13 @@ void PageView::goToDocumentViewport(const Okular::DocumentViewport &viewport, bo
     setDocumentViewport(viewport, nullptr, smoothMove, updateHistory);
 }
 
-void PageView::goToCenteredDocumentViewport(const Okular::DocumentViewport &viewport)
+void PageView::goToDocumentTarget(const Okular::DocumentViewport &viewport, bool smoothMove, bool updateHistory)
 {
-    if (viewport.rePos.enabled && !d->citationCentering) {
-        d->citationCentering = true;
-        d->dirtyLayout = true;
+    auto target = viewport;
+    if (target.rePos.enabled) {
+        target.rePos.pos = Okular::DocumentViewport::TopInset;
     }
-    goToDocumentViewport(viewport, false);
+    goToDocumentViewport(target, smoothMove, updateHistory);
 }
 
 void PageView::restoreReadingHistory(int direction)

@@ -31,25 +31,25 @@ async function harness(handler = () => completion, mathError = false) {
 }
 const pageHandler = method => method === 'pageBlocks' ? { blocks: [{id: 'btestp1l1', text: 'PDF content'}] } : method === 'pageImage' ? { data: 'AA', mime: 'image/jpeg' } : completion;
 
-test('citation sends IDs and captured revision, never the displayed text', async () => {
+test('citation sends endpoints and captured revision, never the displayed text', async () => {
     const h = await harness(() => ({ located: true, page: 2, pages: 1 }));
-    const link = { dataset: { blockIds: 'btestp2l1', revision: '1' }, textContent: 'Page 2' };
+    const link = { dataset: { ranges: 'btestp2l1..btestp2l1', revision: '1' }, textContent: 'Page 2' };
     await h.nodes.get('chat').listeners.click({ target: { closest: () => link } });
-    assert.deepEqual(h.calls.find(x => x.method === 'jump').params, {blockIds: ['btestp2l1'], revision: '1'});
+    assert.deepEqual(h.calls.find(x => x.method === 'jump').params, {ranges: [{startId:'btestp2l1',endId:'btestp2l1'}], revision: '1'});
     assert.equal(h.asks().length, 0);
 });
 
-test('multi-line and multi-page citation preserves ID order without duplicates', async () => {
+test('multi-line and multi-page citation preserves range order', async () => {
     const h = await harness(() => ({ located: true, page: 2, pages: 2 }));
-    const link = { dataset: { blockIds: 'btestp2l1,btestp2l2,btestp3l1,btestp2l1', revision: '1' }, textContent: 'results' };
+    const link = { dataset: { ranges: 'btestp2l1..btestp2l2,btestp3l1..btestp3l1', revision: '1' }, textContent: 'results' };
     await h.nodes.get('chat').listeners.click({ target: { closest: () => link } });
-    assert.deepEqual(h.calls.find(x => x.method === 'jump').params.blockIds, ['btestp2l1', 'btestp2l2', 'btestp3l1']);
+    assert.deepEqual(h.calls.find(x => x.method === 'jump').params.ranges, [{startId:'btestp2l1',endId:'btestp2l2'},{startId:'btestp3l1',endId:'btestp3l1'}]);
     assert.match(h.nodes.get('status').textContent, /共 2 页证据/);
 });
 
-test('invalid ID reports failure without searching text or calling the model', async () => {
+test('invalid range endpoint reports failure without searching text or calling the model', async () => {
     const h = await harness(() => { throw Error('citation-unavailable'); });
-    const link = { dataset: { blockIds: 'invented', revision: '1' }, textContent: 'Page 2 contains results' };
+    const link = { dataset: { ranges: 'invented..invented', revision: '1' }, textContent: 'Page 2 contains results' };
     await h.nodes.get('chat').listeners.click({ target: { closest: () => link } });
     assert.deepEqual(h.calls.filter(x => x.method !== 'state').map(x => x.method), ['jump']);
     assert.match(h.nodes.get('status').textContent, /证据编号无效/);
@@ -63,10 +63,10 @@ test('page-only image citation navigates without promising a text highlight', as
     assert.equal(h.asks().length, 0);
 });
 
-test('renderer captures revision on both ID and page links and escapes link labels', async () => {
+test('renderer captures revision on both range and page links and escapes link labels', async () => {
     const h = await harness(pageHandler);
-    const rendered = h.run('renderMarkdown("[<evidence>](cite:btestp1l1,btestp1l2) [page](pdf:4)", "7")');
-    assert.match(rendered, /data-ranges="btestp1l1,btestp1l2" data-revision="7"/);
+    const rendered = h.run('renderMarkdown("[<evidence>](cite:btestp1l1..btestp1l2) [page](pdf:4)", "7")');
+    assert.match(rendered, /data-ranges="btestp1l1\.\.btestp1l2" data-revision="7"/);
     assert.match(rendered, /&lt;evidence&gt;/);
     assert.match(rendered, /data-page="4" data-revision="7"/);
     h.setDocument({revision:'8'});
@@ -93,6 +93,13 @@ test('single block uses a degenerate range and malformed ranges do not become li
     assert.doesNotMatch(h.run('renderMarkdown("[bad](cite:btestp1l1..) [bad](cite:..btestp1l2)")'), /<a /);
 });
 
+test('bare citation IDs normalize into the same endpoint protocol', async () => {
+    const h = await harness(() => ({located:true,page:1,pages:1}));
+    assert.match(h.run('renderMarkdown("[evidence](cite:btestp1l1)")'), /data-ranges="btestp1l1"/);
+    await h.nodes.get('chat').listeners.click({target:{closest:()=>({dataset:{ranges:'btestp1l1',revision:'1'}})}});
+    assert.deepEqual(h.calls.find(x=>x.method==='jump').params, {ranges:[{startId:'btestp1l1',endId:'btestp1l1'}],revision:'1'});
+});
+
 test('invalid range has a specific error and no model repair request', async () => {
     const h = await harness(()=>{throw Error('citation-range-invalid');});
     await h.nodes.get('chat').listeners.click({target:{closest:()=>({dataset:{ranges:'btestp1l9..btestp1l2'}})}});
@@ -103,12 +110,12 @@ test('invalid range has a specific error and no model repair request', async () 
 test('stale citation keeps its original revision and never adopts the current document', async () => {
     const h = await harness(() => { throw Error('document-changed'); });
     h.setDocument({revision:'2'});
-    await h.nodes.get('chat').listeners.click({target:{closest:()=>({dataset:{blockIds:'btestp1l1',revision:'1'}})}});
+    await h.nodes.get('chat').listeners.click({target:{closest:()=>({dataset:{ranges:'btestp1l1..btestp1l1',revision:'1'}})}});
     assert.equal(h.calls.find(x => x.method === 'jump').params.revision,'1');
     assert.match(h.nodes.get('status').textContent,/引用已失效/);
 });
 
-test('image mode includes the same indexed text used by ID citations', async () => {
+test('image mode includes the same indexed text used by range citations', async () => {
     const h = await harness(pageHandler);
     h.run('state.useImages = true');
     await h.run('runAsk("evidence")');
@@ -244,7 +251,7 @@ test('request failure preserves earlier successful turns', async () => {
     assert.match(JSON.stringify(h.asks()[2]), /Test answer/);
 });
 
-test('limited images include current page first and report actual page numbers', async () => {
+test('limited images keep current page coverage and preserve the full text prefix', async () => {
     const h = await harness(pageHandler);
     h.setDocument({ pages: 30, page: 25 });
     h.run('state.useImages = true');
@@ -252,17 +259,77 @@ test('limited images include current page first and report actual page numbers',
     const pages = h.calls.filter(x => x.method === 'pageImage').map(x => x.params.page);
     assert.equal(pages.length, 16);
     assert.equal(pages[0], 25);
-    assert.match(h.text(), /16 张页面图片/);
+    assert.doesNotMatch(h.text(), /张页面图片|本次发送/);
+    const firstPrefix = h.asks()[0].params.messages.slice(0, 2);
+    assert.equal(h.asks()[0].params.messages[2].content.filter(x => x.type === 'image_url').length, 16);
     h.setDocument({ page: 1 });
     await h.run('runAsk("new page")');
     assert.equal(h.calls.filter(x => x.method === 'pageImage')[16].params.page, 1);
+    assert.deepEqual(h.asks()[1].params.messages.slice(0, 2), firstPrefix);
+    assert.match(h.asks()[1].params.messages.at(-1).content, /Current physical PDF page: 1/);
 });
 
-test('byte cap reports one sent image, not sixteen', async () => {
+test('byte cap preserves actual image coverage without a chat announcement', async () => {
     const h = await harness(() => ({ data: 'A'.repeat(13 * 1024 * 1024), mime: 'image/jpeg' }));
     h.run('state.document = { pages: 16, page: 7 }');
     const content = await h.run('documentImages()');
-    assert.equal(content.filter(x => x.type === 'image_url').length, 1);
-    assert.match(content[0].text, /发送 1 张页面图片：第 7 页/);
-    assert.match(h.text(), /发送 1 张页面图片/);
+    assert.equal(content.content.filter(x => x.type === 'image_url').length, 1);
+    assert.deepEqual(Array.from(content.pages), [7]);
+    assert.equal(content.content[0].text, 'Physical PDF page 7:');
+    assert.doesNotMatch(h.text(), /发送|图片/);
+});
+
+test('image-mode page navigation preserves every prior request message', async () => {
+    const h = await harness(pageHandler);
+    h.setDocument({pages:3,page:2});
+    h.run('state.useImages = true');
+    await h.run('runAsk("first")');
+    const first = h.asks()[0].params.messages;
+    h.setDocument({page:3});
+    await h.run('runAsk("follow-up")');
+    assert.deepEqual(h.asks()[1].params.messages.slice(0, first.length), first);
+    assert.equal(h.calls.filter(x=>x.method==='pageImage').length, 3);
+    assert.match(h.asks()[1].params.messages.at(-1).content, /Current physical PDF page: 3/);
+    assert.doesNotMatch(h.text(), /张页面图片|本次发送/);
+});
+
+test('opening the same short PDF on different pages produces identical document prefixes', async () => {
+    const prefixes = [];
+    for (const page of [1,3]) {
+        const h = await harness(pageHandler);
+        h.setDocument({pages:3,page});
+        h.run('state.useImages = true');
+        await h.run('runAsk("question")');
+        prefixes.push(h.asks()[0].params.messages.slice(0,3));
+    }
+    assert.deepEqual(prefixes[0], prefixes[1]);
+});
+
+test('successful assistant content is replayed exactly without trimming', async () => {
+    const raw = ' \nAnswer\n ';
+    const h = await harness(method=>method==='ask'?{choices:[{message:{content:raw}}]}:pageHandler(method));
+    await h.run('runAsk("first")');
+    await h.run('runAsk("second")');
+    assert.equal(h.asks()[1].params.messages.find(x=>x.role==='assistant').content,raw);
+});
+
+test('cache counters distinguish current turn, cumulative rate and missing telemetry', async () => {
+    const h = await harness(pageHandler);
+    assert.match(h.run('describeUsage(usageFrom({usage:{prompt_tokens:10000,prompt_cache_hit_tokens:9000}}))'), /本轮.*90%/);
+    h.run('accumulateUsage(usageFrom({usage:{prompt_tokens:10000,prompt_cache_hit_tokens:0}})); accumulateUsage(usageFrom({usage:{prompt_tokens:10000,prompt_cache_hit_tokens:9000}}))');
+    assert.match(h.nodes.get('usage').textContent, /累计.*45%/);
+    assert.match(h.run('describeUsage(usageFrom({usage:{prompt_tokens:100}}))'), /缓存未报告/);
+    h.run('accumulateUsage(usageFrom({usage:{prompt_tokens:10000}}))');
+    assert.match(h.nodes.get('usage').textContent, /45%，仅统计已报告输入/);
+});
+
+test('document revision change during image collection cannot send a mixed request', async () => {
+    const h = await harness(method => {
+        if (method === 'pageImage') h.run('updateDocument({...state.document,revision:"2"})');
+        return pageHandler(method);
+    });
+    h.run('state.useImages = true');
+    await h.run('runAsk("question")');
+    assert.equal(h.asks().length, 0);
+    assert.match(h.text(), /文档在问答过程中发生变化/);
 });

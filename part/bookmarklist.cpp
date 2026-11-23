@@ -415,7 +415,7 @@ void BookmarkList::goTo(BookmarkItem *item)
 {
     if (item->url() == m_document->currentDocument()) {
         if (m_pageView) {
-            m_pageView->goToDocumentViewport(item->viewport(), true, true);
+            m_pageView->goToDocumentTarget(item->viewport(), true, true);
         } else {
             m_document->setViewport(item->viewport(), nullptr, true);
         }

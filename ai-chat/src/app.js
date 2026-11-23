@@ -25,16 +25,18 @@ const state = {
     pageBlocks: new Map(),
     history: [],
     context: null,
+    imageContext: null,
     busy: false,
     attachments: [],
     useImages: localStorage.getItem("mengshee-ai-use-images") !== "0",
-    usage: { prompt: 0, completion: 0, cached: 0, total: 0 }
+    usage: { prompt: 0, completion: 0, cached: 0, total: 0, cachePrompt: 0 }
 };
 
 const maxImagePages = 16;
 
 const systemPrompt = `You answer questions about one PDF. The first user message contains indexed source text lines,
-grouped by physical PDF page, optionally alongside the corresponding full-page images.
+grouped by physical PDF page. A separate message may contain corresponding full-page images.
+Each question states the current physical PDF page; it does not change the source reading order.
 Each source line is written as an exact block ID, a tab, and its text. The reader already knows its coordinates.
 Use only that document; never use outside knowledge. If it does not contain the answer, say so plainly.
 Answer in the language of the question. Be concrete and direct; do not explain your reasoning.
@@ -75,14 +77,16 @@ function usageFrom(payload) {
     const completion = usage.completion_tokens ?? usage.output_tokens ?? 0;
     const total = usage.total_tokens ?? prompt + completion;
     const details = usage.prompt_tokens_details || usage.input_tokens_details || {};
-    const cached = usage.prompt_cache_hit_tokens ?? usage.cache_hit_tokens ?? usage.cached_tokens ?? details.cached_tokens ?? 0;
+    const cached = usage.prompt_cache_hit_tokens ?? usage.cache_hit_tokens ?? usage.cached_tokens ?? details.cached_tokens ?? null;
     return { prompt, completion, total, cached };
 }
 
 function describeUsage(usage) {
-    const parts = [`输入 ${formatNumber(usage.prompt)}`, `输出 ${formatNumber(usage.completion)}`];
-    if (usage.cached > 0) {
+    const parts = [`本轮 输入 ${formatNumber(usage.prompt)}`, `输出 ${formatNumber(usage.completion)}`];
+    if (usage.cached !== null) {
         parts.push(`缓存命中 ${formatNumber(usage.cached)}（${Math.round((usage.cached / Math.max(usage.prompt, 1)) * 100)}%）`);
+    } else {
+        parts.push("缓存未报告");
     }
     return parts.join(" · ");
 }
@@ -90,14 +94,18 @@ function describeUsage(usage) {
 function accumulateUsage(usage) {
     state.usage.prompt += usage.prompt;
     state.usage.completion += usage.completion;
-    state.usage.cached += usage.cached;
+    if (usage.cached !== null) {
+        state.usage.cached += usage.cached;
+        state.usage.cachePrompt += usage.prompt;
+    }
     state.usage.total += usage.total;
     if (!state.usage.prompt && !state.usage.completion) {
         elements.usage.textContent = "";
         return;
     }
-    const rate = Math.round((state.usage.cached / Math.max(state.usage.prompt, 1)) * 100);
-    elements.usage.textContent = `本次会话 输入 ${formatNumber(state.usage.prompt)} · 缓存 ${formatNumber(state.usage.cached)}（${rate}%）· 输出 ${formatNumber(state.usage.completion)}`;
+    const rate = Math.round((state.usage.cached / Math.max(state.usage.cachePrompt, 1)) * 100);
+    const cache = state.usage.cachePrompt ? `缓存 ${formatNumber(state.usage.cached)}（${rate}%${state.usage.cachePrompt < state.usage.prompt ? "，仅统计已报告输入" : ""}）` : "缓存未报告";
+    elements.usage.textContent = `累计 输入 ${formatNumber(state.usage.prompt)} · ${cache} · 输出 ${formatNumber(state.usage.completion)}`;
 }
 
 async function connect() {
@@ -120,6 +128,7 @@ function updateDocument(next) {
     if (documentKey(next) !== documentKey(state.document)) {
         state.pageBlocks.clear();
         state.context = null;
+        state.imageContext = null;
         if (state.history.length) {
             appendMessage("assistant", "<p>文档内容已更新，后续问答将使用更新后的文档，重新开始上下文。</p>");
         }
@@ -169,8 +178,8 @@ async function indexedPage(page) {
     return `Physical PDF page ${page}:\n${lines || "(No indexed text on this page; page-level citations only.)"}`;
 }
 
-async function documentImages() {
-    const current = Math.max(1, Math.min(state.document.pages, state.document.page || 1));
+async function documentImages(currentPage = state.document.page || 1) {
+    const current = Math.max(1, Math.min(state.document.pages, currentPage));
     // Send the current page first, then nearby pages. Even a byte-limited
     // request should contain the page the reader is looking at.
     const pages = Array.from({ length: state.document.pages }, (_, i) => i + 1)
@@ -185,17 +194,16 @@ async function documentImages() {
         if (sentBytes > 24 * 1024 * 1024) {
             break;
         }
-        content.push({ type: "text", text: await indexedPage(page) });
-        content.push({ type: "image_url", image_url: { url: `data:${image.mime};base64,${image.data}` } });
+        content.push({ page, image: { type: "image_url", image_url: { url: `data:${image.mime};base64,${image.data}` } } });
         sentPages.push(page);
     }
     if (!sentPages.length) {
         throw new Error("页面图片超过大小限制，请改用文本模式。");
     }
-    const note = `文档共 ${state.document.pages} 页，本次发送 ${sentPages.length} 张页面图片：第 ${sentPages.join("、")} 页。`;
-    content.unshift({ type: "text", text: `${note} 每张图片前的「PDF page N:」表示页码，引用时使用 N。` });
-    appendMessage("assistant", `<p>${note}</p>`);
-    return content;
+    content.sort((a, b) => a.page - b.page);
+    return { pages: sentPages, content: content.flatMap(item => [
+        { type: "text", text: `Physical PDF page ${item.page}:` }, item.image
+    ]) };
 }
 
 // Attachments are downscaled once, so a pasted screenshot does not cost a
@@ -306,12 +314,20 @@ async function ask() {
 }
 
 async function documentContext() {
-    const key = JSON.stringify([documentKey(state.document), state.useImages, state.useImages ? state.document?.page : null]);
+    const key = documentKey(state.document);
     if (state.context?.key !== key) {
-        const content = state.useImages && state.document ? await documentImages() : await documentText();
-        state.context = { key, content };
+        state.context = { key, content: await documentText() };
     }
     return state.context.content;
+}
+
+async function imageContext(page) {
+    if (!state.useImages) return [];
+    const key = documentKey(state.document);
+    if (state.imageContext?.key !== key || !state.imageContext.pages.includes(page)) {
+        state.imageContext = { key, ...await documentImages(page) };
+    }
+    return [{ role: "user", content: state.imageContext.content }];
 }
 
 async function runAsk(question, attachments = []) {
@@ -323,8 +339,11 @@ async function runAsk(question, attachments = []) {
         const result = await request("state");
         updateDocument(result.document?.pages ? result.document : null);
         if (!state.document) throw new Error("没有打开的文档。");
+        const sourceKey = documentKey(state.document);
+        const currentPage = state.document.page || 1;
         const images = attachmentImages(attachments);
-        const pending = { role: "user", content: images.length ? [{ type: "text", text: question }, ...images] : question };
+        const questionText = `Current physical PDF page: ${currentPage}.\n\n${question}`;
+        const pending = { role: "user", content: images.length ? [{ type: "text", text: questionText }, ...images] : questionText };
         const history = [...state.history, pending];
         const hasAttachments = history.some(message => Array.isArray(message.content) && message.content.some(item => item.type === "image_url"));
         let payload;
@@ -332,8 +351,10 @@ async function runAsk(question, attachments = []) {
             const content = await documentContext();
             elements.status.textContent = "生成回答…";
             try {
+                const imageMessages = await imageContext(currentPage);
+                if (documentKey(state.document) !== sourceKey) throw new Error("document-changed");
                 payload = await request("ask", documentParams({
-                    messages: [{ role: "system", content: systemPrompt }, { role: "user", content }, ...history]
+                    messages: [{ role: "system", content: systemPrompt }, { role: "user", content }, ...imageMessages, ...history]
                 }));
                 break;
             } catch (error) {
@@ -347,8 +368,8 @@ async function runAsk(question, attachments = []) {
                 appendMessage("assistant", "<p>该模型不接受页面图片，已改用文本重试。</p>");
             }
         }
-        const answer = payload?.choices?.[0]?.message?.content?.trim();
-        if (!answer) {
+        const answer = payload?.choices?.[0]?.message?.content;
+        if (!answer?.trim()) {
             throw new Error(payload?.error?.message || "模型没有返回内容");
         }
         state.history = [...history, { role: "assistant", content: answer }];
@@ -383,6 +404,7 @@ async function runAsk(question, attachments = []) {
         if (message === "document-changed") {
             state.pageBlocks.clear();
             state.context = null;
+            state.imageContext = null;
             state.history = [];
         }
         appendMessage(
@@ -406,7 +428,7 @@ async function runAsk(question, attachments = []) {
 
 // The citation contains source IDs, not text to search or repair.
 elements.chat.addEventListener("click", async (event) => {
-    const link = event.target.closest("a[data-ranges], a[data-block-ids], a[data-page]");
+    const link = event.target.closest("a[data-ranges], a[data-page]");
     if (!link) {
         return;
     }
@@ -416,8 +438,6 @@ elements.chat.addEventListener("click", async (event) => {
                 const [startId, endId = startId] = range.split("..");
                 return { startId, endId };
             }) }
-            : link.dataset.blockIds !== undefined
-            ? { blockIds: [...new Set(link.dataset.blockIds.split(","))] }
             : { page: Number(link.dataset.page) };
         if (link.dataset.revision !== undefined) params.revision = link.dataset.revision;
         const result = await request("jump", params);

@@ -1941,7 +1941,8 @@ public:
      */
     enum Position {
         Center = 1, ///< Relative to the center of the page.
-        TopLeft = 2 ///< Relative to the top left corner of the page.
+        TopLeft = 2, ///< Relative to the top left corner of the page.
+        TopInset = 3 ///< Navigation target below the top of the viewport, with a reading margin.
     };
 
     /**

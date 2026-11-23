@@ -7,6 +7,7 @@
 #include "core/page.h"
 
 #include <QBuffer>
+#include <QCryptographicHash>
 #include <QFileInfo>
 #include <QImage>
 #include <QJsonArray>
@@ -23,13 +24,23 @@
 namespace
 {
 const QColor highlightColor(96, 165, 250);
+
+QString blockFingerprint(const Okular::Page *page, const QList<AiSearch::TextBlock> &blocks)
+{
+    QJsonArray fingerprint{page->width(), page->height(), int(page->rotation())};
+    for (const auto &block : blocks) {
+        const auto &rect = block.rectangle;
+        fingerprint.append(QJsonArray{block.text, rect.left, rect.top, rect.right, rect.bottom});
+    }
+    return QString::fromLatin1(QCryptographicHash::hash(QJsonDocument(fingerprint).toJson(QJsonDocument::Compact), QCryptographicHash::Sha256).toHex().left(16));
+}
 }
 
 AiBridge::AiBridge(Okular::Document *document, Sender sender, QObject *parent)
     : QObject(parent)
     , m_document(document)
     , m_sender(std::move(sender))
-    , m_blockScope(QUuid::createUuid().toString(QUuid::Id128).left(16))
+    , m_revisionScope(QUuid::createUuid().toString(QUuid::Id128).left(16))
 {
     if (m_document) {
         m_document->addObserver(this);
@@ -48,7 +59,7 @@ void AiBridge::invalidateDocument()
     ++m_revision;
     m_blocks.clear();
     m_pageBlocks.clear();
-    m_blockScope = QUuid::createUuid().toString(QUuid::Id128).left(16);
+    m_pageFingerprints.clear();
 }
 
 void AiBridge::notifySetup(const QList<Okular::Page *> &, int flags)
@@ -59,11 +70,24 @@ void AiBridge::notifySetup(const QList<Okular::Page *> &, int flags)
     }
 }
 
-void AiBridge::notifyPageChanged(int, int flags)
+// Page images are rendered without annotations, and the indexed PDF text is
+// unchanged by annotation/highlight updates. Content/layout replacements still
+// invalidate the revision through notifySetup.
+void AiBridge::notifyPageChanged(int page, int flags)
 {
-    if (flags & Annotations) {
-        invalidateDocument();
+    // OCR replacement uses TextSelection notifications too. Distinguish an
+    // actual text/geometry change from simply selecting existing text.
+    if ((flags & TextSelection) && m_document && m_pageFingerprints.contains(page)) {
+        const auto *source = m_document->page(page);
+        if (source && blockFingerprint(source, AiSearch::textBlocks(source)) != m_pageFingerprints.value(page)) {
+            invalidateDocument();
+        }
     }
+}
+
+QString AiBridge::revisionToken() const
+{
+    return m_revisionScope + QLatin1Char(':') + QString::number(m_revision);
 }
 
 void AiBridge::setSender(Sender sender)
@@ -147,9 +171,14 @@ void AiBridge::ensureBlocks(int page)
     }
     m_document->requestTextPage(page);
     QStringList ids;
-    const auto blocks = AiSearch::textBlocks(m_document->page(page));
+    const auto *source = m_document->page(page);
+    const auto blocks = AiSearch::textBlocks(source);
+    // Content-derived IDs survive reopening unchanged documents. Session and
+    // revision validation travels separately, never in the model's text prefix.
+    const QString scope = blockFingerprint(source, blocks);
+    m_pageFingerprints.insert(page, scope);
     for (const auto &block : blocks) {
-        const QString id = QStringLiteral("b%1p%2l%3").arg(m_blockScope).arg(page + 1).arg(ids.size() + 1);
+        const QString id = QStringLiteral("b%1p%2l%3").arg(scope).arg(page + 1).arg(ids.size() + 1);
         ids.append(id);
         m_blocks.insert(id, {page, block});
     }
@@ -176,13 +205,13 @@ void AiBridge::dispatch(const QJsonObject &request)
             document.insert(QStringLiteral("id"), QJsonValue(m_documentId));
             document.insert(QStringLiteral("pages"), QJsonValue(int(m_document->pages())));
             document.insert(QStringLiteral("page"), QJsonValue(int(m_document->currentPage()) + 1));
-            document.insert(QStringLiteral("revision"), QString::number(m_revision));
+            document.insert(QStringLiteral("revision"), revisionToken());
         }
         reply(id, {{QStringLiteral("document"), QJsonValue(document)}});
         return;
     }
 
-    if (params.contains(QStringLiteral("revision")) && params.value(QStringLiteral("revision")).toString() != QString::number(m_revision)) {
+    if (params.contains(QStringLiteral("revision")) && params.value(QStringLiteral("revision")).toString() != revisionToken()) {
         replyError(id, QStringLiteral("document-changed"));
         return;
     }
@@ -200,18 +229,7 @@ void AiBridge::dispatch(const QJsonObject &request)
         for (const auto &blockId : m_pageBlocks.value(pageNumber)) {
             blocks.append(QJsonObject{{QStringLiteral("id"), blockId}, {QStringLiteral("text"), m_blocks.value(blockId).block.text}});
         }
-        reply(id, {{QStringLiteral("blocks"), blocks}, {QStringLiteral("page"), pageNumber + 1}, {QStringLiteral("revision"), QString::number(m_revision)}});
-        return;
-    }
-
-    if (method == QLatin1String("pageText")) {
-        if (!pageValid) {
-            replyError(id, QStringLiteral("no such page"));
-            return;
-        }
-        m_document->requestTextPage(pageNumber);
-        const Okular::Page *page = m_document->page(pageNumber);
-        reply(id, {{QStringLiteral("text"), QJsonValue(page ? page->text(nullptr) : QString())}});
+        reply(id, {{QStringLiteral("blocks"), blocks}, {QStringLiteral("page"), pageNumber + 1}, {QStringLiteral("revision"), revisionToken()}});
         return;
     }
 
@@ -251,7 +269,7 @@ void AiBridge::dispatch(const QJsonObject &request)
         QSet<QString> seen;
         if (params.contains(QStringLiteral("ranges"))) {
             const auto ranges = params.value(QStringLiteral("ranges")).toArray();
-            if (!m_document || ranges.isEmpty() || ranges.size() > 64 || params.contains(QStringLiteral("blockIds"))) {
+            if (!m_document || ranges.isEmpty() || ranges.size() > 64) {
                 replyError(id, QStringLiteral("citation-range-invalid"));
                 return;
             }
@@ -292,25 +310,6 @@ void AiBridge::dispatch(const QJsonObject &request)
                     }
                 }
             }
-        } else if (params.contains(QStringLiteral("blockIds"))) {
-            const auto ids = params.value(QStringLiteral("blockIds")).toArray();
-            if (ids.isEmpty() || ids.size() > 256 || !m_document) {
-                replyError(id, QStringLiteral("citation-unavailable"));
-                return;
-            }
-            for (const auto &value : ids) {
-                const QString blockId = value.toString();
-                const auto found = m_blocks.constFind(blockId);
-                // Validate the whole citation before changing highlights or viewport.
-                if (found == m_blocks.cend()) {
-                    replyError(id, QStringLiteral("citation-unavailable"));
-                    return;
-                }
-                if (seen.contains(blockId)) continue;
-                if (seen.isEmpty()) targetPage = found->page;
-                seen.insert(blockId);
-                highlights[found->page].append(found->block.rectangle);
-            }
         } else if (!pageValid) {
             replyError(id, QStringLiteral("no such page"));
             return;
@@ -323,28 +322,13 @@ void AiBridge::dispatch(const QJsonObject &request)
         // Scroll to the evidence itself, not just to the top of its page.
         Okular::DocumentViewport viewport(targetPage);
         if (!rectangles.isEmpty()) {
-            double left = 1.0;
-            double top = 1.0;
-            double right = 0.0;
-            double bottom = 0.0;
-            Okular::NormalizedRect previous;
-            for (const Okular::NormalizedRect &rectangle : std::as_const(rectangles)) {
-                // A continued column starts back at the top. Center the first
-                // evidence segment, while still highlighting every selected line.
-                if (bottom > 0.0 && (rectangle.bottom < previous.top
-                    || rectangle.left >= right || rectangle.right <= left)) {
-                    break;
-                }
-                left = std::min(left, rectangle.left);
-                top = std::min(top, rectangle.top);
-                right = std::max(right, rectangle.right);
-                bottom = std::max(bottom, rectangle.bottom);
-                previous = rectangle;
-            }
+            // Start at the first evidence line, including ranges that continue
+            // into another column. Highlighting still includes every range.
+            const auto &first = rectangles.constFirst();
             viewport.rePos.enabled = true;
-            viewport.rePos.pos = Okular::DocumentViewport::Center;
-            viewport.rePos.normalizedX = (left + right) / 2.0;
-            viewport.rePos.normalizedY = (top + bottom) / 2.0;
+            viewport.rePos.pos = Okular::DocumentViewport::TopInset;
+            viewport.rePos.normalizedX = (first.left + first.right) / 2.0;
+            viewport.rePos.normalizedY = first.top;
         }
         if (m_navigator) {
             m_navigator(viewport);

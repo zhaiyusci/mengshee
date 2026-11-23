@@ -111,7 +111,7 @@ Okular::DocumentViewport TOC::documentViewport() const
 void TOC::goToDocumentViewport(const Okular::DocumentViewport &viewport)
 {
     if (m_pageView) {
-        m_pageView->goToDocumentViewport(viewport, true, true);
+        m_pageView->goToDocumentTarget(viewport, true, true);
     } else {
         m_document->setViewport(viewport);
     }

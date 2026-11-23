@@ -243,8 +243,8 @@ public:
     OKULARPART_EXPORT bool viewportHistoryAtBegin() const;
     OKULARPART_EXPORT bool viewportHistoryAtEnd() const;
     OKULARPART_EXPORT void goToDocumentViewport(const Okular::DocumentViewport &viewport, bool smoothMove = true, bool updateHistory = true);
-    /** Center a citation even near a page edge or when the whole page fits. */
-    OKULARPART_EXPORT void goToCenteredDocumentViewport(const Okular::DocumentViewport &viewport);
+    /** Place an explicit target 40pt below the top; page-only jumps keep their alignment. */
+    OKULARPART_EXPORT void goToDocumentTarget(const Okular::DocumentViewport &viewport, bool smoothMove = false, bool updateHistory = true);
     OKULARPART_EXPORT void goToPreviousViewport();
     OKULARPART_EXPORT void goToNextViewport();
 
@@ -448,6 +448,7 @@ private:
     // used when selecting stuff, makes the view scroll as necessary to keep the mouse inside the view
     void scrollPosIntoView(const QPoint pos);
     QPoint viewportToContentArea(const Okular::DocumentViewport &vp) const;
+    int navigationTopInset() const;
     int itemIndexForViewport(const Okular::DocumentViewport &vp) const;
     PageViewItem *sourceItem(int sourcePage) const;
     void rebuildDisplayedItems();

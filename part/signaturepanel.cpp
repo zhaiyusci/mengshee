@@ -77,11 +77,11 @@ void SignaturePanel::activated(const QModelIndex &index)
     Okular::DocumentViewport vp;
     vp.pageNumber = d->m_model->data(index, SignatureModel::PageRole).toInt();
     vp.rePos.enabled = true;
-    vp.rePos.pos = Okular::DocumentViewport::Center;
+    vp.rePos.pos = Okular::DocumentViewport::TopInset;
     vp.rePos.normalizedX = (nr.right + nr.left) / 2.0;
-    vp.rePos.normalizedY = (nr.bottom + nr.top) / 2.0;
+    vp.rePos.normalizedY = nr.top;
     if (d->m_pageView) {
-        d->m_pageView->goToDocumentViewport(vp, false, true);
+        d->m_pageView->goToDocumentTarget(vp, false, true);
         d->m_pageView->highlightSignatureFormWidget(d->m_currentForm);
     } else {
         d->m_document->setViewport(vp, nullptr);

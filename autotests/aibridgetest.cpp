@@ -7,6 +7,7 @@
 #include "aiservicesettings.h"
 #include "core/document.h"
 #include "core/page.h"
+#include "core/textpage.h"
 #include "settings_core.h"
 #include <QApplication>
 #include <QElapsedTimer>
@@ -73,6 +74,15 @@ static QJsonObject completion(const QString &answer) {
 static void send(AiBridge &bridge, int id, const QString &method, QJsonObject params = {}) {
     bridge.receive(QJsonDocument(QJsonObject{{"id", id}, {"method", method}, {"params", params}}).toJson(QJsonDocument::Compact));
 }
+static QJsonObject citationRange(const QString &startId, const QString &endId) {
+    return {{"startId", startId}, {"endId", endId}};
+}
+static QString blockText(const QJsonObject &reply) {
+    QStringList lines;
+    for (const auto &value : reply["result"].toObject()["blocks"].toArray())
+        lines.append(value.toObject()["text"].toString());
+    return lines.join(QLatin1Char('\n'));
+}
 static QJsonObject askParams(const QString &question) {
     return {{"messages", QJsonArray{QJsonObject{{"role", "user"}, {"content", question}}}}};
 }
@@ -110,15 +120,15 @@ int main(int argc, char **argv) {
         AiBridge bridge(&document, [&](const QByteArray &line) { replies.append(QJsonDocument::fromJson(line).object()); });
         bridge.setPathProvider([&] { return fixture; });
         const bool loadedBefore = document.page(2)->hasTextPage();
-        send(bridge, 1, "pageText", {{"page", 3}});
-        const QString before = replies.last()["result"].toObject()["text"].toString();
+        send(bridge, 1, "pageBlocks", {{"page", 3}});
+        const QString before = blockText(replies.last());
         document.requestTextPage(2);
-        send(bridge, 2, "pageText", {{"page", 3}});
-        const QString after = replies.last()["result"].toObject()["text"].toString();
+        send(bridge, 2, "pageBlocks", {{"page", 3}});
+        const QString after = blockText(replies.last());
         require(after.contains("Original alpha evidence"), "text extraction control failed");
         require(!loadedBefore && before == after, "unloaded page text was lost");
         reports.append(QJsonObject{{"issue", "unloaded-page-text"}, {"reproduced", !loadedBefore && before.isEmpty()}, {"hasTextPageBefore", loadedBefore}, {"before", before}, {"afterExplicitExtraction", after}});
-        std::cerr << "page-text case complete\n";
+        std::cerr << "page-blocks case complete\n";
 
         int blockRequest = 100;
         const auto blockId = [&](int page, const QString &fragment) {
@@ -135,21 +145,28 @@ int main(int argc, char **argv) {
         const QString columnId = blockId(1, "Other column");
         require(!secondId.isEmpty() && !columnId.isEmpty() && secondId != columnId, "same-row columns merged");
         const QString nextPageId = blockId(2, "Original alpha evidence");
+        const auto sourceBlocks = AiSearch::textBlocks(document.page(0));
+        require(sourceBlocks.size() == 4, "evidence, parallel column or footer split/merged unexpectedly");
+        for (const auto &block : sourceBlocks) {
+            if (block.text == "1") require(block.rectangle.top > .7, "footer coordinates incorrect");
+            else require(block.rectangle.bottom < .4, "body line includes footer");
+        }
         int navigations = 0;
         Okular::DocumentViewport lastViewport;
         bridge.setNavigator([&](const Okular::DocumentViewport &viewport) { ++navigations; lastViewport = viewport; });
-        send(bridge, 3, "jump", {{"blockIds", QJsonArray{originalId, secondId, nextPageId, originalId}}});
+        send(bridge, 3, "jump", {{"ranges", QJsonArray{citationRange(originalId, secondId), citationRange(nextPageId, nextPageId), citationRange(originalId, originalId)}}});
         require(replies.last()["result"].toObject()["located"].toBool(), "original citation control failed");
+        require(replies.last()["result"].toObject()["blocks"].toInt() == 3, "separate ranges duplicated or included unrelated blocks");
         require(replies.last()["result"].toObject()["pages"].toInt() == 2 && lastViewport.pageNumber == 0, "multi-page citation navigation failed");
         require(lastViewport.rePos.enabled && lastViewport.rePos.normalizedY < .4, "citation includes footer");
         const int navigationsBeforeInvalid = navigations;
-        send(bridge, 31, "jump", {{"blockIds", QJsonArray{originalId, "invented"}}});
+        send(bridge, 31, "jump", {{"ranges", QJsonArray{citationRange(originalId, originalId), citationRange("invented", "invented")}}});
         require(replies.last()["error"].toString() == "citation-unavailable" && navigations == navigationsBeforeInvalid, "invalid citation navigated or partially accepted");
-        send(bridge, 32, "jump", {{"blockIds", QJsonArray{}}});
-        require(replies.last()["error"].toString() == "citation-unavailable", "empty IDs accepted");
+        send(bridge, 32, "jump", {{"ranges", QJsonArray{}}});
+        require(replies.last()["error"].toString() == "citation-range-invalid", "empty ranges accepted");
         send(bridge, 33, "jump", {{"page", 3}});
         require(!replies.last()["result"].toObject()["located"].toBool() && lastViewport.pageNumber == 2, "page-only citation failed");
-        reports.append(QJsonObject{{"issue", "block-id-citations"}, {"cachedIds", true}, {"separateColumns", true}, {"multiPage", true}, {"invalidIdRejected", true}, {"pageFallback", true}});
+        reports.append(QJsonObject{{"issue", "range-citations"}, {"cachedIds", true}, {"separateColumns", true}, {"multiPage", true}, {"invalidIdRejected", true}, {"pageFallback", true}});
 
         // Dense two-column fixture: selecting only endpoints must fill all
         // middle lines without including the parallel lines in the other column.
@@ -180,7 +197,11 @@ int main(int argc, char **argv) {
             require(destination.rePos.normalizedX < .5, "same-column range included other column");
             send(ranges, 3, "jump", {{"ranges", QJsonArray{range(3, 6)}}});
             require(results.last()["result"].toObject()["blocks"].toInt() == 4, "cross-column continuation failed");
-            require(destination.rePos.normalizedX < .5, "cross-column navigation should center first segment");
+            require(destination.rePos.normalizedX < .5, "cross-column navigation should start in first column");
+            const auto columnBlocks = AiSearch::textBlocks(columns.page(0));
+            require(destination.rePos.pos == Okular::DocumentViewport::TopInset, "cross-column navigation is not top-inset aligned");
+            require(qAbs(destination.rePos.normalizedY - columnBlocks[3].rectangle.top) < 1e-9, "cross-column navigation did not start at startId top");
+            require(destination.rePos.normalizedY > columnBlocks[5].rectangle.top, "cross-column navigation incorrectly selected the higher second column");
             send(ranges, 4, "jump", {{"ranges", QJsonArray{range(0, 2), range(1, 4)}}});
             require(results.last()["result"].toObject()["blocks"].toInt() == 5, "overlapping ranges duplicated lines");
             const int beforeInvalid = moved;
@@ -190,7 +211,7 @@ int main(int argc, char **argv) {
             require(results.last()["result"].toObject()["blocks"].toInt() == 1, "single-block range failed");
             send(ranges, 7, "jump", {{"ranges", QJsonArray{QJsonObject{{"startId", "invented"}, {"endId", blocks[2].toObject()["id"]}}}}});
             require(results.last()["error"].toString() == "citation-unavailable", "invented range endpoint accepted");
-            reports.append(QJsonObject{{"issue", "inclusive-ranges"}, {"middleLines", true}, {"sameColumn", true}, {"crossColumn", true}, {"overlapDeduplication", true}, {"invalidAtomic", true}});
+            reports.append(QJsonObject{{"issue", "inclusive-ranges"}, {"middleLines", true}, {"sameColumn", true}, {"crossColumn", true}, {"startIdTopInset", true}, {"overlapDeduplication", true}, {"invalidAtomic", true}});
         }
         send(bridge, 34, "jump", {{"ranges", QJsonArray{QJsonObject{{"startId", originalId}, {"endId", nextPageId}}}}});
         require(replies.last()["result"].toObject()["pages"].toInt() == 2, "cross-page range failed");
@@ -198,13 +219,13 @@ int main(int argc, char **argv) {
         pdf(fixture, "Replacement beta evidence");
         require(open(), "cannot reopen modified PDF");
         document.requestTextPage(0);
-        send(bridge, 4, "pageText", {{"page", 1}});
-        const QString replacement = replies.last()["result"].toObject()["text"].toString();
+        send(bridge, 4, "pageBlocks", {{"page", 1}});
+        const QString replacement = blockText(replies.last());
         const QString replacementId = blockId(1, "Replacement beta evidence");
         require(!replacementId.isEmpty() && replacementId != originalId, "replacement reused citation IDs");
-        send(bridge, 5, "jump", {{"blockIds", QJsonArray{replacementId}}});
+        send(bridge, 5, "jump", {{"ranges", QJsonArray{citationRange(replacementId, replacementId)}}});
         const bool newLocated = replies.last()["result"].toObject()["located"].toBool();
-        send(bridge, 6, "jump", {{"blockIds", QJsonArray{originalId}}});
+        send(bridge, 6, "jump", {{"ranges", QJsonArray{citationRange(originalId, originalId)}}});
         const bool oldLocated = replies.last()["result"].toObject()["located"].toBool();
         QList<QJsonObject> freshReplies;
         AiBridge fresh(&document, [&](const QByteArray &line) { freshReplies.append(QJsonDocument::fromJson(line).object()); });
@@ -212,10 +233,12 @@ int main(int argc, char **argv) {
         send(fresh, 70, "pageBlocks", {{"page", 1}});
         const auto freshBlocks = freshReplies.last()["result"].toObject()["blocks"].toArray();
         const QString freshId = freshBlocks.first().toObject()["id"].toString();
-        require(freshId != replacementId, "bridge scope IDs collided");
-        send(fresh, 71, "jump", {{"blockIds", QJsonArray{replacementId}}});
-        require(freshReplies.last()["error"].toString() == "citation-unavailable", "foreign bridge citation accepted");
-        send(fresh, 7, "jump", {{"blockIds", QJsonArray{freshId}}});
+        require(freshId == replacementId, "unchanged content did not retain stable block IDs");
+        send(bridge, 69, "state");
+        const QString foreignRevision = replies.last()["result"].toObject()["document"].toObject()["revision"].toString();
+        send(fresh, 71, "jump", {{"ranges", QJsonArray{citationRange(replacementId, replacementId)}}, {"revision", foreignRevision}});
+        require(freshReplies.last()["error"].toString() == "document-changed", "foreign bridge revision accepted");
+        send(fresh, 7, "jump", {{"ranges", QJsonArray{citationRange(freshId, freshId)}}});
         const bool freshLocated = freshReplies.last()["result"].toObject()["located"].toBool();
         require(replacement.contains("Replacement beta evidence") && freshLocated, "changed document control failed");
         require(newLocated && !oldLocated, "citation index was not invalidated");
@@ -273,15 +296,25 @@ int main(int argc, char **argv) {
         send(bridge, 20, "state");
         const QString revision = replies.last()["result"].toObject()["document"].toObject()["revision"].toString();
         require(!revision.isEmpty(), "revision missing from state");
+        bridge.notifyPageChanged(0, Okular::DocumentObserver::Annotations);
+        bridge.notifyPageChanged(0, Okular::DocumentObserver::TextSelection);
+        send(bridge, 201, "state");
+        require(replies.last()["result"].toObject()["document"].toObject()["revision"].toString() == revision, "annotation or selection unnecessarily invalidated context");
+        require(blockId(1, "Replacement beta evidence") == replacementId, "annotation changed stable IDs");
+        reports.append(QJsonObject{{"issue", "cache-prefix-stability"}, {"stableReopenIds", true}, {"annotationPreservesContext", true}, {"foreignRevisionRejected", true}});
         bridge.notifySetup({}, Okular::DocumentObserver::UrlChanged);
-        send(bridge, 21, "pageText", {{"page", 1}, {"revision", revision}});
+        send(bridge, 21, "pageBlocks", {{"page", 1}, {"revision", revision}});
         require(replies.last()["error"].toString() == "document-changed", "stale revision accepted");
 
         Server changingDocumentServer;
         Repro::configuration = {changingDocumentServer.base(), "model-a", "FAKE-KEY-A", ""};
+        send(bridge, 211, "pageBlocks", {{"page", 1}});
         send(bridge, 22, "ask", askParams("question before document edit"));
         waitFor([&] { return changingDocumentServer.requests.size() == 1; });
-        bridge.notifyPageChanged(0, Okular::DocumentObserver::Annotations);
+        auto *editedText = new Okular::TextPage();
+        editedText->append(QStringLiteral("Updated OCR evidence"), Okular::NormalizedRect(.1, .1, .4, .2));
+        const_cast<Okular::Page *>(document.page(0))->setTextPage(editedText);
+        bridge.notifyPageChanged(0, Okular::DocumentObserver::TextSelection | Okular::DocumentObserver::Highlights);
         const auto repliesBefore = replies.size();
         changingDocumentServer.respond(0, 200, completion("STALE DOCUMENT"));
         waitFor([&] { return replies.size() > repliesBefore; });

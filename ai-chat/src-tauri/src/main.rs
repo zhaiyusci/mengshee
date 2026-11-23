@@ -1,6 +1,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use serde::Serialize;
 use std::collections::HashMap;
 use std::io::{BufRead, Write};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -217,31 +216,6 @@ async fn bridge_request(method: String, params: serde_json::Value) -> Result<ser
         .map_err(|error| error.to_string())?
 }
 
-#[derive(Serialize)]
-struct WindowInfo {
-    document: String,
-    document_id: String,
-    document_title: String,
-}
-
-#[tauri::command]
-fn window_info() -> WindowInfo {
-    WindowInfo {
-        document: LAUNCH
-            .get()
-            .map(|launch| launch.document.clone())
-            .unwrap_or_default(),
-        document_id: LAUNCH
-            .get()
-            .map(|launch| launch.document_id.clone())
-            .unwrap_or_default(),
-        document_title: LAUNCH
-            .get()
-            .map(|launch| launch.document_title.clone())
-            .unwrap_or_default(),
-    }
-}
-
 fn main() {
     let launch = launch_info();
     log(&format!("start: document={}", launch.document));
@@ -253,7 +227,7 @@ fn main() {
     let _ = LAUNCH.set(launch.clone());
 
     let result = tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![bridge_request, window_info])
+        .invoke_handler(tauri::generate_handler![bridge_request])
         .setup(move |app| {
             let _ = APP_HANDLE.set(app.handle().clone());
             let data_directory = webview_data_directory(&launch);

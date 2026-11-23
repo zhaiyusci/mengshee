@@ -624,7 +624,7 @@ Part::Part(QObject *parent, const QVariantList &args)
     m_aiBridge->setPathProvider([this] { return url().toLocalFile(); });
     m_aiBridge->setNavigator([this](const DocumentViewport &viewport) {
         if (PageView *view = workspaceActivePageView()) {
-            view->goToCenteredDocumentViewport(viewport);
+            view->goToDocumentTarget(viewport);
         }
     });
     connectWorkspacePageView(m_pageView);
@@ -685,7 +685,9 @@ Part::Part(QObject *parent, const QVariantList &args)
     m_document->addObserver(m_bookmarkList);
     m_document->addObserver(m_signaturePanel);
 
-    connect(m_documentWorkspace, &DocumentWorkspace::auxiliaryFrameRequested, this, &Part::openAuxiliaryView);
+    connect(m_documentWorkspace, &DocumentWorkspace::auxiliaryFrameRequested, this, [this](PageView *sourceView, const DocumentViewport &target, const QString &title) {
+        openAuxiliaryView(sourceView, target, title);
+    });
 
     connect(m_documentWorkspace, &DocumentWorkspace::mainViewChanged, this, [this](PageView *oldMainView, PageView *newMainView) {
         if (!oldMainView || !newMainView) {
@@ -873,7 +875,7 @@ void Part::setupViewerActions()
             return;
         }
         const DocumentViewport target = sourceView->documentViewport();
-        openAuxiliaryView(sourceView, target, i18nc("@title Auxiliary document frame", "Page %1", target.pageNumber + 1));
+        openAuxiliaryView(sourceView, target, i18nc("@title Auxiliary document frame", "Page %1", target.pageNumber + 1), false);
     });
 
     m_readByViews = ac->addAction(QStringLiteral("view_read_by_views"));
@@ -1644,7 +1646,7 @@ void Part::connectWorkspacePageView(PageView *view)
 #endif
 }
 
-void Part::openAuxiliaryView(PageView *sourceView, const DocumentViewport &target, const QString &title)
+void Part::openAuxiliaryView(PageView *sourceView, const DocumentViewport &target, const QString &title, bool alignTarget)
 {
     if (!m_documentWorkspace || !target.isValid()) {
         return;
@@ -1670,7 +1672,11 @@ void Part::openAuxiliaryView(PageView *sourceView, const DocumentViewport &targe
     connectWorkspacePageView(view);
     // Seed the new tab from the source frame. For links this makes Back return
     // to the clicked link; direct opens simply start at the current viewport.
-    view->initializeIndependentNavigation(sourceView ? sourceView->documentViewport() : DocumentViewport(), target);
+    auto destination = target;
+    if (alignTarget && destination.rePos.enabled) {
+        destination.rePos.pos = DocumentViewport::TopInset;
+    }
+    view->initializeIndependentNavigation(sourceView ? sourceView->documentViewport() : DocumentViewport(), destination);
     m_document->addObserver(view);
     m_document->registerView(view);
     m_documentWorkspace->addAuxiliaryView(view, title, sourceView);
@@ -2020,13 +2026,16 @@ void Part::openUrlFromBookmarks(const QUrl &_url)
     QUrl url = _url;
     Okular::DocumentViewport vp(_url.fragment(QUrl::FullyDecoded));
     if (vp.isValid()) {
+        if (vp.rePos.enabled) {
+            vp.rePos.pos = DocumentViewport::TopInset;
+        }
         m_document->setNextDocumentViewport(vp);
     }
     url.setFragment(QString());
     if (m_document->currentDocument() == url) {
         if (vp.isValid()) {
             if (PageView *view = workspaceActivePageView()) {
-                view->goToDocumentViewport(vp, true, true);
+                view->goToDocumentTarget(vp, true, true);
             } else {
                 m_document->setViewport(vp);
             }
@@ -3792,7 +3801,7 @@ void Part::slotPreviousBookmark()
     if (!bookmark.isNull()) {
         DocumentViewport vp(bookmark.url().fragment(QUrl::FullyDecoded));
         if (activeView) {
-            activeView->goToDocumentViewport(vp, true, true);
+            activeView->goToDocumentTarget(vp, true, true);
         } else {
             m_document->setViewport(vp, nullptr, true);
         }
@@ -3808,7 +3817,7 @@ void Part::slotNextBookmark()
     if (!bookmark.isNull()) {
         DocumentViewport vp(bookmark.url().fragment(QUrl::FullyDecoded));
         if (activeView) {
-            activeView->goToDocumentViewport(vp, true, true);
+            activeView->goToDocumentTarget(vp, true, true);
         } else {
             m_document->setViewport(vp, nullptr, true);
         }

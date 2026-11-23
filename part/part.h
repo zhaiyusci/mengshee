@@ -442,7 +442,7 @@ private:
     PageView *workspaceActivePageView() const;
     int workspaceActivePageNumber() const;
     void connectWorkspacePageView(PageView *view);
-    void openAuxiliaryView(PageView *sourceView, const Okular::DocumentViewport &target, const QString &title);
+    void openAuxiliaryView(PageView *sourceView, const Okular::DocumentViewport &target, const QString &title, bool alignTarget = true);
     void registerWorkspacePageViewActions(PageView *view);
     void routeWorkspacePageViewActions(PageView *view);
     void updateWorkspacePageViews();
