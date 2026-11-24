@@ -429,7 +429,7 @@ void PartTest::testLatexErrorAppearance()
     }
     auto render = [](const QString &source) {
         return std::async(std::launch::async, [source]() {
-            return LatexNoteUtils::renderAppearancePdf(source, Qt::black, 240.0, false, 12.0);
+            return LatexNoteUtils::renderAppearancePdf(source, Qt::black, 240.0, 12.0);
         });
     };
     auto failedJob = render(source);

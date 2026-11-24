@@ -20,7 +20,7 @@ dll.stemtex_renderer_destroy.argtypes=[c.c_void_p];dll.stemtex_renderer_free_out
 worker=base/'worker.tex'
 setup=base/'request-setup.tex'
 setup.write_text('',encoding='utf-8')
-worker.write_text((pathlib.Path(__file__).resolve().parents[1]/'part/latexworker.tex').read_text(encoding='utf-8').replace('@@MENGSHEE_REQUEST_SETUP@@',setup.as_posix()),encoding='utf-8')
+worker.write_text((pathlib.Path(__file__).resolve().parents[1]/'part/latex/stemtexworker.tex').read_text(encoding='utf-8').replace('@@MENGSHEE_REQUEST_SETUP@@',setup.as_posix()),encoding='utf-8')
 config=Config(str(root/'runtime').encode(),str(root/'runtime').encode(),str(pathlib.Path(args.texmf).resolve()).encode(),str(pathlib.Path(args.profile).resolve()).encode(),str((base/'state').resolve()).encode(),str((base/'renders').resolve()).encode(),90000,90000,0,0,0,0,1,0,str(worker).encode())
 err=c.c_int();msg=c.c_char_p();renderer=dll.stemtex_renderer_create(c.byref(config),c.byref(err),c.byref(msg));assert renderer,msg.value
 # Compare with the native SDK given the same application display spacing.

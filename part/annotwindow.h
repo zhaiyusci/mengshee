@@ -15,16 +15,12 @@
 #include <QFrame>
 #include <QPalette>
 #include <QString>
+#include <optional>
 
 namespace Okular
 {
 class Annotation;
 class Document;
-}
-
-namespace GuiUtils
-{
-class LatexRenderer;
 }
 
 class KTextEdit;
@@ -66,14 +62,13 @@ private:
 #endif
     QWidget *m_editorWidget = nullptr;
     QColor m_color;
-    GuiUtils::LatexRenderer *m_latexRenderer;
     Okular::Annotation *m_annot;
     Okular::Document *m_document;
     int m_page;
     int m_prevCursorPos;
     int m_prevAnchorPos;
     bool m_committingWindowText = false;
-    QString m_lastLatexNoteCompileSource;
+    std::optional<QString> m_lastLatexNoteCompileSource;
     QWidget *m_numberedCalloutControls = nullptr;
     QSpinBox *m_numberedCalloutId = nullptr;
     QLabel *m_numberedCalloutLabel = nullptr;
@@ -96,9 +91,6 @@ private:
     void setEditorPalette(const QPalette &palette);
     QPalette editorPalette() const;
 
-public Q_SLOTS:
-    void renderLatex(bool render);
-
 protected:
     void closeEvent(QCloseEvent *event) override;
     void showEvent(QShowEvent *event) override;
@@ -108,11 +100,7 @@ protected:
 
 private Q_SLOTS:
     void slotOptionBtn();
-    void slotWindowTextChanged();
     void slotHandleContentsChangedByUndoRedo(Okular::Annotation *annot, const QString &contents, int cursorPos, int anchorPos);
-
-Q_SIGNALS:
-    void containsLatex(bool);
 };
 
 #endif

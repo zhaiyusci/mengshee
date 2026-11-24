@@ -417,7 +417,7 @@ Part::Part(QObject *parent, const QVariantList &args)
     setupConfigSkeleton(args);
     m_latexStemtexProfileName = Okular::Settings::latexStemtexProfileName();
     m_latexStemtexTexmfRoot = Okular::Settings::latexStemtexTexmfRoot();
-    GuiUtils::LatexRenderer::prewarmStemTeX();
+    GuiUtils::LatexRenderer::prewarm();
 
 #if HAVE_DBUS
     numberOfParts++;
@@ -9039,7 +9039,7 @@ void Part::slotNewConfig()
     if (m_latexStemtexProfileName != stemtexProfileName || m_latexStemtexTexmfRoot != stemtexTexmfRoot) {
         m_latexStemtexProfileName = stemtexProfileName;
         m_latexStemtexTexmfRoot = stemtexTexmfRoot;
-        GuiUtils::LatexRenderer::restartStemTeX();
+        GuiUtils::LatexRenderer::restart();
     }
 }
 

@@ -439,7 +439,6 @@ struct LatexResizeUpdate {
     MouseAnnotation::ResizeHandle rotatedHandle = MouseAnnotation::RH_None;
     bool adjustsLayoutWidth = false;
     bool needsRender = false;
-    bool callout = false;
     double visibleWidthPoints = 0.0;
     double layoutWidthPoints = 0.0;
     double fontSizePoints = 0.0;
@@ -451,7 +450,7 @@ struct LatexResizeUpdate {
 static bool
 prepareLatexResizeUpdate(Okular::Document *document, int pageNumber, Okular::Annotation *annotation, const Okular::NormalizedRect &resizedRect, MouseAnnotation::ResizeHandle handle, Okular::Rotation rotation, LatexResizeUpdate *update)
 {
-    if (!document || !update || !LatexNoteUtils::annotationIsLatex(annotation) || annotation->contents().trimmed().isEmpty()) {
+    if (!document || !update || !LatexNoteUtils::annotationIsLatex(annotation)) {
         return false;
     }
 
@@ -477,7 +476,6 @@ prepareLatexResizeUpdate(Okular::Document *document, int pageNumber, Okular::Ann
     update->layoutWidthPoints = LatexNoteUtils::layoutWidthForLatexAnnotation(annotation, page);
     update->fontSizePoints = LatexNoteUtils::fontSizeForLatexAnnotation(annotation);
     update->paddingPoints = LatexNoteUtils::paddingForLatexAnnotation(annotation);
-    update->callout = annotation->isLatexCallout();
 
     if (!std::isfinite(update->layoutWidthPoints) || update->layoutWidthPoints <= 0.0) {
         return false;
@@ -586,12 +584,9 @@ bool MouseAnnotation::updateLatexNoteAfterResizeAsync(const AnnotationDescriptio
     }
 
     const quint64 requestId = ++m_latexResizeRequestId;
-    auto finishResize = [this, requestId](const LatexResizeUpdate &resizeUpdate, const LatexNoteUtils::RenderResult *rendered) -> bool {
-        if (requestId != m_latexResizeRequestId) {
-            return true;
-        }
-
-        const bool clearingPendingPreview = m_hasPendingLatexResizePreview && m_pendingLatexResizeAnnotationUniqueName == resizeUpdate.annotationUniqueName;
+    QPointer<LatexNoteUtils::RenderRequest> request = new LatexNoteUtils::RenderRequest(m_document, update.pageNumber, update.annotationUniqueName);
+    auto finishResize = [this, requestId, request](const LatexResizeUpdate &resizeUpdate, const LatexNoteUtils::RenderResult *rendered) -> bool {
+        const bool clearingPendingPreview = requestId == m_latexResizeRequestId && m_hasPendingLatexResizePreview && m_pendingLatexResizeAnnotationUniqueName == resizeUpdate.annotationUniqueName;
         if (clearingPendingPreview && m_focusedAnnotation.isValid() && m_focusedAnnotation.pageNumber == resizeUpdate.pageNumber && m_focusedAnnotation.annotation &&
             m_focusedAnnotation.annotation->uniqueName() == resizeUpdate.annotationUniqueName) {
             updateViewport(m_focusedAnnotation);
@@ -599,6 +594,12 @@ bool MouseAnnotation::updateLatexNoteAfterResizeAsync(const AnnotationDescriptio
         if (clearingPendingPreview) {
             m_hasPendingLatexResizePreview = false;
             m_pendingLatexResizeAnnotationUniqueName.clear();
+        }
+
+        if (!request || !request->finish()) {
+            if (m_focusedAnnotation.isValid())
+                updateViewport(m_focusedAnnotation);
+            return false;
         }
 
         GuiUtils::LatexRenderWarning warning;
@@ -642,16 +643,17 @@ bool MouseAnnotation::updateLatexNoteAfterResizeAsync(const AnnotationDescriptio
     QPointer<MouseAnnotation> self(this);
     QPointer<QCoreApplication> applicationGuard(QCoreApplication::instance());
     if (!applicationGuard) {
+        request->finish();
         m_hasPendingLatexResizePreview = false;
         m_pendingLatexResizeAnnotationUniqueName.clear();
         return false;
     }
     try {
-        std::thread([applicationGuard, self, requestId, update, finishResize]() mutable noexcept {
+        std::thread([applicationGuard, self, request, update, finishResize]() mutable noexcept {
             try {
                 LatexNoteUtils::RenderResult rendered;
                 try {
-                    rendered = LatexNoteUtils::renderAppearancePdf(update.contents, update.textColor, update.layoutWidthPoints, update.callout, update.fontSizePoints);
+                    rendered = LatexNoteUtils::renderAppearancePdf(update.contents, update.textColor, update.layoutWidthPoints, update.fontSizePoints);
                     // Recheck against the newly rendered PDF too: its extra
                     // width may have changed with wrapping or the TeX profile.
                     // Bound the correction for content that cannot fit (for
@@ -666,7 +668,7 @@ bool MouseAnnotation::updateLatexNoteAfterResizeAsync(const AnnotationDescriptio
                         if (qAbs(correctedWidth - update.layoutWidthPoints) < 0.02) {
                             break;
                         }
-                        auto corrected = LatexNoteUtils::renderAppearancePdf(update.contents, update.textColor, correctedWidth, update.callout, update.fontSizePoints);
+                        auto corrected = LatexNoteUtils::renderAppearancePdf(update.contents, update.textColor, correctedWidth, update.fontSizePoints);
                         if (!corrected.ok || !corrected.errorMessage.isEmpty()) {
                             break;
                         }
@@ -690,8 +692,10 @@ bool MouseAnnotation::updateLatexNoteAfterResizeAsync(const AnnotationDescriptio
                 }
                 const bool queued = QMetaObject::invokeMethod(
                     applicationGuard.data(),
-                    [self, requestId, update, rendered, finishResize]() mutable {
-                        if (!self || requestId != self->m_latexResizeRequestId) {
+                    [self, request, update, rendered, finishResize]() mutable {
+                        if (!self) {
+                            if (request)
+                                request->finish();
                             return;
                         }
                         finishResize(update, &rendered);
@@ -707,6 +711,7 @@ bool MouseAnnotation::updateLatexNoteAfterResizeAsync(const AnnotationDescriptio
             }
         }).detach();
     } catch (const std::exception &exception) {
+        request->finish();
         m_hasPendingLatexResizePreview = false;
         m_pendingLatexResizeAnnotationUniqueName.clear();
         GuiUtils::LatexRenderWarning warning;
@@ -716,6 +721,7 @@ bool MouseAnnotation::updateLatexNoteAfterResizeAsync(const AnnotationDescriptio
         setLatexRenderWarning(ad, warning);
         return false;
     } catch (...) {
+        request->finish();
         m_hasPendingLatexResizePreview = false;
         m_pendingLatexResizeAnnotationUniqueName.clear();
         GuiUtils::LatexRenderWarning warning;

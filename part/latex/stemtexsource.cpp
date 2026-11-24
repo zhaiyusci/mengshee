@@ -1,9 +1,9 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
-#include "latexsource.h"
+#include "stemtexsource.h"
 #include <QColor>
 #include <QStringList>
 
-namespace GuiUtils::LatexSource
+namespace GuiUtils::StemTeXSource
 {
 QString requestSetup(const QColor &textColor)
 {

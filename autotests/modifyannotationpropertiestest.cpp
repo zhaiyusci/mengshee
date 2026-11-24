@@ -25,6 +25,7 @@ private Q_SLOTS:
     void cleanup();
     void testModifyAnnotationProperties();
     void testModifyDefaultAnnotationProperties();
+    void testAsyncCompletionMerge();
     void testModifyAnnotationPropertiesWithRotation_Bug318828();
 
 private:
@@ -114,6 +115,47 @@ void ModifyAnnotationPropertiesTest::testModifyAnnotationProperties()
     QCOMPARE(4.0, m_annot1->style().width());
     QCOMPARE(QColor(Qt::red), m_annot1->style().color());
     QCOMPARE(origLine1Xml, TestingUtils::getAnnotationXml(m_annot1));
+}
+
+void ModifyAnnotationPropertiesTest::testAsyncCompletionMerge()
+{
+    auto *other = new Okular::TextAnnotation;
+    other->setBoundingRectangle({.3, .3, .4, .4});
+    other->style().setColor(Qt::red);
+    m_document->addPageAnnotation(0, other);
+    auto color = [&](Okular::Annotation *annotation, const QColor &value) {
+        m_document->prepareToModifyAnnotationProperties(annotation);
+        annotation->style().setColor(value);
+        m_document->modifyPageAnnotationProperties(0, annotation);
+    };
+    auto complete = [&] {
+        m_document->prepareToModifyAnnotationProperties(m_annot1);
+        m_annot1->style().setWidth(8.0);
+        m_document->modifyPageAnnotationProperties(0, m_annot1, true);
+    };
+
+    color(m_annot1, Qt::green);
+    color(other, Qt::blue);
+    complete();
+    // Another annotation's intervening edit must remain a separate undo step.
+    m_document->undo();
+    QCOMPARE(m_annot1->style().width(), 4.0);
+    QCOMPARE(m_annot1->style().color(), QColor(Qt::green));
+    QCOMPARE(other->style().color(), QColor(Qt::blue));
+    m_document->undo();
+    QCOMPARE(other->style().color(), QColor(Qt::red));
+    m_document->undo();
+    QCOMPARE(m_annot1->style().color(), QColor(Qt::red));
+
+    color(m_annot1, Qt::green);
+    complete();
+    // The settings and their completed appearance form one undo/redo step.
+    m_document->undo();
+    QCOMPARE(m_annot1->style().color(), QColor(Qt::red));
+    QCOMPARE(m_annot1->style().width(), 4.0);
+    m_document->redo();
+    QCOMPARE(m_annot1->style().color(), QColor(Qt::green));
+    QCOMPARE(m_annot1->style().width(), 8.0);
 }
 
 void ModifyAnnotationPropertiesTest::testModifyDefaultAnnotationProperties()

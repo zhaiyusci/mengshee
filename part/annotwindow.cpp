@@ -66,11 +66,7 @@
 #include "core/page.h"
 #include "gui/guiutils.h"
 #include "latexnoteutils.h"
-#include "latexrenderer.h"
-#include "latexsource.h"
 #include "settings.h"
-#include <KMessageBox>
-#include <core/utils.h>
 
 #include <cmath>
 
@@ -136,9 +132,6 @@ bool latexAppearanceNeedsRefresh(const Okular::Annotation *annotation, const Oku
 {
     if (!annotation || !page)
         return true;
-    if (GuiUtils::LatexSource::sourceForLayout(annotation->contents()) != annotation->contents())
-        return true;
-
     const QString appearance = annotation->latexAppearancePdfFileName();
     const QSizeF pdfSize = GuiUtils::pdfPageSizeInPoints(appearance);
     if (!pdfSize.isValid() || pdfSize.isEmpty())
@@ -313,22 +306,6 @@ public:
         optionlay->addWidget(optionButton);
         // ### disabled for now
         optionButton->hide();
-        latexButton = new QToolButton(this);
-        QHBoxLayout *latexlay = new QHBoxLayout();
-        QString latextext = i18n("This annotation may contain LaTeX code.\nClick here to render.");
-        latexButton->setText(latextext);
-        latexButton->setAutoRaise(true);
-        s = QFontMetrics(latexButton->font()).boundingRect(0, 0, this->width(), this->height(), 0, latextext).size() + QSize(8, 8);
-        latexButton->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-        latexButton->setFixedSize(s);
-        latexButton->setCheckable(true);
-        latexButton->setVisible(false);
-        latexlay->addSpacing(1);
-        latexlay->addWidget(latexButton);
-        latexlay->addSpacing(1);
-        connect(latexButton, &QToolButton::clicked, parent, &AnnotWindow::renderLatex);
-        connect(parent, &AnnotWindow::containsLatex, latexButton, &QWidget::setVisible);
-
         bottomLayout->addLayout(optionlay);
 
         // Adds all widgets and layouts with mainlay
@@ -342,7 +319,6 @@ public:
         mainlay->addWidget(authorAndDateLabel);
         // Last zone
         mainlay->addWidget(bottomFrame);
-        mainlay->addLayout(latexlay);
 
         setScrollArea(scrollArea);
 
@@ -410,11 +386,6 @@ public:
         connect(optionButton, SIGNAL(clicked()), recv, method);
     }
 
-    void uncheckLatexButton()
-    {
-        latexButton->setChecked(false);
-    }
-
     void setAuthorAndDateAtList(int index, const QString &author, const QDateTime &dt)
     {
         if (index < listPreviousAuthorAndDateLabel.size()) {
@@ -454,7 +425,6 @@ private:
     QLabel *authorAndDateLabel;
     QPoint mousePressPos;
     QToolButton *optionButton;
-    QToolButton *latexButton;
     QScrollArea *scrollAr = nullptr;
 };
 
@@ -503,21 +473,13 @@ AnnotWindow::AnnotWindow(QWidget *parent, QRect initialViewportBounds, Okular::A
     m_lastLatexNoteCompileSource = m_annot->contents();
     m_editorWidget->installEventFilter(this);
     if (latexAnnotation(m_annot) && latexAppearanceNeedsRefresh(m_annot, m_document->page(m_page))) {
-        m_lastLatexNoteCompileSource.clear();
+        m_lastLatexNoteCompileSource.reset();
         QTimer::singleShot(0, this, &AnnotWindow::updateLatexNoteAppearance);
     }
 
     m_prevCursorPos = editorCursorPosition();
     m_prevAnchorPos = editorAnchorPosition();
 
-#if HAVE_QSCINTILLA
-    if (m_latexSourceEdit) {
-        connect(m_latexSourceEdit, &QsciScintilla::textChanged, this, &AnnotWindow::slotWindowTextChanged);
-    }
-#endif
-    if (textEdit) {
-        connect(textEdit, &KTextEdit::textChanged, this, &AnnotWindow::slotWindowTextChanged);
-    }
     connect(m_document, &Okular::Document::annotationContentsChangedByUndoRedo, this, &AnnotWindow::slotHandleContentsChangedByUndoRedo);
 
     if (!canEditAnnotation) {
@@ -560,11 +522,6 @@ AnnotWindow::AnnotWindow(QWidget *parent, QRect initialViewportBounds, Okular::A
     QSizeGrip *sb = new QSizeGrip(this);
     lowerlay->addWidget(sb);
 
-    m_latexRenderer = new GuiUtils::LatexRenderer();
-    // The Q_EMIT below is not wrong even if emitting signals from the constructor it's usually wrong
-    // in this case the signal it's connected to inside MovableTitle constructor a few lines above
-    Q_EMIT containsLatex(!latexAnnotation(m_annot) && GuiUtils::LatexRenderer::mightContainLatex(m_annot->contents())); // clazy:exclude=incorrect-emit
-
     m_title->setTitle(m_annot->window().summary());
     m_title->connectOptionButton(this, SLOT(slotOptionBtn()));
 
@@ -602,7 +559,6 @@ AnnotWindow::~AnnotWindow()
     if (m_numberedCalloutId) {
         disconnect(m_numberedCalloutId, nullptr, this, nullptr);
     }
-    delete m_latexRenderer;
     delete m_editorWidget;
 }
 
@@ -981,19 +937,14 @@ void AnnotWindow::commitWindowText()
     clearEditorUndoRedo();
 }
 
-void AnnotWindow::slotWindowTextChanged()
-{
-    Q_EMIT containsLatex(!latexAnnotation(m_annot) && GuiUtils::LatexRenderer::mightContainLatex(editorPlainText()));
-}
-
 void AnnotWindow::updateLatexNoteAppearance()
 {
-    if (!LatexNoteUtils::annotationIsLatex(m_annot) || m_annot->contents().trimmed().isEmpty()) {
+    if (!LatexNoteUtils::annotationIsLatex(m_annot)) {
         return;
     }
 
     const QString latexSource = m_annot->contents();
-    if (latexSource == m_lastLatexNoteCompileSource) {
+    if (m_lastLatexNoteCompileSource && latexSource == *m_lastLatexNoteCompileSource) {
         return;
     }
     m_lastLatexNoteCompileSource = latexSource;
@@ -1020,40 +971,6 @@ void AnnotWindow::updateLatexNoteAppearance()
     }
 }
 
-void AnnotWindow::renderLatex(bool render)
-{
-    if (!textEdit) {
-        return;
-    }
-
-    if (render) {
-        commitWindowText();
-        textEdit->setReadOnly(true);
-        textEdit->setAcceptRichText(true);
-        QString contents = m_annot->contents();
-        contents = Qt::convertFromPlainText(contents);
-        QColor fontColor = textEdit->textColor();
-        int fontSize = textEdit->fontPointSize();
-        QString latexOutput;
-        GuiUtils::LatexRenderer::Error errorCode = m_latexRenderer->renderLatexInHtml(contents, fontColor, fontSize, Okular::Utils::realDpi(nullptr).width(), latexOutput);
-        switch (errorCode) {
-        case GuiUtils::LatexRenderer::LatexFailed:
-            KMessageBox::error(this, latexOutput, i18n("LaTeX rendering failed"));
-            m_title->uncheckLatexButton();
-            renderLatex(false);
-            break;
-        case GuiUtils::LatexRenderer::NoError:
-        default:
-            textEdit->setHtml(contents);
-            break;
-        }
-    } else {
-        textEdit->setAcceptRichText(false);
-        textEdit->setPlainText(m_annot->contents());
-        textEdit->setReadOnly(false);
-    }
-}
-
 void AnnotWindow::slotHandleContentsChangedByUndoRedo(Okular::Annotation *annot, const QString &contents, int cursorPos, int anchorPos)
 {
     if (annot != m_annot || m_committingWindowText) {
@@ -1067,7 +984,6 @@ void AnnotWindow::slotHandleContentsChangedByUndoRedo(Okular::Annotation *annot,
     if (m_editorWidget) {
         m_editorWidget->setFocus();
     }
-    Q_EMIT containsLatex(!latexAnnotation(m_annot) && GuiUtils::LatexRenderer::mightContainLatex(m_annot->contents()));
 }
 
 #include "annotwindow.moc"

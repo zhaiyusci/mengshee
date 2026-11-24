@@ -90,11 +90,10 @@ void read(fz_context *ctx, pdf_annot *native, Okular::StampAnnotation *annotatio
     }
 }
 
-void write(fz_context *ctx, pdf_document *doc, pdf_annot *native, const Okular::StampAnnotation *annotation, pdf_obj *preserved, int viewRotation)
+void write(fz_context *ctx, pdf_document *doc, pdf_annot *native, const Okular::StampAnnotation *annotation, pdf_obj *preserved)
 {
     const fz_rect bounds = pdf_bound_page(ctx, pdf_annot_page(ctx, native), FZ_CROP_BOX);
     const int pageRotation = pdf_dict_get_inheritable_int(ctx, pdf_annot_page(ctx, native)->obj, PDF_NAME(Rotate));
-    const auto previous = QJsonDocument::fromJson(value(ctx, pdf_annot_obj(ctx, native), "LatexNoteData").toUtf8()).object();
     const int angle = (pageRotation - annotation->appearanceRotation() + 360) % 360;
     const int delta = angle - pageRotation;
     double w = bounds.x1 - bounds.x0, h = bounds.y1 - bounds.y0;

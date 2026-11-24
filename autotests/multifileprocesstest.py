@@ -33,6 +33,7 @@ out = Path(a.output).resolve(); out.mkdir(parents=True, exist_ok=True)
 env = os.environ.copy()
 nonce = str(uuid.uuid4())
 env.update(MENGSHEE_MULTIFILE_INSTANCE=nonce, QT_QPA_PLATFORM='offscreen', QT_PLUGIN_PATH=a.qt_plugins,
+           MENGSHEE_STEMTEX_RUNTIME_ROOT=(app.parent.parent/'StemTeX/runtime').as_posix(),
            MENGSHEE_STEMTEX_PROFILE_ROOT=Path(a.profile).resolve().as_posix(),
            MENGSHEE_STEMTEX_TEXMF_ROOT=Path(a.texmf).resolve().as_posix())
 identity = app.as_posix() + Path(os.environ['LOCALAPPDATA']).as_posix() + nonce
@@ -122,7 +123,7 @@ def config(profile):
     fields = dict(runtime=(app.parent.parent/'StemTeX/runtime').as_posix(), profile=profile.as_posix(), texmf=Path(a.texmf).resolve().as_posix())
     identity = json.dumps(fields, sort_keys=True, ensure_ascii=False, separators=(',', ':')).encode()
     identity += (profile/'preamble.tex').read_bytes() + (profile/'warmup.tex').read_bytes()
-    identity += (Path(__file__).resolve().parents[1]/'part/latexworker.tex').read_bytes()
+    identity += (Path(__file__).resolve().parents[1]/'part/latex/stemtexworker.tex').read_bytes()
     return dict(fields, key=hashlib.sha256(identity).hexdigest())
 
 def render(settings, color, source='$$x^2$$'):

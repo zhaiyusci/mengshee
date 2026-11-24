@@ -89,10 +89,12 @@ private:
 class ModifyAnnotationPropertiesCommand : public OkularUndoCommand
 {
 public:
-    ModifyAnnotationPropertiesCommand(Okular::DocumentPrivate *docPriv, Okular::Annotation *annotation, int pageNumber, const QDomNode &oldProperties, const QDomNode &newProperties);
+    ModifyAnnotationPropertiesCommand(Okular::DocumentPrivate *docPriv, Okular::Annotation *annotation, int pageNumber, const QDomNode &oldProperties, const QDomNode &newProperties, bool mergeWithPrevious = false);
 
     void undo() override;
     void redo() override;
+    int id() const override;
+    bool mergeWith(const QUndoCommand *command) override;
 
     bool refreshInternalPageReferences(const QList<Okular::Page *> &newPagesVector) override;
 
@@ -103,6 +105,7 @@ private:
     int m_pageNumber;
     QDomNode m_prevProperties;
     QDomNode m_newProperties;
+    bool m_mergeWithPrevious;
 };
 
 class TranslateAnnotationCommand : public OkularUndoCommand

@@ -261,26 +261,21 @@ void AnnotsPropertiesDialog::slotapply()
 
     if (auto *stampAnnotation = LatexNoteUtils::annotationAsLatexStampAnnotation(m_annot)) {
         const LatexStampRenderState latexRenderStateAfter = latexStampRenderState(stampAnnotation);
-        bool appearanceUpdated = false;
-        if (latexStampRenderStateChanged(latexRenderStateBefore, latexRenderStateAfter)) {
+        const bool needsRender = latexStampRenderStateChanged(latexRenderStateBefore, latexRenderStateAfter);
+        if (needsRender) {
             // Preserve the paragraph width on style/font edits. Padding changes
             // redistribute space within the existing frame, without folding
             // the appearance PDF's preview border into the paragraph.
             const double layoutWidth = qMax(1.0, previousLayoutWidth + 2.0 * (latexRenderStateBefore.padding - latexRenderStateAfter.padding));
             stampAnnotation->setLatexLayoutWidth(layoutWidth);
-            appearanceUpdated = LatexNoteUtils::updateLatexStampAnnotationAppearance(this,
-                                                                                    m_document,
-                                                                                    m_page,
-                                                                                    stampAnnotation,
-                                                                                    latexRenderStateAfter.textColor,
-                                                                                    latexRenderStateAfter.fillColor,
-                                                                                    latexRenderStateAfter.borderColor,
-                                                                                    layoutWidth,
-                                                                                    latexRenderStateAfter.boxed,
-                                                                                    false);
         }
-        if (!appearanceUpdated) {
-            m_document->modifyPageAnnotationProperties(m_page, m_annot);
+        // Commit settings first. Compilation must not block this UI thread;
+        // the request guard rejects results after further edits or undo.
+        m_document->modifyPageAnnotationProperties(m_page, m_annot);
+        if (needsRender) {
+            LatexNoteUtils::updateLatexStampAnnotationAppearanceAsync(this, m_document, m_page, stampAnnotation->uniqueName(), stampAnnotation->contents(),
+                latexRenderStateAfter.textColor, latexRenderStateAfter.fillColor, latexRenderStateAfter.borderColor,
+                stampAnnotation->latexLayoutWidth(), latexRenderStateAfter.boxed, true);
         }
         m_modifyDateLabel->setText(QLocale().toString(m_annot->modificationDate(), QLocale::LongFormat));
 

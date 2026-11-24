@@ -51,7 +51,7 @@ class LatexNoteSizeTest : public QObject
         timer.start();
         LatexNoteUtils::RenderResult result;
         do {
-            result = LatexNoteUtils::renderAppearancePdf(source, Qt::black, width, false, 10.0);
+            result = LatexNoteUtils::renderAppearancePdf(source, Qt::black, width, 10.0);
             if (result.ok && result.errorMessage.isEmpty())
                 break;
             QTest::qWait(100);
@@ -111,6 +111,167 @@ private Q_SLOTS:
         QCOMPARE(Okular::AnnotationFrame::localSize(fitted, page, 0), visual);
         QCOMPARE(fitted.left, frame.left);
         QCOMPARE(fitted.top, frame.top);
+    }
+
+    void transparentColorsAndEmptySource()
+    {
+        Okular::Document document(nullptr);
+        QVERIFY(openFixture(document, QSizeF(72, 72), 0));
+        auto *note = new Okular::StampAnnotation;
+        note->setOkularLatex(true);
+        note->setLatexNoteType(Okular::Annotation::LatexNoteBoxed);
+        note->setBoundingRectangle({0.1, 0.1, 0.5, 0.3});
+        note->setLatexFillColor(Qt::transparent);
+        note->setLatexBorderColor(Qt::transparent);
+        // Start with real visible text, then clear its source as the editor does.
+        const QString oldPdf = m_directory.filePath(QStringLiteral("old-appearance.pdf"));
+        {
+            QPdfWriter writer(oldPdf);
+            writer.setResolution(72);
+            writer.setPageSize(QPageSize(QSizeF(200, 40), QPageSize::Point));
+            writer.setPageMargins(QMarginsF());
+            QPainter painter(&writer);
+            painter.fillRect(QRect(0, 0, 180, 30), Qt::black);
+        }
+        note->setContents(QStringLiteral("old contents"));
+        note->setLatexAppearancePdfFileName(oldPdf);
+        document.addPageAnnotation(0, note);
+        document.editPageAnnotationContents(0, note, QString(), 0, 0, 0);
+        QVERIFY(LatexNoteUtils::annotationIsLatex(note));
+        QCOMPARE(LatexNoteUtils::fillColorForLatexAnnotation(note).alpha(), 0);
+        QCOMPARE(LatexNoteUtils::borderColorForLatexAnnotation(note).alpha(), 0);
+        QVERIFY(LatexNoteUtils::updateLatexStampAnnotationAppearance(nullptr, &document, 0, note, Qt::black,
+            LatexNoteUtils::fillColorForLatexAnnotation(note), LatexNoteUtils::borderColorForLatexAnnotation(note), 200, true));
+        QVERIFY(QFile::exists(note->latexAppearancePdfFileName()));
+        QString error;
+        const QImage image = document.renderToImage(0, 72, true, &error);
+        QVERIFY2(!image.isNull(), qPrintable(error));
+        for (int y = 70; y < 240; ++y)
+            for (int x = 50; x < 330; ++x)
+                QVERIFY(image.pixelColor(x, y).lightness() > 250);
+        const QString saved = m_directory.filePath(QStringLiteral("empty-note-saved.pdf"));
+        QVERIFY2(document.saveChanges(saved, &error), qPrintable(error));
+        Okular::Document reopened(nullptr);
+        QCOMPARE(reopened.openDocument(saved, QUrl::fromLocalFile(saved), QMimeDatabase().mimeTypeForFile(saved)), Okular::Document::OpenSuccess);
+        QCOMPARE(reopened.page(0)->annotations().size(), 1);
+        const auto *restored = reopened.page(0)->annotations().first();
+        QVERIFY(LatexNoteUtils::annotationIsLatex(restored));
+        QVERIFY(restored->contents().isEmpty());
+        QCOMPARE(restored->latexFillColor().alpha(), 0);
+        QCOMPARE(restored->latexBorderColor().alpha(), 0);
+        QCOMPARE(reopened.renderToImage(0, 72, true, &error), image);
+    }
+
+    void renderRequestsArePerAnnotationAndRejectChanges()
+    {
+        Okular::Document document(nullptr);
+        QVERIFY(openFixture(document, QSizeF(72, 72), 0));
+        auto create = [&] {
+            auto *note = new Okular::StampAnnotation;
+            note->setOkularLatex(true);
+            note->setBoundingRectangle({0.1, 0.1, 0.5, 0.3});
+            note->setContents(QStringLiteral("test"));
+            document.addPageAnnotation(0, note);
+            return note;
+        };
+        auto *a = create();
+        auto *b = create();
+        auto *a1 = new LatexNoteUtils::RenderRequest(&document, 0, a->uniqueName());
+        auto *b1 = new LatexNoteUtils::RenderRequest(&document, 0, b->uniqueName());
+        QVERIFY(a1->isCurrent());
+        QVERIFY(b1->isCurrent());
+        auto *a2 = new LatexNoteUtils::RenderRequest(&document, 0, a->uniqueName());
+        QVERIFY(!a1->isCurrent());
+        QVERIFY(a2->isCurrent());
+        document.translatePageAnnotation(0, a, {0.1, 0.1});
+        QVERIFY(!a2->isCurrent());
+        document.undo();
+        QVERIFY(!a2->isCurrent());
+        QVERIFY(b1->isCurrent());
+        auto *a3 = new LatexNoteUtils::RenderRequest(&document, 0, a->uniqueName());
+        document.prepareToModifyAnnotationProperties(a);
+        a->setLatexFillColor(Qt::transparent);
+        document.modifyPageAnnotationProperties(0, a);
+        QVERIFY(!a3->isCurrent());
+        QVERIFY(b1->isCurrent());
+        auto *appearanceRequest = new LatexNoteUtils::RenderRequest(&document, 0, a->uniqueName());
+        a->setLatexAppearancePdfFileName(QStringLiteral("another-appearance.pdf"));
+        QVERIFY(!appearanceRequest->isCurrent());
+        auto *dragRequest = new LatexNoteUtils::RenderRequest(&document, 0, a->uniqueName());
+        a->setFlags(a->flags() | Okular::Annotation::BeingResized);
+        QVERIFY(!dragRequest->isCurrent());
+        a->setFlags(a->flags() & ~Okular::Annotation::BeingResized);
+        document.removePageAnnotation(0, b);
+        QVERIFY(!b1->isCurrent());
+        document.undo();
+        QVERIFY(!b1->isCurrent());
+        QPointer<LatexNoteUtils::RenderRequest> closed = new LatexNoteUtils::RenderRequest(&document, 0, a->uniqueName());
+        document.closeDocument();
+        QVERIFY(!closed || !closed->isCurrent());
+    }
+
+    void independentAsyncEmptyNotes()
+    {
+        Okular::Document document(nullptr);
+        QVERIFY(openFixture(document, QSizeF(72, 72), 0));
+        QList<Okular::StampAnnotation *> notes;
+        for (int i = 0; i < 2; ++i) {
+            auto *note = new Okular::StampAnnotation;
+            note->setOkularLatex(true);
+            note->setBoundingRectangle({0.1, 0.1 + i * 0.3, 0.5, 0.3 + i * 0.3});
+            document.addPageAnnotation(0, note);
+            notes.append(note);
+            LatexNoteUtils::updateLatexStampAnnotationAppearanceAsync(nullptr, &document, 0, note->uniqueName(), QString(),
+                Qt::black, Qt::transparent, Qt::transparent, 200, false);
+        }
+        for (auto *note : notes)
+            QTRY_VERIFY_WITH_TIMEOUT(!note->latexAppearancePdfFileName().isEmpty(), 5000);
+        QVERIFY(notes[0]->latexAppearancePdfFileName() != notes[1]->latexAppearancePdfFileName());
+    }
+
+    void asyncCompletionPreservesLaterStyleAndMove()
+    {
+        Okular::Document document(nullptr);
+        QVERIFY(openFixture(document, QSizeF(72, 72), 0));
+        auto *note = new Okular::StampAnnotation;
+        note->setOkularLatex(true);
+        note->setLatexNoteType(Okular::Annotation::LatexNoteBoxed);
+        note->setBoundingRectangle({0.1, 0.1, 0.5, 0.3});
+        document.addPageAnnotation(0, note);
+        LatexNoteUtils::updateLatexStampAnnotationAppearanceAsync(nullptr, &document, 0, note->uniqueName(), QString(),
+            Qt::black, Qt::red, Qt::black, 200, true);
+        QPointer<LatexNoteUtils::RenderRequest> request;
+        for (QObject *child : document.children())
+            if (auto *pending = dynamic_cast<LatexNoteUtils::RenderRequest *>(child))
+                request = pending;
+        QVERIFY(request);
+        document.prepareToModifyAnnotationProperties(note);
+        note->setLatexFillColor(Qt::green);
+        document.modifyPageAnnotationProperties(0, note);
+        document.translatePageAnnotation(0, note, {0.1, 0.1});
+        const auto moved = note->boundingRectangle();
+        // Wait for the real worker callback, not merely for invalidation.
+        QTRY_VERIFY_WITH_TIMEOUT(request.isNull(), 5000);
+        QCOMPARE(note->latexFillColor(), QColor(Qt::green));
+        QCOMPARE(note->boundingRectangle(), moved);
+        QVERIFY(note->latexAppearancePdfFileName().isEmpty());
+    }
+
+    void renderedFilesAreImmutable()
+    {
+        if (qEnvironmentVariableIntValue("OKULAR_TEST_LATEX_ASYNC") != 1)
+            QSKIP("Set OKULAR_TEST_LATEX_ASYNC=1 to use the installed StemTeX backend");
+        const auto first = render(QStringLiteral("immutable output"), 200);
+        QVERIFY2(first.ok && first.errorMessage.isEmpty(), qPrintable(first.errorMessage));
+        QFile file(first.pdfFileName);
+        QVERIFY(file.open(QIODevice::ReadOnly));
+        const auto bytes = file.readAll();
+        file.close();
+        const auto second = render(QStringLiteral("immutable output"), 200);
+        QVERIFY2(second.ok && second.errorMessage.isEmpty(), qPrintable(second.errorMessage));
+        QVERIFY(first.pdfFileName != second.pdfFileName);
+        QVERIFY(file.open(QIODevice::ReadOnly));
+        QCOMPARE(file.readAll(), bytes);
     }
 
     void trailingBreakDoesNotAddHeight_data()

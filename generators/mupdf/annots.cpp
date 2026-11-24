@@ -476,7 +476,7 @@ void MuPDFAnnotationProxy::write(const Okular::Annotation *annotation, pdf_annot
         }
         if (const auto *stamp = dynamic_cast<const Okular::StampAnnotation *>(annotation)) {
             if (stamp->isOkularLatex()) {
-                MuPDFLatex::write(ctx, m_generator->m_document, native, stamp, preserved, m_generator->document() ? int(m_generator->document()->rotation()) * 90 : 0);
+                MuPDFLatex::write(ctx, m_generator->m_document, native, stamp, preserved);
             } else if (!stamp->stampImagePath().isEmpty() && QFileInfo::exists(stamp->stampImagePath())) {
                 fz_image *image = nullptr;
                 fz_var(image);

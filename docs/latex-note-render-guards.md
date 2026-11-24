@@ -1,8 +1,35 @@
 # LaTeX note rendering guards
 
+## Backend boundary
+
+`part/latexbackend.h` defines an engine-independent request (unchanged LaTeX
+fragment, text colour, width in PDF points and font size in TeX points) and a
+result (owned PDF bytes, diagnostic text and a structured warning). Zero width
+or font size requests the backend default. No profile paths, SDK structs,
+JSON protocol or worker handles cross this boundary.
+
+`LatexRenderer` validates the request and PDF size/signature, catches backend
+exceptions and owns the returned temporary PDF files. Notes consume that PDF
+through the existing appearance and geometry path. They do not transform the
+source or know which engine produced the PDF. Empty notes use the existing
+blank appearance path without calling an engine.
+
+`part/latex/stemtexbackend.cpp` owns StemTeX discovery, profile management,
+SDK bindings, request settings, local/shared-service transport and SDK output
+cleanup. Its source transformation and worker template live alongside it.
+Only the StemTeX configuration UI uses its profile/status controls.
+
+`part/latexbackendfactory.cpp` selects the current default (StemTeX). A future
+backend implements `LatexBackend` and is selected at this composition point;
+it needs no changes to note editing, highlighting, geometry or undo. The
+facade also accepts an explicitly owned backend. `latexbackendtest` builds the
+facade with an independent test backend, without linking the StemTeX adapter,
+settings, IPC or SDK, to verify this separation. This change adds no second
+production engine or engine-selection UI yet.
+
 ## Source and block geometry
 
-Mengshee passes the note source to StemTeX 0.15.2's
+The StemTeX adapter passes the note source to StemTeX 0.15.2's
 `stemtex_renderer_render_block` after removing empty trailing layout lines and
 trailing explicit line-break commands (`\\`, `\newline`, `\linebreak`). Those
 commands only add a blank row at the end of the block; the annotation keeps the
@@ -26,14 +53,14 @@ prevents its line ending from introducing a space into TeX input.
 
 ## Request settings outside the source
 
-`part/latexworker.tex` uses the SDK's supported `worker_template_utf8` option.
+`part/latex/stemtexworker.tex` uses the SDK's supported `worker_template_utf8` option.
 It follows the StemTeX 0.15.2 worker protocol; review it when upgrading the runtime.
 The profile preview border is retained exactly as in direct SDK output. Mengshee's annotation padding is an additional, separately configured frame inset.
 Before the unchanged source is typeset, the worker reads a session-local settings
 file. Mengshee atomically writes that file under the same mutex as rendering.
 Each session has its own temporary directory, retained until its workers stop.
 
-`part/latexsource.cpp` prepares a request-local default colour without emitting
+`part/latex/stemtexsource.cpp` prepares a request-local default colour without emitting
 layout material. The worker retains the SDK's original `normalcolor` call at
 its original position; both color and xcolor default/current-colour state are
 kept consistent. For profiles without color support, shipout hooks supply the
@@ -93,9 +120,8 @@ clip. Repainting a border on top is not used as a workaround, since translucent
 content would still blend into it. GUI page rendering and saved PDF appearances
 use this same composition path.
 
-The explicit-render cache identity is now `content-v9-app-appearance`, so a
-rerender cannot take the unchanged-path shortcut instead of running the
-application-owned appearance composer. Existing saved AP streams are not rewritten on PDF load: explicitly
+Each completed appearance gets an independent immutable file; earlier notes
+and undo entries retain their own artifacts. Existing saved AP streams are not rewritten on PDF load: explicitly
 recompile an old note to obtain both the new layout and the new content clip.
 
 ## Other retained guards

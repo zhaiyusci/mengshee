@@ -4611,6 +4611,11 @@ void Document::prepareToModifyAnnotationProperties(Annotation *annotation)
 
 void Document::modifyPageAnnotationProperties(int page, Annotation *annotation)
 {
+    modifyPageAnnotationProperties(page, annotation, false);
+}
+
+void Document::modifyPageAnnotationProperties(int page, Annotation *annotation, bool mergeWithPrevious)
+{
     Q_ASSERT(!d->m_prevPropsOfAnnotBeingModified.isNull());
     if (d->m_prevPropsOfAnnotBeingModified.isNull()) {
         qCCritical(OkularCoreDebug) << "Error: Document::prepareToModifyAnnotationProperties must be called before Annotation is modified";
@@ -4621,7 +4626,7 @@ void Document::modifyPageAnnotationProperties(int page, Annotation *annotation)
         return;
     }
     QDomNode prevProps = d->m_prevPropsOfAnnotBeingModified;
-    QUndoCommand *uc = new Okular::ModifyAnnotationPropertiesCommand(d, annotation, page, prevProps, annotation->getAnnotationPropertiesDomNode(true));
+    QUndoCommand *uc = new Okular::ModifyAnnotationPropertiesCommand(d, annotation, page, prevProps, annotation->getAnnotationPropertiesDomNode(true), mergeWithPrevious);
     d->m_undoStack->push(uc);
     d->m_prevPropsOfAnnotBeingModified.clear();
 }

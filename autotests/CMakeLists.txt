@@ -19,9 +19,15 @@ ecm_add_test(latexrenderguardstest.cpp ../part/latexrenderguards.cpp
     TEST_NAME "latexrenderguardstest"
     LINK_LIBRARIES Qt6::Test Qt6::Core
 )
-ecm_add_test(latexsourcepreparationtest.cpp ../part/latexsource.cpp
+ecm_add_test(latexsourcepreparationtest.cpp ../part/latex/stemtexsource.cpp
     TEST_NAME "latexsourcepreparationtest"
     LINK_LIBRARIES Qt6::Test Qt6::Gui
+)
+
+# Prove the facade runs without the production backend or its SDK/IPC dependencies.
+ecm_add_test(latexbackendtest.cpp ../part/latexrenderer.cpp ../part/latexrenderguards.cpp
+    TEST_NAME "latexbackendtest"
+    LINK_LIBRARIES Qt6::Test Qt6::Gui KF6::I18n
 )
 
 if (BUILD_DESKTOP)

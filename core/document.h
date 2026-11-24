@@ -671,6 +671,13 @@ public:
     void modifyPageAnnotationProperties(int page, Annotation *annotation);
 
     /**
+     * Completes an asynchronous property update. With @p mergeWithPrevious,
+     * merge only into the immediately preceding property edit of this annotation.
+     * The caller must first verify that the annotation has not changed meanwhile.
+     */
+    void modifyPageAnnotationProperties(int page, Annotation *annotation, bool mergeWithPrevious);
+
+    /**
      * Translates the position of the given @p annotation on the given @p page by a distance @p delta in normalized coordinates.
      *
      * Consecutive translations applied to the same @p annotation are merged together on the undo stack if the

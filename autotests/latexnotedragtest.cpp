@@ -73,7 +73,7 @@ private Q_SLOTS:
         auto *document = part.m_document;
         auto *note = new StampAnnotation;
         note->setBoundingRectangle({.2, .2, .75, .4});
-        note->setContents(QStringLiteral("\\global\\PreviewBorder=%1pt \\LaTeX{} national scientific foundation of China").arg(previewBorder));
+        note->setContents(QStringLiteral("\\global\\PreviewBorder=%1pt \\LaTeX{} national scientific foundation of China\n").arg(previewBorder));
         note->setOkularLatex(true);
         note->setLatexNoteType(Annotation::LatexNoteBoxed);
         note->setLatexPadding(padding);
@@ -85,7 +85,7 @@ private Q_SLOTS:
         QElapsedTimer timer;
         timer.start();
         do {
-            rendered = LatexNoteUtils::renderAppearancePdf(note->contents(), Qt::black, 300, false, 12);
+            rendered = LatexNoteUtils::renderAppearancePdf(note->contents(), Qt::black, 300, 12);
             if (rendered.ok && rendered.errorMessage.isEmpty()) break;
             QTest::qWait(100);
         } while (timer.elapsed() < 60000);
@@ -124,7 +124,7 @@ private Q_SLOTS:
             drag(handle, handle + (vertical ? QPoint(0, movement) : QPoint(movement, 0)));
             QTRY_VERIFY_WITH_TIMEOUT(note->latexAppearancePdfFileName() != oldAppearance, 30000);
             const double layoutWidth = note->latexLayoutWidth();
-            const auto content = LatexNoteUtils::renderAppearancePdf(note->contents(), Qt::black, layoutWidth, false, 12);
+            const auto content = LatexNoteUtils::renderAppearancePdf(note->contents(), Qt::black, layoutWidth, 12);
             QVERIFY2(content.ok && content.errorMessage.isEmpty(), qPrintable(content.errorMessage));
             const QSizeF actual = AnnotationFrame::localSize(note->boundingRectangle(), document->pageSizeInPoints(0), note->appearanceRotation());
             const double requestedWidth = vertical ? before.height() * 800.0 + delta * 800.0 / displayed.height()
@@ -143,10 +143,13 @@ private Q_SLOTS:
             QVERIFY(!draggedImage.isNull());
             QVERIFY(LatexNoteUtils::updateLatexStampAnnotationAppearance(nullptr, document, 0, note, Qt::black, Qt::yellow, Qt::red, layoutWidth, true));
             const auto editedRect = note->boundingRectangle();
-            QVERIFY(qAbs(draggedRect.left - editedRect.left) < 1e-6);
-            QVERIFY(qAbs(draggedRect.top - editedRect.top) < 1e-6);
-            QVERIFY(qAbs(draggedRect.right - editedRect.right) < 1e-6);
-            QVERIFY(qAbs(draggedRect.bottom - editedRect.bottom) < 1e-6);
+            // Annotation undo snapshots serialize normalized coordinates with
+            // six significant digits. Allow that subpixel round-trip error,
+            // but still require an exactly identical rendered image below.
+            QVERIFY(qAbs(draggedRect.left - editedRect.left) * 600 < .002);
+            QVERIFY(qAbs(draggedRect.top - editedRect.top) * 800 < .002);
+            QVERIFY(qAbs(draggedRect.right - editedRect.right) * 600 < .002);
+            QVERIFY(qAbs(draggedRect.bottom - editedRect.bottom) * 800 < .002);
             QCOMPARE(document->renderToImage(0, 144, true), draggedImage);
         }
         // Editing after a resize must keep the stored paragraph width. The
@@ -158,6 +161,11 @@ private Q_SLOTS:
             QTest::mouseDClick(viewport, Qt::LeftButton, Qt::NoModifier, position((rect.left + rect.right) / 2, (rect.top + rect.bottom) / 2));
             QWidget *popup = nullptr;
             QTRY_VERIFY((popup = part.widget()->findChild<QWidget *>(QStringLiteral("AnnotWindow"))) && popup->isVisible());
+            if (edit == 0) {
+                const QString appearance = note->latexAppearancePdfFileName();
+                QTest::qWait(300);
+                QCOMPARE(note->latexAppearancePdfFileName(), appearance);
+            }
             QWidget *editor = popup->focusProxy();
             QVERIFY(editor);
             const QString source = note->contents() + QLatin1Char('.');
@@ -189,6 +197,9 @@ private Q_SLOTS:
                                    qMakePair(QStringLiteral("Padding:"), padding + 5.0),
                                    qMakePair(QStringLiteral("Padding:"), padding)}) {
             bool applied = false;
+            const QString oldAppearance = note->latexAppearancePdfFileName();
+            const double oldFont = note->latexFontSize();
+            const double oldPadding = note->latexPadding();
             QTimer::singleShot(0, &menu, [&] {
                 auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
                 QVERIFY(dialog);
@@ -200,14 +211,120 @@ private Q_SLOTS:
                 }
                 QVERIFY(spin);
                 spin->setValue(change.second);
+                QElapsedTimer applyTimer;
+                applyTimer.start();
                 applied = QMetaObject::invokeMethod(dialog, "slotapply", Qt::DirectConnection);
+                QVERIFY2(applyTimer.elapsed() < 1000, "Applying properties must not wait for TeX compilation");
+                bool pending = false;
+                for (QObject *child : document->children()) {
+                    if (auto *request = dynamic_cast<LatexNoteUtils::RenderRequest *>(child); request && request->isCurrent())
+                        pending = true;
+                }
+                QVERIFY(pending);
             });
             properties->trigger();
             QVERIFY(applied);
+            QTRY_VERIFY_WITH_TIMEOUT(note->latexAppearancePdfFileName() != oldAppearance, 30000);
             const double expectedWidth = paragraphWidth + 2.0 * (padding - note->latexPadding());
             QVERIFY(qAbs(note->latexLayoutWidth() - expectedWidth) < 1e-6);
             QVERIFY(qAbs(LatexNoteUtils::annotationWidthInPoints(note, document->page(0)) - frameWidth) < .02);
+            const QString newAppearance = note->latexAppearancePdfFileName();
+            const double newFont = note->latexFontSize();
+            const double newPadding = note->latexPadding();
+            document->undo();
+            QCOMPARE(note->latexFontSize(), oldFont);
+            QCOMPARE(note->latexPadding(), oldPadding);
+            QCOMPARE(note->latexAppearancePdfFileName(), oldAppearance);
+            document->redo();
+            QCOMPARE(note->latexFontSize(), newFont);
+            QCOMPARE(note->latexPadding(), newPadding);
+            QCOMPARE(note->latexAppearancePdfFileName(), newAppearance);
         }
+
+        if (padding == 3 && !leftHandle && previewBorder == 1 && appearanceRotation == 0) {
+            auto *other = new StampAnnotation;
+            const auto rect = note->boundingRectangle();
+            other->setBoundingRectangle({rect.left, rect.top + .25, rect.right, rect.bottom + .25});
+            other->setContents(note->contents());
+            other->setOkularLatex(true);
+            other->setLatexNoteType(Annotation::LatexNoteBoxed);
+            other->setLatexPadding(padding);
+            other->setLatexFontSize(12);
+            other->setLatexLayoutWidth(note->latexLayoutWidth());
+            other->setLatexAppearancePdfFileName(note->latexAppearancePdfFileName());
+            document->addPageAnnotation(0, other);
+
+            // Send native widget events without pumping the event loop between
+            // releases, so both workers remain pending deterministically.
+            auto sendMouse = [&](QEvent::Type type, QPoint pos, Qt::MouseButton button, Qt::MouseButtons buttons) {
+                QMouseEvent event(type, QPointF(pos), QPointF(viewport->mapToGlobal(pos)), button, buttons, Qt::NoModifier);
+                QApplication::sendEvent(viewport, &event);
+            };
+            auto resizeRight = [&](StampAnnotation *target) {
+                const auto bounds = target->boundingRectangle();
+                const auto center = position((bounds.left + bounds.right) / 2, (bounds.top + bounds.bottom) / 2);
+                sendMouse(QEvent::MouseButtonPress, center, Qt::LeftButton, Qt::LeftButton);
+                sendMouse(QEvent::MouseButtonRelease, center, Qt::LeftButton, Qt::NoButton);
+                const auto handle = position(bounds.right, (bounds.top + bounds.bottom) / 2);
+                sendMouse(QEvent::MouseMove, handle, Qt::NoButton, Qt::NoButton);
+                sendMouse(QEvent::MouseButtonPress, handle, Qt::LeftButton, Qt::LeftButton);
+                sendMouse(QEvent::MouseMove, handle + QPoint(30, 0), Qt::NoButton, Qt::LeftButton);
+                sendMouse(QEvent::MouseButtonRelease, handle + QPoint(30, 0), Qt::LeftButton, Qt::NoButton);
+            };
+            const QString firstAppearance = note->latexAppearancePdfFileName();
+            const QString secondAppearance = other->latexAppearancePdfFileName();
+            const double firstWidth = note->boundingRectangle().width();
+            const double secondWidth = other->boundingRectangle().width();
+            resizeRight(note);
+            resizeRight(other);
+            int pending = 0;
+            for (QObject *child : document->children()) {
+                if (auto *request = dynamic_cast<LatexNoteUtils::RenderRequest *>(child); request && request->isCurrent())
+                    ++pending;
+            }
+            QCOMPARE(pending, 2);
+            QTRY_VERIFY_WITH_TIMEOUT(note->latexAppearancePdfFileName() != firstAppearance, 30000);
+            QTRY_VERIFY_WITH_TIMEOUT(other->latexAppearancePdfFileName() != secondAppearance, 30000);
+            QVERIFY(note->boundingRectangle().width() > firstWidth);
+            QVERIFY(other->boundingRectangle().width() > secondWidth);
+
+            const QString beforeMoveAppearance = note->latexAppearancePdfFileName();
+            resizeRight(note);
+            QPointer<LatexNoteUtils::RenderRequest> pendingResize;
+            for (QObject *child : document->children()) {
+                if (auto *request = dynamic_cast<LatexNoteUtils::RenderRequest *>(child); request && request->isCurrent())
+                    pendingResize = request;
+            }
+            QVERIFY(pendingResize);
+            document->translatePageAnnotation(0, note, {.03, .03});
+            const auto moved = note->boundingRectangle();
+            QTRY_VERIFY_WITH_TIMEOUT(pendingResize.isNull(), 30000);
+            QCOMPARE(note->boundingRectangle(), moved);
+            QCOMPARE(note->latexAppearancePdfFileName(), beforeMoveAppearance);
+
+            // Clear through the real editor, then reopen the empty note and
+            // enter LaTeX again. Empty contents must keep the LaTeX editor.
+            QByteArray editorClass;
+            for (const QString &source : {QString(), QStringLiteral("Restored $x^2$ note")}) {
+                const auto bounds = note->boundingRectangle();
+                QTest::mouseDClick(viewport, Qt::LeftButton, Qt::NoModifier, position((bounds.left + bounds.right) / 2, (bounds.top + bounds.bottom) / 2));
+                QWidget *editorPopup = nullptr;
+                QTRY_VERIFY((editorPopup = part.widget()->findChild<QWidget *>(QStringLiteral("AnnotWindow"))) && editorPopup->isVisible());
+                auto *editor = editorPopup->focusProxy();
+                QVERIFY(editor);
+                if (editorClass.isEmpty())
+                    editorClass = editor->metaObject()->className();
+                QCOMPARE(QByteArray(editor->metaObject()->className()), editorClass);
+                const QString previousAppearance = note->latexAppearancePdfFileName();
+                const char *setter = editor->inherits("QsciScintilla") ? "setText" : "setPlainText";
+                QVERIFY(QMetaObject::invokeMethod(editor, setter, Qt::DirectConnection, Q_ARG(QString, source)));
+                editorPopup->close();
+                QTRY_COMPARE(note->contents(), source);
+                QTRY_VERIFY_WITH_TIMEOUT(note->latexAppearancePdfFileName() != previousAppearance, 30000);
+                QVERIFY(LatexNoteUtils::annotationIsLatex(note));
+            }
+        }
+
     }
 };
 }

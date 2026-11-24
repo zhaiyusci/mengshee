@@ -1,13 +1,13 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
-#include "part/latexsource.h"
+#include "part/latex/stemtexsource.h"
 #include <QColor>
 #include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QtTest>
-using GuiUtils::LatexSource::requestSetup;
-using GuiUtils::LatexSource::sourceForLayout;
+using GuiUtils::StemTeXSource::requestSetup;
+using GuiUtils::StemTeXSource::sourceForLayout;
 class LatexSourcePreparationTest : public QObject
 {
     Q_OBJECT

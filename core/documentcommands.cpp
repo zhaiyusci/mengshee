@@ -274,13 +274,14 @@ bool RemoveAnnotationCommand::refreshInternalPageReferences(const QList<Okular::
     return true;
 }
 
-ModifyAnnotationPropertiesCommand::ModifyAnnotationPropertiesCommand(DocumentPrivate *docPriv, Annotation *annotation, int pageNumber, const QDomNode &oldProperties, const QDomNode &newProperties)
+ModifyAnnotationPropertiesCommand::ModifyAnnotationPropertiesCommand(DocumentPrivate *docPriv, Annotation *annotation, int pageNumber, const QDomNode &oldProperties, const QDomNode &newProperties, bool mergeWithPrevious)
     : m_docPriv(docPriv)
     , m_annotation(annotation)
     , m_annotationUniqueName(annotation ? annotation->uniqueName() : QString())
     , m_pageNumber(pageNumber)
     , m_prevProperties(oldProperties)
     , m_newProperties(newProperties)
+    , m_mergeWithPrevious(mergeWithPrevious)
 {
     setText(i18nc("Modify an annotation's internal properties (Color, line-width, etc.)", "modify annotation properties"));
 }
@@ -305,6 +306,20 @@ void ModifyAnnotationPropertiesCommand::redo()
     moveViewportIfBoundingRectNotFullyVisible(m_annotation->boundingRectangle(), m_docPriv, m_pageNumber);
     m_annotation->setAnnotationProperties(m_newProperties);
     m_docPriv->performModifyPageAnnotation(m_pageNumber, m_annotation, true);
+}
+
+int ModifyAnnotationPropertiesCommand::id() const
+{
+    return 6;
+}
+
+bool ModifyAnnotationPropertiesCommand::mergeWith(const QUndoCommand *command)
+{
+    const auto *next = static_cast<const ModifyAnnotationPropertiesCommand *>(command);
+    if (!next->m_mergeWithPrevious || !m_annotation || next->m_annotation != m_annotation || next->m_docPriv != m_docPriv || next->m_pageNumber != m_pageNumber)
+        return false;
+    m_newProperties = next->m_newProperties;
+    return true;
 }
 
 bool ModifyAnnotationPropertiesCommand::refreshInternalPageReferences(const QList<Okular::Page *> &newPagesVector)

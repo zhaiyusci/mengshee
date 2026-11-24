@@ -627,7 +627,9 @@ if(BUILD_DESKTOP)
     part/latexnoteutils.cpp
     part/latexrenderer.cpp
     part/latexrenderguards.cpp
-    part/latexsource.cpp
+    part/latexbackendfactory.cpp
+    part/latex/stemtexbackend.cpp
+    part/latex/stemtexsource.cpp
     part/templatenoteutils.cpp
     part/minibar.cpp
     part/okmenutitle.cpp
