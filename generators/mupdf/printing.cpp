@@ -2,6 +2,9 @@
 #include "generator_mupdf.h"
 #include "vectorprintdevice.h"
 #include <core/printjob.h>
+#include <QCheckBox>
+#include <QCoreApplication>
+#include <QFormLayout>
 #include <QDebug>
 #include <QHash>
 #include <QImage>
@@ -15,6 +18,24 @@
 
 namespace
 {
+class MuPDFPrintOptionsWidget final : public Okular::DefaultPrintOptionsWidget
+{
+public:
+    MuPDFPrintOptionsWidget()
+    {
+        setProperty(Okular::PrintLayout::supportsProperty, true);
+        m_printAnnotations = new QCheckBox(QCoreApplication::translate("MuPDFPrintOptionsWidget", "Print annotations"), this);
+        m_printAnnotations->setChecked(true);
+        if (auto *layout = qobject_cast<QFormLayout *>(this->layout()))
+            layout->addRow(m_printAnnotations);
+    }
+
+    bool printAnnotations() const { return m_printAnnotations->isChecked(); }
+
+private:
+    QCheckBox *m_printAnnotations = nullptr;
+};
+
 QList<int> selectedPages(const QPrinter &printer, int pageCount)
 {
     QList<int> pages;
@@ -259,6 +280,10 @@ Okular::Document::PrintError MuPDFGenerator::printWithLayout(QPrinter &printer, 
 
 Okular::Document::PrintError MuPDFGenerator::print(QPrinter &printer)
 {
+    if (m_printOptions) {
+        setPrintAnnotations(static_cast<MuPDFPrintOptionsWidget *>(m_printOptions.data())->printAnnotations());
+        setPrintLayoutOptions(Okular::printLayoutOptionsFromWidget(m_printOptions));
+    }
     if (!isAllowed(Okular::AllowPrint))
         return Okular::Document::UnknownPrintError;
     if (m_printLayoutOptions.mode != Okular::PrintLayout::Size)
@@ -329,4 +354,11 @@ bool MuPDFGenerator::printAnnotations() const
 void MuPDFGenerator::setPrintLayoutOptions(const Okular::PrintLayoutOptions &options)
 {
     m_printLayoutOptions = options;
+}
+
+Okular::PrintOptionsWidget *MuPDFGenerator::printConfigurationWidget() const
+{
+    if (!m_printOptions)
+        m_printOptions = new MuPDFPrintOptionsWidget();
+    return m_printOptions;
 }

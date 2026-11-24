@@ -2,6 +2,13 @@
 #include "part/mengsheeprintdialog.h"
 #include "core/printoptionswidget.h"
 #include "core/printjob.h"
+#include "core/document.h"
+#include "settings_core.h"
+#include <QStandardPaths>
+#include <QButtonGroup>
+#include <QMimeDatabase>
+#include <QPdfWriter>
+#include <QPainter>
 #include <QTest>
 #include <QToolButton>
 #include <QLabel>
@@ -21,6 +28,47 @@
 class PrintPreviewTest : public QObject {
     Q_OBJECT
 private Q_SLOTS:
+    void initTestCase()
+    {
+        QStandardPaths::setTestModeEnabled(true);
+        Okular::SettingsCore::instance(QStringLiteral("printpreviewtest"));
+    }
+
+    void loadedDocumentLayouts()
+    {
+        QTemporaryDir dir;
+        const QString source = dir.filePath(QStringLiteral("source.pdf"));
+        {
+            QPdfWriter writer(source);
+            QPainter painter(&writer);
+            for (int page = 0; page < 4; ++page) {
+                if (page)
+                    QVERIFY(writer.newPage());
+                painter.drawText(100, 100, QStringLiteral("Page %1").arg(page + 1));
+            }
+        }
+        Okular::Document document(nullptr);
+        QCOMPARE(document.openDocument(source, QUrl::fromLocalFile(source), QMimeDatabase().mimeTypeForFile(source)), Okular::Document::OpenSuccess);
+        QWidget *options = document.printConfigurationWidget();
+        QVERIFY2(options, "The installed PDF plugin must expose its print configuration interface");
+        Okular::MengsheePrintDialog dialog(nullptr, 4, 1, QPageLayout::Portrait, false, options);
+        QButtonGroup *modes = nullptr;
+        for (auto *group : dialog.findChildren<QButtonGroup *>()) {
+            if (qobject_cast<QToolButton *>(group->button(Okular::PrintLayout::Booklet))) {
+                modes = group;
+                break;
+            }
+        }
+        QVERIFY(modes);
+        for (int mode : {Okular::PrintLayout::Multiple, Okular::PrintLayout::Poster, Okular::PrintLayout::Booklet, Okular::PrintLayout::Size}) {
+            auto *button = modes->button(mode);
+            QVERIFY(button);
+            QVERIFY(button->isEnabled());
+            button->click();
+            QCOMPARE(options->property(Okular::PrintLayout::modeProperty).toInt(), mode);
+        }
+    }
+
     void bookletLayoutPreview()
     {
         auto *options = new Okular::DefaultPrintOptionsWidget;

@@ -8,6 +8,8 @@
 #include <core/printoptionswidget.h>
 #include <core/readingvieweditinginterface.h>
 #include <interfaces/saveinterface.h>
+#include <interfaces/printinterface.h>
+#include <QPointer>
 #include <memory>
 #include <mupdf/fitz.h>
 #include <mupdf/pdf.h>
@@ -18,6 +20,7 @@ class QRect;
 class QRectF;
 
 class MENGSHEE_PDF_RUNTIME_EXPORT MuPDFGenerator : public Okular::Generator, public Okular::PrintPreviewInterface,
+                       public Okular::PrintInterface,
                        public Okular::SaveInterface,
                        public Okular::PageInsertionInterface,
                        public Okular::ReadingViewEditingInterface,
@@ -26,7 +29,7 @@ class MENGSHEE_PDF_RUNTIME_EXPORT MuPDFGenerator : public Okular::Generator, pub
                        public Okular::PdfOcrInterface
 {
     Q_OBJECT
-    Q_INTERFACES(Okular::Generator Okular::SaveInterface)
+    Q_INTERFACES(Okular::Generator Okular::SaveInterface Okular::PrintInterface)
 public:
     MuPDFGenerator(QObject *parent, const QVariantList &args);
     ~MuPDFGenerator() override;
@@ -72,6 +75,7 @@ public:
     void setPrintAnnotations(bool enabled);
     bool printAnnotations() const;
     void setPrintLayoutOptions(const Okular::PrintLayoutOptions &options);
+    Okular::PrintOptionsWidget *printConfigurationWidget() const override;
     QVariant metaData(const QString &key, const QVariant &option) const override;
     bool isAllowed(Okular::Permission permission) const override;
     Okular::Document::PrintError print(QPrinter &printer) override;
@@ -250,6 +254,7 @@ private:
     QString m_editError;
     bool m_printAnnotations = true;
     Okular::PrintLayoutOptions m_printLayoutOptions;
+    mutable QPointer<Okular::PrintOptionsWidget> m_printOptions;
     QHash<quint64, pdf_obj *> m_detached;
     quint64 m_nextEdit = 1;
     Okular::Page *createPage(int index);

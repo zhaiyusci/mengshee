@@ -16,11 +16,7 @@
 #include <core/page.h>
 #include <core/printoptionswidget.h>
 
-#include <QCheckBox>
-#include <QCoreApplication>
-#include <QFormLayout>
 #include <QImage>
-#include <QPointer>
 #include <QSizeF>
 #include <QtMath>
 
@@ -28,27 +24,6 @@ namespace
 {
 
 using namespace Mengshee::Pdf;
-
-class MuPDFPrintOptionsWidget final : public Okular::DefaultPrintOptionsWidget
-{
-public:
-    MuPDFPrintOptionsWidget()
-    {
-        setProperty(Okular::PrintLayout::supportsProperty, true);
-        m_printAnnotations = new QCheckBox(QCoreApplication::translate("MuPDFPrintOptionsWidget", "Print annotations"), this);
-        m_printAnnotations->setChecked(true);
-        if (auto *layout = qobject_cast<QFormLayout *>(this->layout()))
-            layout->addRow(m_printAnnotations);
-    }
-
-    bool printAnnotations() const
-    {
-        return m_printAnnotations->isChecked();
-    }
-
-private:
-    QCheckBox *m_printAnnotations = nullptr;
-};
 
 class MuPdfEngineModule final
     : public MuPDFGenerator
@@ -71,7 +46,6 @@ public:
 
     ~MuPdfEngineModule() override
     {
-        delete m_printOptions;
         // Okular::Page models are created by the narrow caller through
         // createPageModel() and owned by it. close() only releases the native
         // document and page cache.
@@ -128,9 +102,7 @@ public:
 
     Okular::PrintOptionsWidget *printConfigurationWidget() const override
     {
-        if (!m_printOptions)
-            m_printOptions = new MuPDFPrintOptionsWidget();
-        return m_printOptions;
+        return MuPDFGenerator::printConfigurationWidget();
     }
 
     PdfPrintPreviewProvider *printPreviewProvider() override
@@ -652,9 +624,6 @@ public:
 
     Okular::Document::PrintError print(QPrinter &printerDevice) override
     {
-        if (m_printOptions)
-            setPrintAnnotations(m_printOptions->printAnnotations());
-        setPrintLayoutOptions(Okular::printLayoutOptionsFromWidget(m_printOptions));
         return MuPDFGenerator::print(printerDevice);
     }
 
@@ -1026,7 +995,6 @@ public:
     }
 
 private:
-    mutable QPointer<MuPDFPrintOptionsWidget> m_printOptions;
 
     bool isValidPage(int nativePage) const
     {

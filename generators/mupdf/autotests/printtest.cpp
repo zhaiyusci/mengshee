@@ -8,6 +8,7 @@
 #include <QPrinter>
 #include <QTemporaryDir>
 #include <QTest>
+#include <QCheckBox>
 
 class PrintTest : public QObject
 {
@@ -59,6 +60,17 @@ private Q_SLOTS:
         QCOMPARE(input.loadDocumentWithPassword(source, pages, {}), Okular::Document::OpenSuccess);
         QCOMPARE(pages.size(), 4);
 
+        // Exercise the same Qt interface lookup as Document, including the
+        // legacy single-engine plugin rather than only the module adapter.
+        auto *configurator = qobject_cast<Okular::PrintInterface *>(&input);
+        QVERIFY(configurator);
+        auto *widget = configurator->printConfigurationWidget();
+        QVERIFY(widget);
+        QVERIFY(widget->property(Okular::PrintLayout::supportsProperty).toBool());
+        auto *annotations = widget->findChild<QCheckBox *>();
+        QVERIFY(annotations);
+        annotations->setChecked(false);
+
         const auto printWith = [&](const Okular::PrintLayoutOptions &options, const QString &output) {
             Okular::PrintJobPrinter printer;
             printer.setOutputFormat(QPrinter::PdfFormat);
@@ -66,7 +78,9 @@ private Q_SLOTS:
             printer.setResolution(150);
             printer.setPageSize(QPageSize(QPageSize::A4));
             printer.setFullPage(true);
-            input.setPrintLayoutOptions(options);
+            widget->setProperty(Okular::PrintLayout::modeProperty, options.mode);
+            widget->setProperty(Okular::PrintLayout::pagesPerSheetProperty, options.pagesPerSheet);
+            widget->setProperty(Okular::PrintLayout::posterScaleProperty, options.posterScale * 100.0);
             if (input.print(printer) != Okular::Document::NoPrintError)
                 return -1;
             QFile printedFile(output);
@@ -88,6 +102,7 @@ private Q_SLOTS:
         multiple.mode = Okular::PrintLayout::Multiple;
         multiple.pagesPerSheet = 2;
         QCOMPARE(printWith(multiple, dir.filePath(QStringLiteral("multiple.pdf"))), 2);
+        QVERIFY(!input.printAnnotations());
 
         Okular::PrintLayoutOptions booklet;
         booklet.mode = Okular::PrintLayout::Booklet;
@@ -97,6 +112,17 @@ private Q_SLOTS:
         poster.mode = Okular::PrintLayout::Poster;
         poster.posterScale = 4.0;
         QVERIFY(printWith(poster, dir.filePath(QStringLiteral("poster.pdf"))) > 1);
+
+        // A dialog owns the widget; another dialog must get a fresh one safely.
+        QPointer<QWidget> previous(widget);
+        delete widget;
+        QVERIFY(previous.isNull());
+        widget = configurator->printConfigurationWidget();
+        QVERIFY(widget);
+        QVERIFY(widget->findChild<QCheckBox *>()->isChecked());
+        Okular::PrintLayoutOptions single;
+        QCOMPARE(printWith(single, dir.filePath(QStringLiteral("single.pdf"))), 4);
+        QVERIFY(input.printAnnotations());
 
         qDeleteAll(pages);
     }

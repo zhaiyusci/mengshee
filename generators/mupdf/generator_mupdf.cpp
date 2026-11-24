@@ -35,6 +35,7 @@ MuPDFGenerator::MuPDFGenerator(QObject *parent, const QVariantList &args)
 
 MuPDFGenerator::~MuPDFGenerator()
 {
+    delete m_printOptions;
     doCloseDocument();
     fz_drop_context(m_context);
 }
