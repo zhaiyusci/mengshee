@@ -126,6 +126,13 @@ public:
     explicit TextPage(const TextEntity::List &words);
 
     /**
+     * Creates a page from backend-recognized words, each containing its glyphs.
+     * Layout uses the word bounds while selection retains individual glyph bounds.
+     * A subsequent append() discards these word boundaries and infers them again.
+     */
+    explicit TextPage(const QList<TextEntity::List> &words);
+
+    /**
      * Destroys the text page.
      */
     ~TextPage();

@@ -57,6 +57,7 @@ public:
 
     // variables those can be accessed directly from TextPage
     TextEntity::List m_words;
+    QList<TextEntity::List> m_wordCharacters;
     QMap<int, SearchPoint *> m_searchPoints;
     Page *m_page;
 

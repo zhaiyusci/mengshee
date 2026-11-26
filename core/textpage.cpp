@@ -177,6 +177,21 @@ TextPage::TextPage(const TextEntity::List &words)
     d->m_words = words;
 }
 
+TextPage::TextPage(const QList<TextEntity::List> &words)
+    : d(new TextPagePrivate())
+{
+    for (const auto &word : words) {
+        TextPage normalized;
+        for (const auto &glyph : word) {
+            normalized.append(glyph.text(), glyph.area());
+        }
+        if (!normalized.d->m_words.isEmpty()) {
+            d->m_wordCharacters.append(normalized.d->m_words);
+            d->m_words += normalized.d->m_words;
+        }
+    }
+}
+
 TextPage::~TextPage()
 {
     delete d;
@@ -185,6 +200,7 @@ TextPage::~TextPage()
 void TextPage::append(const QString &text, const NormalizedRect &area)
 {
     if (!text.isEmpty()) {
+        d->m_wordCharacters.clear();
         if (!d->m_words.isEmpty()) {
             const TextEntity &lastEntity = d->m_words.last();
             // Unicode Normalization Form KC (NFKC) may alter characters, for example ⑥ to 6, so we use NFC
@@ -1630,17 +1646,27 @@ void TextPagePrivate::correctTextOrder()
     const int pageWidth = (int)(scalingFactor * m_page->width());
     const int pageHeight = (int)(scalingFactor * m_page->height());
 
-    TextEntity::List characters = m_words;
-
-    /**
-     * Remove spaces from the text
-     */
-    removeSpace(characters);
-
     /**
      * Construct words from characters
      */
-    const QList<WordWithCharacters> wordsWithCharacters = makeWordFromCharacters(characters, pageWidth, pageHeight);
+    QList<WordWithCharacters> wordsWithCharacters;
+    if (m_wordCharacters.isEmpty()) {
+        TextEntity::List characters = m_words;
+        removeSpace(characters);
+        wordsWithCharacters = makeWordFromCharacters(characters, pageWidth, pageHeight);
+    } else {
+        for (const auto &glyphs : std::as_const(m_wordCharacters)) {
+            QString text;
+            NormalizedRect bounds = glyphs.first().area();
+            for (const auto &glyph : glyphs) {
+                text += glyph.text();
+                bounds = bounds | glyph.area();
+            }
+            wordsWithCharacters.append(WordWithCharacters(TextEntity(text, bounds), glyphs));
+        }
+        // The groups have been consumed; retain only the ordered glyphs below.
+        m_wordCharacters.clear();
+    }
 
     /**
      * Make a XY Cut tree for segmentation of the texts

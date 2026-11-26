@@ -427,7 +427,7 @@ Okular::TextPage *MuPDFGenerator::textPage(Okular::TextRequest *request)
 Okular::TextPage *MuPDFGenerator::textPageForNumber(int number)
 {
     QMutexLocker lock(userMutex());
-    auto *result = new Okular::TextPage;
+    QList<Okular::TextEntity::List> words;
     fz_stext_page *text = nullptr;
     fz_var(text);
     fz_try(m_context)
@@ -437,22 +437,13 @@ Okular::TextPage *MuPDFGenerator::textPageForNumber(int number)
             if (block->type != FZ_STEXT_BLOCK_TEXT)
                 continue;
             for (fz_stext_line *line = block->u.t.first_line; line; line = line->next) {
-                // Append whole words rather than one entity per glyph.
-                // Okular's text ordering inserts a space between entities
-                // when the geometric gap is large; per-glyph entities can
-                // therefore split "Page" into "P age" and break search.
-                QString word;
+                // Preserve word boundaries for layout/search and glyph boxes for selection.
+                Okular::TextEntity::List word;
                 fz_rect wordRect = fz_empty_rect;
                 const auto flushWord = [&] {
                     if (word.isEmpty())
                         return;
-                    const float w = text->mediabox.x1 - text->mediabox.x0;
-                    const float h = text->mediabox.y1 - text->mediabox.y0;
-                    result->append(word,
-                                   Okular::NormalizedRect((wordRect.x0 - text->mediabox.x0) / w,
-                                                          (wordRect.y0 - text->mediabox.y0) / h,
-                                                          (wordRect.x1 - text->mediabox.x0) / w,
-                                                          (wordRect.y1 - text->mediabox.y0) / h));
+                    words.append(word);
                     word.clear();
                     wordRect = fz_empty_rect;
                 };
@@ -466,7 +457,13 @@ Okular::TextPage *MuPDFGenerator::textPageForNumber(int number)
                         flushWord();
                     }
                     const char32_t codepoint = ch->c;
-                    word.append(QString::fromUcs4(&codepoint, 1));
+                    const float w = text->mediabox.x1 - text->mediabox.x0;
+                    const float h = text->mediabox.y1 - text->mediabox.y0;
+                    word.append(Okular::TextEntity(QString::fromUcs4(&codepoint, 1),
+                                                  Okular::NormalizedRect((rect.x0 - text->mediabox.x0) / w,
+                                                                         (rect.y0 - text->mediabox.y0) / h,
+                                                                         (rect.x1 - text->mediabox.x0) / w,
+                                                                         (rect.y1 - text->mediabox.y0) / h)));
                     wordRect = fz_union_rect(wordRect, rect);
                 }
                 flushWord();
@@ -481,7 +478,7 @@ Okular::TextPage *MuPDFGenerator::textPageForNumber(int number)
     {
         qWarning() << "MuPDF text:" << fz_caught_message(m_context);
     }
-    return result;
+    return new Okular::TextPage(words);
 }
 
 Okular::DocumentInfo MuPDFGenerator::generateDocumentInfo(const QSet<Okular::DocumentInfo::Key> &) const

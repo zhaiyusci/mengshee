@@ -31,6 +31,10 @@ ecm_add_test(latexbackendtest.cpp ../part/latexrenderer.cpp ../part/latexrenderg
 )
 
 if (BUILD_DESKTOP)
+    ecm_add_test(textselectiontest.cpp
+        TEST_NAME "textselectiontest"
+        LINK_LIBRARIES Qt6::Widgets Qt6::Test Qt6::Xml okularcore okularpart
+    )
     ecm_add_test(aicitationviewtest.cpp
         TEST_NAME "aicitationviewtest"
         LINK_LIBRARIES Qt6::Widgets Qt6::Test Qt6::Xml Qt6::PrintSupport okularcore okularpart
